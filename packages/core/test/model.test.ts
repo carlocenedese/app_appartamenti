@@ -251,12 +251,20 @@ describe('amounts and dates', () => {
     expect(Object.is(parsed.amount, 0)).toBe(true);
   });
 
-  it.each(['2026-02-30', '2026-13-01', '2026-1-01', '01/02/2026', '2026-02-01T00:00:00Z', ''])(
-    'the date %j is rejected',
-    (dueDate) => {
-      expect(BillSchema.safeParse(changed(validRecords.bill, { dueDate })).success).toBe(false);
-    },
-  );
+  it.each([
+    '2026-02-30',
+    '2026-13-01',
+    '2026-00-10',
+    '2026-99-99',
+    '2026-1-01',
+    '01/02/2026',
+    '2026-02-01T00:00:00Z',
+    '2026-02-01\n',
+    '\u0662\u0660\u0662\u0666-\u0660\u0662-\u0660\u0661',
+    '',
+  ])('the date %j is rejected', (dueDate) => {
+    expect(BillSchema.safeParse(changed(validRecords.bill, { dueDate })).success).toBe(false);
+  });
 
   it('accepts a real leap day and rejects a missing one', () => {
     expect(
@@ -267,14 +275,20 @@ describe('amounts and dates', () => {
     ).toBe(false);
   });
 
-  it.each(['2026-13', '2026-00', '2026-1', '2026-03-05', 'marzo 2026'])(
-    'the month %j is rejected',
-    (forMonth) => {
-      expect(PaymentSchema.safeParse(changed(validRecords.payment, { forMonth })).success).toBe(
-        false,
-      );
-    },
-  );
+  it.each([
+    '2026-13',
+    '2026-00',
+    '2026-99',
+    '2026-1',
+    '2026-03-05',
+    '2026-03\n',
+    '\u0662\u0660\u0662\u0666-\u0660\u0663',
+    'marzo 2026',
+  ])('the month %j is rejected', (forMonth) => {
+    expect(PaymentSchema.safeParse(changed(validRecords.payment, { forMonth })).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('Apartment', () => {
@@ -470,6 +484,12 @@ describe('Payment', () => {
     expect(PaymentSchema.safeParse(without(validRecords.payment, 'confirmed')).success).toBe(false);
   });
 
+  it('rejects an empty transaction id: it is an id when present', () => {
+    expect(
+      PaymentSchema.safeParse(changed(validRecords.payment, { transactionId: '' })).success,
+    ).toBe(false);
+  });
+
   it('has optional month, transaction and note', () => {
     const parsed = PaymentSchema.parse(
       without(validRecords.payment, 'forMonth', 'transactionId', 'note'),
@@ -552,6 +572,12 @@ describe('Instalment', () => {
     expect(InstalmentSchema.safeParse(changed(validRecords.instalment, { kind })).success).toBe(
       false,
     );
+  });
+
+  it.each(['paidFromApartmentId', 'fileHash'])('rejects an empty %s when present', (field) => {
+    expect(
+      InstalmentSchema.safeParse(changed(validRecords.instalment, { [field]: '' })).success,
+    ).toBe(false);
   });
 
   it('has optional straordinaria, paidFromApartmentId, shared and fileHash', () => {
@@ -705,6 +731,8 @@ describe('Note', () => {
     '2026-11-10 20:15:00Z',
     '2026-02-30T10:00:00Z',
     '2026-11-10T25:00:00Z',
+    '2026-11-10T20:15:00Z\n',
+    '\u0662\u0660\u0662\u0666-11-10T20:15:00Z',
     '',
   ])('rejects the timestamp %j', (at) => {
     expect(NoteSchema.safeParse(changed(validRecords.note, { at })).success).toBe(false);

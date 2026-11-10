@@ -7,12 +7,13 @@
 import type { Workspace } from './model';
 
 /**
- * A plain `MAJOR.MINOR.PATCH` version: three numbers without leading zeros. Pre-release tags
- * (`1.2.3-beta.1`) and build metadata (`1.2.3+5`) are rejected on purpose: the app and the
- * workspace both carry released versions only, and guessing how a pre-release ranks against a
- * release is how a read-only guard goes wrong.
+ * A plain `MAJOR.MINOR.PATCH` version: three numbers without leading zeros, digits `0-9` only
+ * (the pattern also goes into the JSON Schema, where `\d` would match other scripts in Python).
+ * Pre-release tags (`1.2.3-beta.1`) and build metadata (`1.2.3+5`) are rejected on purpose: the
+ * app and the workspace both carry released versions only, and guessing how a pre-release ranks
+ * against a release is how a read-only guard goes wrong.
  */
-export const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+export const SEMVER_PATTERN = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 
 function parseSemver(version: string): [major: number, minor: number, patch: number] {
   const match = SEMVER_PATTERN.exec(version);

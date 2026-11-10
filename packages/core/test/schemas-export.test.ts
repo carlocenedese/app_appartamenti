@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { recordSchemas } from '../src/model';
+import { ISODateSchema, YearMonthSchema, recordSchemas } from '../src/model';
 import { exportJsonSchemas, serializeJsonSchema } from '../src/schemas-json';
 
 // docs/schemas holds one JSON Schema per record kind plus the workspace file. The Python side
@@ -25,6 +25,31 @@ function schemaOf(kind: string): JsonObject {
 function properties(kind: string): Record<string, JsonObject> {
   return schemaOf(kind)['properties'] as Record<string, JsonObject>;
 }
+
+/** The `pattern` of a property, compiled the way a JSON Schema validator would (ECMA 262). */
+function patternOf(kind: string, field: string): RegExp {
+  const pattern = properties(kind)[field]?.['pattern'];
+  if (typeof pattern !== 'string') throw new Error(`${kind}.${field} has no pattern`);
+  return new RegExp(pattern);
+}
+
+/** Every `pattern` string found anywhere in a JSON Schema, with the path where it sits. */
+function collectPatterns(node: unknown, path = '$'): [path: string, pattern: string][] {
+  if (Array.isArray(node)) {
+    return node.flatMap((item, index) => collectPatterns(item, `${path}[${index}]`));
+  }
+  if (typeof node !== 'object' || node === null) return [];
+  return Object.entries(node).flatMap(([key, value]) =>
+    key === 'pattern' && typeof value === 'string'
+      ? [[path, value] as [string, string]]
+      : collectPatterns(value, `${path}.${key}`),
+  );
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+// Arabic-Indic digits for 2026-01-01: `\d` matches them in Python (and in Unicode-aware engines).
+const ARABIC_INDIC_MONTH = '\u0662\u0660\u0662\u0666-\u0660\u0661';
+const ARABIC_INDIC_DATE = `${ARABIC_INDIC_MONTH}-\u0660\u0661`;
 
 describe('exportJsonSchemas', () => {
   it('exports one schema for each record kind and one for the workspace', () => {
@@ -87,6 +112,104 @@ describe('exportJsonSchemas', () => {
     expect(schemaOf('instalment')['description']).toMatch(/rateIndex/);
     expect(schemaOf('bill')['description']).toMatch(/periodStart/);
   });
+
+  it('lists exactly the instalment counts that divide 12', () => {
+    const divisors = Array.from({ length: 12 }, (_, index) => index + 1).filter(
+      (count) => 12 % count === 0,
+    );
+    expect(properties('instalment')['rateCount']?.['enum']).toEqual(divisors);
+  });
+});
+
+describe('patterns in the exported schemas', () => {
+  // Python's jsonschema applies `pattern` with re.search, where `\d` also matches non-ASCII
+  // digits, so every pattern spells its digits as [0-9].
+  it.each(expectedKinds)('%s: no pattern uses \\d', (kind) => {
+    const patterns = collectPatterns(schemaOf(kind));
+    const offending = patterns.filter(([, pattern]) => pattern.includes('\\d'));
+    expect(offending).toEqual([]);
+  });
+
+  it('has patterns to inspect', () => {
+    expect(collectPatterns(schemaOf('bill')).length).toBeGreaterThan(0);
+  });
+
+  it('month pattern accepts exactly the months the model accepts', () => {
+    const pattern = patternOf('payment', 'forMonth');
+    const disagreements = [];
+    for (let month = 0; month < 100; month++) {
+      const text = `2026-${pad2(month)}`;
+      const parsed = YearMonthSchema.safeParse(text).success;
+      if (pattern.test(text) !== parsed) disagreements.push(text);
+    }
+    expect(disagreements).toEqual([]);
+    expect(pattern.test('2026-13')).toBe(false);
+    expect(pattern.test('2026-00')).toBe(false);
+    expect(pattern.test('2026-1')).toBe(false);
+    expect(pattern.test(ARABIC_INDIC_MONTH)).toBe(false);
+  });
+
+  it('date pattern checks the month and day ranges, the model also the day of the month', () => {
+    const pattern = patternOf('bill', 'periodStart');
+    // The pattern may only be looser than the model for days that the month does not have.
+    const tooLoose = [];
+    const tooStrict = [];
+    for (let month = 0; month < 100; month++) {
+      for (let day = 0; day < 100; day++) {
+        const text = `2026-${pad2(month)}-${pad2(day)}`;
+        const matches = pattern.test(text);
+        const parsed = ISODateSchema.safeParse(text).success;
+        if (parsed && !matches) tooStrict.push(text);
+        if (matches && !parsed && day < 29) tooLoose.push(text);
+      }
+    }
+    expect(tooStrict).toEqual([]);
+    expect(tooLoose).toEqual([]);
+    for (const text of ['2026-13-01', '2026-00-10', '2026-01-00', '2026-01-32', '2026-99-99']) {
+      expect(pattern.test(text), text).toBe(false);
+    }
+    expect(pattern.test(ARABIC_INDIC_DATE)).toBe(false);
+    expect(pattern.test('2026-02-28')).toBe(true);
+  });
+
+  it('timestamp pattern rejects invalid months, days, hours and non-ASCII digits', () => {
+    const pattern = patternOf('note', 'at');
+    expect(pattern.test('2026-11-10T20:15:00.000Z')).toBe(true);
+    expect(pattern.test('2026-11-10T20:15:00Z')).toBe(true);
+    for (const text of [
+      '2026-13-10T20:15:00Z',
+      '2026-00-10T20:15:00Z',
+      '2026-11-32T20:15:00Z',
+      '2026-11-10T24:00:00Z',
+      '2026-11-10T20:60:00Z',
+      '2026-11-10T20:15:00+01:00',
+      '2026-11-10T20:15:00',
+      `${ARABIC_INDIC_DATE}T20:15:00Z`,
+    ]) {
+      expect(pattern.test(text), text).toBe(false);
+    }
+  });
+
+  it('version pattern accepts plain MAJOR.MINOR.PATCH only', () => {
+    const pattern = patternOf('workspace', 'minAppVersion');
+    expect(pattern.test('1.10.0')).toBe(true);
+    for (const text of ['1.2', '01.2.3', '1.2.3-beta.1', '\u0661.\u0662.\u0663']) {
+      expect(pattern.test(text), text).toBe(false);
+    }
+  });
+
+  it('tells consumers what the patterns leave to them', () => {
+    // Trailing newline: Python's `$` accepts one, ECMA 262's does not.
+    for (const [kind, field] of [
+      ['bill', 'periodStart'],
+      ['payment', 'forMonth'],
+      ['note', 'at'],
+      ['workspace', 'minAppVersion'],
+    ] as const) {
+      expect(properties(kind)[field]?.['description'], `${kind}.${field}`).toMatch(/newline/i);
+    }
+    expect(properties('bill')['periodStart']?.['description']).toMatch(/day/);
+  });
 });
 
 describe('serializeJsonSchema', () => {
@@ -96,8 +219,10 @@ describe('serializeJsonSchema', () => {
 });
 
 describe('docs/schemas', () => {
-  it('holds exactly one file for each record kind and the workspace', () => {
-    const files = readdirSync(SCHEMAS_DIR).sort();
+  it('holds exactly one JSON file for each record kind and the workspace', () => {
+    const files = readdirSync(SCHEMAS_DIR)
+      .filter((file) => file.endsWith('.json'))
+      .sort();
     expect(files, REGENERATE).toEqual(expectedKinds.map((kind) => `${kind}.json`));
   });
 

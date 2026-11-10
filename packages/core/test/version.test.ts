@@ -53,6 +53,7 @@ describe('compareSemver', () => {
     '1.2.3\n',
     '1.2.9007199254740993',
     '１.2.3',
+    '\u0661.\u0662.\u0663',
   ])('throws a RangeError on the malformed version %j', (version) => {
     expect(() => compareSemver(version, '1.0.0')).toThrow(RangeError);
     expect(() => compareSemver('1.0.0', version)).toThrow(RangeError);

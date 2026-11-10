@@ -30,6 +30,16 @@ import { SEMVER_PATTERN } from './version';
 /** Whole euro cents, any sign. Parses to the branded `Cents`. */
 export const CentsSchema = z.int().transform((n): Cents => cents(n));
 
+// The patterns end up in the exported JSON Schema, where Python validators apply them with
+// `re.search`. Digits are spelled [0-9] because `\d` also matches other scripts' digits there, and
+// the month and day ranges are in the pattern so that "2026-13" or "2026-99-99" never pass it.
+// Two things stay with the consumer, and the descriptions say so: whether the day exists in the
+// month, and a trailing newline (ECMA 262's `$` refuses it, Python's accepts it).
+const MONTH_SOURCE = '[0-9]{4}-(?:0[1-9]|1[0-2])';
+const DATE_SOURCE = `${MONTH_SOURCE}-(?:0[1-9]|[12][0-9]|3[01])`;
+const TIME_SOURCE = '(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?';
+const NEWLINE_NOTE = 'Where "$" accepts a trailing newline (Python), the consumer must reject one.';
+
 /** A string of the given shape that `parse` accepts, turned into the type `parse` returns. */
 function checkedString<T>(shape: RegExp, parse: (value: string) => T) {
   return z
@@ -50,17 +60,34 @@ function checkedString<T>(shape: RegExp, parse: (value: string) => T) {
 }
 
 /** A real calendar date, `YYYY-MM-DD`. Parses to the branded `ISODate`. */
-export const ISODateSchema = checkedString(/^\d{4}-\d{2}-\d{2}$/, isoDate).meta({
+export const ISODateSchema = checkedString(new RegExp(`^${DATE_SOURCE}$`), isoDate).meta({
   format: 'date',
+  description:
+    'Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists ' +
+    `in the month needs a "format": "date" check or the consumer's own. ${NEWLINE_NOTE}`,
 });
 
 /** A calendar month, `YYYY-MM`. Parses to the branded `YearMonth`. */
-export const YearMonthSchema = checkedString(/^\d{4}-\d{2}$/, yearMonth).meta({
-  description: 'Calendar month, YYYY-MM (month 01 to 12)',
+export const YearMonthSchema = checkedString(new RegExp(`^${MONTH_SOURCE}$`), yearMonth).meta({
+  description: `Calendar month, YYYY-MM (01 to 12). ${NEWLINE_NOTE}`,
 });
 
-/** A point in time as an ISO 8601 UTC timestamp, e.g. `2026-11-10T20:15:00.000Z`. */
-export const TimestampSchema = z.iso.datetime();
+/**
+ * A point in time as an ISO 8601 UTC timestamp, e.g. `2026-11-10T20:15:00.000Z`: always `Z`,
+ * never an offset, fractional seconds optional. A plain string once parsed.
+ */
+export const TimestampSchema = checkedString(
+  new RegExp(`^${DATE_SOURCE}T${TIME_SOURCE}Z$`),
+  (value) => {
+    isoDate(value.slice(0, 10)); // throws for a day that the month does not have
+    return value;
+  },
+).meta({
+  format: 'date-time',
+  description:
+    'ISO 8601 UTC timestamp ending in Z, e.g. 2026-11-10T20:15:00.000Z. That the day exists in ' +
+    `the month needs a "format": "date-time" check or the consumer's own. ${NEWLINE_NOTE}`,
+});
 
 const NonEmptyString = z.string().min(1);
 
@@ -182,7 +209,7 @@ export const PaymentSchema = RecordBaseSchema.extend({
   /** Month the payment is for; the month of `date` when absent. */
   forMonth: YearMonthSchema.optional(),
   source: z.enum(['csv', 'manual', 'excel']),
-  transactionId: z.string().optional(),
+  transactionId: NonEmptyString.optional(),
   note: z.string().optional(),
 });
 export type Payment = z.infer<typeof PaymentSchema>;
@@ -199,8 +226,11 @@ export const BankTransactionSchema = RecordBaseSchema.extend({
 });
 export type BankTransaction = z.infer<typeof BankTransactionSchema>;
 
-/** Only counts that divide 12 make instalments of whole months. */
-const INSTALMENT_COUNTS = [1, 2, 3, 4, 6, 12];
+/**
+ * The instalment counts that divide 12, so that each instalment covers whole months. One list
+ * for the check and for the exported enum; the tests pin it to the divisors of 12.
+ */
+const INSTALMENT_COUNTS = [1, 2, 3, 4, 6, 12] as const;
 
 export const InstalmentSchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,
@@ -214,10 +244,10 @@ export const InstalmentSchema = RecordBaseSchema.extend({
     .int()
     .min(1)
     .max(12)
-    .refine((count) => INSTALMENT_COUNTS.includes(count), {
+    .refine((count) => INSTALMENT_COUNTS.some((allowed) => allowed === count), {
       message: 'The number of instalments must divide 12',
     })
-    .meta({ enum: INSTALMENT_COUNTS }),
+    .meta({ enum: [...INSTALMENT_COUNTS] }),
   dueDate: ISODateSchema,
   /** Amount of this instalment; it may differ from one instalment to the next. */
   rata: CentsSchema,
@@ -228,7 +258,7 @@ export const InstalmentSchema = RecordBaseSchema.extend({
   /** An instalment that belongs entirely to the owner, never charged to the tenants. */
   straordinaria: z.boolean().optional(),
   /** Apartment whose bank account pays the debit, when it is not this one. */
-  paidFromApartmentId: z.string().optional(),
+  paidFromApartmentId: NonEmptyString.optional(),
   /** A notice shared by several apartments. */
   shared: z
     .object({
@@ -241,7 +271,7 @@ export const InstalmentSchema = RecordBaseSchema.extend({
     .optional(),
   coversFrom: YearMonthSchema,
   coversTo: YearMonthSchema,
-  fileHash: z.string().optional(),
+  fileHash: NonEmptyString.optional(),
 })
   .refine((instalment) => instalment.rateIndex <= instalment.rateCount, {
     message: 'The instalment index is beyond the number of instalments',
@@ -325,7 +355,12 @@ export const WorkspaceSchema = z.object({
   workspaceId: NonEmptyString,
   name: NonEmptyString,
   schemaVersion: z.int().min(1),
-  minAppVersion: z.string().regex(SEMVER_PATTERN),
+  minAppVersion: z
+    .string()
+    .regex(SEMVER_PATTERN)
+    .meta({
+      description: `Plain MAJOR.MINOR.PATCH, no pre-release tag. ${NEWLINE_NOTE}`,
+    }),
   createdAt: TimestampSchema,
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
