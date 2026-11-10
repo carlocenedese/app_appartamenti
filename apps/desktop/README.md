@@ -24,7 +24,8 @@ costano dieci volte quelli Linux):
 1. Etichetta: `git tag v0.1.0` e `git push origin v0.1.0` (per una prova va bene anche
    `v0.0.1-prova`, da cancellare dopo), oppure su GitHub: Actions, Build, Run workflow.
 2. La prima volta dura circa 20-30 minuti (poi la cache di Rust accorcia). Le due build, Windows e
-   macOS, vanno in parallelo; se una fallisce l'altra continua.
+   macOS, vanno in parallelo; se una fallisce l'altra continua. Test e controllo delle licenze
+   (npm e `cargo deny`) girano solo nel job Windows: `ci.yml` prova già ogni sistema.
 3. Gli installer sono nella pagina dell'esecuzione, in fondo, sotto "Artifacts", oppure con
    `gh run download <id-esecuzione>`:
    - `bollette-windows`: il `.msi` e il programma di installazione `.exe` (NSIS).
@@ -43,8 +44,10 @@ Gli installer non sono firmati:
 ## Punti aperti
 
 - **Cargo.lock**: non c'è, perché in locale manca Rust. La CI lo crea a ogni esecuzione dalle
-  versioni di `Cargo.toml`, quindi le dipendenze indirette non sono fissate. Dopo la prima build
-  verde: `cargo generate-lockfile` in `src-tauri/`, commit del file e `--locked` nel workflow.
+  versioni di `Cargo.toml`, quindi le dipendenze indirette non sono fissate. Il job Windows lo
+  carica come artifact `cargo-lock`. Dopo la prima build verde: si scarica quell'artifact
+  (`gh run download <id-esecuzione> -n cargo-lock`), si mette il file in `src-tauri/Cargo.lock`,
+  lo si committa e poi si aggiunge `--locked` ai comandi cargo del workflow.
 - **Licenze di `cargo-deny`** (`deny.toml`, ruling R23): ammette solo l'elenco del vincolo globale
   più MPL-2.0. L'albero di Tauri probabilmente richiede anche `Unicode-3.0` e `Zlib`, forse
   `Apache-2.0 WITH LLVM-exception`. Non sono state aggiunte: se il passo `cargo deny` fallisce alla
