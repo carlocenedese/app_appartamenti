@@ -471,6 +471,55 @@ describe('readJournal', () => {
       },
     ]);
   });
+  it('keeps the file named as the journal names it and reports a hand copy as duplicate-id', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    const name = `${JOURNAL_DIR}/20261110T200000000Z-prof-a-op-001.json`;
+    store.putRaw(
+      `${JOURNAL_DIR}/20261110T200000000Z-prof-a-op-001 - Copia.json`,
+      store.getRaw(name) ?? '',
+    );
+
+    const { operations, problems } = await readJournal(store);
+
+    expect(operations.map((op) => op.id)).toEqual(['op-001']);
+    expect(problems).toEqual([
+      {
+        path: `${JOURNAL_DIR}/20261110T200000000Z-prof-a-op-001 - Copia.json`,
+        reason: 'duplicate-id',
+      },
+    ]);
+  });
+
+  it('reads an operation whose file has another name, as long as its id is not repeated', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    const name = `${JOURNAL_DIR}/20261110T200000000Z-prof-a-op-001.json`;
+    const raw = store.getRaw(name) ?? '';
+    store.putRaw(`${JOURNAL_DIR}/renamed.json`, raw.replace('"op-001"', '"op-777"'));
+
+    const { operations, problems } = await readJournal(store);
+
+    expect(operations.map((op) => op.id)).toEqual(['op-001', 'op-777']);
+    expect(problems).toEqual([]);
+  });
+
+  it('uses none of two operation files with the same id when neither has the journal name', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    const raw = store.getRaw(`${JOURNAL_DIR}/20261110T200000000Z-prof-a-op-001.json`) ?? '';
+    const copy = raw.replace('"op-001"', '"op-777"');
+    store.putRaw(`${JOURNAL_DIR}/a.json`, copy);
+    store.putRaw(`${JOURNAL_DIR}/b.json`, copy);
+
+    const { operations, problems } = await readJournal(store);
+
+    expect(operations.map((op) => op.id)).toEqual(['op-001']);
+    expect(problems).toEqual([
+      { path: `${JOURNAL_DIR}/a.json`, reason: 'duplicate-id' },
+      { path: `${JOURNAL_DIR}/b.json`, reason: 'duplicate-id' },
+    ]);
+  });
 });
 
 describe('dependentsOf', () => {

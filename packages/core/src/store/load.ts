@@ -84,10 +84,16 @@ function conflictProblem(dir: string, name: string): Problem {
  * 4. a raw `v` that is a number above 1: `future-version`. This looks at the raw JSON before the
  *    schema does, because a newer app may also have changed the shape;
  * 5. not accepted by `schema`: `schema-mismatch`;
- * 6. otherwise a record. One with `deleted: true` is left out unless `includeDeleted` is set.
+ * 6. a record whose file is not named after its id (`<id>.json`, compared in NFC): `id-mismatch`,
+ *    unless another file holds the same id, see 7. A record is always written to the file named
+ *    after its id, so another name is a copy or a rename made by hand (`bill - Copia.json`);
+ * 7. a record whose id is also in another file (`deleted` ones count too, so a copy cannot bring
+ *    a deleted record back): if exactly one of those files is named after the id, that one is
+ *    kept and the others are reported as `duplicate-id`; otherwise all of them are reported as
+ *    `duplicate-id` and none is loaded, since which one is right is for the user to decide;
+ * 8. otherwise a record. One with `deleted: true` is left out unless `includeDeleted` is set.
  *
- * Records come back sorted by `id` (then by path for equal ids), problems by path, both by code
- * unit, so the result does not depend on the order the store lists files in. Records are what
+ * Records come back sorted by `id`, problems by path, both by code unit, so the result does not depend on the order the store lists files in. Records are what
  * `schema` returns, so keys it does not know are dropped (see the notes in `model.ts`).
  *
  * Failures of the store itself are not per-file problems and are not swallowed: if the folder
@@ -101,23 +107,34 @@ export async function loadAll<T extends { id: string }>(
   opts: LoadOptions = {},
 ): Promise<{ records: T[]; problems: Problem[] }> {
   assertSafeSegment(kind);
-  return loadDir(store, `${DATA_DIR}/${kind}`, schema, opts);
+  const naming = { stemOf: (record: T) => record.id, strict: true };
+  return loadDir(store, `${DATA_DIR}/${kind}`, schema, naming, opts);
 }
 
 /**
+ * How `loadDir` checks file names against records. `stemOf` is the name (without `.json`) the
+ * app gives the file of a record. With `strict`, a record in a file with another name is not
+ * loaded (`id-mismatch`); without it, the name only decides which of several files with the same
+ * id is kept (the journal names a file `<at>-<profileId>-<id>`, and reads any name).
+ */
+export type Naming<T> = { stemOf: (record: T) => string; strict: boolean };
+
+/**
  * What `loadAll` does, for any folder `dir` (a path relative to the workspace root): `loadAll`
- * has the rules and the order of the result. The journal reads `_app/journal` with it, so that a
- * broken file is treated the same way there. Not part of the public API.
+ * has the rules and the order of the result, with `naming` for the file names (see `Naming`).
+ * The journal reads `_app/journal` with it, so that a broken file is treated the same way there.
+ * Not part of the public API.
  */
 export async function loadDir<T extends { id: string }>(
   store: Store,
   dir: string,
   schema: ZodType<T>,
+  naming: Naming<T>,
   opts: LoadOptions = {},
 ): Promise<{ records: T[]; problems: Problem[] }> {
   const names = (await store.list(dir)).map((name) => name.normalize('NFC'));
 
-  const loaded: { path: string; record: T }[] = [];
+  const loaded: { path: string; stem: string; record: T; deleted: boolean }[] = [];
   const problems: Problem[] = [];
 
   for (const name of names) {
@@ -152,13 +169,41 @@ export async function loadDir<T extends { id: string }>(
       problems.push({ path, reason: 'schema-mismatch' });
       continue;
     }
-    if (!opts.includeDeleted && isObject(raw) && raw.deleted === true) continue;
-    loaded.push({ path, record: parsed.data });
+    const deleted = isObject(raw) && raw.deleted === true;
+    loaded.push({
+      path,
+      stem: name.slice(0, -JSON_EXTENSION.length),
+      record: parsed.data,
+      deleted,
+    });
   }
 
-  loaded.sort((a, b) => compareText(a.record.id, b.record.id) || compareText(a.path, b.path));
+  const byId = new Map<string, typeof loaded>();
+  for (const entry of loaded)
+    byId.set(entry.record.id, [...(byId.get(entry.record.id) ?? []), entry]);
+  const kept: typeof loaded = [];
+  for (const entries of byId.values()) {
+    const named = entries.filter(
+      ({ stem, record }) => stem === naming.stemOf(record).normalize('NFC'),
+    );
+    const [only] = entries;
+    if (entries.length === 1 && only !== undefined) {
+      if (naming.strict && named.length === 0)
+        problems.push({ path: only.path, reason: 'id-mismatch' });
+      else kept.push(only);
+      continue;
+    }
+    const [winner] = named.length === 1 ? named : [];
+    for (const entry of entries) {
+      if (entry === winner) kept.push(entry);
+      else problems.push({ path: entry.path, reason: 'duplicate-id' });
+    }
+  }
+
+  const records = kept.filter(({ deleted }) => opts.includeDeleted === true || !deleted);
+  records.sort((a, b) => compareText(a.record.id, b.record.id));
   problems.sort((a, b) => compareText(a.path, b.path));
-  return { records: loaded.map(({ record }) => record), problems };
+  return { records: records.map(({ record }) => record), problems };
 }
 
 /**

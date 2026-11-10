@@ -258,12 +258,12 @@ describe('FsStore: paths', () => {
 
 describe('FsStore: an interrupted write never leaves a partial .json file', () => {
   it('ignores the temporary file of a process that stopped before the rename', async () => {
-    await store.writeJsonAtomic('_app/dati/bill/good.json', bill);
+    await store.writeJsonAtomic('_app/dati/bill/bill-1.json', bill);
     // What is left on disk if the process stops after writing the temporary file.
     const crashed = join(root, '_app', 'dati', 'bill', '.tmp-0190e5c6-1f2a-7c3b-9d4e-5f6a7b8c9d0e');
     await writeFile(crashed, '{"id": "bill-2", "v": 1, "rev": 1, "amount": 98');
 
-    expect(await store.list('_app/dati/bill')).toEqual(['good.json']);
+    expect(await store.list('_app/dati/bill')).toEqual(['bill-1.json']);
     expect(await store.readJson('_app/dati/bill/bill-2.json')).toBeUndefined();
     const { records, problems } = await loadAll(store, 'bill', BillSchema);
     expect(records).toEqual([bill]);
@@ -332,7 +332,7 @@ describe('FsStore with the engine', () => {
   }
 
   it('loadAll reads a real folder with a good file, broken files and conflict copies without throwing', async () => {
-    await seed('good.json', JSON.stringify(bill));
+    await seed('bill-1.json', JSON.stringify(bill));
     await seed('truncated.json', '{"id": "truncated", "v": 1, "rev": 1, "amou');
     await seed('future.json', JSON.stringify({ ...bill, id: 'future', v: 2 }));
     await seed('x (conflicted copy 2026-11-05).json', JSON.stringify(bill));
@@ -357,6 +357,21 @@ describe('FsStore with the engine', () => {
         reason: 'conflicted-copy',
         originalPath: `${dir}/x.json`,
       },
+    ]);
+  });
+
+  it('loadAll reports a hand copy of a record file as duplicate-id and loads the original', async () => {
+    await seed('bill-1.json', JSON.stringify(bill));
+    await seed('bill-1 - Copia.json', JSON.stringify({ ...bill, supplier: 'Copia' }));
+    await seed('renamed.json', JSON.stringify({ ...bill, id: 'bill-9' }));
+
+    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+
+    const dir = '_app/dati/bill';
+    expect(records).toEqual([bill]);
+    expect(problems).toEqual([
+      { path: `${dir}/bill-1 - Copia.json`, reason: 'duplicate-id' },
+      { path: `${dir}/renamed.json`, reason: 'id-mismatch' },
     ]);
   });
 

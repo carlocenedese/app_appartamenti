@@ -278,11 +278,11 @@ describe('loadAll', () => {
   });
 
   describe('order', () => {
-    it('sorts records by id, whatever the file names, and problems by path', async () => {
+    it('sorts records by id and problems by path', async () => {
       const store = new MemoryStore();
-      putBill(store, 'zzz.json', billJson('apple'));
-      putBill(store, 'aaa.json', billJson('cherry'));
-      putBill(store, 'mmm.json', billJson('banana'));
+      putBill(store, 'apple.json', billJson('apple'));
+      putBill(store, 'cherry.json', billJson('cherry'));
+      putBill(store, 'banana.json', billJson('banana'));
       store.putRaw(`${DIR}/z-broken.json`, '{');
       store.putRaw(`${DIR}/b-broken.json`, '{');
       putBill(store, 'm-future.json', billJson('m', { v: 2 }));
@@ -315,22 +315,65 @@ describe('loadAll', () => {
 
     it('compares ids by code unit, not by locale', async () => {
       const store = new MemoryStore();
-      putBill(store, '1.json', billJson('b'));
-      putBill(store, '2.json', billJson('B'));
-      putBill(store, '3.json', billJson('\u00e8'));
-      putBill(store, '4.json', billJson('a'));
-      putBill(store, '5.json', billJson('10'));
-      putBill(store, '6.json', billJson('9'));
+      for (const id of ['b', 'B', '\u00e8', 'a', '10', '9'])
+        putBill(store, `${id}.json`, billJson(id));
       const { records } = await loadAll(store, 'bill', BillSchema);
       expect(ids(records)).toEqual(['10', '9', 'B', 'a', 'b', '\u00e8']);
     });
+  });
 
-    it('breaks a tie between two files with the same id by path', async () => {
+  describe('file names and ids', () => {
+    it('reports a file whose name is not its id as id-mismatch and does not load it', async () => {
       const store = new MemoryStore();
-      putBill(store, 'b.json', billJson('same', { supplier: 'From b' }));
-      putBill(store, 'a.json', billJson('same', { supplier: 'From a' }));
-      const { records } = await loadAll(store, 'bill', BillSchema);
-      expect(records.map((record) => record.supplier)).toEqual(['From a', 'From b']);
+      putBill(store, 'good.json', billJson('good'));
+      putBill(store, 'renamed.json', billJson('other'));
+      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      expect(ids(records)).toEqual(['good']);
+      expect(problems).toEqual<Problem[]>([{ path: `${DIR}/renamed.json`, reason: 'id-mismatch' }]);
+    });
+
+    it('keeps the file named after the id and reports a hand copy as duplicate-id', async () => {
+      const store = new MemoryStore();
+      putBill(store, 'bill-1.json', billJson('bill-1', { supplier: 'Original' }));
+      putBill(store, 'bill-1 - Copia.json', billJson('bill-1', { supplier: 'Copy' }));
+      putBill(store, 'bill-1 copy.json', billJson('bill-1', { supplier: 'Copy 2' }));
+      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      expect(records.map((record) => record.supplier)).toEqual(['Original']);
+      expect(problems).toEqual<Problem[]>([
+        { path: `${DIR}/bill-1 - Copia.json`, reason: 'duplicate-id' },
+        { path: `${DIR}/bill-1 copy.json`, reason: 'duplicate-id' },
+      ]);
+    });
+
+    it('loads none of the files that share an id when none is named after it', async () => {
+      const store = new MemoryStore();
+      putBill(store, 'a.json', billJson('same'));
+      putBill(store, 'b.json', billJson('same'));
+      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      expect(records).toEqual([]);
+      expect(problems).toEqual<Problem[]>([
+        { path: `${DIR}/a.json`, reason: 'duplicate-id' },
+        { path: `${DIR}/b.json`, reason: 'duplicate-id' },
+      ]);
+    });
+
+    it('counts deleted records for duplicates, so a copy cannot bring a deleted record back', async () => {
+      const store = new MemoryStore();
+      putBill(store, 'bill-1.json', billJson('bill-1', { deleted: true, rev: 2 }));
+      putBill(store, 'bill-1 - Copia.json', billJson('bill-1'));
+      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      expect(records).toEqual([]);
+      expect(problems).toEqual<Problem[]>([
+        { path: `${DIR}/bill-1 - Copia.json`, reason: 'duplicate-id' },
+      ]);
+    });
+
+    it('compares the name with the id in NFC', async () => {
+      const store = new MemoryStore();
+      store.putRaw(`${DIR}/Perche\u0301.json`, JSON.stringify(billJson('Perch\u00e9')));
+      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      expect(ids(records)).toEqual(['Perch\u00e9']);
+      expect(problems).toEqual([]);
     });
   });
 

@@ -54,10 +54,21 @@ export type Problem = {
    * - `schema-mismatch`: valid JSON, but not a record of the expected kind.
    * - `future-version`: a record with `v` above what this app understands (written by a newer app).
    * - `conflicted-copy`: a conflict copy made by Dropbox; it is reported, never loaded.
+   * - `id-mismatch`: a record in a file not named after its id (`<id>.json`), such as a copy or
+   *   a rename made by hand; it is reported, never loaded.
+   * - `duplicate-id`: a record whose id is also in another file; only the file named after the
+   *   id is loaded, and none of them when no single file is (see `loadAll`).
    * - `diverged`: the record differs from what the last operation in the journal says (a crash
    *   between journal and record); reported by the journal checks, not by `loadAll`.
    */
-  reason: 'malformed-json' | 'schema-mismatch' | 'future-version' | 'conflicted-copy' | 'diverged';
+  reason:
+    | 'malformed-json'
+    | 'schema-mismatch'
+    | 'future-version'
+    | 'conflicted-copy'
+    | 'id-mismatch'
+    | 'duplicate-id'
+    | 'diverged';
   /** For `conflicted-copy`: the file the copy was made from, when its name can be worked out. */
   originalPath?: string;
 };

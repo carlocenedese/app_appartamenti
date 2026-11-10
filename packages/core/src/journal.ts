@@ -94,8 +94,13 @@ type NormalisedChange = {
   after: JsonRecord & { rev: number };
 };
 
-function journalPath({ at, profileId, id }: Pick<Operation, 'at' | 'profileId' | 'id'>): string {
-  return `${JOURNAL_DIR}/${compactTimestamp(at)}-${profileId}-${id}.json`;
+/** The name of the file of an operation, without `.json`: `<at>-<profileId>-<id>`. */
+function journalStem({ at, profileId, id }: Pick<Operation, 'at' | 'profileId' | 'id'>): string {
+  return `${compactTimestamp(at)}-${profileId}-${id}`;
+}
+
+function journalPath(operation: Pick<Operation, 'at' | 'profileId' | 'id'>): string {
+  return `${JOURNAL_DIR}/${journalStem(operation)}.json`;
 }
 
 // --- Writing ---------------------------------------------------------------------------------
@@ -202,12 +207,16 @@ export async function commitChange(
 /**
  * Every operation in `_app/journal/`, by time and then by `id`, with the files that could not be
  * used as `problems` (cut short, a conflict copy, written by a newer app, not an operation): a bad
- * file is reported and never stops the others from being read, as with `loadAll`.
+ * file is reported and never stops the others from being read, as with `loadAll`. A file may have
+ * any name, but an id in more than one file is a copy: only the file with the name the journal
+ * gives it (`<at>-<profileId>-<id>.json`) is used, none when no single file has it, and the
+ * others are reported as `duplicate-id`.
  */
 export async function readJournal(
   store: Store,
 ): Promise<{ operations: Operation[]; problems: Problem[] }> {
-  const { records, problems } = await loadDir(store, JOURNAL_DIR, OperationSchema, {
+  const naming = { stemOf: journalStem, strict: false };
+  const { records, problems } = await loadDir(store, JOURNAL_DIR, OperationSchema, naming, {
     includeDeleted: true,
   });
   return { operations: [...records].sort(compareByTime), problems };
