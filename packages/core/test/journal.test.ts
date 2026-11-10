@@ -870,6 +870,69 @@ describe('operations made at the same instant', () => {
   });
 });
 
+describe('operations from machines whose clocks disagree', () => {
+  // Two machines share the folder. The second one makes the later change on the record (rev 2),
+  // but its clock is a minute behind: the rev chain, enforced by `writeRecord`, is the order.
+  const first = () => '2026-11-10T10:00:00.000Z';
+  const second = () => '2026-11-10T09:59:00.000Z';
+
+  async function skewed(store: TestStore): Promise<[Operation, Operation]> {
+    const create = await commitChange(store, createBill(), first, idList('op1'));
+    const update = await commitChange(
+      store,
+      changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 2 })),
+      second,
+      idList('op2'),
+    );
+    return [create, update];
+  }
+
+  it('is consistent: the latest operation is the one with the highest rev, not the latest time', async () => {
+    const store = new TestStore();
+    await skewed(store);
+
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 2, rev: 2 });
+    expect(await checkConsistency(store)).toEqual([]);
+    // The list of the journal is still by time, then by id.
+    expect((await readJournal(store)).operations.map((op) => op.id)).toEqual(['op2', 'op1']);
+  });
+
+  it('reports a record left at the older rev, and repairs it to the higher rev', async () => {
+    const store = new TestStore();
+    await skewed(store);
+    store.putRaw(BILL_PATH, JSON.stringify(bill('bill-1')));
+
+    expect(await checkConsistency(store)).toEqual([{ path: BILL_PATH, reason: 'diverged' }]);
+    await repairDiverged(store, BILL_PATH);
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 2, rev: 2 });
+  });
+
+  it('finds the change with the earlier clock but the higher rev as a dependent', async () => {
+    const store = new TestStore();
+    const [create, update] = await skewed(store);
+    const text = store.getRaw(BILL_PATH);
+
+    expect((await dependentsOf(store, create.id)).map((op) => op.id)).toEqual(['op2']);
+    expect(await dependentsOf(store, update.id)).toEqual([]);
+    await expect(undoOperation(store, create.id, 'prof-b', first, idList('un-1'))).rejects.toThrow(
+      /depend.*op2/,
+    );
+    expect(store.getRaw(BILL_PATH)).toBe(text);
+  });
+
+  it('undoes them in the order of the rev chain with a cascade', async () => {
+    const store = new TestStore();
+    const [create] = await skewed(store);
+
+    await undoOperation(store, create.id, 'prof-b', first, idList('un-1', 'un-2'), {
+      cascade: true,
+    });
+
+    expect(await store.readJson(BILL_PATH)).toEqual(bill('bill-1', { rev: 4, deleted: true }));
+    expect(await checkConsistency(store)).toEqual([]);
+  });
+});
+
 describe('checkConsistency', () => {
   it('is empty when there is no journal, and when every record is as its last operation says', async () => {
     const { store, commit } = setup();

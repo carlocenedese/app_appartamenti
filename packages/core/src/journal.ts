@@ -219,15 +219,17 @@ export async function readJournal(
 type Touch = { operation: Operation; after: JsonRecord & { rev: number } };
 
 /**
- * Orders what two operations did to the same record: by time, then by the `rev` they leave in it,
- * then by `id`. The `rev` comes before the id because it is the order the changes were made in:
- * every change builds on the previous `rev` of the record. Two changes made in the same
- * millisecond with random ids would otherwise come out in the order of their ids.
+ * Orders what two operations did to the same record: by the `rev` they leave in it, then by time,
+ * then by `id`. For one record the chain of `rev`s is the order of the changes: `writeRecord`
+ * only writes on top of the `rev` it expects, so every change builds on the one before. Time is
+ * not that order, because the clocks of two machines sharing the folder can disagree by minutes
+ * and operations made in the same millisecond tie. Time and `id` only order changes that leave
+ * the same `rev` (a fork that Dropbox made, where nothing is right and the order is only fixed).
  */
 function compareTouches(a: Touch, b: Touch): number {
   return (
-    compareTimestamps(a.operation.at, b.operation.at) ||
     a.after.rev - b.after.rev ||
+    compareTimestamps(a.operation.at, b.operation.at) ||
     compareText(a.operation.id, b.operation.id)
   );
 }
@@ -290,10 +292,10 @@ function locate(operations: readonly Operation[], opId: string): Operation {
 /**
  * The operations that depend on `target`, by time. A later change to a record `target` changed
  * depends on it, and so does a later change to a record that a dependent changed. "Later" is
- * decided for each record by `compareTouches`, so the `rev` chain of the record decides for
- * changes made at the same instant. Only changes in force count: an operation that was undone
- * does not, and neither do the undo operations, which cancel the operation they undo (a redo
- * brings that operation back into force, and then it counts).
+ * decided for each record by `compareTouches`: a higher `rev`, whatever the clocks say. Only
+ * changes in force count: an operation that was undone does not, and neither do the undo
+ * operations, which cancel the operation they undo (a redo brings that operation back into force,
+ * and then it counts).
  */
 function dependentsAfter(operations: readonly Operation[], target: Operation): Operation[] {
   const { isEffective } = undoState(operations);
@@ -321,11 +323,12 @@ function dependentsAfter(operations: readonly Operation[], target: Operation): O
 }
 
 /**
- * The operations that depend on `opId`, by time then by `id`: later changes to a record it
- * changed and, transitively, later changes to a record those changed. The order of changes to one
- * record is the order of its `rev`, which decides when two were made at the same instant. An
- * operation that was undone and the undo that did it cancel each other out and are left out,
- * unless a redo brought the operation back. Throws if `opId` is not in the journal.
+ * The operations that depend on `opId`: later changes to a record it changed and, transitively,
+ * later changes to a record those changed. Later means a higher `rev` of that record, so it holds
+ * also when the clock of the machine that made the change is behind. The list is by time, then by
+ * `id`, as `readJournal` is. An operation that was undone and the undo that did it cancel each
+ * other out and are left out, unless a redo brought the operation back. Throws if `opId` is not
+ * in the journal.
  */
 export async function dependentsOf(store: Store, opId: string): Promise<Operation[]> {
   const { operations } = await readJournal(store);
@@ -488,9 +491,10 @@ async function readTolerant(store: Store, path: string): Promise<unknown> {
 /**
  * Compares every record in the journal with its latest operation and reports each one that is not
  * as that operation's `after` says as `diverged`, by path. The latest operation on a record is
- * the one with the latest time, and when times are equal the one that leaves the highest `rev`
- * (then the highest `id`): changes made in the same millisecond keep the order of the `rev` chain.
- * A record is also `diverged` when its file is missing or cut short. This is what an interruption
+ * the one that leaves the highest `rev`, not the one with the latest time: the clocks of two
+ * machines can disagree, and the `rev`s of a record are in the order of its changes. (Only when
+ * two operations leave the same `rev` does the later time decide, then the higher `id`.) A record
+ * is also `diverged` when its file is missing or cut short. This is what an interruption
  * between the journal and the record leaves, or an edit by hand. Only these problems are
  * returned: the files of the journal that cannot be read are in `readJournal`'s `problems`.
  */
