@@ -67,7 +67,7 @@ export const OperationSchema = z
     /** ISO 8601 UTC, from the clock the caller passes in. */
     at: TimestampSchema,
     profileId: NonEmptyString,
-    /** What kind of operation it is, e.g. `bill.create`; `undo` for an undo. */
+    /** What kind of operation it is, e.g. `register-bill` (see `registerBill`); `undo` for an undo. */
     kind: NonEmptyString,
     apartmentId: NonEmptyString.optional(),
     /** One line for the history, in Italian. */
