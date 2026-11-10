@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "apartmentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "1+1",
+        "3+2",
+        "4+4",
+        "altro"
+      ]
+    },
+    "start": {
+      "description": "Calendar month, YYYY-MM (month 01 to 12)",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}$"
+    },
+    "end": {
+      "description": "Calendar month, YYYY-MM (month 01 to 12)",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}$"
+    },
+    "settlement": {
+      "type": "string",
+      "enum": [
+        "annuale",
+        "intero-contratto"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "apartmentId",
+    "type",
+    "start",
+    "end",
+    "settlement"
+  ],
+  "description": "start must not be after end."
+}

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "apartmentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "elettricita",
+        "gas",
+        "acqua",
+        "internet",
+        "altro"
+      ]
+    },
+    "supplier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "number": {
+      "type": "string"
+    },
+    "issueDate": {
+      "format": "date",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "dueDate": {
+      "format": "date",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "periodStart": {
+      "format": "date",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "periodEnd": {
+      "format": "date",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "amount": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "includedInConguaglio": {
+      "type": "boolean"
+    },
+    "sharedWithTenants": {
+      "type": "boolean"
+    },
+    "fileHash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "filePath": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "apartmentId",
+    "category",
+    "supplier",
+    "periodStart",
+    "periodEnd",
+    "amount",
+    "includedInConguaglio",
+    "sharedWithTenants",
+    "fileHash",
+    "filePath"
+  ],
+  "description": "periodStart must not be after periodEnd."
+}

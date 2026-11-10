@@ -15,7 +15,8 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "vitest run --coverage",
     "licenses:check": "node scripts/check-licenses.mjs",
-    "data:check": "node scripts/check-personal-data.mjs"
+    "data:check": "node scripts/check-personal-data.mjs",
+    "schemas:export": "tsx scripts/export-schemas.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -24,6 +25,7 @@
     "eslint": "10.14.0",
     "globals": "17.14.0",
     "prettier": "3.9.10",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.2",
     "vitest": "4.1.12"
