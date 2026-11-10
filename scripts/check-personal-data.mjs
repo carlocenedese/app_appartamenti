@@ -9,9 +9,10 @@
 //   codice fiscale     16 characters (omocodia accepted) whose check character is correct.
 //                      The check keeps random 16-character strings from being flagged.
 //   POD                Electricity supply point: IT + 3 digits + E + 8 digits.
-//   PDR                Gas delivery point: 14 digits. A bare 14-digit number is too common
-//                      (compact timestamps, ids), so it only counts when the keyword "PDR" or
-//                      "punto di riconsegna" is within 80 characters before or 40 after it.
+//   PDR                Gas delivery point: 14 digits, optionally grouped with single spaces.
+//                      A bare 14-digit number is too common (compact timestamps, ids), so it
+//                      only counts when "pdr" (also inside "pdrCode", "gas_pdr") or "punto di
+//                      riconsegna" is within 80 characters before or 40 after it.
 //   registration code  Identifier of a registered lease (Agenzia delle Entrate, servizio RLI),
 //                      17 characters. Structure assumed from the ricevuta di registrazione:
 //                      T + 2 alphanumerics (office) + 2 digits (year) + 1 letter (series)
@@ -24,7 +25,8 @@
 // "Codici d'esempio fittizi" of fixtures/README.md. Nothing else is ever allowed.
 // The pnpm lockfile (hashes only) and binary files are not scanned.
 //
-// The output never prints a whole code: logs must not carry personal data.
+// The output never prints a whole code, not even inside a file name: logs must not carry
+// personal data. Codes are masked ("IT***KL") wherever they appear, paths included.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
@@ -35,7 +37,9 @@ const ALLOWED_CODES_FILE = 'fixtures/README.md';
 const ALLOWED_CODES_HEADING = /^##\s+Codici d['’]esempio fittizi\b.*$/im;
 const SKIPPED_FILES = new Set(['pnpm-lock.yaml']);
 
-const PDR_KEYWORD = /\bPDR\b|punto\s+di\s+riconsegna/i;
+// No word boundary on "pdr": keys such as "pdrCode", "gasPdr" and "pdr_code" must count too. A
+// 14-digit run with this substring within reach is rare enough in ordinary text.
+const PDR_KEYWORD = /pdr|punto\s+di\s+riconsegna/i;
 const REGISTRATION_KEYWORD = /codice\s+identificativo|registrazione|\bRLI\b|\bTRN\b/i;
 
 /** Removes spaces and upper-cases, so that "IT60 X054 ..." and "it60x054..." compare equal. */
@@ -98,7 +102,9 @@ const DETECTORS = [
   },
   {
     kind: 'PDR',
-    pattern: /(?<!\d)\d{14}(?!\d)/g,
+    // 14 digits, optionally grouped with single spaces (in fours, fives, ...), not part of a
+    // longer run of digits.
+    pattern: /(?<!\d[^\S\r\n]?)\d(?:[^\S\r\n]?\d){13}(?![^\S\r\n]?\d)/g,
     accept: ([match], text, index) => near(text, index, match.length, PDR_KEYWORD),
   },
   {
@@ -210,6 +216,14 @@ function mask(value) {
   return `${compact.slice(0, 2)}***${compact.slice(-2)}`;
 }
 
+/** The path with every code found in it masked, so a file name can be printed safely. */
+export function maskPath(path) {
+  const values = scanText(path).map(({ value }) => value);
+  // Longest first, so a code that contains another one is masked as a whole.
+  values.sort((a, b) => b.length - a.length);
+  return values.reduce((masked, value) => masked.replaceAll(value, mask(value)), path);
+}
+
 function main() {
   let rootDir;
   let files;
@@ -232,7 +246,8 @@ function main() {
     `Personal data check failed: ${findings.length} possible personal data in tracked files.`,
   );
   for (const { file, line, kind, value } of findings) {
-    const where = line === 0 ? `${file} (file name)` : `${file}:${line}`;
+    const safeFile = maskPath(file);
+    const where = line === 0 ? `${safeFile} (file name)` : `${safeFile}:${line}`;
     console.error(`  ${where}: ${kind} ${mask(value)}`);
   }
   console.error(

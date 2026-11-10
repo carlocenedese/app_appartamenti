@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   codiceFiscaleCheckChar,
   isValidCodiceFiscale,
+  maskPath,
   parseAllowedCodes,
   scanFiles,
   scanText,
@@ -93,6 +94,26 @@ describe('scanText', () => {
     expect(kinds(`id ${EXAMPLE_PDR}0`)).toEqual([]);
   });
 
+  it('recognises the PDR keyword inside camelCase and snake_case keys', () => {
+    expect(kinds(`{ "pdrCode": "${EXAMPLE_PDR}" }`)).toEqual(['PDR']);
+    expect(kinds(`{ "gasPdr": "${EXAMPLE_PDR}" }`)).toEqual(['PDR']);
+    expect(kinds(`pdr_code = ${EXAMPLE_PDR}`)).toEqual(['PDR']);
+    expect(kinds(`GAS_PDR_CODE=${EXAMPLE_PDR}`)).toEqual(['PDR']);
+  });
+
+  it('flags a PDR whose digits are grouped with spaces', () => {
+    const inFours = EXAMPLE_PDR.replace(/(\d{4})(?=\d)/g, '$1 ');
+    const inFives = [0, 5, 10].map((i) => EXAMPLE_PDR.slice(i, i + 5)).join(' ');
+    expect(kinds(`PDR ${inFours}`)).toEqual(['PDR']);
+    expect(kinds(`{ "pdrCode": "${inFives}" }`)).toEqual(['PDR']);
+    // Still needs the keyword, and must not be a slice of a longer run of digits.
+    expect(kinds(`ref ${inFours}`)).toEqual([]);
+    expect(kinds(`PDR ${inFours} 5`)).toEqual([]);
+    expect(kinds(`PDR 5 ${inFours}`)).toEqual([]);
+    // A spaced variant of a declared example is as acceptable as the plain one.
+    expect(kinds(`PDR ${inFours}`, new Set([EXAMPLE_PDR]))).toEqual([]);
+  });
+
   it('flags a contract registration code by its structure', () => {
     expect(kinds(`ricevuta ${EXAMPLE_REGISTRATION}`)).toEqual(['registration code']);
   });
@@ -150,6 +171,17 @@ describe('parseAllowedCodes', () => {
 
   it('returns an empty set when the section is missing', () => {
     expect(parseAllowedCodes('# Fixtures\n\nNiente da vedere.')).toEqual(new Set());
+  });
+});
+
+describe('maskPath', () => {
+  it('leaves a clean path alone and masks codes anywhere in the path', () => {
+    expect(maskPath('docs/spec.md')).toBe('docs/spec.md');
+    expect(maskPath(`a/${UNLISTED_IBAN}/b.txt`)).toBe('a/IT***KL/b.txt');
+    expect(maskPath(`${UNLISTED_CF}.pdf`)).toBe(
+      `${UNLISTED_CF.slice(0, 2)}***${UNLISTED_CF.slice(-2)}.pdf`,
+    );
+    expect(maskPath(`${UNLISTED_IBAN} e ${UNLISTED_CF}.txt`)).not.toMatch(/[A-Z0-9]{10}/);
   });
 });
 
@@ -240,6 +272,24 @@ describe('scanFiles and the command line', () => {
     expect(result.stderr + result.stdout).toContain('notes.txt:1');
     expect(result.stderr + result.stdout).toContain('IBAN');
     expect(result.stderr + result.stdout).not.toContain(UNLISTED_IBAN);
+  });
+
+  it('never prints a whole code, not even when it is part of a file or folder name', () => {
+    const spacedIban = UNLISTED_IBAN.replace(/(.{4})/g, '$1 ').trim();
+    const root = trackedRepo({
+      [`estratto ${UNLISTED_IBAN}.txt`]: `riga con ${UNLISTED_IBAN}\n`,
+      [`cartella ${spacedIban}/nota.txt`]: 'niente\n',
+      'dir/ok.txt': 'niente\n',
+    });
+    const result = runCheck(root);
+    const output = result.stderr + result.stdout;
+    expect(result.status).toBe(1);
+    expect(output).toContain('(file name)');
+    expect(output).toContain('estratto IT***KL.txt:1: IBAN');
+    expect(output).toContain('cartella IT***KL/nota.txt (file name)');
+    expect(output).not.toContain(UNLISTED_IBAN);
+    expect(output).not.toContain(spacedIban);
+    expect(output).not.toContain(UNLISTED_IBAN.slice(2, -2));
   });
 
   it('fails with exit code 1 on a tracked file with a valid codice fiscale', () => {
