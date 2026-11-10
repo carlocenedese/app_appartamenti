@@ -11,3 +11,5 @@ export { findWorkspace, loadAll } from './store/load';
 export * from './journal';
 export * from './notes';
 export * from './dedupe';
+export * from './match';
+export * from './tari-note';

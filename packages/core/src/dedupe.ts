@@ -21,6 +21,7 @@ import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
+import { foldText } from './text';
 
 const utf8 = new TextEncoder();
 
@@ -28,15 +29,6 @@ const utf8 = new TextEncoder();
 export async function hashBytes(bytes: Uint8Array): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Text as it is compared: NFC (the same text typed on macOS and on Windows), runs of whitespace
- * (non-breaking spaces and line breaks included) as one space, no space at either end, lowercase.
- * Statements and bills write the same name with other spaces and capitals.
- */
-function foldText(text: string): string {
-  return text.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 /** `schema.parse` with an error that names the fields at fault and leaves their values out. */
