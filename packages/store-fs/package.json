@@ -1,0 +1,20 @@
+{
+  "name": "@bollette/store-fs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Archivio su cartella per il motore: un file JSON per record, con scritture atomiche (usato da test e strumenti, mai dal core)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./src/fs-store.ts",
+  "types": "./src/fs-store.ts",
+  "exports": {
+    ".": "./src/fs-store.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bollette/core": "workspace:*"
+  }
+}

@@ -7,7 +7,7 @@ describe('core smoke test', () => {
     expect(CORE_VERSION).toBe('0.1.0');
   });
 
-  it('exports the money, period, model and version API from the package entry point', () => {
+  it('exports the money, period, model, version and store API from the package entry point', () => {
     expect(Object.keys(core)).toEqual(
       expect.arrayContaining([
         'cents',
@@ -29,6 +29,13 @@ describe('core smoke test', () => {
         'WorkspaceSchema',
         'compareSemver',
         'checkCompat',
+        'loadAll',
+        'findWorkspace',
+        'writeRecord',
+        'recordPath',
+        'assertSafeRelPath',
+        'StaleWriteError',
+        'MalformedJsonError',
       ]),
     );
   });

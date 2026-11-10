@@ -70,3 +70,6 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | fixture dorata           | golden fixture            | caso verificato e approvato da Carlo      |
 | scostamento noto         | known deviation           | differenza motivata rispetto all'Excel    |
 | importo in centesimi     | amount in cents (`Cents`) | intero con marchio, mai decimale          |
+| archivio                 | store (`Store`)           | interfaccia di lettura e scrittura file   |
+| copia in conflitto       | conflict copy             | copia di Dropbox: segnalata, mai caricata |
+| scrittura obsoleta       | stale write               | da una `rev` vecchia: rifiutata           |
