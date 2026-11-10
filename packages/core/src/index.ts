@@ -14,3 +14,5 @@ export * from './dedupe';
 export * from './match';
 export * from './split';
 export * from './tari-note';
+export * from './interest';
+export * from './caparra';
