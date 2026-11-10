@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe('writeJsonSchemas', () => {
-  it('creates the folder and writes one JSON file per record kind and the workspace', () => {
+  it('creates the folder and writes one JSON file per record kind, the workspace and the operations', () => {
     const outDir = join(root, 'nested', 'schemas');
     const written = writeJsonSchemas(outDir);
     const expected = [
@@ -26,6 +26,7 @@ describe('writeJsonSchemas', () => {
       'instalment',
       'match',
       'note',
+      'operation',
       'payment',
       'tenancy',
       'transaction',

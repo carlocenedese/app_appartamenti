@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "at": {
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp ending in Z, e.g. 2026-11-10T20:15:00.000Z. That the day exists in the month needs a \"format\": \"date-time\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?Z$"
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "apartmentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "before": {},
+          "after": {}
+        },
+        "required": [
+          "path",
+          "after"
+        ],
+        "description": "One record file changed by the operation, as whole records with their rev. `after` is the record as written to disk: its rev is the one after the rev of `before` (1 when the operation created the record), and a record is deleted by writing it with `deleted: true`, never by removing the file. `before` is the record as it was, and is absent when the operation created the record. `path` is a safe path below the workspace root: no absolute path, no `..`, none of the characters Windows forbids in names."
+      }
+    },
+    "undoes": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "at",
+    "profileId",
+    "kind",
+    "summary",
+    "changes"
+  ],
+  "description": "An operation of the journal: one file in _app/journal/, named <at as YYYYMMDDTHHmmssSSSZ>-<profileId>-<id>.json, written before the records it changes and never changed or removed. An undo has kind `undo` and `undoes` set to the id of the operation it undoes."
+}

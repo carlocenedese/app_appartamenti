@@ -53,6 +53,16 @@ function idSequence(prefix = 'op'): () => string {
   return () => `${prefix}-${String(++count).padStart(3, '0')}`;
 }
 
+/** Ids handed out in the given order, to make ids that sort against the order of creation. */
+function idList(...ids: string[]): () => string {
+  let next = 0;
+  return () => ids[next++] ?? `extra-${String(next)}`;
+}
+
+/** A clock that does not move: every operation made with it is at the same instant. */
+const FROZEN = '2026-11-10T21:00:00.000Z';
+const frozen = (): string => FROZEN;
+
 function bill(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
@@ -401,10 +411,14 @@ describe('OperationSchema', () => {
     ['an empty summary', { summary: '' }],
     ['a change without `after`', { changes: [{ path: BILL_PATH }] }],
     [
-      'a change whose `before` has no rev',
-      { changes: [{ path: BILL_PATH, before: {}, after: {} }] },
+      'a change whose `after` has no rev',
+      { changes: [{ path: BILL_PATH, after: { id: 'bill-1' } }] },
     ],
-    ['an unsafe path', { changes: [{ path: '../x.json', after: {} }] }],
+    [
+      'a change whose `before` has no rev',
+      { changes: [{ path: BILL_PATH, before: {}, after: bill('bill-1') }] },
+    ],
+    ['an unsafe path', { changes: [{ path: '../x.json', after: bill('bill-1') }] }],
   ])('rejects %s', (_label, patch) => {
     expect(OperationSchema.safeParse({ ...valid, ...patch }).success).toBe(false);
   });
@@ -658,8 +672,55 @@ describe('undoOperation', () => {
 
     expect(redo).toMatchObject({ kind: 'undo', undoes: undoOfUpdate.id });
     expect(await store.readJson(BILL_PATH)).toEqual(bill('bill-1', { rev: 4, amount: 1 }));
-    await expect(undo(undoOfUpdate.id)).rejects.toThrow(/already undone/);
-    await expect(undo(update.id)).rejects.toThrow(/already undone/);
+    await expect(undo(undoOfUpdate.id)).rejects.toThrow(
+      `Operation ${undoOfUpdate.id} was already undone by ${redo.id}`,
+    );
+    // The update is back in force through the redo: the message says what to undo instead.
+    await expect(undo(update.id)).rejects.toThrow(
+      `Operation ${update.id} was undone by ${undoOfUpdate.id} and brought back by ${redo.id}`,
+    );
+  });
+
+  it('does not undo a change that a redo brought back unless its dependents go too', async () => {
+    const { store, commit, undo } = setup();
+    const create = await commit(createBill());
+    const update = await commit(
+      changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 1 })),
+    );
+    const undoOfUpdate = await undo(update.id);
+    await undo(undoOfUpdate.id);
+    const text = store.getRaw(BILL_PATH);
+    const names = await journalNames(store);
+
+    // The update is in force again, so the create has a dependent once more.
+    expect((await dependentsOf(store, create.id)).map((op) => op.id)).toEqual([update.id]);
+    await expect(undo(create.id)).rejects.toThrow(new RegExp(`depend.*${update.id}`));
+    expect(store.getRaw(BILL_PATH)).toBe(text);
+    expect(await journalNames(store)).toEqual(names);
+
+    await undo(create.id, { cascade: true });
+
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 9846, deleted: true });
+    expect(await checkConsistency(store)).toEqual([]);
+  });
+
+  it('terminates on a journal where two undos undo each other', async () => {
+    const { store, commit } = setup();
+    const create = await commit(createBill());
+    const loop = (id: string, undoes: string) => ({
+      ...create,
+      id,
+      kind: 'undo',
+      undoes,
+      at: id === 'loop-a' ? '2026-11-10T21:00:00.000Z' : '2026-11-10T21:00:01.000Z',
+    });
+    for (const op of [loop('loop-a', 'loop-b'), loop('loop-b', 'loop-a')]) {
+      store.putRaw(`${JOURNAL_DIR}/loop-${op.id}.json`, JSON.stringify(op));
+    }
+
+    await expect(
+      undoOperation(store, 'loop-a', 'prof-b', tickingClock(), idSequence('un')),
+    ).rejects.toThrow(/already undone/);
   });
 
   it('refuses to undo an undo when a later change depends on it', async () => {
@@ -695,6 +756,117 @@ describe('undoOperation', () => {
     ).rejects.toThrow(/does not exist/);
 
     expect(await journalNames(journalOnly)).toHaveLength(1);
+  });
+});
+
+describe('operations made at the same instant', () => {
+  const ids = ['c-1', 'b-2', 'a-3'];
+
+  /** A bill created and changed twice at one instant, with ids that sort against that order. */
+  async function chain(store: TestStore): Promise<Operation[]> {
+    const next = idList(...ids);
+    const operations: Operation[] = [];
+    for (const amount of [1, 2, 3]) {
+      const before = await store.readJson(BILL_PATH);
+      const input =
+        before === undefined
+          ? createBill('bill-1', { amount })
+          : changeBill(before, bill('bill-1', { amount }));
+      operations.push(await commitChange(store, input, frozen, next));
+    }
+    return operations;
+  }
+
+  it('takes the highest rev as the latest, not the highest id', async () => {
+    const store = new TestStore();
+    await chain(store);
+
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 3, rev: 3 });
+    expect(await checkConsistency(store)).toEqual([]);
+    // Repairing a record that is right changes nothing.
+    await repairDiverged(store, BILL_PATH);
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 3, rev: 3 });
+  });
+
+  it('still reports a record that is not as the highest rev says', async () => {
+    const store = new TestStore();
+    await chain(store);
+    store.putRaw(BILL_PATH, JSON.stringify(bill('bill-1', { amount: 2, rev: 2 })));
+    expect(await checkConsistency(store)).toEqual([{ path: BILL_PATH, reason: 'diverged' }]);
+    await repairDiverged(store, BILL_PATH);
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 3, rev: 3 });
+  });
+
+  it('finds the dependents by the rev chain, whatever the ids', async () => {
+    const store = new TestStore();
+    const [create, second, third] = await chain(store);
+
+    expect((await dependentsOf(store, create?.id ?? '')).map((op) => op.id).sort()).toEqual([
+      'a-3',
+      'b-2',
+    ]);
+    expect((await dependentsOf(store, second?.id ?? '')).map((op) => op.id)).toEqual(['a-3']);
+    expect(await dependentsOf(store, third?.id ?? '')).toEqual([]);
+  });
+
+  it('does not let an undo drop a change made at the same instant', async () => {
+    const store = new TestStore();
+    const next = idList('z1', 'a2');
+    const create = await commitChange(store, createBill(), frozen, next);
+    await commitChange(
+      store,
+      changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 2 })),
+      frozen,
+      next,
+    );
+    const text = store.getRaw(BILL_PATH);
+
+    expect((await dependentsOf(store, create.id)).map((op) => op.id)).toEqual(['a2']);
+    await expect(undoOperation(store, create.id, 'prof-b', frozen, idList('m3'))).rejects.toThrow(
+      /depend.*a2/,
+    );
+    expect(store.getRaw(BILL_PATH)).toBe(text);
+  });
+
+  it('undoes a cascade in the order of the rev chain and stays consistent', async () => {
+    const store = new TestStore();
+    const [create] = await chain(store);
+    // The ids of the undo operations also sort against the order they are made in.
+    const undoIds = idList('z-1', 'y-1', 'x-1');
+
+    await undoOperation(store, create?.id ?? '', 'prof-b', frozen, undoIds, { cascade: true });
+
+    expect(await store.readJson(BILL_PATH)).toEqual(
+      bill('bill-1', { amount: 1, rev: 6, deleted: true }),
+    );
+    expect(await checkConsistency(store)).toEqual([]);
+    const { operations } = await readJournal(store);
+    const undos = operations.filter((op) => op.kind === 'undo');
+    const byRev = (op: Operation) => (op.changes[0]?.after as { rev: number }).rev;
+    expect(undos.sort((a, b) => byRev(a) - byRev(b)).map((op) => op.undoes)).toEqual([
+      'a-3',
+      'b-2',
+      'c-1',
+    ]);
+  });
+
+  it('keeps a cascade undo consistent when the undo operations sort against their order', async () => {
+    const store = new TestStore();
+    const clock = tickingClock();
+    const a = await commitChange(store, createBill(), clock, () => 'm-a');
+    await commitChange(
+      store,
+      changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 2 })),
+      clock,
+      () => 'm-b',
+    );
+
+    await undoOperation(store, a.id, 'prof-b', frozen, idList('z-undo-b', 'a-undo-a'), {
+      cascade: true,
+    });
+
+    expect(await store.readJson(BILL_PATH)).toEqual(bill('bill-1', { rev: 4, deleted: true }));
+    expect(await checkConsistency(store)).toEqual([]);
   });
 });
 
@@ -812,6 +984,30 @@ describe('repairDiverged', () => {
     await repairDiverged(copy, BILL_PATH);
 
     expect(await copy.readJson(BILL_PATH)).toEqual(bill('bill-1'));
+  });
+
+  it('refuses to put an older rev over a newer record, writing nothing', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    await commit(changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 1 })));
+    store.putRaw(BILL_PATH, JSON.stringify(bill('bill-1', { rev: 5, amount: 7 })));
+    expect(await checkConsistency(store)).toEqual([{ path: BILL_PATH, reason: 'diverged' }]);
+    store.writes.length = 0;
+
+    await expect(repairDiverged(store, BILL_PATH)).rejects.toThrow(/rev 5.*rev 2/);
+
+    expect(store.writes).toEqual([]);
+    expect(await store.readJson(BILL_PATH)).toEqual(bill('bill-1', { rev: 5, amount: 7 }));
+  });
+
+  it('repairs a record that has the same rev with other content, or no usable rev', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    for (const broken of [bill('bill-1', { amount: 7 }), { id: 'bill-1' }, { rev: 'x' }]) {
+      store.putRaw(BILL_PATH, JSON.stringify(broken));
+      await repairDiverged(store, BILL_PATH);
+      expect(await store.readJson(BILL_PATH)).toEqual(bill('bill-1'));
+    }
   });
 
   it('throws for a path that no operation touched, writing nothing', async () => {

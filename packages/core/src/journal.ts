@@ -11,12 +11,12 @@
  * whose last operation went through the file on disk is equal to that `after`.
  */
 import { z } from 'zod';
-import { NoteSchema, TimestampSchema } from './model';
-import type { Note } from './model';
-import { compareText, isSafePath, loadAll, loadDir } from './store/load';
+import { TimestampSchema } from './model';
+import { compareText, isSafePath, loadDir } from './store/load';
 import { StaleWriteError, currentRev, writeRecord } from './store/records';
 import { MalformedJsonError, assertSafeRelPath, assertSafeSegment } from './store/store';
 import type { Problem, Store } from './store/store';
+import { compactTimestamp, compareByTime, compareTimestamps } from './time';
 
 /** Folder with the operation files, relative to the workspace root. */
 export const JOURNAL_DIR = '_app/journal';
@@ -38,35 +38,51 @@ const ChangeSchema = z
   .object({
     path: z.string().refine(isSafePath, { message: 'Not a safe store path' }),
     before: z.unknown().optional(),
-    after: z.unknown().optional(),
+    after: z.unknown(),
   })
-  .refine(({ before, after }) => (before === undefined || hasRev(before)) && isRecord(after), {
+  .refine(({ before, after }) => (before === undefined || hasRev(before)) && hasRev(after), {
     message: 'A stored change needs an `after` record, and a `before` that is a record with a rev',
+  })
+  .meta({
+    description:
+      'One record file changed by the operation, as whole records with their rev. `after` is the ' +
+      'record as written to disk: its rev is the one after the rev of `before` (1 when the ' +
+      'operation created the record), and a record is deleted by writing it with `deleted: ' +
+      'true`, never by removing the file. `before` is the record as it was, and is absent when ' +
+      'the operation created the record. `path` is a safe path below the workspace root: no ' +
+      'absolute path, no `..`, none of the characters Windows forbids in names.',
   });
 
 /**
  * An operation as stored in `_app/journal/`. `before` and `after` are whole records (any content,
  * `rev` included): `before` is absent when the operation created the record. The schema describes
- * what is stored, so it asks for an `after` in every change; the `Operation` type is also the
- * input of `commitChange`, which accepts a change without `after` to delete the record and fills
- * it in. A file that does not pass is reported by `readJournal` and never used.
+ * what is stored, so it asks for an `after` record in every change; the `Operation` type is also
+ * the input of `commitChange`, which accepts an `after` that is `undefined` to delete the record
+ * and fills it in. A file that does not pass is reported by `readJournal` and never used.
  */
-export const OperationSchema = z.object({
-  id: NonEmptyString,
-  v: z.literal(1),
-  /** ISO 8601 UTC, from the clock the caller passes in. */
-  at: TimestampSchema,
-  profileId: NonEmptyString,
-  /** What kind of operation it is, e.g. `bill.create`; `undo` for an undo. */
-  kind: NonEmptyString,
-  apartmentId: NonEmptyString.optional(),
-  /** One line for the history, in Italian. */
-  summary: NonEmptyString,
-  reason: z.string().optional(),
-  changes: z.array(ChangeSchema),
-  /** The id of the operation this one undoes. */
-  undoes: NonEmptyString.optional(),
-});
+export const OperationSchema = z
+  .object({
+    id: NonEmptyString,
+    v: z.literal(1),
+    /** ISO 8601 UTC, from the clock the caller passes in. */
+    at: TimestampSchema,
+    profileId: NonEmptyString,
+    /** What kind of operation it is, e.g. `bill.create`; `undo` for an undo. */
+    kind: NonEmptyString,
+    apartmentId: NonEmptyString.optional(),
+    /** One line for the history, in Italian. */
+    summary: NonEmptyString,
+    reason: z.string().optional(),
+    changes: z.array(ChangeSchema),
+    /** The id of the operation this one undoes. */
+    undoes: NonEmptyString.optional(),
+  })
+  .meta({
+    description:
+      'An operation of the journal: one file in _app/journal/, named <at as YYYYMMDDTHHmmssSSSZ>-' +
+      '<profileId>-<id>.json, written before the records it changes and never changed or removed. ' +
+      'An undo has kind `undo` and `undoes` set to the id of the operation it undoes.',
+  });
 export type Operation = z.infer<typeof OperationSchema>;
 
 type Change = Operation['changes'][number];
@@ -77,36 +93,6 @@ type NormalisedChange = {
   before: (JsonRecord & { rev: number }) | undefined;
   after: JsonRecord & { rev: number };
 };
-
-// --- Time ------------------------------------------------------------------------------------
-
-/** The timestamp without its closing `Z`, split into the part up to the seconds and the fraction. */
-function splitTimestamp(at: string): [whole: string, fraction: string] {
-  const [whole = '', fraction = ''] = at.slice(0, -1).split('.');
-  return [whole, fraction];
-}
-
-/** `2026-11-10T20:15:30.123Z` as `20261110T201530123Z`: no `-` or `:`, which Windows refuses. */
-function compactTimestamp(at: string): string {
-  const [whole, fraction] = splitTimestamp(at);
-  const stamp = whole.replaceAll('-', '').replaceAll(':', '');
-  return `${stamp}${fraction.padEnd(3, '0').slice(0, 3)}Z`;
-}
-
-/** A key that orders timestamps by instant as text, whatever the number of fraction digits. */
-function timeKey(at: string): string {
-  const [whole, fraction] = splitTimestamp(at);
-  return `${whole}.${fraction.padEnd(9, '0')}`;
-}
-
-/**
- * Orders by time, then by id, so that two things made at the same instant keep a fixed order. The
- * order of two operations on the same record at the same millisecond is then the order of their
- * ids, which is not their order in time when the ids are random.
- */
-function compareByTime(a: { at: string; id: string }, b: { at: string; id: string }): number {
-  return compareText(timeKey(a.at), timeKey(b.at)) || compareText(a.id, b.id);
-}
 
 function journalPath({ at, profileId, id }: Pick<Operation, 'at' | 'profileId' | 'id'>): string {
   return `${JOURNAL_DIR}/${compactTimestamp(at)}-${profileId}-${id}.json`;
@@ -213,8 +199,6 @@ export async function commitChange(
   return operation;
 }
 
-// --- Reading ---------------------------------------------------------------------------------
-
 /**
  * Every operation in `_app/journal/`, by time and then by `id`, with the files that could not be
  * used as `problems` (cut short, a conflict copy, written by a newer app, not an operation): a bad
@@ -229,61 +213,123 @@ export async function readJournal(
   return { operations: [...records].sort(compareByTime), problems };
 }
 
-/** The ids of the operations that were undone and of the undo operations that did it. */
-function cancelledIds(operations: readonly Operation[]): Set<string> {
-  const ids = new Set<string>();
+// --- Order of the operations on a record -----------------------------------------------------
+
+/** What one operation leaves in one record file: the `after` of its change to that path. */
+type Touch = { operation: Operation; after: JsonRecord & { rev: number } };
+
+/**
+ * Orders what two operations did to the same record: by time, then by the `rev` they leave in it,
+ * then by `id`. The `rev` comes before the id because it is the order the changes were made in:
+ * every change builds on the previous `rev` of the record. Two changes made in the same
+ * millisecond with random ids would otherwise come out in the order of their ids.
+ */
+function compareTouches(a: Touch, b: Touch): number {
+  return (
+    compareTimestamps(a.operation.at, b.operation.at) ||
+    a.after.rev - b.after.rev ||
+    compareText(a.operation.id, b.operation.id)
+  );
+}
+
+/** For each path, what the operations did to it, in order (see `compareTouches`). */
+function touchesByPath(operations: readonly Operation[]): Map<string, Touch[]> {
+  const byPath = new Map<string, Touch[]>();
+  for (const operation of operations) {
+    for (const { path, after } of operation.changes) {
+      if (!hasRev(after)) continue; // not in a file that passed the schema
+      const touches = byPath.get(path) ?? [];
+      touches.push({ operation, after });
+      byPath.set(path, touches);
+    }
+  }
+  for (const touches of byPath.values()) touches.sort(compareTouches);
+  return byPath;
+}
+
+// --- Undo state and dependents ---------------------------------------------------------------
+
+/**
+ * Which operations are in force. An operation was undone when another operation has `undoes` set
+ * to its id, but that undo can be undone in turn (a redo), which brings the operation back. So
+ * an operation is in force unless one of the operations that undo it is itself in force; this is
+ * followed along the chain of undos. (A journal where undos undo each other in a loop is damaged;
+ * the loop is cut so that reading it still ends.)
+ */
+function undoState(operations: readonly Operation[]): {
+  undoers: Map<string, Operation[]>;
+  isEffective: (id: string) => boolean;
+} {
+  const undoers = new Map<string, Operation[]>();
   for (const operation of operations) {
     if (operation.undoes === undefined) continue;
-    ids.add(operation.id);
-    ids.add(operation.undoes);
+    undoers.set(operation.undoes, [...(undoers.get(operation.undoes) ?? []), operation]);
   }
-  return ids;
+  const known = new Map<string, boolean>();
+  const visiting = new Set<string>();
+  const isEffective = (id: string): boolean => {
+    const cached = known.get(id);
+    if (cached !== undefined) return cached;
+    if (visiting.has(id)) return true;
+    visiting.add(id);
+    const effective = !(undoers.get(id) ?? []).some((undoer) => isEffective(undoer.id));
+    visiting.delete(id);
+    known.set(id, effective);
+    return effective;
+  };
+  return { undoers, isEffective };
 }
 
-/** The operation with id `opId` and its place in `operations`; throws if there is none. */
-function locate(
-  operations: readonly Operation[],
-  opId: string,
-): { index: number; operation: Operation } {
-  const index = operations.findIndex((operation) => operation.id === opId);
-  const operation = operations[index];
+/** The operation with id `opId`; throws if there is none. */
+function locate(operations: readonly Operation[], opId: string): Operation {
+  const operation = operations.find((candidate) => candidate.id === opId);
   if (operation === undefined) throw new Error(`Unknown operation ${opId}`);
-  return { index, operation };
+  return operation;
 }
 
 /**
- * The operations after `target`, which is `operations[index]`, that depend on it, by time: those
- * that touch one of its paths, and, going on in time, those that touch a path of a dependent
- * already found (so a dependent of a dependent counts). An operation that was undone and the undo
- * that did it cancel each other out, so neither counts.
+ * The operations that depend on `target`, by time. A later change to a record `target` changed
+ * depends on it, and so does a later change to a record that a dependent changed. "Later" is
+ * decided for each record by `compareTouches`, so the `rev` chain of the record decides for
+ * changes made at the same instant. Only changes in force count: an operation that was undone
+ * does not, and neither do the undo operations, which cancel the operation they undo (a redo
+ * brings that operation back into force, and then it counts).
  */
-function dependentsAfter(
-  operations: readonly Operation[],
-  index: number,
-  target: Operation,
-): Operation[] {
-  const cancelled = cancelledIds(operations);
-  const paths = new Set(target.changes.map((change) => change.path));
-  const dependents: Operation[] = [];
-  for (const operation of operations.slice(index + 1)) {
-    if (cancelled.has(operation.id)) continue;
-    if (!operation.changes.some((change) => paths.has(change.path))) continue;
-    dependents.push(operation);
-    for (const change of operation.changes) paths.add(change.path);
+function dependentsAfter(operations: readonly Operation[], target: Operation): Operation[] {
+  const { isEffective } = undoState(operations);
+  const byPath = touchesByPath(
+    operations.filter(
+      (operation) =>
+        operation === target || (operation.undoes === undefined && isEffective(operation.id)),
+    ),
+  );
+  const reached = new Set<Operation>([target]);
+  const pending = [target];
+  for (let operation = pending.pop(); operation !== undefined; operation = pending.pop()) {
+    for (const { path } of operation.changes) {
+      const touches = byPath.get(path) ?? [];
+      const own = touches.findIndex((touch) => touch.operation === operation);
+      for (const { operation: later } of touches.slice(own + 1)) {
+        if (reached.has(later)) continue;
+        reached.add(later);
+        pending.push(later);
+      }
+    }
   }
-  return dependents;
+  reached.delete(target);
+  return [...reached].sort(compareByTime);
 }
 
 /**
- * The operations that depend on `opId`, by time: later operations that touch a record it changed,
- * and, transitively, later ones that touch a record those changed. An operation that was already
- * undone and the undo operation that did it cancel each other out and are left out. Throws if
- * `opId` is not in the journal.
+ * The operations that depend on `opId`, by time then by `id`: later changes to a record it
+ * changed and, transitively, later changes to a record those changed. The order of changes to one
+ * record is the order of its `rev`, which decides when two were made at the same instant. An
+ * operation that was undone and the undo that did it cancel each other out and are left out,
+ * unless a redo brought the operation back. Throws if `opId` is not in the journal.
  */
 export async function dependentsOf(store: Store, opId: string): Promise<Operation[]> {
   const { operations } = await readJournal(store);
-  const { index, operation } = locate(operations, opId);
-  return dependentsAfter(operations, index, operation);
+  return dependentsAfter(operations, locate(operations, opId));
 }
 
 // --- Undo ------------------------------------------------------------------------------------
@@ -324,6 +370,26 @@ async function undoOne(
   );
 }
 
+/** Throws if `target` was undone and not brought back, or says what to undo if a redo did. */
+function refuseIfUndone(operations: readonly Operation[], target: Operation): void {
+  const { undoers, isEffective } = undoState(operations);
+  const undoneBy = undoers.get(target.id) ?? [];
+  const inForce = undoneBy.find((undoer) => isEffective(undoer.id));
+  if (inForce !== undefined) {
+    throw new Error(`Operation ${target.id} was already undone by ${inForce.id}`);
+  }
+  const [first] = undoneBy;
+  if (first === undefined) return;
+  // Every undo of it was undone in turn, so the operation is in force again through a redo.
+  const redo = (undoers.get(first.id) ?? []).find((undoer) => isEffective(undoer.id));
+  throw new Error(
+    redo === undefined
+      ? `Operation ${target.id} was already undone by ${first.id}`
+      : `Operation ${target.id} was undone by ${first.id} and brought back by ${redo.id}: ` +
+          `undo ${redo.id} to undo it again`,
+  );
+}
+
 /**
  * Undoes the operation `opId` for the profile `profileId`: writes a new operation (kind `undo`,
  * with `undoes` set to `opId`) that puts every record it changed back as it was before, with a
@@ -331,10 +397,12 @@ async function undoOne(
  * Returns the undo operation.
  *
  * Throws, and changes nothing, if `opId` is not in the journal, if it was already undone (an
- * undo operation can be undone too, which brings the change back, but only once), or if later
- * operations depend on it (see `dependentsOf`) and `opts.cascade` is not `true`. With `cascade`
- * the dependents are undone first, newest first, and `opId` last, each with an undo operation of
- * its own; the one returned is the last, the undo of `opId`. The cascade is a series of
+ * undo operation can be undone too, which brings the change back, but only once; the message
+ * names the redo to undo when a redo brought the operation back), or if later operations depend
+ * on it (see `dependentsOf`) and `opts.cascade` is not `true`. With `cascade` the dependents are
+ * undone first and `opId` last, each with an undo operation of its own; the one returned is the
+ * last, the undo of `opId`. An operation is undone only after everything that depends on it, and
+ * of two that are free to go first the later one goes first. The cascade is a series of
  * `commitChange` calls and not one step: if one fails (a record changed in the meantime), the
  * undo operations before it stay in the journal, and undoing again continues from there.
  */
@@ -348,13 +416,10 @@ export async function undoOperation(
 ): Promise<Operation> {
   assertSafeSegment(profileId);
   const { operations } = await readJournal(store);
-  const { index, operation: target } = locate(operations, opId);
+  const target = locate(operations, opId);
+  refuseIfUndone(operations, target);
 
-  const undoer = operations.find((operation) => operation.undoes === opId);
-  if (undoer !== undefined) {
-    throw new Error(`Operation ${opId} was already undone by ${undoer.id}`);
-  }
-  const dependents = dependentsAfter(operations, index, target);
+  const dependents = dependentsAfter(operations, target);
   if (dependents.length > 0 && opts.cascade !== true) {
     const ids = dependents.map((operation) => operation.id).join(', ');
     throw new Error(
@@ -363,22 +428,28 @@ export async function undoOperation(
     );
   }
 
-  for (const dependent of [...dependents].reverse()) {
-    await undoOne(store, dependent, profileId, clock, newId);
+  // Each round undoes one dependent that nothing else depends on, then looks again with the new
+  // undo in the journal, so a dependent that was brought back by a redo is handled like the rest.
+  let journal = operations;
+  for (;;) {
+    const remaining = dependentsAfter(journal, target);
+    const last = remaining.filter((d) => dependentsAfter(journal, d).length === 0).at(-1);
+    const next = last ?? remaining.at(-1); // a loop of dependents only in a damaged journal
+    if (next === undefined) break;
+    journal = [...journal, await undoOne(store, next, profileId, clock, newId)];
   }
   return undoOne(store, target, profileId, clock, newId);
 }
 
 // --- Consistency -----------------------------------------------------------------------------
 
-/** For every path in the journal, the `after` of the latest operation that touches it. */
-async function latestAfterByPath(store: Store): Promise<Map<string, JsonRecord>> {
+/** For every path in the journal, the `after` of the latest change to it (see `compareTouches`). */
+async function latestAfterByPath(store: Store): Promise<Map<string, JsonRecord & { rev: number }>> {
   const { operations } = await readJournal(store);
-  const latest = new Map<string, JsonRecord>();
-  for (const operation of operations) {
-    for (const change of operation.changes) {
-      if (isRecord(change.after)) latest.set(change.path, change.after);
-    }
+  const latest = new Map<string, JsonRecord & { rev: number }>();
+  for (const [path, touches] of touchesByPath(operations)) {
+    const last = touches.at(-1);
+    if (last !== undefined) latest.set(path, last.after);
   }
   return latest;
 }
@@ -404,28 +475,32 @@ function jsonEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-/** Whether the file at `path` holds `expected`; a file that is not valid JSON does not. */
-async function fileHolds(store: Store, path: string, expected: unknown): Promise<boolean> {
+/** The JSON in the file at `path`; `undefined` when there is no file or it is not valid JSON. */
+async function readTolerant(store: Store, path: string): Promise<unknown> {
   try {
-    return jsonEqual(await store.readJson(path), expected);
+    return await store.readJson(path);
   } catch (error) {
-    if (error instanceof MalformedJsonError) return false;
+    if (error instanceof MalformedJsonError) return undefined;
     throw error;
   }
 }
 
 /**
- * Compares every record in the journal with its latest operation (by time, then by `id`) and
- * reports each one that is not as that operation's `after` says as `diverged`, by path. A record
- * is also `diverged` when its file is missing or cut short. This is what an interruption between
- * the journal and the record leaves, or an edit by hand. Only these problems are returned: the
- * files of the journal that cannot be read are in `readJournal`'s `problems`.
+ * Compares every record in the journal with its latest operation and reports each one that is not
+ * as that operation's `after` says as `diverged`, by path. The latest operation on a record is
+ * the one with the latest time, and when times are equal the one that leaves the highest `rev`
+ * (then the highest `id`): changes made in the same millisecond keep the order of the `rev` chain.
+ * A record is also `diverged` when its file is missing or cut short. This is what an interruption
+ * between the journal and the record leaves, or an edit by hand. Only these problems are
+ * returned: the files of the journal that cannot be read are in `readJournal`'s `problems`.
  */
 export async function checkConsistency(store: Store): Promise<Problem[]> {
   const latest = await latestAfterByPath(store);
   const problems: Problem[] = [];
   for (const [path, after] of [...latest].sort(([a], [b]) => compareText(a, b))) {
-    if (!(await fileHolds(store, path, after))) problems.push({ path, reason: 'diverged' });
+    if (!jsonEqual(await readTolerant(store, path), after)) {
+      problems.push({ path, reason: 'diverged' });
+    }
   }
   return problems;
 }
@@ -433,30 +508,21 @@ export async function checkConsistency(store: Store): Promise<Problem[]> {
 /**
  * Writes the record at `path` as its latest operation in the journal says (its `after`),
  * whatever is on disk, without the `rev` check of `writeRecord`: the journal is the authority
- * here. Throws if no operation in the journal touches `path`.
+ * here. Throws if no operation in the journal touches `path`, and also, writing nothing, if the
+ * record on disk has a higher `rev` than that `after`: putting an older state over a newer one
+ * would lose a change, so that case is left to the person (the journal is then the one that is
+ * behind, for instance because a file of it did not arrive yet).
  */
 export async function repairDiverged(store: Store, path: string): Promise<void> {
   const normalised = path.normalize('NFC');
   const after = (await latestAfterByPath(store)).get(normalised);
   if (after === undefined) throw new Error(`No operation in the journal touches ${path}`);
+  const onDisk = await readTolerant(store, normalised);
+  if (hasRev(onDisk) && onDisk.rev > after.rev) {
+    throw new Error(
+      `Refusing to repair ${path}: the record on disk has rev ${String(onDisk.rev)}, ` +
+        `above rev ${String(after.rev)} of its latest operation in the journal`,
+    );
+  }
   await store.writeJsonAtomic(normalised, after);
-}
-
-// --- Notes -----------------------------------------------------------------------------------
-
-/**
- * The notes of one item (a bill, a payment, ...) that are not deleted, by time and then by `id`.
- * Notes are records like the others, written with `commitChange`, so two people who write a note
- * on the same item at the same time make two files. A note file that cannot be read is left out,
- * as with `loadAll`.
- */
-export async function notesFor(
-  store: Store,
-  targetType: Note['targetType'],
-  targetId: string,
-): Promise<Note[]> {
-  const { records } = await loadAll(store, 'note', NoteSchema);
-  return records
-    .filter((note) => note.targetType === targetType && note.targetId === targetId)
-    .sort(compareByTime);
 }

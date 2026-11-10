@@ -5,14 +5,15 @@ import { describe, expect, it } from 'vitest';
 import { ISODateSchema, YearMonthSchema, recordSchemas } from '../src/model';
 import { exportJsonSchemas, serializeJsonSchema } from '../src/schemas-json';
 
-// docs/schemas holds one JSON Schema per record kind plus the workspace file. The Python side
-// (plan 2) validates what it writes against these files, so the two languages cannot drift apart.
+// docs/schemas holds one JSON Schema per record kind plus the workspace file and the operations of
+// the journal. The Python side (plan 2) validates what it writes against these files, so the two
+// languages cannot drift apart.
 // A change to the model without `pnpm schemas:export` makes this test fail.
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));
 const REGENERATE = 'Run `pnpm schemas:export` and commit docs/schemas.';
 
-const expectedKinds = [...Object.keys(recordSchemas), 'workspace'].sort();
+const expectedKinds = [...Object.keys(recordSchemas), 'workspace', 'operation'].sort();
 
 type JsonObject = Record<string, unknown>;
 
@@ -88,6 +89,18 @@ describe('exportJsonSchemas', () => {
       'minAppVersion',
       'createdAt',
     ]);
+  });
+
+  it('describes an operation of the journal, with the rules of a change in prose', () => {
+    expect(schemaOf('operation')['required']).toEqual(
+      expect.arrayContaining(['id', 'v', 'at', 'profileId', 'kind', 'summary', 'changes']),
+    );
+    expect(schemaOf('operation')['required']).not.toContain('undoes');
+    expect(properties('operation')['v']).toMatchObject({ const: 1 });
+    expect(properties('operation')['at']).toMatchObject({ type: 'string', format: 'date-time' });
+    const change = (properties('operation')['changes']?.['items'] ?? {}) as JsonObject;
+    expect(change['required']).toEqual(['path', 'after']);
+    expect(change['description']).toMatch(/after.*rev/s);
   });
 
   it('lists the allowed values of the enumerations', () => {
@@ -219,7 +232,7 @@ describe('serializeJsonSchema', () => {
 });
 
 describe('docs/schemas', () => {
-  it('holds exactly one JSON file for each record kind and the workspace', () => {
+  it('holds exactly one JSON file for each record kind, the workspace and the operations', () => {
     const files = readdirSync(SCHEMAS_DIR)
       .filter((file) => file.endsWith('.json'))
       .sort();
