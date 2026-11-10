@@ -41,8 +41,12 @@ export function recordPath(kind: string, id: string): string {
   return `${DATA_DIR}/${kind}/${id}.json`;
 }
 
-/** The `rev` stored in the file at `path`, or `null` when there is no such file. */
-async function currentRev(store: Store, path: string): Promise<number | null> {
+/**
+ * The `rev` stored in the file at `path`, or `null` when there is no such file. Throws when the
+ * file exists but has no integer `rev` (and `MalformedJsonError` when it is not JSON). Shared with
+ * the journal; not part of the public API.
+ */
+export async function currentRev(store: Store, path: string): Promise<number | null> {
   const raw = await store.readJson(path);
   if (raw === undefined) return null;
   const rev = typeof raw === 'object' && raw !== null ? (raw as { rev?: unknown }).rev : undefined;

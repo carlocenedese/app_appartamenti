@@ -35,13 +35,17 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Orders by UTF-16 code unit: the same on every machine, unlike a locale-aware comparison. */
-function compareText(a: string, b: string): number {
+/**
+ * Orders by UTF-16 code unit: the same on every machine, unlike a locale-aware comparison.
+ * Shared with the journal; not part of the public API.
+ */
+export function compareText(a: string, b: string): number {
   if (a < b) return -1;
   return a > b ? 1 : 0;
 }
 
-function isSafePath(path: string): boolean {
+/** Whether `path` passes `assertSafeRelPath`. Shared with the journal; not part of the public API. */
+export function isSafePath(path: string): boolean {
   try {
     assertSafeRelPath(path);
     return true;
@@ -97,7 +101,20 @@ export async function loadAll<T extends { id: string }>(
   opts: LoadOptions = {},
 ): Promise<{ records: T[]; problems: Problem[] }> {
   assertSafeSegment(kind);
-  const dir = `${DATA_DIR}/${kind}`;
+  return loadDir(store, `${DATA_DIR}/${kind}`, schema, opts);
+}
+
+/**
+ * What `loadAll` does, for any folder `dir` (a path relative to the workspace root): `loadAll`
+ * has the rules and the order of the result. The journal reads `_app/journal` with it, so that a
+ * broken file is treated the same way there. Not part of the public API.
+ */
+export async function loadDir<T extends { id: string }>(
+  store: Store,
+  dir: string,
+  schema: ZodType<T>,
+  opts: LoadOptions = {},
+): Promise<{ records: T[]; problems: Problem[] }> {
   const names = (await store.list(dir)).map((name) => name.normalize('NFC'));
 
   const loaded: { path: string; record: T }[] = [];
