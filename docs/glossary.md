@@ -1,0 +1,72 @@
+# Glossario italiano-inglese
+
+Interfaccia, messaggi, documenti ed Excel generati sono in italiano; nomi nel codice e commenti
+interni sono in inglese (decisione del 10 novembre 2026). Questa tabella fissa la traduzione dei
+termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo nel codice.
+
+## Contratti e periodi
+
+| Italiano              | Inglese            | Note                                                                         |
+| --------------------- | ------------------ | ---------------------------------------------------------------------------- |
+| appartamento          | apartment          |                                                                              |
+| inquilino             | tenant             |                                                                              |
+| locatore              | landlord           | chi intesta il contratto e gli adempimenti fiscali                           |
+| contratto             | contract           | transitorio 12 mesi, 3+2, ...                                                |
+| canone                | rent               | affitto mensile, senza forfait                                               |
+| annualità             | lease year         | periodo di conguaglio di un contratto transitorio (1 ottobre - 30 settembre) |
+| periodo di conguaglio | settlement period  | dipende dal contratto; impostazione dell'appartamento                        |
+| permanenza, presenza  | tenancy            | periodo in cui un inquilino occupa un posto, in mesi interi                  |
+| subentro              | takeover           | un inquilino ne sostituisce un altro a metà periodo                          |
+| posto                 | bed, place         | divisore delle spese: numero di posti dell'appartamento                      |
+| caparra               | security deposit   | restituita con gli interessi legali, meno conguaglio e addebiti extra        |
+| interessi legali      | statutory interest | calcolati sulla caparra per anno                                             |
+
+## Spese e conguaglio
+
+| Italiano               | Inglese                 | Note                                                         |
+| ---------------------- | ----------------------- | ------------------------------------------------------------ |
+| bolletta               | bill                    | luce, gas, acqua, internet, TARI, condominio                 |
+| utenza                 | utility, supply         | contratto di fornitura (luce, gas, acqua)                    |
+| fornitore              | supplier                |                                                              |
+| competenza             | accrual period          | periodo a cui una bolletta appartiene, non la data di arrivo |
+| ripartizione, riparto  | split, allocation       | divisione di una spesa tra gli inquilini a mesi interi       |
+| quota                  | share                   |                                                              |
+| conguaglio             | settlement              | saldo tra spese ripartite e forfait versato                  |
+| forfait                | flat service charge     | quota mensile a persona versata insieme al canone            |
+| acconto                | advance payment         |                                                              |
+| rata                   | instalment              | rata del condominio o del conguaglio                         |
+| preventivo             | budget                  | preventivo del condominio                                    |
+| consuntivo, bilancio   | final accounts          | bilancio del condominio                                      |
+| esercizio condominiale | condominium fiscal year | Berchet e Pulci da ottobre, Lovarini da maggio               |
+| TARI                   | waste tax (TARI)        | anno solare                                                  |
+| quota di proprietà     | owner's share           | parte delle spese condominiali a carico del proprietario     |
+| straordinaria          | extraordinary           | spesa condominiale straordinaria                             |
+| commissione            | bank fee                | 0,80 euro su alcuni addebiti                                 |
+
+## Banca e pagamenti
+
+| Italiano              | Inglese          | Note                                        |
+| --------------------- | ---------------- | ------------------------------------------- |
+| addebito              | debit            | movimento in uscita sul conto               |
+| accredito             | credit           | movimento in entrata sul conto              |
+| movimento             | transaction      | riga dell'estratto conto                    |
+| estratto conto        | bank statement   | file CSV della banca                        |
+| bonifico              | bank transfer    |                                             |
+| pagamento, versamento | payment          | versamento di un inquilino                  |
+| riconciliazione       | reconciliation   | abbinamento di bollette e rate ai movimenti |
+| abbinamento           | match            |                                             |
+| da rivedere           | to review        | ogni valore incerto passa da qui            |
+| codice disposizione   | instruction code | lega la commissione all'addebito            |
+
+## Dati e registro
+
+| Italiano                 | Inglese                   | Note                                      |
+| ------------------------ | ------------------------- | ----------------------------------------- |
+| cartella condivisa       | shared folder, workspace  | la cartella di lavoro su Dropbox          |
+| registro delle modifiche | journal                   | un file per operazione in `_app/journal/` |
+| annullamento             | undo                      |                                           |
+| impronta                 | hash, fingerprint         | dei documenti e degli addebiti            |
+| profilo del fornitore    | supplier profile          | dati versionati, non codice               |
+| fixture dorata           | golden fixture            | caso verificato e approvato da Carlo      |
+| scostamento noto         | known deviation           | differenza motivata rispetto all'Excel    |
+| importo in centesimi     | amount in cents (`Cents`) | intero con marchio, mai decimale          |

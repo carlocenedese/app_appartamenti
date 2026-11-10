@@ -1,0 +1,12 @@
+packages:
+  - packages/*
+  - apps/*
+
+allowBuilds:
+  esbuild: false
+
+overrides:
+  # Vite 8 depends on lightningcss (MPL-2.0), a licence outside the allowed list
+  # (spec section 40). Vitest accepts Vite 6-8, so we stay on Vite 7 until the
+  # allowed list is revisited. `pnpm licenses:check` fails if lightningcss returns.
+  vite: 7.3.8

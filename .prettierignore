@@ -1,0 +1,6 @@
+# Snapshots of documents kept elsewhere, not formatted by this repository
+docs/spec.md
+docs/plans/
+pnpm-lock.yaml
+coverage/
+.superpowers/

@@ -1,0 +1,2 @@
+# One line-ending convention everywhere, so Prettier and fixtures behave the same on Windows.
+* text=auto eol=lf
