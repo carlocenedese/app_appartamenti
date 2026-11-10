@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BillMatchSchema,
   cents,
+  expectedDebit,
   isoDate,
   matchToTransactions,
   splitSharedDebit,
@@ -941,6 +942,24 @@ describe('matchToTransactions: shared TARI notice', () => {
 
   it('reports no invalid group when every notice is complete', () => {
     expect(run({ instalments: tariShared() }).invalidGroups).toEqual([]);
+  });
+});
+
+describe('expectedDebit', () => {
+  it('is the amount of a bill', () => {
+    expect(expectedDebit(bill('b1', { amount: cents(21460) }))).toBe(21460);
+    expect(expectedDebit(bill('credit', { amount: cents(-1500) }))).toBe(-1500);
+  });
+
+  it("is the whole condominium instalment plus last year's settlement, not the owner's share", () => {
+    expect(expectedDebit(instalment('i1'))).toBe(19800);
+    expect(expectedDebit(instalment('i2', { conguaglioPrec: cents(-4800) }))).toBe(10200);
+  });
+
+  it('is the instalment of a TARI notice, also when the notice is shared', () => {
+    const [berchet] = tariShared() as [Instalment, Instalment];
+    expect(expectedDebit(berchet)).toBe(10075);
+    expect(expectedDebit({ ...berchet, conguaglioPrec: cents(999) })).toBe(10075);
   });
 });
 

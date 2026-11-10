@@ -36,6 +36,7 @@ describe('core smoke test', () => {
         'assertSafeRelPath',
         'StaleWriteError',
         'MalformedJsonError',
+        'expectedDebit',
       ]),
     );
   });

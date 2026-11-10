@@ -93,11 +93,17 @@ interface ItemNode {
 
 const refKey = ({ itemType, itemId }: MatchItemRef): string => `${itemType}\u0000${itemId}`;
 
-function instalmentExpected(instalment: Instalment): Cents {
-  // Condominium: the whole instalment plus last year's settlement; the owner's share is a split
-  // of the cost, not a smaller debit.
-  if (instalment.kind === 'condominio') return cents(instalment.rata + instalment.conguaglioPrec);
-  return instalment.rata;
+/**
+ * The debit a bill or an instalment is expected to cause on the bank statement, as a positive
+ * cost (negative for a credit note): a bill's `amount`; for a condominium instalment the whole
+ * `rata` plus last year's settlement `conguaglioPrec` (the owner's share is a split of the cost,
+ * not a smaller debit); for a TARI instalment its `rata`. A shared notice is matched on its
+ * `groupTotal` instead, one debit for all its instalments.
+ */
+export function expectedDebit(item: Bill | Instalment): Cents {
+  if (!('rata' in item)) return item.amount;
+  if (item.kind === 'condominio') return cents(item.rata + item.conguaglioPrec);
+  return item.rata;
 }
 
 const payingAccount = (instalment: Instalment): string =>
@@ -140,14 +146,14 @@ function buildNodes(
     reportId: bill.id,
     account: bill.apartmentId,
     ref: bill.dueDate ?? bill.periodEnd,
-    expected: bill.amount,
-    members: [{ itemType: 'bill', itemId: bill.id, amount: bill.amount }],
+    expected: expectedDebit(bill),
+    members: [{ itemType: 'bill', itemId: bill.id, amount: expectedDebit(bill) }],
     supplier: bill.supplier,
   }));
   const groups = new Map<string, Instalment[]>();
   for (const instalment of instalments) {
     if (instalment.shared === undefined) {
-      const expected = instalmentExpected(instalment);
+      const expected = expectedDebit(instalment);
       nodes.push({
         key: `instalment\u0000${instalment.id}`,
         reportId: instalment.id,
