@@ -99,6 +99,38 @@ describe('parseEuro', () => {
     expect(parseEuro(input)).toBe(expected);
   });
 
+  it.each([
+    ['1 234,56', 123456],
+    ['1 234 567,00', 123456700],
+    ['- € 1 234,56', -123456],
+    ['€ -1 234,56', -123456],
+    ['1 234,56 €', 123456],
+    ['1\u00a0234\u00a0567,89 EUR', 123456789],
+    ['1\u202f234,56', 123456],
+    ['\u00a0€\u00a098,46\u00a0', 9846],
+    ['12 345', 1234500],
+    ['1 234.56', 123456],
+  ])('reads a space as thousands separator in %j', (input, expected) => {
+    expect(parseEuro(input)).toBe(expected);
+  });
+
+  it.each([
+    ['98 46', 'space between digits that is not a thousands separator'],
+    ['9 8,46', 'space inside the first digits'],
+    ['12 34,56', 'space before a group of two digits'],
+    ['1 2345,00', 'space before a group of four digits'],
+    ['1  234,56', 'two spaces as one separator'],
+    ['1 234.567,00', 'space and dot thousands separators mixed'],
+    ['1.234 567,00', 'dot and space thousands separators mixed'],
+    ['1 234 ,56', 'space before the decimal comma'],
+    ['98, 46', 'space after the decimal comma'],
+    ['98,4 6', 'space inside the decimals'],
+    ['1 234.567', 'space thousands then a dot thousands group'],
+    ['0 234,56', 'space-grouped number starting with zero'],
+  ])('throws for %j (%s)', (input) => {
+    expect(() => parseEuro(input)).toThrow(RangeError);
+  });
+
   it('turns negative zero into zero', () => {
     expect(Object.is(parseEuro('-0,00'), 0)).toBe(true);
   });

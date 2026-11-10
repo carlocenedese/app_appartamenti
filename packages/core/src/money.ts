@@ -17,24 +17,36 @@ export function cents(n: number): Cents {
 }
 
 // Optional sign, optional leading currency (with an optional sign after it), the digits with
-// their separators, optional trailing currency. Spaces are removed before matching.
-const EURO_INPUT = /^(-?)(?:(€|EUR)(-?))?([\d.,]+)(€|EUR)?$/i;
+// their separators, optional trailing currency. Spaces (`\s` also covers the non-breaking
+// U+00A0 and the narrow non-breaking U+202F) are free around the sign and the currency markers;
+// inside the digits a single space may only separate thousands, which `integerDigits` checks.
+const EURO_INPUT = /^\s*(-?)\s*(?:(€|EUR)\s*(-?)\s*)?([\d.,](?:[\d.,\s]*[\d.,])?)\s*(€|EUR)?\s*$/i;
 // A thousands-grouped integer: "1.234", "12.345.678". The first group has no leading zero.
 const THOUSANDS_GROUPED = /^[1-9]\d{0,2}(?:\.\d{3})+$/;
+// The same with one space as the separator: "1 234", "1 234 567". Never mixed with dots.
+const THOUSANDS_SPACED = /^[1-9]\d{0,2}(?:\s\d{3})+$/;
 const PLAIN_DIGITS = /^\d+$/;
 const ONE_OR_TWO_DIGITS = /^\d{1,2}$/;
 
-/** The digits of an integer part written plainly or with thousands dots, else `undefined`. */
+/**
+ * The digits of an integer part written plainly, with thousands dots or with thousands spaces,
+ * else `undefined`.
+ */
 function integerDigits(raw: string): string | undefined {
   if (PLAIN_DIGITS.test(raw)) return raw;
   if (THOUSANDS_GROUPED.test(raw)) return raw.replaceAll('.', '');
+  if (THOUSANDS_SPACED.test(raw)) return raw.replace(/\s/g, '');
   return undefined;
 }
 
 /**
  * Parses an amount written the Italian way (or close to it) into cents.
  *
- * - Spaces (also non-breaking ones), `€` and `EUR` are ignored; at most one currency marker.
+ * - Spaces (also non-breaking ones) around the sign and the currency are ignored; `€` and
+ *   `EUR` are ignored too, at most one currency marker.
+ * - Inside the digits a space is allowed only as a thousands separator, before every group of
+ *   exactly three digits ("1 234,56", "1 234 567,00"), and never together with thousands dots.
+ *   "98 46" or "9 8,46" throw: a misread amount must never be silent.
  * - A leading `-` is allowed, before or after the currency marker.
  * - With a comma, the comma is the decimal separator (1 or 2 digits) and dots are thousands
  *   separators; a dot after the comma is an error ("1,234.56").
@@ -49,7 +61,7 @@ export function parseEuro(input: string): Cents {
     throw new RangeError(`Not an euro amount: ${JSON.stringify(input)} (${reason})`);
   };
 
-  const match = EURO_INPUT.exec(input.replace(/\s+/g, ''));
+  const match = EURO_INPUT.exec(input);
   if (match === null) return fail('unrecognised format');
   const [, leadingSign = '', prefixCurrency, signAfterCurrency = '', digits = '', suffixCurrency] =
     match;
