@@ -654,6 +654,61 @@ describe('undoOperation', () => {
     expect(await store.readJson(BILL_2_PATH)).toEqual(bill('bill-2', { rev: 2, deleted: true }));
   });
 
+  it('refuses, writing nothing, when the record on disk is ahead of the journal', async () => {
+    const { store, commit, undo } = setup();
+    await commit(createBill());
+    const update = await commit(
+      changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 1 })),
+    );
+    // Another machine changed the record to rev 3; its journal file has not arrived yet.
+    await store.writeJsonAtomic(BILL_PATH, bill('bill-1', { amount: 2, rev: 3 }));
+    const text = store.getRaw(BILL_PATH);
+    const names = await journalNames(store);
+
+    await expect(undo(update.id)).rejects.toThrow(/not as the journal leaves it.*rev 3.*rev 2/);
+
+    expect(store.getRaw(BILL_PATH)).toBe(text);
+    expect(await journalNames(store)).toEqual(names);
+  });
+
+  it('refuses when the record on disk has the rev of the journal but other content', async () => {
+    const { store, commit, undo } = setup();
+    const create = await commit(createBill());
+    await store.writeJsonAtomic(BILL_PATH, bill('bill-1', { amount: 2 }));
+    const names = await journalNames(store);
+
+    await expect(undo(create.id)).rejects.toThrow(/not as the journal leaves it/);
+
+    expect(await store.readJson(BILL_PATH)).toEqual(bill('bill-1', { amount: 2 }));
+    expect(await journalNames(store)).toEqual(names);
+  });
+
+  it('checks every record of a cascade before undoing any of them', async () => {
+    const { store, commit, undo } = setup();
+    const create = await commit(createBill('bill-1'));
+    await commit({
+      profileId: 'prof-a',
+      kind: 'bill.import',
+      summary: 'Modifica e creazione',
+      changes: [
+        {
+          path: BILL_PATH,
+          before: await store.readJson(BILL_PATH),
+          after: bill('bill-1', { amount: 1 }),
+        },
+        { path: BILL_2_PATH, after: bill('bill-2') },
+      ],
+    });
+    await store.writeJsonAtomic(BILL_2_PATH, bill('bill-2', { rev: 2, amount: 7 }));
+    const bill1 = store.getRaw(BILL_PATH);
+    const names = await journalNames(store);
+
+    await expect(undo(create.id, { cascade: true })).rejects.toThrow(/bill-2/);
+
+    expect(store.getRaw(BILL_PATH)).toBe(bill1);
+    expect(await journalNames(store)).toEqual(names);
+  });
+
   it('throws for an unknown operation', async () => {
     const { undo } = setup();
     await expect(undo('nope')).rejects.toThrow(/Unknown operation/);
@@ -802,7 +857,7 @@ describe('undoOperation', () => {
 
     await expect(
       undoOperation(journalOnly, create.id, 'prof-b', tickingClock(), idSequence('un')),
-    ).rejects.toThrow(/does not exist/);
+    ).rejects.toThrow(/not as the journal leaves it \(on disk no readable record/);
 
     expect(await journalNames(journalOnly)).toHaveLength(1);
   });

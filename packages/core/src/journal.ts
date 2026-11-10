@@ -403,6 +403,32 @@ function refuseIfUndone(operations: readonly Operation[], target: Operation): vo
 }
 
 /**
+ * Throws if a record that `toUndo` changed is not on disk as its latest operation in the journal
+ * leaves it: another `rev` or other content. That is a change whose journal file has not arrived
+ * yet (another machine saved it and Dropbox is still syncing), or a write that was interrupted;
+ * undoing over it would put an older state on top of a change nobody can see in the history.
+ */
+async function refuseIfDiverged(
+  store: Store,
+  operations: readonly Operation[],
+  toUndo: readonly Operation[],
+): Promise<void> {
+  const latest = latestAfter(operations);
+  const paths = [...new Set(toUndo.flatMap(({ changes }) => changes.map(({ path }) => path)))];
+  for (const path of paths.sort(compareText)) {
+    const after = latest.get(path);
+    const onDisk = await readTolerant(store, path);
+    if (after === undefined || jsonEqual(onDisk, after)) continue;
+    const diskRev = hasRev(onDisk) ? `rev ${String(onDisk.rev)}` : 'no readable record';
+    throw new Error(
+      `Cannot undo: ${path} is not as the journal leaves it (on disk ${diskRev}, in the journal ` +
+        `rev ${String(after.rev)}). Wait until the shared folder has finished syncing, or check ` +
+        'it with checkConsistency, then try again',
+    );
+  }
+}
+
+/**
  * Undoes the operation `opId` for the profile `profileId`: writes a new operation (kind `undo`,
  * with `undoes` set to `opId`) that puts every record it changed back as it was before, with a
  * `rev` that goes on from the current one. A record the operation created is marked `deleted`.
@@ -411,7 +437,10 @@ function refuseIfUndone(operations: readonly Operation[], target: Operation): vo
  * Throws, and changes nothing, if `opId` is not in the journal, if it was already undone (an
  * undo operation can be undone too, which brings the change back, but only once; the message
  * names the redo to undo when a redo brought the operation back), or if later operations depend
- * on it (see `dependentsOf`) and `opts.cascade` is not `true`. With `cascade` the dependents are
+ * on it (see `dependentsOf`) and `opts.cascade` is not `true`. It also throws, writing nothing,
+ * if a record that it would put back is not on disk as its latest operation in the journal leaves
+ * it (another `rev` or other content, see `checkConsistency`): that is a change whose journal
+ * file has not synced yet, and undoing would overwrite it. With `cascade` the dependents are
  * undone first and `opId` last, each with an undo operation of its own; the one returned is the
  * last, the undo of `opId`. An operation is undone only after everything that depends on it, and
  * of two that are free to go first the later one goes first. The cascade is a series of
@@ -440,6 +469,8 @@ export async function undoOperation(
     );
   }
 
+  await refuseIfDiverged(store, operations, [target, ...dependents]);
+
   // Each round undoes one dependent that nothing else depends on, then looks again with the new
   // undo in the journal, so a dependent that was brought back by a redo is handled like the rest.
   let journal = operations;
@@ -455,15 +486,19 @@ export async function undoOperation(
 
 // --- Consistency -----------------------------------------------------------------------------
 
-/** For every path in the journal, the `after` of the latest change to it (see `compareTouches`). */
-async function latestAfterByPath(store: Store): Promise<Map<string, JsonRecord & { rev: number }>> {
-  const { operations } = await readJournal(store);
+/** For every path in `operations`, the `after` of the latest change to it (see `compareTouches`). */
+function latestAfter(operations: readonly Operation[]): Map<string, JsonRecord & { rev: number }> {
   const latest = new Map<string, JsonRecord & { rev: number }>();
   for (const [path, touches] of touchesByPath(operations)) {
     const last = touches.at(-1);
     if (last !== undefined) latest.set(path, last.after);
   }
   return latest;
+}
+
+/** The same for the journal in `store`. */
+async function latestAfterByPath(store: Store): Promise<Map<string, JsonRecord & { rev: number }>> {
+  return latestAfter((await readJournal(store)).operations);
 }
 
 /** Structural equality of two JSON values; the order of the keys of an object does not matter. */
