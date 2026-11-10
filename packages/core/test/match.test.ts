@@ -865,19 +865,82 @@ describe('matchToTransactions: shared TARI notice', () => {
     ).toEqual(expected);
   });
 
-  it('rejects a shared notice with one instalment only', () => {
+  it('leaves a shared notice with one instalment only pending, never matched nor assumed', () => {
     const [berchet] = tariShared() as [Instalment, Instalment];
-    expect(() => run({ instalments: [berchet] })).toThrow(/only one/);
+    const debit = tx('t-tari', '2026-03-16', -18600);
+    const result = run({ instalments: [berchet], transactions: [debit] });
+    expect(result.matches).toEqual([]);
+    expect(result.pending).toEqual([{ itemType: 'instalment', itemId: 'tari-berchet' }]);
+    expect(result.invalidGroups).toEqual([{ groupId: 'avviso-89064', reason: 'incomplete' }]);
+    expect(result.unmatchedTransactions).toEqual(['t-tari']);
+    // Outside every statement it is not taken as paid either.
+    const outside = run({ instalments: [berchet], statementPeriods: [] });
+    expect(outside.matches).toEqual([]);
+    expect(outside.pending).toEqual([{ itemType: 'instalment', itemId: 'tari-berchet' }]);
   });
 
-  it('rejects a group whose members are paid from different accounts or due on other days', () => {
+  it('leaves an inconsistent group pending and reports it', () => {
     const [berchet, lovarini] = tariShared() as [Instalment, Instalment];
     const ownAccount: Instalment = { ...lovarini };
     delete ownAccount.paidFromApartmentId;
-    expect(() => run({ instalments: [berchet, ownAccount] })).toThrow(/account/);
-    expect(() =>
-      run({ instalments: [berchet, { ...lovarini, dueDate: isoDate('2026-03-20') }] }),
-    ).toThrow(/due date/);
+    const otherDay: Instalment = { ...lovarini, dueDate: isoDate('2026-03-20') };
+    const otherTotal: Instalment = {
+      ...lovarini,
+      shared: { groupId: 'avviso-89064', groupTotal: cents(18700), weight: cents(8471) },
+    };
+    const zeroWeight: Instalment = {
+      ...lovarini,
+      shared: { groupId: 'avviso-89064', groupTotal: cents(18600), weight: cents(0) },
+    };
+    const debit = tx('t-tari', '2026-03-16', -18600);
+    for (const broken of [ownAccount, otherDay, otherTotal, zeroWeight]) {
+      for (const statementPeriods of [ALL_OF_2026, []]) {
+        const result = run({
+          instalments: [berchet, broken],
+          transactions: [debit],
+          statementPeriods,
+        });
+        expect(result.matches).toEqual([]);
+        expect(result.pending).toEqual([
+          { itemType: 'instalment', itemId: 'tari-berchet' },
+          { itemType: 'instalment', itemId: 'tari-lovarini' },
+        ]);
+        expect(result.invalidGroups).toEqual([{ groupId: 'avviso-89064', reason: 'inconsistent' }]);
+      }
+    }
+  });
+
+  it('still matches the other items when a group is invalid, and sorts the groups', () => {
+    const [berchet] = tariShared() as [Instalment, Instalment];
+    const lone: Instalment = {
+      ...berchet,
+      id: 'tari-other',
+      shared: { groupId: 'avviso-00001', groupTotal: cents(5000), weight: cents(5000) },
+    };
+    const result = run({
+      bills: [bill('b-lov', { apartmentId: 'lovarini' })],
+      instalments: [berchet, lone, instalment('i-pulci', { apartmentId: 'pulci' })],
+      transactions: [
+        tx('t-lov', '2026-11-12', -21460, { apartmentId: 'lovarini' }),
+        tx('t-pulci', '2026-10-10', -19800, { apartmentId: 'pulci' }),
+      ],
+    });
+    expect(result.matches.map((m) => m.id)).toEqual([
+      'm-bill-b-lov-amount-t-lov',
+      'm-instalment-i-pulci-amount-t-pulci',
+    ]);
+    expect(result.invalidGroups).toEqual([
+      { groupId: 'avviso-00001', reason: 'incomplete' },
+      { groupId: 'avviso-89064', reason: 'incomplete' },
+    ]);
+    expect(result.pending).toEqual([
+      { itemType: 'instalment', itemId: 'tari-berchet' },
+      { itemType: 'instalment', itemId: 'tari-other' },
+    ]);
+  });
+
+  it('reports no invalid group when every notice is complete', () => {
+    expect(run({ instalments: tariShared() }).invalidGroups).toEqual([]);
   });
 });
 

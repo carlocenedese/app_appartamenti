@@ -9,7 +9,10 @@
  *   candidates form a graph and only its connected components with one item and one debit are
  *   matched; every other component is reported as `ambiguous` and left to a person (R15).
  * - A shared notice (the TARI of Berchet and Lovarini) is one item: its instalments are matched
- *   together to one debit of `groupTotal` and the debit is split by their `weight`.
+ *   together to one debit of `groupTotal` and the debit is split by their `weight`. A notice with
+ *   one instalment only (the others not entered yet) or whose instalments disagree on paying
+ *   account, due date or total, or carry a weight that is not positive, is reported in
+ *   `invalidGroups`: its instalments stay pending, never matched nor assumed.
  * - Proposal: a bill whose debit has another amount but the supplier in the description gets an
  *   unconfirmed match, one-to-one only; with several possible debits it stays pending.
  * - A period no statement covers: its items are taken as paid (`by: 'assumed'`, R2).
@@ -60,6 +63,17 @@ export interface MatchResult {
   ambiguous: { itemId: string; transactionIds: string[] }[];
   /** Transactions no match uses. */
   unmatchedTransactions: string[];
+  /**
+   * Shared notices that cannot be matched, sorted by group id: `incomplete` with a single
+   * instalment present, `inconsistent` when the instalments disagree on paying account, due date
+   * or total, or a weight is not positive. All their instalments are in `pending`.
+   */
+  invalidGroups: InvalidGroup[];
+}
+
+export interface InvalidGroup {
+  groupId: string;
+  reason: 'incomplete' | 'inconsistent';
 }
 
 /** One node of the candidate graph: a bill, an instalment or all instalments of one notice. */
@@ -89,24 +103,19 @@ function instalmentExpected(instalment: Instalment): Cents {
 const payingAccount = (instalment: Instalment): string =>
   instalment.paidFromApartmentId ?? instalment.apartmentId;
 
-function groupNode(groupId: string, group: Instalment[]): ItemNode {
+function groupNode(groupId: string, group: Instalment[]): ItemNode | InvalidGroup {
   const members = [...group].sort((a, b) => byText(a.id, b.id));
   const first = members[0] as Instalment;
-  if (members.length < 2) {
-    throw new Error(`Shared notice ${groupId}: only one of its instalments is present`);
-  }
+  if (members.length < 2) return { groupId, reason: 'incomplete' };
   const shared = (instalment: Instalment) => instalment.shared as NonNullable<Instalment['shared']>;
-  for (const member of members) {
-    if (payingAccount(member) !== payingAccount(first)) {
-      throw new Error(`Shared notice ${groupId}: its instalments are paid from different accounts`);
-    }
-    if (member.dueDate !== first.dueDate) {
-      throw new Error(`Shared notice ${groupId}: its instalments have different due dates`);
-    }
-    if (shared(member).groupTotal !== shared(first).groupTotal) {
-      throw new Error(`Shared notice ${groupId}: its instalments have different totals`);
-    }
-  }
+  const consistent = members.every(
+    (member) =>
+      payingAccount(member) === payingAccount(first) &&
+      member.dueDate === first.dueDate &&
+      shared(member).groupTotal === shared(first).groupTotal &&
+      shared(member).weight > 0,
+  );
+  if (!consistent) return { groupId, reason: 'inconsistent' };
   const total = shared(first).groupTotal;
   const parts = splitSharedDebit(
     cents(-total),
@@ -122,7 +131,10 @@ function groupNode(groupId: string, group: Instalment[]): ItemNode {
   };
 }
 
-function buildNodes(bills: Bill[], instalments: Instalment[]): ItemNode[] {
+function buildNodes(
+  bills: Bill[],
+  instalments: Instalment[],
+): { nodes: ItemNode[]; invalidGroups: InvalidGroup[] } {
   const nodes: ItemNode[] = bills.map((bill) => ({
     key: `bill\u0000${bill.id}`,
     reportId: bill.id,
@@ -150,8 +162,16 @@ function buildNodes(bills: Bill[], instalments: Instalment[]): ItemNode[] {
       groups.set(instalment.shared.groupId, group);
     }
   }
-  for (const [groupId, group] of groups) nodes.push(groupNode(groupId, group));
-  return nodes.sort((a, b) => byText(a.key, b.key));
+  const invalidGroups: InvalidGroup[] = [];
+  for (const [groupId, group] of groups) {
+    const node = groupNode(groupId, group);
+    if ('reason' in node) invalidGroups.push(node);
+    else nodes.push(node);
+  }
+  return {
+    nodes: nodes.sort((a, b) => byText(a.key, b.key)),
+    invalidGroups: invalidGroups.sort((a, b) => byText(a.groupId, b.groupId)),
+  };
 }
 
 /** One record per id (overlapping statements repeat a movement), sorted by id. */
@@ -264,8 +284,8 @@ function assertWindow({ daysBefore, daysAfter }: MatchInput['window']): void {
 /**
  * Matches bills and instalments with the movements of the bank statements (see the module
  * comment for the rules and `MatchInput.existing` for the matches already recorded).
- * Throws if a shared notice has a single instalment, or if its instalments disagree on paying
- * account, due date or total.
+ * A shared notice that is incomplete or inconsistent never throws: it is reported in
+ * `invalidGroups` and its instalments stay pending.
  */
 export function matchToTransactions(input: MatchInput): MatchResult {
   assertWindow(input.window);
@@ -284,7 +304,8 @@ export function matchToTransactions(input: MatchInput): MatchResult {
 
   const created: BillMatch[] = [];
   const open: ItemNode[] = [];
-  for (const node of buildNodes(bills, instalments)) {
+  const { nodes, invalidGroups } = buildNodes(bills, instalments);
+  for (const node of nodes) {
     if (node.members.some((member) => covered.has(refKey(member)))) continue;
     const inStatement = input.statementPeriods.some((p) => p.from <= node.ref && node.ref <= p.to);
     if (inStatement) {
@@ -359,6 +380,7 @@ export function matchToTransactions(input: MatchInput): MatchResult {
     pending,
     ambiguous: exact.ambiguous.sort((a, b) => byText(a.itemId, b.itemId)),
     unmatchedTransactions: transactions.filter((t) => !used.has(t.id)).map((t) => t.id),
+    invalidGroups,
   };
 }
 
