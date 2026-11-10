@@ -13,18 +13,20 @@
  * - Proposal: a bill whose debit has another amount but the supplier in the description gets an
  *   unconfirmed match, one-to-one only; with several possible debits it stays pending.
  * - A period no statement covers: its items are taken as paid (`by: 'assumed'`, R2).
- * - Commission (R7): the debit row with the same disposition code as a matched debit follows the
- *   item of that debit.
+ * - Commission (R7): the debit row tied to a matched debit by the disposition code follows the
+ *   items of that debit with the same split (see `commission.ts`).
  *
  * The result never depends on the order of the input: everything is sorted by id.
  */
 import { BillMatchSchema } from './model';
 import type { BankTransaction, Bill, BillMatch, Instalment } from './model';
-import { cents, splitCents } from './money';
+import { commissionLinks, commissionParts } from './commission';
+import { cents } from './money';
 import type { Cents } from './money';
 import { daysBetween } from './period';
 import type { ISODate } from './period';
-import { foldText } from './text';
+import { splitSharedDebit } from './split';
+import { compareText as byText, foldText } from './text';
 
 export type MatchItemType = BillMatch['itemType'];
 
@@ -41,6 +43,11 @@ export interface MatchInput {
   window: { daysBefore: number; daysAfter: number };
   /** Periods covered by a bank statement; an item due outside all of them is assumed paid. */
   statementPeriods: { from: ISODate; to: ISODate }[];
+  /**
+   * Matches already recorded. Confirmed ones (manual or automatic) are kept unchanged and their
+   * movements and items are not matched again; unconfirmed and `assumed` ones are dropped and
+   * computed again, so a statement read later can verify an item taken as paid (R2).
+   */
   existing: BillMatch[];
 }
 
@@ -70,34 +77,7 @@ interface ItemNode {
   supplier?: string;
 }
 
-const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const refKey = ({ itemType, itemId }: MatchItemRef): string => `${itemType}\u0000${itemId}`;
-
-function assertWeight(weight: number, itemId: string): void {
-  if (!Number.isSafeInteger(weight) || weight <= 0) {
-    throw new RangeError(`Weight of ${itemId} must be a positive amount in cents`);
-  }
-}
-
-/**
- * Splits one debit shared by several items in proportion to their weights (for the TARI notice of
- * Berchet and Lovarini, the totals of each supply). The shares have the items' sign, opposite to
- * the debit's: a debit of -186,00 € gives positive shares. They always sum to the debit; the
- * leftover cents go to the largest remainders, on equal remainders to the first items.
- * Throws a `RangeError` if there is no weight or a weight is not a positive amount.
- */
-export function splitSharedDebit(
-  debit: Cents,
-  weights: { itemId: string; weight: Cents }[],
-): { itemId: string; amount: Cents }[] {
-  if (weights.length === 0) throw new RangeError('Cannot split a debit without weights');
-  for (const { itemId, weight } of weights) assertWeight(weight, itemId);
-  const shares = splitCents(
-    cents(-debit),
-    weights.map(({ weight }) => weight),
-  );
-  return weights.map(({ itemId }, index) => ({ itemId, amount: shares[index] as Cents }));
-}
 
 function instalmentExpected(instalment: Instalment): Cents {
   // Condominium: the whole instalment plus last year's settlement; the owner's share is a split
@@ -112,6 +92,9 @@ const payingAccount = (instalment: Instalment): string =>
 function groupNode(groupId: string, group: Instalment[]): ItemNode {
   const members = [...group].sort((a, b) => byText(a.id, b.id));
   const first = members[0] as Instalment;
+  if (members.length < 2) {
+    throw new Error(`Shared notice ${groupId}: only one of its instalments is present`);
+  }
   const shared = (instalment: Instalment) => instalment.shared as NonNullable<Instalment['shared']>;
   for (const member of members) {
     if (payingAccount(member) !== payingAccount(first)) {
@@ -183,26 +166,6 @@ function uniqueTransactions(transactions: BankTransaction[]): BankTransaction[] 
     }
   }
   return [...byId.values()].sort((a, b) => byText(a.id, b.id));
-}
-
-/**
- * Commission rows: a movement that shares its disposition code with a larger movement of the same
- * account. They are never the amount of an item, only its commission.
- */
-function commissionRows(transactions: BankTransaction[]): Set<string> {
-  const largest = new Map<string, number>();
-  const codeKey = (t: BankTransaction) => `${t.apartmentId}\u0000${t.dispCode ?? ''}`;
-  for (const t of transactions) {
-    if (t.dispCode === undefined) continue;
-    largest.set(codeKey(t), Math.max(largest.get(codeKey(t)) ?? 0, Math.abs(t.amount)));
-  }
-  const rows = new Set<string>();
-  for (const t of transactions) {
-    if (t.dispCode !== undefined && Math.abs(t.amount) < (largest.get(codeKey(t)) ?? 0)) {
-      rows.add(t.id);
-    }
-  }
-  return rows;
 }
 
 interface Solution {
@@ -298,38 +261,11 @@ function assertWindow({ daysBefore, daysAfter }: MatchInput['window']): void {
   if (daysBefore < 0 || daysAfter < 0) throw new RangeError('The date window cannot be negative');
 }
 
-/** Commission matches for the debit rows tied by disposition code to a matched debit. */
-function commissionMatches(matches: BillMatch[], transactions: BankTransaction[]): BillMatch[] {
-  const byId = new Map(transactions.map((t) => [t.id, t]));
-  const used = new Set(matches.map((m) => m.transactionId));
-  // For each account and disposition code, the matched debits and the first item each one pays.
-  const payers = new Map<string, Map<string, MatchItemRef>>();
-  const ordered = [...matches].sort((a, b) => byText(refKey(a), refKey(b)));
-  for (const match of ordered) {
-    const debit = byId.get(match.transactionId);
-    if (!match.confirmed || match.part !== 'amount' || debit?.dispCode === undefined) continue;
-    const code = `${debit.apartmentId}\u0000${debit.dispCode}`;
-    const debits = payers.get(code) ?? new Map<string, MatchItemRef>();
-    if (!debits.has(debit.id)) debits.set(debit.id, match);
-    payers.set(code, debits);
-  }
-  const found: BillMatch[] = [];
-  for (const t of transactions) {
-    if (t.amount >= 0 || t.dispCode === undefined || used.has(t.id)) continue;
-    const debits = payers.get(`${t.apartmentId}\u0000${t.dispCode}`);
-    // Two matched debits with the same code: which one the row belongs to is not known.
-    const [item, ...others] = debits?.values() ?? [];
-    if (item === undefined || others.length > 0) continue;
-    found.push(makeMatch(item, 'commission', t, cents(-t.amount), true, 'auto'));
-  }
-  return found;
-}
-
 /**
  * Matches bills and instalments with the movements of the bank statements (see the module
- * comment for the rules). Confirmed existing matches are kept unchanged and their movements and
- * items are not matched again; unconfirmed existing matches are dropped and computed again.
- * Throws if the instalments of a shared notice disagree on paying account, due date or total.
+ * comment for the rules and `MatchInput.existing` for the matches already recorded).
+ * Throws if a shared notice has a single instalment, or if its instalments disagree on paying
+ * account, due date or total.
  */
 export function matchToTransactions(input: MatchInput): MatchResult {
   assertWindow(input.window);
@@ -337,7 +273,10 @@ export function matchToTransactions(input: MatchInput): MatchResult {
   const bills = input.bills.filter((bill) => bill.deleted !== true);
   const instalments = input.instalments.filter((instalment) => instalment.deleted !== true);
   const transactions = uniqueTransactions(input.transactions);
-  const kept = input.existing.filter((match) => match.confirmed && match.deleted !== true);
+  // Assumed matches are recomputed too: once a statement covers the period, R2 applies.
+  const kept = input.existing.filter(
+    (match) => match.confirmed && match.by !== 'assumed' && match.deleted !== true,
+  );
   const consumed = new Set(kept.map((match) => match.transactionId));
   // An item with a confirmed part is settled by hand or already matched: a whole debit on top of
   // a partial cover would pay it twice.
@@ -358,7 +297,7 @@ export function matchToTransactions(input: MatchInput): MatchResult {
     }
   }
 
-  const commissions = commissionRows(transactions);
+  const commissions = commissionLinks(transactions);
   const free = transactions.filter((t) => !consumed.has(t.id) && !commissions.has(t.id));
   const inWindow = (node: ItemNode, t: BankTransaction): boolean => {
     const days = daysBetween(t.date, node.ref);
@@ -391,7 +330,16 @@ export function matchToTransactions(input: MatchInput): MatchResult {
     created.push(makeMatch(member, 'amount', t, cents(-t.amount), false, 'auto'));
   }
 
-  created.push(...commissionMatches([...kept, ...created], transactions));
+  const sharedById = new Map(instalments.map((i) => [i.id, i.shared]));
+  const sharedOf = (item: MatchItemRef) =>
+    item.itemType === 'instalment' ? sharedById.get(item.itemId) : undefined;
+  for (const { item, row, amount } of commissionParts(
+    [...kept, ...created],
+    transactions,
+    sharedOf,
+  )) {
+    created.push(makeMatch(item, 'commission', row, amount, true, 'auto'));
+  }
   const matches = [...kept, ...created].sort((a, b) => byText(a.id, b.id));
 
   const withMatch = new Set(matches.filter((m) => m.part === 'amount').map(refKey));
@@ -434,7 +382,15 @@ export function validateMatches(input: {
 }): { errors: MatchCheckError[] } {
   const confirmed = input.matches.filter((m) => m.confirmed && m.deleted !== true);
   const errors: MatchCheckError[] = [];
+  const items = new Map<string, MatchItemRef & { expected: Cents }>();
   for (const item of input.items) {
+    const known = items.get(refKey(item));
+    if (known !== undefined && known.expected !== item.expected) {
+      throw new RangeError(`Item ${item.itemId} is listed twice with different amounts`);
+    }
+    items.set(refKey(item), item);
+  }
+  for (const item of items.values()) {
     const sum = confirmed
       .filter((m) => m.part === 'amount' && refKey(m) === refKey(item))
       .reduce((total, m) => total + m.amount, 0);
@@ -446,11 +402,10 @@ export function validateMatches(input: {
     if (got < wanted) errors.push({ code: 'item-under', id: item.itemId });
   }
   for (const t of uniqueTransactions(input.transactions)) {
-    // Match amounts have the items' sign, opposite to the movement's.
-    const direction = t.amount < 0 ? 1 : -1;
+    // By absolute value: a part with the wrong sign must not make room on the movement.
     const sum = confirmed
       .filter((m) => m.transactionId === t.id)
-      .reduce((total, m) => total + m.amount * direction, 0);
+      .reduce((total, m) => total + Math.abs(m.amount), 0);
     if (sum > Math.abs(t.amount)) errors.push({ code: 'transaction-over', id: t.id });
   }
   errors.sort(

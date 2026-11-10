@@ -12,4 +12,5 @@ export * from './journal';
 export * from './notes';
 export * from './dedupe';
 export * from './match';
+export * from './split';
 export * from './tari-note';

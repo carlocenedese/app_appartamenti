@@ -6,3 +6,8 @@
 export function foldText(text: string): string {
   return text.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
 }
+
+/** Plain code-unit order, the same on every runtime and locale (unlike `localeCompare`). */
+export function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}

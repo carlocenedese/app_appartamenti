@@ -71,6 +71,28 @@ function instalment(id: string, extra: Partial<Instalment> = {}): Instalment {
   };
 }
 
+function recorded(
+  itemId: string,
+  transactionId: string,
+  amount: number,
+  extra: Partial<BillMatch> = {},
+): BillMatch {
+  return {
+    id: `rec-${itemId}-${transactionId}`,
+    v: 1,
+    rev: 1,
+    itemType: 'bill',
+    itemId,
+    transactionId,
+    transactionDate: isoDate('2026-11-12'),
+    amount: cents(amount),
+    part: 'amount',
+    confirmed: true,
+    by: 'manual',
+    ...extra,
+  };
+}
+
 function run(input: Partial<MatchInput>): ReturnType<typeof matchToTransactions> {
   return matchToTransactions({
     bills: [],
@@ -305,6 +327,7 @@ describe('matchToTransactions: exact matches', () => {
         bill('b4', { amount: cents(4500), dueDate: isoDate('2026-05-01') }),
         bill('b5', { amount: cents(4500), dueDate: isoDate('2026-05-02') }),
         bill('b6', { amount: cents(21460), dueDate: isoDate('2026-08-01') }),
+        bill('b7', { amount: cents(3000), dueDate: isoDate('2026-09-01') }),
       ],
       instalments: [instalment('cond-1'), ...tariShared()],
       transactions: [
@@ -316,6 +339,8 @@ describe('matchToTransactions: exact matches', () => {
         tx('t5', '2026-08-02', -21406),
         tx('t6', '2026-10-10', -19800),
         tx('t7', '2026-03-16', -18600),
+        tx('t8', '2026-09-02', -3000, { dispCode: 'D8' }),
+        tx('t8c', '2026-09-03', -80, { dispCode: 'D8' }),
         tx('bollo', '2026-12-31', -200, { description: 'IMPOSTA DI BOLLO' }),
       ],
       window: WINDOW,
@@ -323,7 +348,11 @@ describe('matchToTransactions: exact matches', () => {
         { from: isoDate('2026-01-01'), to: isoDate('2026-06-30') },
         { from: isoDate('2026-06-01'), to: isoDate('2026-12-31') },
       ],
-      existing: [],
+      existing: [
+        recorded('b7', 't8', 3000),
+        recorded('b1', 't-old', 21000, { confirmed: false, by: 'auto' }),
+        recorded('b6', 'assumed-b6', 21460, { by: 'assumed' }),
+      ],
     };
     const expected = matchToTransactions(input);
     expect(expected.matches.length).toBeGreaterThan(0);
@@ -336,6 +365,7 @@ describe('matchToTransactions: exact matches', () => {
         instalments: shuffled(input.instalments, next),
         transactions: shuffled(input.transactions, next),
         statementPeriods: shuffled(input.statementPeriods, next),
+        existing: shuffled(input.existing, next),
       };
       expect(matchToTransactions(permuted)).toEqual(expected);
     }
@@ -521,6 +551,23 @@ describe('matchToTransactions: periods without a statement', () => {
     ]);
   });
 
+  it('verifies an assumed match again once a statement covers its period', () => {
+    const b = bill('b1');
+    const first = run({ bills: [b], statementPeriods: [] });
+    expect(first.matches.map((m) => m.by)).toEqual(['assumed']);
+    const second = run({
+      bills: [b],
+      transactions: [tx('t1', '2026-11-12', -21460)],
+      existing: first.matches,
+    });
+    expect(second.matches.map((m) => [m.by, m.transactionId])).toEqual([['auto', 't1']]);
+    expect(second.unmatchedTransactions).toEqual([]);
+    const unpaid = run({ bills: [b], existing: first.matches });
+    expect(unpaid.matches).toEqual([]);
+    expect(unpaid.pending).toEqual([{ itemType: 'bill', itemId: 'b1' }]);
+    expect(run({ bills: [b], statementPeriods: [], existing: first.matches })).toEqual(first);
+  });
+
   it('counts a movement only once when two statements overlap', () => {
     const overlapping = [
       { from: isoDate('2026-10-01'), to: isoDate('2026-11-30') },
@@ -541,6 +588,89 @@ describe('matchToTransactions: periods without a statement', () => {
 });
 
 describe('matchToTransactions: commissions', () => {
+  it('never makes a commission of an unrelated debit that shares the disposition code', () => {
+    const result = run({
+      bills: [
+        bill('jan', { amount: cents(5000), dueDate: isoDate('2026-01-10') }),
+        bill('feb', { amount: cents(6000), dueDate: isoDate('2026-02-10') }),
+      ],
+      transactions: [
+        tx('tjan', '2026-01-12', -5000, { dispCode: 'M' }),
+        tx('tfeb', '2026-02-12', -6000, { dispCode: 'M' }),
+      ],
+    });
+    expect(result.matches.map((m) => [m.itemId, m.part, m.transactionId, m.amount])).toEqual([
+      ['feb', 'amount', 'tfeb', 6000],
+      ['jan', 'amount', 'tjan', 5000],
+    ]);
+    expect(result.pending).toEqual([]);
+  });
+
+  it('does not tie a row more than two days away from the debit', () => {
+    const result = run({
+      bills: [bill('b1')],
+      transactions: [
+        tx('t1', '2026-11-12', -21460, { dispCode: 'D42' }),
+        tx('t2', '2026-11-14', -80, { dispCode: 'D42' }),
+        tx('t3', '2026-11-15', -80, { dispCode: 'D42' }),
+      ],
+    });
+    expect(result.matches.map((m) => [m.part, m.transactionId])).toEqual([
+      ['amount', 't1'],
+      ['commission', 't2'],
+    ]);
+    expect(result.unmatchedTransactions).toEqual(['t3']);
+  });
+
+  it('does not tie a row when two larger debits with the code are close to it', () => {
+    const result = run({
+      bills: [bill('b1')],
+      transactions: [
+        tx('t1', '2026-11-12', -21460, { dispCode: 'D42' }),
+        tx('t2', '2026-11-12', -21460, { dispCode: 'D42' }),
+        tx('t1c', '2026-11-12', -80, { dispCode: 'D42' }),
+      ],
+    });
+    expect(result.matches).toEqual([]);
+    expect(result.ambiguous).toEqual([{ itemId: 'b1', transactionIds: ['t1', 't2'] }]);
+    expect(result.unmatchedTransactions).toEqual(['t1', 't1c', 't2']);
+  });
+
+  it('keeps a refund with the code of a debit as a candidate for a credit note', () => {
+    const result = run({
+      bills: [
+        bill('b1', { dueDate: isoDate('2026-03-10') }),
+        bill('nc', { amount: cents(-3000), dueDate: isoDate('2026-03-10') }),
+      ],
+      transactions: [
+        tx('d', '2026-03-11', -21460, { dispCode: 'X' }),
+        tx('r', '2026-03-12', 3000, { dispCode: 'X' }),
+      ],
+    });
+    expect(result.matches.map((m) => [m.itemId, m.part, m.transactionId])).toEqual([
+      ['b1', 'amount', 'd'],
+      ['nc', 'amount', 'r'],
+    ]);
+    expect(result.unmatchedTransactions).toEqual([]);
+  });
+
+  it('splits the commission of a debit split by hand in proportion to its parts', () => {
+    const result = run({
+      bills: [bill('a', { amount: cents(3000) }), bill('b', { amount: cents(1000) })],
+      transactions: [
+        tx('d', '2026-11-12', -4000, { dispCode: 'D1' }),
+        tx('dc', '2026-11-12', -80, { dispCode: 'D1' }),
+      ],
+      existing: [recorded('a', 'd', 3000), recorded('b', 'd', 1000)],
+    });
+    expect(
+      result.matches.filter((m) => m.part === 'commission').map((m) => [m.itemId, m.amount]),
+    ).toEqual([
+      ['a', 60],
+      ['b', 20],
+    ]);
+  });
+
   it('ties a commission with the same disposition code to the bill of the debit', () => {
     const result = run({
       bills: [bill('b1')],
@@ -715,7 +845,7 @@ describe('matchToTransactions: shared TARI notice', () => {
     expect(result.ambiguous).toEqual([{ itemId: 'avviso-89064', transactionIds: ['t1', 't2'] }]);
   });
 
-  it('ties the commission of a shared debit to the first member of the group', () => {
+  it('splits the commission of a shared debit over the group by weight', () => {
     const result = run({
       instalments: tariShared(),
       transactions: [
@@ -723,9 +853,21 @@ describe('matchToTransactions: shared TARI notice', () => {
         tx('t1c', '2026-03-16', -80, { dispCode: 'D7' }),
       ],
     });
-    expect(result.matches.filter((m) => m.part === 'commission')).toEqual([
-      expect.objectContaining({ itemId: 'tari-berchet', transactionId: 't1c', amount: 80 }),
+    const expected = splitSharedDebit(cents(-80), [
+      { itemId: 'tari-berchet', weight: cents(10075) },
+      { itemId: 'tari-lovarini', weight: cents(8471) },
     ]);
+    expect(expected.map(({ amount }) => amount)).toEqual([43, 37]);
+    expect(
+      result.matches
+        .filter((m) => m.part === 'commission')
+        .map((m) => ({ itemId: m.itemId, amount: m.amount })),
+    ).toEqual(expected);
+  });
+
+  it('rejects a shared notice with one instalment only', () => {
+    const [berchet] = tariShared() as [Instalment, Instalment];
+    expect(() => run({ instalments: [berchet] })).toThrow(/only one/);
   });
 
   it('rejects a group whose members are paid from different accounts or due on other days', () => {
@@ -820,6 +962,32 @@ describe('validateMatches', () => {
     ];
     expect(validateMatches({ items, transactions: debit, matches: withCommission }).errors).toEqual(
       [{ code: 'transaction-over', id: 'd1' }],
+    );
+  });
+
+  it('does not let a part with the wrong sign make room on a movement', () => {
+    const items = [
+      { itemType: 'bill' as const, itemId: 'a', expected: cents(10000) },
+      { itemType: 'bill' as const, itemId: 'nc', expected: cents(-2000) },
+    ];
+    const debit = [tx('d1', '2026-03-16', -10000)];
+    const matches = [
+      part('d1', 10000, { id: 'm1', itemType: 'bill', itemId: 'a' }),
+      part('d1', -2000, { id: 'm2', itemType: 'bill', itemId: 'nc' }),
+    ];
+    expect(validateMatches({ items, transactions: debit, matches }).errors).toEqual([
+      { code: 'transaction-over', id: 'd1' },
+    ]);
+  });
+
+  it('counts an item listed twice once, and rejects it with two amounts', () => {
+    const matches = [part('t1', 6886), part('t2', 6886)];
+    expect(validateMatches({ items: [tariItem, tariItem], transactions, matches })).toEqual({
+      errors: [],
+    });
+    const other = { ...tariItem, expected: cents(100) };
+    expect(() => validateMatches({ items: [tariItem, other], transactions, matches })).toThrow(
+      RangeError,
     );
   });
 
