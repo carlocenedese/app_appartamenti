@@ -1,0 +1,33 @@
+# Licences of the Rust crates in the desktop app (apps/desktop/src-tauri), checked by
+# `cargo deny ... check licenses` in .github/workflows/build.yml. The npm packages are checked by
+# `pnpm licenses:check`; this file applies the same rule to crates (spec section 40).
+# Format: cargo-deny 0.20 (https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html).
+
+[graph]
+# Only what the installers contain: Windows, and macOS on Apple Silicon and Intel.
+targets = ["x86_64-pc-windows-msvc", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+
+[licenses]
+# Everything that is not listed is refused. That includes GPL, AGPL and LGPL (never allowed) and
+# every other licence nobody has decided on yet: see "Punti aperti" in apps/desktop/README.md.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "0BSD",
+  "CC0-1.0",
+  "Unlicense",
+  "BlueOak-1.0.0",
+  # Weak copyleft at file level. Tauri's own dependencies carry it (for example cssparser and
+  # selectors). We use those crates unmodified, so no source has to be published. pnpm
+  # licenses:check still refuses MPL-2.0 for npm packages.
+  "MPL-2.0",
+]
+
+# The app's own crate has no licence field and is never published (publish = false).
+private = { ignore = true }
+
+# The list is a policy, not an inventory: do not warn about entries no crate uses right now.
+unused-allowed-license = "allow"

@@ -92,6 +92,7 @@ export default defineConfig(
     '**/coverage/',
     '**/dist/',
     'apps/desktop/src-tauri/target/',
+    'apps/desktop/src-tauri/gen/',
     '.superpowers/',
   ]),
   js.configs.recommended,

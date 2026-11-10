@@ -27,7 +27,9 @@ const utf8 = new TextEncoder();
 
 /** The SHA-256 of `bytes` as 64 lowercase hexadecimal digits. Only the bytes a view covers count. */
 export async function hashBytes(bytes: Uint8Array): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  // The copy is only for the types: the DOM typings of `digest` take a view over a plain
+  // ArrayBuffer, and `bytes` may sit on a SharedArrayBuffer. The copy covers just the viewed bytes.
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
