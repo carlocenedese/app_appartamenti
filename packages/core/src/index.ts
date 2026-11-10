@@ -10,3 +10,4 @@ export { StaleWriteError, recordPath, writeRecord } from './store/records';
 export { findWorkspace, loadAll } from './store/load';
 export * from './journal';
 export * from './notes';
+export * from './dedupe';
