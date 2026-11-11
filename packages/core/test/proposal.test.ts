@@ -278,7 +278,7 @@ describe('proposalFromExtraction: bill', () => {
 
   describe('apartment-codes', () => {
     it('warns when known codes exist and none appears in the result', () => {
-      const ctx = context({ apartment: { id: 'apt-1', knownCodes: ['IT001E87654321'] } });
+      const ctx = context({ apartment: { id: 'apt-1', knownCodes: ['CLIENTE-0000-9'] } });
       expect(check(proposalFromExtraction(result(), ctx, ids()), 'apartment-codes')?.severity).toBe(
         'warn',
       );
@@ -589,11 +589,52 @@ describe('proposalFromExtraction: TARI', () => {
 
   it('a notice without parts is one instalment of the apartment, not shared', () => {
     const proposal = asTari(
-      proposalFromExtraction(tariResult({ parts: [] }), tariContext(), ids()),
+      proposalFromExtraction(
+        tariResult({ parts: [] }),
+        tariContext({ tariParts: undefined }),
+        ids(),
+      ),
     );
     expect(proposal.instalments).toHaveLength(1);
     expect(proposal.instalments[0]).toMatchObject({ apartmentId: 'apt-b', rata: 18546 });
     expect(proposal.instalments[0]?.shared).toBeUndefined();
+    expect(severities(proposal)).not.toContain('fail');
+    const emptyMap = proposalFromExtraction(
+      tariResult({ parts: [] }),
+      tariContext({ tariParts: {} }),
+      ids(),
+    );
+    expect(check(emptyMap, 'missing-parts')).toBeUndefined();
+  });
+
+  it('fails missing-parts when a shared notice is read without its supplies (R65)', () => {
+    const proposal = proposalFromExtraction(tariResult({ parts: [] }), tariContext(), ids());
+    expect(check(proposal, 'missing-parts')?.severity).toBe('fail');
+  });
+
+  it('fails duplicate-apartment when one apartment appears twice in the notice', () => {
+    const sameLabel = proposalFromExtraction(
+      tariResult({
+        parts: [
+          { label: 'Berchet', amount: 10075, source },
+          { label: 'BERCHET ', amount: 8471, source },
+        ],
+      }),
+      tariContext(),
+      ids(),
+    );
+    expect(check(sameLabel, 'duplicate-apartment')?.severity).toBe('fail');
+    const sameApartment = proposalFromExtraction(
+      tariResult(),
+      tariContext({
+        tariParts: { Berchet: { apartmentId: 'apt-b' }, Lovarini: { apartmentId: 'apt-b' } },
+      }),
+      ids(),
+    );
+    expect(check(sameApartment, 'duplicate-apartment')?.severity).toBe('fail');
+    expect(
+      check(proposalFromExtraction(tariResult(), tariContext(), ids()), 'duplicate-apartment'),
+    ).toBeUndefined();
   });
 
   it('fails missing-field without a due date or a total', () => {

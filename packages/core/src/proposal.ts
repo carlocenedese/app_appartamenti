@@ -388,6 +388,13 @@ function tariProposal(
 
   const instalments: Omit<Instalment, 'fileHash' | 'rev' | 'v'>[] = [];
   if (result.parts.length === 0) {
+    // A notice the app knows is shared, read without its supplies, must not go entirely to one
+    // apartment without anyone noticing (R65): the instalment is proposed but cannot pass.
+    if (Object.keys(ctx.tariParts ?? {}).length > 0) {
+      checks.push(
+        fail('missing-parts', 'Avviso condiviso letto senza le utenze: va diviso a mano.'),
+      );
+    }
     instalments.push({ id: newId(), apartmentId: ctx.apartment.id, ...base, rata: total });
   } else {
     const byLabel = new Map(
@@ -411,6 +418,16 @@ function tariProposal(
       checks.push(
         warn('parts-total', "La somma delle utenze non coincide con il totale dell'avviso."),
       );
+    }
+    const seen = new Set<string>();
+    for (const { apartmentId } of known) {
+      if (seen.has(apartmentId)) {
+        checks.push(
+          fail('duplicate-apartment', "Lo stesso appartamento compare due volte nell'avviso."),
+        );
+        break;
+      }
+      seen.add(apartmentId);
     }
     const groupId = newId();
     for (const { apartmentId, amount } of known) {
