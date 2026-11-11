@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import statistics
 import unicodedata
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -22,8 +23,8 @@ from pdfminer.high_level import extract_pages
 from pdfminer.layout import LAParams, LTAnno, LTChar, LTContainer, LTPage, LTTextLine
 
 MIN_TEXT_CHARS = 80
-# Text lines whose vertical centre differs by less than this many points are on the same row.
-# The centre, not the top, is used because the glyph box grows with the font size.
+# Text lines whose baseline differs by less than this many points are on the same row. The
+# baseline (glyph origin) is used, not the glyph box, because the box grows with the font size.
 ROW_TOLERANCE = 2.0
 DECIMALS = 2
 
@@ -60,6 +61,8 @@ class Line:
     top: float
     x1: float
     bottom: float
+    # Median baseline in points from the top: the key of reading order, independent of font size.
+    baseline: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -83,7 +86,7 @@ def _r(value: float) -> float:
     return round(float(value), DECIMALS)
 
 
-def _make_line(page: int, words: list[Word]) -> Line:
+def _make_line(page: int, words: list[Word], baseline: float) -> Line:
     return Line(
         page=page,
         text=_nfc(" ".join(word.text for word in words)),
@@ -92,6 +95,7 @@ def _make_line(page: int, words: list[Word]) -> Line:
         top=min(w.top for w in words),
         x1=max(w.x1 for w in words),
         bottom=max(w.bottom for w in words),
+        baseline=baseline,
     )
 
 
@@ -130,28 +134,27 @@ def _words_of(line: LTTextLine, page: int, height: float) -> list[Word]:
     return words
 
 
-def _centre(line: Line) -> float:
-    return (line.top + line.bottom) / 2
-
-
 def _page_lines(layout: LTPage, page: int) -> list[Line]:
     lines = []
     for text_line in _text_lines(layout):
         words = _words_of(text_line, page, layout.height)
         if words:
-            lines.append(_make_line(page, words))
-    # Reading order: rows from the top, a row being lines whose centre is within ROW_TOLERANCE of
+            baseline = statistics.median(
+                _r(layout.height - c.matrix[5]) for c in text_line if isinstance(c, LTChar)
+            )
+            lines.append(_make_line(page, words, _r(baseline)))
+    # Reading order: rows from the top, a row being lines whose baseline is within ROW_TOLERANCE of
     # the first line of the row; inside a row from left to right.
-    lines.sort(key=lambda line: (_centre(line), line.x0))
+    lines.sort(key=lambda line: (line.baseline, line.x0))
     ordered: list[Line] = []
     row: list[Line] = []
     anchor = 0.0
     for line in lines:
-        if row and _centre(line) - anchor >= ROW_TOLERANCE:
+        if row and line.baseline - anchor >= ROW_TOLERANCE:
             ordered.extend(sorted(row, key=lambda item: item.x0))
             row = []
         if not row:
-            anchor = _centre(line)
+            anchor = line.baseline
         row.append(line)
     ordered.extend(sorted(row, key=lambda item: item.x0))
     return ordered
@@ -212,6 +215,7 @@ def dump_document(doc: Document) -> dict[str, Any]:
                 "top": line.top,
                 "x1": line.x1,
                 "bottom": line.bottom,
+                "baseline": line.baseline,
                 "words": [
                     {"text": w.text, "x0": w.x0, "top": w.top, "x1": w.x1, "bottom": w.bottom}
                     for w in line.words
@@ -278,6 +282,7 @@ def load_dump(data: dict[str, Any]) -> Document:
                 top=_num(raw, "top"),
                 x1=_num(raw, "x1"),
                 bottom=_num(raw, "bottom"),
+                baseline=_num(raw, "baseline"),
             )
         )
     return Document(

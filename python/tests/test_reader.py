@@ -169,20 +169,26 @@ class ReaderTest(unittest.TestCase):
         self.assertFalse(short.has_text)
 
     def test_mixed_font_sizes_on_one_baseline_stay_in_one_row(self) -> None:
-        doc = read_pdf(self.pdf([[(72, 300, "Totale", 10), (372, 300, "98,46", 14), (72, 330, "Fine")]]))
+        doc = read_pdf(self.pdf([[(72, 300, "Totale", 10), (372, 300, "98,46", 18), (72, 330, "Fine")]]))
         self.assertEqual([line.text for line in doc.lines], ["Totale", "98,46", "Fine"])
 
-    def test_row_tolerance_is_on_the_centre(self) -> None:
-        # same size: the centre moves with the baseline
+    def test_row_tolerance_is_on_the_baseline(self) -> None:
+        # 1 pt apart in baseline: one row; 3 pt apart: two rows
         near = read_pdf(self.pdf([[(300, 301, "b"), (72, 300, "a")]]))
         self.assertEqual([line.text for line in near.lines], ["a", "b"])
         self.assertLess(abs(near.lines[0].top - near.lines[1].top), 2)
         far = read_pdf(self.pdf([[(300, 297, "b"), (72, 300, "a")]]))
         self.assertEqual([line.text for line in far.lines], ["b", "a"])
 
+    def test_rows_three_points_apart_are_different_rows(self) -> None:
+        # a raised small digit (3 pt up) is a different baseline: two rows, ordered by baseline
+        doc = read_pdf(self.pdf([[(72, 300, "a"), (300, 297, "b")]]))
+        self.assertEqual([line.text for line in doc.lines], ["b", "a"])
+        self.assertAlmostEqual(doc.lines[1].baseline - doc.lines[0].baseline, 3, delta=0.02)
+
     def test_right_aligned_amount_column(self) -> None:
         rows = [(72, 100 + 20 * i, f"Voce {i}") for i in range(4)]
-        amounts = [(450 + 3 * (i % 2), 100 + 20 * i, f"{i},00", 10 + 2 * (i % 2)) for i in range(4)]
+        amounts = [(450 + 3 * (i % 2), 100 + 20 * i, f"{i},00", 10 + 8 * (i % 2)) for i in range(4)]
         doc = read_pdf(self.pdf([rows + amounts]))
         self.assertEqual(
             [line.text for line in doc.lines],
