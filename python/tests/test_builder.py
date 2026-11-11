@@ -20,7 +20,7 @@ sys.path.insert(0, str(PYTHON_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pdfmaker  # noqa: E402
-from bollette_pdf.builder import Selection, build_profile, shape_pattern  # noqa: E402
+from bollette_pdf.builder import Selection, build_profile, selected_value, shape_pattern  # noqa: E402
 from bollette_pdf.extract import extract  # noqa: E402
 from bollette_pdf.reader import read_pdf  # noqa: E402
 from bollette_pdf.schemas import check_profile_rules, validate  # noqa: E402
@@ -369,9 +369,99 @@ class RejectionTest(BuilderTestCase):
         )
 
 
+class SafetyTest(BuilderTestCase):
+    """Rulings R61 and R62: a profile never reads a wrong value with `high`."""
+
+    def amount_profile(self, amount_line: str):
+        doc = self.doc(
+            [(72, 60, "Gas Inventato"), (72, 120, amount_line), (72, 400, FILLER), (72, 415, FILLER)]
+        )
+        amount = amount_line.split(": ", 1)[1]
+        return self.build(
+            doc, {"amount": select(doc, amount)}, recognise=[select(doc, "Gas Inventato")]
+        )
+
+    def read(self, profile, *items):
+        doc = self.doc([(72, 60, "Gas Inventato"), *items, (72, 400, FILLER), (72, 415, FILLER)])
+        return extract(doc, [profile], AT)["fields"]
+
+    def test_space_as_thousands_separator_is_missing(self) -> None:
+        profile = self.amount_profile("Totale da pagare: 98,46 €")
+        field = self.read(profile, (72, 120, "Totale da pagare: 1 234,56 €"))["amount"]
+        self.assertEqual((field["value"], field["confidence"]), (None, "missing"))
+        same = self.read(profile, (72, 120, "Totale da pagare: 1.234,56 €"))["amount"]
+        self.assertEqual((same["value"], same["confidence"]), (123456, "high"))
+
+    def test_decimal_point_shape_does_not_read_a_comma_thousands_amount(self) -> None:
+        profile = self.amount_profile("Totale da pagare: 98.46 €")
+        field = self.read(profile, (72, 120, "Totale da pagare: 1,234.56 €"))["amount"]
+        self.assertEqual((field["value"], field["confidence"]), (None, "missing"))
+
+    def test_same_line_number_reads_only_the_selected_words(self) -> None:
+        doc = self.doc(
+            [
+                (72, 60, "Gas Inventato"),
+                (72, 100, "Fattura n. AI-0042"),
+                (300, 100, "Pagina 1 di 2"),
+                (72, 400, FILLER),
+            ]
+        )
+        profile = self.build(
+            doc, {"number": select(doc, "AI-0042")}, recognise=[select(doc, "Gas Inventato")]
+        )
+        self.assertEqual(profile["fields"]["number"]["rules"][0]["pattern"], r"^[\s:€]*(\S+)")
+        field = self.read(profile, (72, 100, "Fattura n. AI-2026-000107 Pagina 1 di 2"))["number"]
+        self.assertEqual((field["value"], field["confidence"]), ("AI-2026-000107", "high"))
+
+    def test_upper_case_period(self) -> None:
+        doc = self.doc(
+            [
+                (72, 60, "Gas Inventato"),
+                (72, 100, "Periodo: DAL 01/09/2026 AL 31/10/2026"),
+                (72, 400, FILLER),
+            ]
+        )
+        profile = self.build(
+            doc,
+            {"period": select(doc, "DAL 01/09/2026 AL 31/10/2026")},
+            recognise=[select(doc, "Gas Inventato")],
+        )
+        fields = self.read(profile, (72, 100, "Periodo: dal 01/10/2026 al 30/11/2026"))
+        self.assertEqual(fields["periodStart"]["value"], "2026-10-01")
+        self.assertEqual(fields["periodEnd"]["confidence"], "high")
+
+    def assertNoStableAnchor(self, items, value: str) -> None:
+        texts = ["Gas Inventato", *(item[2] for item in items)]
+        doc = self.doc([(72, 60, texts[0]), *items, (72, 400, FILLER)])
+        with self.assertRaises(ValueError) as caught:
+            self.build(
+                doc, {"amount": select(doc, value)}, recognise=[select(doc, "Gas Inventato")]
+            )
+        message = str(caught.exception)
+        self.assertIn("amount", message)
+        self.assertNoDocumentText(message, texts)
+        for word in ("05/11/2026", "87,10", "120,00", "98,46"):
+            self.assertNotIn(word, message)
+
+    def test_date_in_the_label_is_never_an_anchor(self) -> None:
+        self.assertNoStableAnchor([(72, 120, "Totale bolletta del 05/11/2026: 98,46 €")], "98,46 €")
+
+    def test_value_column_of_a_table_row_is_never_an_anchor(self) -> None:
+        self.assertNoStableAnchor(
+            [(72, 120, "Totale"), (300, 120, "87,10"), (420, 120, "120,00")], "120,00"
+        )
+
+    def test_no_label_at_all(self) -> None:
+        self.assertNoStableAnchor([(400, 120, "98,46 €")], "98,46 €")
+        self.assertNoStableAnchor([(400, 106, "2026"), (400, 120, "98,46 €")], "98,46 €")
+
+
 class ShapePatternTest(unittest.TestCase):
-    def assertReads(self, pattern: str, text: str, expected: str) -> None:
+    def assertReads(self, pattern: str, text: str, expected: str | None) -> None:
         match = re.search(pattern, text)
+        if expected is None:
+            self.assertIsNone(match, (pattern, text))
+            return
         self.assertIsNotNone(match, (pattern, text))
         self.assertEqual(match.group(1), expected)
 
@@ -384,59 +474,81 @@ class ShapePatternTest(unittest.TestCase):
         pattern = shape_pattern("98,46", "euro")
         self.assertAllowed(pattern, "euro", "amount")
         self.assertReads(pattern, "98,46 €", "98,46")
-        self.assertReads(pattern, "€ 1.234,50", "1.234,50")
+        self.assertReads(pattern, ": € 1.234,50", "1.234,50")
         self.assertReads(pattern, "-12,00", "-12,00")
-        self.assertIsNone(re.search(pattern, "98 euro"))
+        self.assertReads(pattern, "98 euro", None)
+        self.assertReads(pattern, "1 234,56 €", None)
+        self.assertReads(pattern, "98,467", None)
+        self.assertReads(pattern, "Totale 98,46", None)
         self.assertEqual(shape_pattern("1.234,50 €", "euro"), pattern)
+        self.assertEqual(shape_pattern("98,46", "euro", "same-line"), pattern)
 
     def test_euro_with_a_decimal_point(self) -> None:
         pattern = shape_pattern("98.46", "euro")
-        self.assertReads(pattern, "Totale 12.30", "12.30")
+        self.assertReads(pattern, "12.30 €", "12.30")
+        self.assertReads(pattern, "1,234.56", None)
 
     def test_date(self) -> None:
         pattern = shape_pattern("10/11/2026", "date")
-        self.assertEqual(pattern, r"(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})")
+        self.assertEqual(pattern, r"^[\s:€]*(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})(?![\d.,])")
         self.assertAllowed(pattern, "date", "dueDate")
-        self.assertReads(pattern, "entro il 5.12.26", "5.12.26")
+        self.assertReads(pattern, "5.12.26 entro", "5.12.26")
+        self.assertReads(pattern, "entro il 5.12.26", None)
 
     def test_textual_date(self) -> None:
         pattern = shape_pattern("10 novembre 2026", "date")
         self.assertAllowed(pattern, "date", "dueDate")
-        self.assertReads(pattern, "entro il 5 dicembre 2026", "5 dicembre 2026")
+        self.assertReads(pattern, "5 dicembre 2026", "5 dicembre 2026")
 
     def test_date_range(self) -> None:
         pattern = shape_pattern("dal 01/09/2026 al 31/10/2026", "date-range")
         self.assertAllowed(pattern, "date-range", "period")
         self.assertReads(pattern, "dal 1/10/2026 al 30/11/2026", "dal 1/10/2026 al 30/11/2026")
+        self.assertReads(pattern, "DAL 1/10/2026 AL 30/11/2026", "DAL 1/10/2026 AL 30/11/2026")
         self.assertReads(pattern, "1/10/2026 al 30/11/2026", "1/10/2026 al 30/11/2026")
+        upper = shape_pattern("DAL 01/09/2026 AL 31/10/2026", "date-range")
+        self.assertEqual(upper, pattern)
         dash = shape_pattern("01/09/2026 - 31/10/2026", "date-range")
         self.assertAllowed(dash, "date-range", "period")
-        self.assertReads(dash, "x 01/10/2026 - 30/11/2026", "01/10/2026 - 30/11/2026")
-        self.assertIsNone(re.search(dash, "01/10/2026 al 30/11/2026"))
+        self.assertReads(dash, "01/10/2026 - 30/11/2026", "01/10/2026 - 30/11/2026")
+        self.assertReads(dash, "01/10/2026 al 30/11/2026", None)
 
     def test_quantity(self) -> None:
         pattern = shape_pattern("1.234 Smc", "quantity")
         self.assertAllowed(pattern, "quantity", "consumption")
-        self.assertReads(pattern, "Consumo 87,5 kWh", "87,5 kWh")
+        self.assertReads(pattern, "87,5 kWh", "87,5 kWh")
         self.assertReads(pattern, "12 m³", "12 m³")
 
     def test_text(self) -> None:
-        pattern = shape_pattern("AI-2026-0042", "text")
-        self.assertEqual(pattern, r"(\S+(?: \S+)*)")
-        self.assertAllowed(pattern, "text", "number")
+        whole = shape_pattern("AI-2026-0042", "text")
+        self.assertEqual(whole, r"^[\s:€]*(\S+(?: \S+)*)")
+        self.assertAllowed(whole, "text", "number")
+        one = shape_pattern("AI-2026-0042", "text", "same-line")
+        self.assertEqual(one, r"^[\s:€]*(\S+)")
+        two = shape_pattern("AI 0042", "text", "same-line")
+        self.assertAllowed(two, "text", "number")
+        self.assertReads(two, "AB 0107 Pagina 1 di 2", "AB 0107")
 
-    def test_unreadable_text_raises(self) -> None:
+    def test_unreadable_text_raises_without_quoting_it(self) -> None:
         for text, value_type in (
             ("98", "euro"),
-            ("abc", "date"),
+            ("Mario Rossi 12", "euro"),
+            ("Mario Rossi", "date"),
             ("10/11/2026", "date-range"),
             ("123", "quantity"),
             ("", "text"),
             ("10/11/2026", "colour"),
         ):
             with self.subTest(text=text, value_type=value_type):
-                with self.assertRaises(ValueError):
+                with self.assertRaises(ValueError) as caught:
                     shape_pattern(text, value_type)
+                message = str(caught.exception)
+                for word in text.split():
+                    self.assertNotIn(word, message)
+                with self.assertRaises(ValueError) as caught:
+                    selected_value(text, value_type)
+                for word in text.split():
+                    self.assertNotIn(word, str(caught.exception))
 
 
 class CommandTest(BuilderTestCase):

@@ -9,11 +9,12 @@ The screen of plan 4 lets the user drag a box over text: `build_profile` turns t
   MIN_RECOGNISE_CHARS characters, duplicates dropped);
 - for a field, the anchor is the text nearest to the LEFT of the selection on its row: the 1 to
   MAX_ANCHOR_WORDS words just before it in its own line (`same-line`), or the last words of the
-  nearest line on the row that ends before it (`right`); with nothing on the left, words of the
-  line just above that overlaps it horizontally (`below`). The shortest anchor that reads the
-  selected value back with confidence `high` wins;
-- the pattern generalises the shape of the selected text (`shape_pattern`), so that a bill with the
-  same layout and other values is read too;
+  lines on the row that end before it, nearest first (`right`); with nothing on the left, words
+  of the line just above that overlaps it horizontally (`below`). A window with a value-shaped
+  word (a digit, an amount, a date, a quantity) is never an anchor (ruling R62). The shortest
+  anchor that reads the selected value back with confidence `high` wins;
+- the pattern generalises the shape of the selected text (`shapes.shape_pattern`, ruling R61),
+  so that a bill with the same layout and other values is read too;
 - the built profile is read back with `extract` on the same document: every field must give the
   selected value with `high`, otherwise ValueError.
 
@@ -24,7 +25,6 @@ No network, no clock: `now` is an argument (validated, not stored: the record ha
 from __future__ import annotations
 
 import math
-import re
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -32,15 +32,18 @@ from typing import Any
 
 from .extract import extract
 from .locate import BELOW_ROWS, Layout, word_key
-from .parse import (
-    parse_date,
-    parse_date_range,
-    parse_euro,
-    parse_quantity,
-    valid_iso_at,
-)
+from .parse import valid_iso_at
 from .reader import ROW_TOLERANCE, Document, Word
 from .schemas import FIELD_VALUE_TYPES, validate
+from .shapes import selected_value, shape_pattern, value_shaped
+
+__all__ = [
+    "ProfileDataError",
+    "Selection",
+    "build_profile",
+    "selected_value",
+    "shape_pattern",
+]
 
 MAX_ANCHOR_WORDS = 4
 MIN_RECOGNISE_CHARS = 3
@@ -58,92 +61,6 @@ class Selection:
 
     page: int
     box: tuple[float, float, float, float]
-
-
-# --- Patterns -----------------------------------------------------------------------------------
-
-_MINUS = "[-−–]"
-_EURO_COMMA = rf"((?:{_MINUS}\s?)?(?:\d{{1,3}}(?:\.\d{{3}})+|\d+),\d{{2}})(?!\d)"
-_EURO_POINT = rf"((?:{_MINUS}\s?)?\d+\.\d{{2}})(?!\d)"
-_NUMERIC_DATE = r"\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4}"
-_TEXT_DATE = r"\d{1,2}[°º]?\s+[A-Za-z]+\.?\s+\d{2,4}"
-_QUANTITY = r"(\d[\d.]*(?:,\d+)?\s*[A-Za-zµ]+[²³]?)"
-_TEXT = r"(\S+(?: \S+)*)"
-_RANGE_SEPARATORS = {
-    "al": r"\s+[Aa]l\s+",
-    "-": r"\s*-\s*",
-    "–": r"\s*–\s*",
-    "—": r"\s*—\s*",
-    "/": r"\s*/\s*",
-}
-_RANGE_SHAPE = re.compile(
-    rf"(?:dal\s+)?({_NUMERIC_DATE}|{_TEXT_DATE})(\s+al\s+|\s*[-–—/]\s*)({_NUMERIC_DATE}|{_TEXT_DATE})",
-    re.IGNORECASE,
-)
-
-
-def _date_shape(text: str) -> str:
-    if re.fullmatch(_NUMERIC_DATE, text):
-        return _NUMERIC_DATE
-    if re.fullmatch(_TEXT_DATE, text):
-        return _TEXT_DATE
-    raise ValueError("Data non leggibile.")
-
-
-def selected_value(text: str, value_type: str) -> Any:
-    """The value of a selected text read as `value_type`, as `extract` reports it."""
-    if value_type == "euro":
-        return parse_euro(text)
-    if value_type == "date":
-        return parse_date(text)
-    if value_type == "date-range":
-        return parse_date_range(text)
-    if value_type == "quantity":
-        quantity, unit = parse_quantity(text)
-        if unit is None:
-            raise ValueError("Quantità senza unità.")
-        return {"quantity": quantity, "unit": unit}
-    if value_type == "text":
-        if not text.strip():
-            raise ValueError("Testo vuoto.")
-        return text.strip()
-    raise ValueError("Tipo di valore sconosciuto.")
-
-
-def _raw_shape(text: str, value_type: str) -> str:
-    if value_type == "euro":
-        return _EURO_COMMA if "," in text else _EURO_POINT
-    if value_type == "date":
-        return f"({_date_shape(text)})"
-    if value_type == "date-range":
-        match = _RANGE_SHAPE.fullmatch(text)
-        if match is None:
-            raise ValueError("Periodo non leggibile.")
-        separator = _RANGE_SEPARATORS[match.group(2).strip().lower()]
-        start, end = _date_shape(match.group(1)), _date_shape(match.group(3))
-        return f"((?:[Dd]al\\s+)?{start}{separator}{end})"
-    if value_type == "quantity":
-        return _QUANTITY
-    return _TEXT
-
-
-def shape_pattern(text: str, value_type: str) -> str:
-    """A pattern with one capture group that reads values shaped like `text`.
-
-    Raises ValueError when `text` cannot be read as `value_type`, or when the pattern would not
-    read it back to the same value.
-    """
-    text = unicodedata.normalize("NFC", text).strip()
-    value = selected_value(text, value_type)
-    pattern = _raw_shape(text, value_type)
-    match = re.search(pattern, text)
-    try:
-        same = match is not None and selected_value(match.group(1), value_type) == value
-    except ValueError:
-        same = False
-    if not same:
-        raise ValueError("Il testo selezionato non ha una forma riconoscibile.")
-    return pattern
 
 
 # --- Selections ---------------------------------------------------------------------------------
@@ -222,8 +139,14 @@ def _anchor_options(layout: Layout, line_index: int, word_index: int) -> list[_O
         and other.x1 <= start
     ]
     if on_left:
-        nearest = max(on_left, key=lambda index: (layout.lines[index].x1, -index))
-        return _windows(nearest, len(layout.lines[nearest].words), "right")
+        # Nearest first; a further-left line (the label of a table row) when the nearer ones
+        # are values (ruling R62).
+        on_left.sort(key=lambda index: (-layout.lines[index].x1, index))
+        return [
+            option
+            for index in on_left
+            for option in _windows(index, len(layout.lines[index].words), "right")
+        ]
     row = layout.row_of[line_index]
     for above in range(row - 1, max(row - 1 - BELOW_ROWS, -1), -1):
         options: list[_Option] = []
@@ -246,6 +169,9 @@ def _anchor_options(layout: Layout, line_index: int, word_index: int) -> list[_O
 def _anchor_text(layout: Layout, option: _Option) -> str | None:
     words = layout.lines[option.line].words[option.first : option.last + 1]
     if not any(word_key(word.text) for word in words):
+        return None
+    # Ruling R62: a value (date, amount, number...) changes from bill to bill: never an anchor.
+    if any(value_shaped(word.text) for word in words):
         return None
     return unicodedata.normalize("NFC", " ".join(word.text for word in words))
 
@@ -293,16 +219,11 @@ def _build_field(
     value_type = FIELD_VALUE_TYPES[name]
     try:
         expected = selected_value(text, value_type)
-        patterns = [shape_pattern(text, value_type)]
+        shape_pattern(text, value_type)
     except ValueError:
         raise ValueError(
             f"Il testo selezionato per «{name}» non è leggibile con il tipo del campo."
         ) from None
-    if value_type == "text":
-        # The whole rest of the cell first; then exactly the selected number of words, for a
-        # value followed by other text on its line.
-        extra = len(picked) - 1
-        patterns.append(r"(\S+)" if extra == 0 else rf"(\S+(?: \S+){{{extra}}})")
     line_index, word_index = picked[0]
     first_word = doc.lines[line_index].words[word_index]
     options = _anchor_options(layout, line_index, word_index)
@@ -312,17 +233,17 @@ def _build_field(
         if anchor is None or not _leads_to(layout, option, anchor, first_word):
             continue
         reachable = True
-        for pattern in patterns:
-            spec = {
-                "required": name in REQUIRED_FIELDS,
-                "rules": [_rule(anchor, option.position, pattern, value_type)],
-            }
-            result = extract(doc, [dict(base, fields={name: spec})], now)
-            if _reads_back(result, name, expected):
-                return spec
+        pattern = shape_pattern(text, value_type, option.position)
+        spec = {
+            "required": name in REQUIRED_FIELDS,
+            "rules": [_rule(anchor, option.position, pattern, value_type)],
+        }
+        result = extract(doc, [dict(base, fields={name: spec})], now)
+        if _reads_back(result, name, expected):
+            return spec
     if not reachable:
         raise ValueError(
-            f"Per «{name}» non c'è un'etichetta che porti alla selezione, a sinistra sulla "
+            f"Per «{name}» nessuna etichetta stabile porta alla selezione, a sinistra sulla "
             "stessa riga o subito sopra."
         )
     raise ValueError(
