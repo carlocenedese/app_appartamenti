@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+<title>14 Lista serena · Home</title>
+<defs><filter id="sh" x="-20%" y="-40%" width="140%" height="180%"><feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#1B1E23" flood-opacity="0.12"/></filter><filter id="sh2" x="-10%" y="-30%" width="120%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1B1E23" flood-opacity="0.18"/></filter></defs>
+<rect x="0" y="0" width="1440" height="900" rx="0" fill="#FFFFFF"/>
+<rect x="0" y="0" width="248" height="900" rx="0" fill="#F5F6F8"/>
+<rect x="24" y="26" width="28" height="28" rx="8" fill="#1D5BD6"/>
+<circle cx="38" cy="40" r="8" fill="none" stroke="#FFFFFF" stroke-width="1.6"/><path d="M35.1 40.1 L37.2 42.2 L41.1 37.9" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="62" y="39" font-size="16" font-weight="700" fill="#1B1E23">Bollette</text>
+<text x="62" y="55" font-size="12" font-weight="400" fill="#555B65">tre appartamenti a Padova</text>
+<rect x="12" y="102" width="224" height="36" rx="8" fill="#E6EDFB"/>
+<path d="M28 119 L36 112 L44 119 V128 H28 Z M34 128 V122 H38 V128" fill="none" stroke="#1D5BD6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="125" font-size="14.5" font-weight="600" fill="#1B1E23">Home</text>
+<path d="M28 161 L31 153 H41 L44 161 V168 H28 Z M28 161 H33 L34.5 163.5 H37.5 L39 161 H44" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="165" font-size="14.5" font-weight="500" fill="#1B1E23">Da rivedere</text>
+<path d="M29 208 V194 H39 V208 M39 199 H43 V208 M28 208 H44 M32 198 H36 M32 202 H36" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="205" font-size="14.5" font-weight="500" fill="#1B1E23">Appartamenti</text>
+<text x="224" y="165" font-size="13" font-weight="600" fill="#555B65" text-anchor="end">3</text>
+<text x="56" y="236" font-size="14" font-weight="400" fill="#1B1E23">Berchet</text>
+<circle cx="222" cy="231" r="6" fill="#0D5C31"/><path d="M219.6 231.1 L221.3 232.8 L224.6 229.3" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="270" font-size="14" font-weight="400" fill="#1B1E23">Lovarini</text>
+<path d="M222 258.7 L228.3 270.1 L215.7 270.1 Z" fill="#6B4600" stroke="#6B4600" stroke-width="1.5" stroke-linejoin="round"/><line x1="222" y1="262.9" x2="222" y2="266.8" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round"/><circle cx="222" cy="269.1" r="1" fill="#FFFFFF"/>
+<text x="56" y="304" font-size="14" font-weight="400" fill="#1B1E23">Pulci</text>
+<line x1="217.8" y1="293.0" x2="217.8" y2="305.0" stroke="#9C1F15" stroke-width="2" stroke-linecap="round"/><path d="M217.8 293.0 H227.1 L224.1 296.3 L227.1 299.6 H217.8 Z" fill="#9C1F15" stroke="#9C1F15" stroke-width="1" stroke-linejoin="round"/>
+<text x="28" y="352" font-size="12" font-weight="600" fill="#555B65">Banca e fisco</text>
+<rect x="28" y="376" width="16" height="14" rx="3" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M28 381 H44 M32.5 374 V377.5 M39.5 374 V377.5" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="387" font-size="14.5" font-weight="500" fill="#1B1E23">Scadenze e pagamenti</text>
+<path d="M29 419 H42 M38 415 L42 419 L38 423 M43 426 H30 M34 422 L30 426 L34 430" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="427" font-size="14.5" font-weight="500" fill="#1B1E23">Saldo tra conti</text>
+<path d="M30 454 H42 V470 L39 468 L36 470 L33 468 L30 470 Z M33 459 H39 M33 463 H39" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="467" font-size="14.5" font-weight="500" fill="#1B1E23">Tasse e stime</text>
+<circle cx="36" cy="860" r="2.6" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="36" cy="860" r="7" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3.2 2.3"/>
+<text x="56" y="865" font-size="14.5" font-weight="500" fill="#1B1E23">Impostazioni</text>
+<rect x="288" y="16" width="276" height="34" rx="9" fill="#F2F4F7"/>
+<text x="304" y="38" font-size="14" font-weight="600" fill="#1B1E23">Tutti gli appartamenti · In corso</text>
+<path d="M542 30 l5 5 l5 -5" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="580" y="16" width="380" height="34" rx="9" fill="#F2F4F7"/>
+<circle cx="601" cy="32" r="5.5" fill="none" stroke="#555B65" stroke-width="1.6"/><line x1="605" y1="36" x2="609" y2="40" stroke="#555B65" stroke-width="1.6" stroke-linecap="round"/>
+<text x="620" y="38" font-size="14" font-weight="400" fill="#555B65">Cerca bollette, inquilini, scadenze</text>
+<rect x="898" y="23" width="50" height="20" rx="5" fill="#FFFFFF"/>
+<text x="923" y="37" font-size="11.5" font-weight="600" fill="#555B65" text-anchor="middle">Ctrl K</text>
+<circle cx="1150" cy="33" r="6" fill="#0D5C31"/><path d="M1147.6 33.1 L1149.3 34.8 L1152.6 31.3" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1163" y="38" font-size="13" font-weight="400" fill="#555B65">Sincronizzato · 09:42</text>
+<text x="1360" y="38" font-size="14" font-weight="600" fill="#1B1E23" text-anchor="end">Carlo</text>
+<circle cx="1384" cy="33" r="15" fill="#E6EDFB"/><text x="1384" y="38.5" font-size="14" font-weight="700" fill="#1D5BD6" text-anchor="middle">C</text>
+<text x="296" y="108" font-size="13" font-weight="600" fill="#555B65">Mercoledì 11 novembre 2026</text>
+<text x="294" y="146" font-size="32" font-weight="700" fill="#1B1E23" letter-spacing="-0.6">Buongiorno, Carlo</text>
+<text x="296" y="176" font-size="15" font-weight="400" fill="#555B65">Tre documenti da confermare e una scadenza passata a Pulci. Il resto è in ordine.</text>
+<rect x="1224" y="116" width="168" height="46" rx="11" fill="#1D5BD6" filter="url(#sh)"/>
+<text x="1308" y="145" font-size="15.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">Rivedi (3)</text>
+<text x="1392" y="184" font-size="12.5" font-weight="400" fill="#555B65" text-anchor="end">Invio per iniziare</text>
+<rect x="296" y="212" width="352" height="80" rx="12" fill="#F5F6F8"/>
+<text x="316" y="244" font-size="17" font-weight="700" fill="#1B1E23">Berchet</text>
+<text x="628" y="244" font-size="16" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 412,30</text>
+<text x="552.9" y="244" font-size="12.5" font-weight="400" fill="#555B65" text-anchor="end">saldo</text>
+<circle cx="324" cy="265.5" r="7" fill="#0D5C31"/><path d="M321.2 265.6 L323.2 267.6 L327.0 263.5" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="338" y="270" font-size="13.5" font-weight="600" fill="#0D5C31">Tutto a posto</text>
+<text x="628" y="270" font-size="13" font-weight="400" fill="#555B65" text-anchor="end">5 su 5 in regola</text>
+<rect x="668" y="212" width="352" height="80" rx="12" fill="#F5F6F8"/>
+<text x="688" y="244" font-size="17" font-weight="700" fill="#1B1E23">Lovarini</text>
+<text x="1000" y="244" font-size="16" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 188,75</text>
+<text x="926.9" y="244" font-size="12.5" font-weight="400" fill="#555B65" text-anchor="end">saldo</text>
+<path d="M696 258.2 L703.4 271.5 L688.6 271.5 Z" fill="#6B4600" stroke="#6B4600" stroke-width="1.5" stroke-linejoin="round"/><line x1="696" y1="263.1" x2="696" y2="267.6" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round"/><circle cx="696" cy="270.3" r="1" fill="#FFFFFF"/><text x="710" y="270" font-size="13.5" font-weight="600" fill="#6B4600">2 cose da fare</text>
+<text x="1000" y="270" font-size="13" font-weight="400" fill="#555B65" text-anchor="end">4 su 4 in regola</text>
+<rect x="1040" y="212" width="352" height="80" rx="12" fill="#F5F6F8"/>
+<text x="1060" y="244" font-size="17" font-weight="700" fill="#1B1E23">Pulci</text>
+<text x="1372" y="244" font-size="16" font-weight="600" fill="#9C1F15" text-anchor="end" font-variant-numeric="tabular-nums">- € 63,00</text>
+<text x="1292.0" y="244" font-size="12.5" font-weight="400" fill="#555B65" text-anchor="end">saldo</text>
+<line x1="1063.1" y1="258.5" x2="1063.1" y2="272.5" stroke="#9C1F15" stroke-width="2" stroke-linecap="round"/><path d="M1063.1 258.5 H1074.0 L1070.5 262.4 L1074.0 266.2 H1063.1 Z" fill="#9C1F15" stroke="#9C1F15" stroke-width="1" stroke-linejoin="round"/><text x="1082" y="270" font-size="13.5" font-weight="600" fill="#9C1F15">1 scadenza passata</text>
+<text x="1372" y="270" font-size="13" font-weight="400" fill="#555B65" text-anchor="end">3 su 4 in regola</text>
+<text x="296" y="352" font-size="22" font-weight="700" fill="#1B1E23" letter-spacing="-0.3">Cose da fare</text>
+<text x="436" y="352" font-size="15" font-weight="500" fill="#555B65">4</text>
+<rect x="708" y="330" width="148" height="32" rx="9" fill="#F2F4F7"/>
+<rect x="711" y="333" width="70" height="26" rx="7" fill="#FFFFFF" filter="url(#sh)"/>
+<text x="746" y="351" font-size="13" font-weight="600" fill="#1B1E23" text-anchor="middle">Tutti</text>
+<text x="818" y="351" font-size="13" font-weight="500" fill="#555B65" text-anchor="middle">Per me</text>
+<circle cx="302" cy="391" r="4" fill="#1D5BD6"/><text x="314" y="396" font-size="13" font-weight="700" fill="#1B1E23">Oggi</text>
+<circle cx="310" cy="432" r="11" fill="none" stroke="#80868F" stroke-width="1.5"/>
+<text x="336" y="436" font-size="15" font-weight="500" fill="#1B1E23">Bolletta Hera gas di Lovarini da confermare</text>
+<text x="336" y="456" font-size="13" font-weight="400" fill="#555B65">Lovarini · Da rivedere · arrivata ieri</text>
+<path d="M795.4 424.2 L802.8 437.5 L788.0 437.5 Z" fill="#6B4600" stroke="#6B4600" stroke-width="1.5" stroke-linejoin="round"/><line x1="795.4" y1="429.1" x2="795.4" y2="433.6" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round"/><circle cx="795.4" cy="436.3" r="1" fill="#FFFFFF"/><text x="856" y="436" font-size="13.5" font-weight="600" fill="#6B4600" text-anchor="end">Da fare</text>
+<line x1="336" y1="472" x2="856" y2="472" stroke="#ECEEF2" stroke-width="1"/>
+<circle cx="310" cy="496" r="11" fill="none" stroke="#80868F" stroke-width="1.5"/>
+<text x="336" y="500" font-size="15" font-weight="500" fill="#1B1E23">Affitto di novembre non ricevuto — Giulia R. (Pulci)</text>
+<text x="336" y="520" font-size="13" font-weight="400" fill="#555B65">Pulci · atteso entro il 5/11 · non trovato nell’estratto conto</text>
+<line x1="783.6" y1="488.5" x2="783.6" y2="502.5" stroke="#9C1F15" stroke-width="2" stroke-linecap="round"/><path d="M783.6 488.5 H794.5 L791.0 492.4 L794.5 496.2 H783.6 Z" fill="#9C1F15" stroke="#9C1F15" stroke-width="1" stroke-linejoin="round"/><text x="856" y="500" font-size="13.5" font-weight="600" fill="#9C1F15" text-anchor="end">Scaduto</text>
+<line x1="336" y1="536" x2="856" y2="536" stroke="#ECEEF2" stroke-width="1"/>
+<circle cx="310" cy="560" r="11" fill="none" stroke="#80868F" stroke-width="1.5"/>
+<text x="336" y="564" font-size="15" font-weight="500" fill="#1B1E23">Conguaglio Pulci da inviare</text>
+<text x="336" y="584" font-size="13" font-weight="400" fill="#555B65">Pulci · calcolato, manca il messaggio agli inquilini</text>
+<path d="M795.4 552.2 L802.8 565.5 L788.0 565.5 Z" fill="#6B4600" stroke="#6B4600" stroke-width="1.5" stroke-linejoin="round"/><line x1="795.4" y1="557.0" x2="795.4" y2="561.6" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round"/><circle cx="795.4" cy="564.3" r="1" fill="#FFFFFF"/><text x="856" y="564" font-size="13.5" font-weight="600" fill="#6B4600" text-anchor="end">Da fare</text>
+<circle cx="302" cy="631" r="4" fill="none" stroke="#555B65" stroke-width="1.5"/><text x="314" y="636" font-size="13" font-weight="700" fill="#1B1E23">Prossimi</text>
+<circle cx="310" cy="672" r="11" fill="none" stroke="#80868F" stroke-width="1.5"/>
+<text x="336" y="676" font-size="15" font-weight="500" fill="#1B1E23">Rata condominio Lovarini in scadenza il 10/12</text>
+<text x="336" y="696" font-size="13" font-weight="400" fill="#555B65">Lovarini · € 320,00 · tra 29 giorni</text>
+<rect x="788" y="669" width="16" height="14" rx="3" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M788 674 H804 M792.5 667 V670.5 M799.5 667 V670.5" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="856" y="680" font-size="13.5" font-weight="500" fill="#555B65" text-anchor="end">10 dic</text>
+<text x="296" y="756" font-size="13" font-weight="400" fill="#555B65">Spunta una cosa quando è fatta: scorre via e per 8 secondi puoi annullarla.</text>
+<text x="936" y="352" font-size="22" font-weight="700" fill="#1B1E23" letter-spacing="-0.3">Operazioni recenti</text>
+<circle cx="950" cy="402" r="14" fill="#F2F4F7"/><text x="950" y="407" font-size="13" font-weight="700" fill="#555B65" text-anchor="middle">N</text>
+<text x="976" y="404" font-size="14.5" font-weight="500" fill="#1B1E23">Nicola ha confermato la bolletta luce di Berchet</text>
+<text x="976" y="424" font-size="13" font-weight="400" fill="#555B65">oggi · 09:42</text>
+<circle cx="950" cy="466" r="14" fill="#F2F4F7"/><text x="950" y="471" font-size="13" font-weight="700" fill="#555B65" text-anchor="middle">C</text>
+<text x="976" y="468" font-size="14.5" font-weight="500" fill="#1B1E23">Carlo ha importato l’estratto conto di ottobre</text>
+<text x="976" y="488" font-size="13" font-weight="400" fill="#555B65">ieri · 18:10</text>
+<circle cx="950" cy="530" r="14" fill="#F2F4F7"/><text x="950" y="535" font-size="13" font-weight="700" fill="#555B65" text-anchor="middle">N</text>
+<text x="976" y="532" font-size="14.5" font-weight="500" fill="#1B1E23">Nicola ha registrato l’affitto di Sofia B.</text>
+<text x="976" y="552" font-size="13" font-weight="400" fill="#555B65">ieri · 11:05</text>
+<text x="976" y="588" font-size="14" font-weight="600" fill="#1D5BD6">Tutto il registro</text>
+<path d="M1094 578 l5 5 l-5 5" fill="none" stroke="#1D5BD6" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="296" y="868" font-size="12.5" font-weight="400" fill="#555B65">Ultimo estratto conto importato: ottobre 2026 · dati salvati sul computer e sincronizzati</text>
+</svg>

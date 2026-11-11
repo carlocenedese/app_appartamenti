@@ -194,14 +194,22 @@
       max-width: 260px;
     }
   }
+
+  .round { font: 700 clamp(26px, 4vw, 40px)/1.1 var(--display); margin: 72px 0 8px; scroll-margin-top: 16px; }
+  .round-note { color: var(--muted); max-width: 75ch; margin: 0 0 8px; }
+  .navlabel { font: 500 12px var(--mono); color: var(--muted); letter-spacing: 0.06em; margin: 16px 0 6px; text-transform: uppercase; }
+  .badge { display: inline-block; margin-left: 10px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent); font: 500 11px var(--body); letter-spacing: 0; vertical-align: 1px; }
+  .badge.like { background: var(--accent); color: var(--panel); }
+  .screens figure.wide { grid-column: 1 / -1; max-width: 1100px; }
+  @media (max-width: 860px) { .screens figure.wide { max-width: none; } }
 </style>
 
 <div class="wrap">
   <header>
     <div class="meta">Proposte di veste grafica · 11 novembre 2026 · nessuna è implementata</div>
-    <h1>Dieci vesti grafiche per App Bollette</h1>
+    <h1>Diciotto vesti grafiche per App Bollette</h1>
     <p>
-      Ogni proposta mostra le stesse tre schermate con dati inventati: la Home desktop, la scheda
+      Due giri di proposte. Ognuna mostra le stesse schermate con dati inventati: la Home desktop, la scheda
       Conguaglio di Berchet e la Home del telefono. Tocca una schermata per vederla a grandezza
       piena. Le schede complete (reference, palette con contrasto, font, token) sono nel README di
       ogni cartella.
@@ -210,24 +218,409 @@
       Le anteprime usano i font indicati da ogni proposta solo se il dispositivo li ha; altrimenti
       compare il carattere di riserva.
     </p>
-    <nav aria-label="Proposte">
-      <a href="#p01"><span>01</span>Classico</a>
-      <a href="#p02"><span>02</span>Svizzero</a>
-      <a href="#p03"><span>03</span>Mascotte</a>
+    <p class="navlabel">Secondo giro</p>
+    <nav aria-label="Secondo giro">
+      <a href="#p11"><span>11</span>Casa chiara</a>
+      <a href="#p12"><span>12</span>Pagina di casa</a>
+      <a href="#p13"><span>13</span>Punti</a>
+      <a href="#p14"><span>14</span>Lista serena</a>
+      <a href="#p15"><span>15</span>Banca moderna</a>
+      <a href="#p16"><span>16</span>Bollino discreto</a>
+      <a href="#p17"><span>17</span>Quaderno svizzero</a>
+      <a href="#p18"><span>18</span>Officina</a>
+    </nav>
+    <p class="navlabel">Primo giro · ★ ti piace</p>
+    <nav aria-label="Primo giro">
+      <a href="#p01"><span>01</span>★ Classico</a>
+      <a href="#p02"><span>02</span>★ Svizzero</a>
+      <a href="#p03"><span>03</span>★ Mascotte</a>
       <a href="#p04"><span>04</span>Precisione scura</a>
       <a href="#p05"><span>05</span>Pixel RPG</a>
       <a href="#p06"><span>06</span>Neo-brutalismo</a>
       <a href="#p07"><span>07</span>Techno</a>
       <a href="#p08"><span>08</span>Y2K vetro</a>
       <a href="#p09"><span>09</span>Modernismo italiano</a>
-      <a href="#p10"><span>10</span>Carta calma</a>
+      <a href="#p10"><span>10</span>★ Carta calma</a>
     </nav>
   </header>
+
+  <h2 class="round" id="giro2">Secondo giro · 11–18</h2>
+  <p class="round-note">Ispirate a marchi con una veste grafica forte, con le regole del concilio (pulsante mai del colore di uno stato, ogni stato con la sua forma, tema scuro progettato) e gli stessi dati in tutte le schermate. Quattro hanno una mascotte passiva, che compare solo negli stati vuoti, nell'attesa e nelle conferme. La quarta tavola mostra stati, micro-animazione a fotogrammi e tema scuro.</p>
+  <section id="p11">
+    <div class="head">
+      <div>
+        <div class="num">11 · ISPIRAZIONE APPLE</div>
+        <h2>Casa chiara</h2>
+        <p class="idea">L'app sembra un'app di sistema del Mac: molto bianco, liste raggruppate, card come widget, simboli lineari e un solo blu per le azioni. Il vetro solo su barre e avvisi, mai sotto gli importi.</p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Inter</dd>
+        <dt>Mascotte</dt>
+        <dd>Nessuna: un anello sfumato che respira mentre l'app lavora e diventa una spunta</dd>
+        <dt>Pro</dt>
+        <dd>Familiare a chiunque usi Mac o iPhone; calma, ordinata, sei forme di stato distinte</dd>
+        <dt>Rischi</dt>
+        <dd>Su Windows il vetro diventa bianco pieno e può sembrare «un'app Mac portata male»; meno riconoscibile</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="11-casa-chiara-apple/01-home.svg" target="_blank" rel="noopener"
+          ><img src="11-casa-chiara-apple/01-home.svg" alt="Home desktop, Casa chiara" loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="11-casa-chiara-apple/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img src="11-casa-chiara-apple/02-conguaglio.svg" alt="Conguaglio Berchet, Casa chiara" loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="11-casa-chiara-apple/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="11-casa-chiara-apple/03-mobile.svg" alt="Telefono, Casa chiara" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+      <figure class="wide">
+        <a href="11-casa-chiara-apple/04-stati.svg" target="_blank" rel="noopener"
+          ><img src="11-casa-chiara-apple/04-stati.svg" alt="Stati, attesa e tema scuro, Casa chiara" loading="lazy"
+        /></a>
+        <figcaption>Stati vuoti, attesa a fotogrammi, conferma, errore, tema scuro · 1440 × 900</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p12">
+    <div class="head">
+      <div>
+        <div class="num">12 · ISPIRAZIONE NOTION<span class="badge">mascotte passiva</span></div>
+        <h2>Pagina di casa</h2>
+        <p class="idea">Ogni schermata è una pagina-documento: icona e titolo grande, proprietà, callout, toggle per le bollette, tabella-database con stati a pillola. Bianco e nero caldo, pulsante nero.</p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Newsreader per i titoli grandi, Inter</dd>
+        <dt>Mascotte</dt>
+        <dd>Casetta: una casa a tratto con matita; solo icona, stati vuoti e attesa (scrive su un foglio)</dd>
+        <dt>Pro</dt>
+        <dd>Chiara e scrivibile, toggle e tabelle naturali per bollette e conguagli</dd>
+        <dt>Rischi</dt>
+        <dd>Può sembrare un modello di Notion più che un'app; pillole piccole da provare su Windows</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="12-pagina-notion/01-home.svg" target="_blank" rel="noopener"
+          ><img src="12-pagina-notion/01-home.svg" alt="Home desktop, Pagina di casa" loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="12-pagina-notion/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img src="12-pagina-notion/02-conguaglio.svg" alt="Conguaglio Berchet, Pagina di casa" loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="12-pagina-notion/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="12-pagina-notion/03-mobile.svg" alt="Telefono, Pagina di casa" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+      <figure class="wide">
+        <a href="12-pagina-notion/04-stati.svg" target="_blank" rel="noopener"
+          ><img src="12-pagina-notion/04-stati.svg" alt="Stati, attesa e tema scuro, Pagina di casa" loading="lazy"
+        /></a>
+        <figcaption>Stati vuoti, attesa a fotogrammi, conferma, errore, tema scuro · 1440 × 900</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p13">
+    <div class="head">
+      <div>
+        <div class="num">13 · ISPIRAZIONE NOTHING<span class="badge">mascotte passiva</span></div>
+        <h2>Punti</h2>
+        <p class="idea">Un cruscotto chiaro e monocromo come un display a LED: saluto e saldi a matrice di punti, griglia di punti di fondo, widget senza ombre. Pulsante nero pieno, rosso solo per lo scaduto.</p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Doto per numeri e titoli, Inter per il resto</dd>
+        <dt>Mascotte</dt>
+        <dd>Nove: fantasmino 9 × 9 punti senza bocca; icona, stati vuoti, attesa (legge riga per riga)</dd>
+        <dt>Pro</dt>
+        <dd>Il più riconoscibile del giro; monocromo che fa risaltare l'unico problema</dd>
+        <dt>Rischi</dt>
+        <dd>Font a punti non verificato su Windows a 125 %; la griglia può dare effetto moiré</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="13-punti-nothing/01-home.svg" target="_blank" rel="noopener"
+          ><img src="13-punti-nothing/01-home.svg" alt="Home desktop, Punti" loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="13-punti-nothing/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img src="13-punti-nothing/02-conguaglio.svg" alt="Conguaglio Berchet, Punti" loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="13-punti-nothing/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="13-punti-nothing/03-mobile.svg" alt="Telefono, Punti" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+      <figure class="wide">
+        <a href="13-punti-nothing/04-stati.svg" target="_blank" rel="noopener"
+          ><img src="13-punti-nothing/04-stati.svg" alt="Stati, attesa e tema scuro, Punti" loading="lazy"
+        /></a>
+        <figcaption>Stati vuoti, attesa a fotogrammi, conferma, errore, tema scuro · 1440 × 900</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p14">
+    <div class="head">
+      <div>
+        <div class="num">14 · ISPIRAZIONE THINGS</div>
+        <h2>Lista serena</h2>
+        <p class="idea">L'app come lista di cose da fare calma e precisa: «Oggi» e «Prossimi», checkbox tonde che si chiudono con un guizzo, un solo blu d'azione, quasi nessun bordo.</p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Inter</dd>
+        <dt>Mascotte</dt>
+        <dd>Nessuna: checkbox che si chiude e tre puntini che si riempiono</dd>
+        <dt>Pro</dt>
+        <dd>La Home dice subito cosa fare; il gesto «fatto» con annulla è naturale</dd>
+        <dt>Rischi</dt>
+        <dd>Meno carattere di 01 e 10; sette forme di stato da imparare; spuntare un'azione sui soldi è un gesto leggero</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="14-lista-serena-things/01-home.svg" target="_blank" rel="noopener"
+          ><img src="14-lista-serena-things/01-home.svg" alt="Home desktop, Lista serena" loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="14-lista-serena-things/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img src="14-lista-serena-things/02-conguaglio.svg" alt="Conguaglio Berchet, Lista serena" loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="14-lista-serena-things/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="14-lista-serena-things/03-mobile.svg" alt="Telefono, Lista serena" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+      <figure class="wide">
+        <a href="14-lista-serena-things/04-stati.svg" target="_blank" rel="noopener"
+          ><img src="14-lista-serena-things/04-stati.svg" alt="Stati, attesa e tema scuro, Lista serena" loading="lazy"
+        /></a>
+        <figcaption>Stati vuoti, attesa a fotogrammi, conferma, errore, tema scuro · 1440 × 900</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p15">
+    <div class="head">
+      <div>
+        <div class="num">15 · ISPIRAZIONE FINTECH</div>
+        <h2>Banca moderna</h2>
+        <p class="idea">La 01 rimodernata: saldo grande in testa, grafico sottile del flusso di cassa, appartamenti come «conti», icone tonde per le categorie, pulsante indaco.</p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Inter con cifre tabellari</dd>
+        <dt>Mascotte</dt>
+        <dd>Nessuna: il saldo che conta fino al valore e una barra di lettura</dd>
+        <dt>Pro</dt>
+        <dd>Fiducia da banca con la chiarezza delle app fintech; numeri impeccabili</dd>
+        <dt>Rischi</dt>
+        <dd>Sommare tre conti in testa può confondere; rischio «dashboard qualunque»; molti colori di categoria</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="15-banca-moderna-fintech/01-home.svg" target="_blank" rel="noopener"
+          ><img src="15-banca-moderna-fintech/01-home.svg" alt="Home desktop, Banca moderna" loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="15-banca-moderna-fintech/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img src="15-banca-moderna-fintech/02-conguaglio.svg" alt="Conguaglio Berchet, Banca moderna" loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="15-banca-moderna-fintech/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="15-banca-moderna-fintech/03-mobile.svg" alt="Telefono, Banca moderna" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+      <figure class="wide">
+        <a href="15-banca-moderna-fintech/04-stati.svg" target="_blank" rel="noopener"
+          ><img src="15-banca-moderna-fintech/04-stati.svg" alt="Stati, attesa e tema scuro, Banca moderna" loading="lazy"
+        /></a>
+        <figcaption>Stati vuoti, attesa a fotogrammi, conferma, errore, tema scuro · 1440 × 900</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p16">
+    <div class="head">
+      <div>
+        <div class="num">16 · EVOLUZIONE DELLA 03<span class="badge">mascotte passiva</span></div>
+        <h2>Bollino discreto</h2>
+        <p class="idea">La 03 con il calore intatto (forme tonde, pulsanti gommosi viola) ma Bollino ridotto a un segno minimo, e semafori tornati icone con testo.</p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Nunito</dd>
+        <dt>Mascotte</dt>
+        <dd>Bollino: bollettina viola con due puntini; logo, attesa, stato vuoto, saltello nella conferma</dd>
+        <dt>Pro</dt>
+        <dd>Simpatica senza invadere; mascotte economica da realizzare</dd>
+        <dt>Rischi</dt>
+        <dd>Il viola è insieme marchio e pulsante; a 16 px l'angolo piegato sparisce; Bollino acceso di default (da decidere)</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="16-bollino-discreto/01-home.svg" target="_blank" rel="noopener"
+          ><img src="16-bollino-discreto/01-home.svg" alt="Home desktop, Bollino discreto" loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="16-bollino-discreto/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img src="16-bollino-discreto/02-conguaglio.svg" alt="Conguaglio Berchet, Bollino discreto" loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="16-bollino-discreto/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="16-bollino-discreto/03-mobile.svg" alt="Telefono, Bollino discreto" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+      <figure class="wide">
+        <a href="16-bollino-discreto/04-stati.svg" target="_blank" rel="noopener"
+          ><img src="16-bollino-discreto/04-stati.svg" alt="Stati, attesa e tema scuro, Bollino discreto" loading="lazy"
+        /></a>
+        <figcaption>Stati vuoti, attesa a fotogrammi, conferma, errore, tema scuro · 1440 × 900</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p17">
+    <div class="head">
+      <div>
+        <div class="num">17 · IBRIDO 01 · 02 · 10<span class="badge">mascotte passiva</span></div>
+        <h2>Quaderno svizzero</h2>
+        <p class="idea">I tuoi preferiti insieme: griglia e saldi grandi della 02, carta calda e calma della 10, titoli serif della 01. Pulsante in inchiostro pieno, timbro «SALDATO» verde muschio.</p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Source Serif 4 per i titoli grandi, Inter</dd>
+        <dt>Mascotte</dt>
+        <dd>Il Timbro: cerchio con due puntini; si inchiostra nell'attesa e timbra quando un conguaglio è saldato</dd>
+        <dt>Pro</dt>
+        <dd>Unisce fiducia, chiarezza e calma; ogni stato ha la sua forma</dd>
+        <dt>Rischi</dt>
+        <dd>La carta beige può sembrare giallina su monitor economici; titoli da rivedere con il font vero</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="17-quaderno-svizzero/01-home.svg" target="_blank" rel="noopener"
+          ><img src="17-quaderno-svizzero/01-home.svg" alt="Home desktop, Quaderno svizzero" loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="17-quaderno-svizzero/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img src="17-quaderno-svizzero/02-conguaglio.svg" alt="Conguaglio Berchet, Quaderno svizzero" loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="17-quaderno-svizzero/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="17-quaderno-svizzero/03-mobile.svg" alt="Telefono, Quaderno svizzero" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+      <figure class="wide">
+        <a href="17-quaderno-svizzero/04-stati.svg" target="_blank" rel="noopener"
+          ><img src="17-quaderno-svizzero/04-stati.svg" alt="Stati, attesa e tema scuro, Quaderno svizzero" loading="lazy"
+        /></a>
+        <figcaption>Stati vuoti, attesa a fotogrammi, conferma, errore, tema scuro · 1440 × 900</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p18">
+    <div class="head">
+      <div>
+        <div class="num">18 · ISPIRAZIONE DESIGN INDUSTRIALE<span class="badge">mascotte passiva</span></div>
+        <h2>Officina</h2>
+        <p class="idea">Un pannello di strumenti grigio caldo: appartamenti come moduli con LED a forma propria, saldi su display incassati, etichette in maiuscoletto, un solo tasto arancione.</p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Inter e IBM Plex Mono</dd>
+        <dt>Mascotte</dt>
+        <dd>Robottino-contatore con un display per faccia, sempre neutro; attesa, stato vuoto, icona</dd>
+        <dt>Pro</dt>
+        <dd>Carattere forte e tattile; stati molto distinti; regge in chiaro e scuro</dd>
+        <dt>Rischi</dt>
+        <dd>«Da fare» blu invece di giallo va spiegato; viti e spessori rischiano di diventare decorazione</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="18-officina-industriale/01-home.svg" target="_blank" rel="noopener"
+          ><img src="18-officina-industriale/01-home.svg" alt="Home desktop, Officina" loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="18-officina-industriale/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img src="18-officina-industriale/02-conguaglio.svg" alt="Conguaglio Berchet, Officina" loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="18-officina-industriale/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="18-officina-industriale/03-mobile.svg" alt="Telefono, Officina" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+      <figure class="wide">
+        <a href="18-officina-industriale/04-stati.svg" target="_blank" rel="noopener"
+          ><img src="18-officina-industriale/04-stati.svg" alt="Stati, attesa e tema scuro, Officina" loading="lazy"
+        /></a>
+        <figcaption>Stati vuoti, attesa a fotogrammi, conferma, errore, tema scuro · 1440 × 900</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <h2 class="round" id="giro1">Primo giro · 01–10</h2>
+  <p class="round-note">Le dieci proposte originali, invariate. <span class="badge like">ti piace</span> segna 01, 02, 03 e 10. Il concilio aveva messo in testa 09, 02, 01, 10 e 03; il verdetto completo è in <code>CONCILIO-giro-1.md</code>.</p>
 
   <section id="p01">
     <div class="head">
       <div>
-        <div class="num">01 · CLASSICO</div>
+        <div class="num">01 · CLASSICO<span class="badge like">ti piace</span></div>
         <h2>Private banking</h2>
         <p class="idea">
           Un estratto conto di banca privata ben stampato: carta avorio, blu notte, titoli in serif
@@ -277,7 +670,7 @@
   <section id="p02">
     <div class="head">
       <div>
-        <div class="num">02 · MINIMALE</div>
+        <div class="num">02 · MINIMALE<span class="badge like">ti piace</span></div>
         <h2>Scuola svizzera</h2>
         <p class="idea">
           Griglia a 12 colonne, un solo grottesco in tre pesi, linee al posto delle card, numeri
@@ -328,7 +721,7 @@
   <section id="p03">
     <div class="head">
       <div>
-        <div class="num">03 · GIOCOSO</div>
+        <div class="num">03 · GIOCOSO<span class="badge like">ti piace</span></div>
         <h2>Amichevole con mascotte</h2>
         <p class="idea">
           Fintech simpatica alla Duolingo o Monzo: forme tonde, pulsanti «gommosi» e Bollino, una
@@ -681,7 +1074,7 @@
   <section id="p10">
     <div class="head">
       <div>
-        <div class="num">10 · CALMO</div>
+        <div class="num">10 · CALMO<span class="badge like">ti piace</span></div>
         <h2>Carta calma</h2>
         <p class="idea">
           Un quaderno di casa ben tenuto, di ispirazione giapponese: carta calda, righe a

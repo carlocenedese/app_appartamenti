@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+<title>14 Lista serena · Conguaglio Berchet</title>
+<defs><filter id="sh" x="-20%" y="-40%" width="140%" height="180%"><feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#1B1E23" flood-opacity="0.12"/></filter><filter id="sh2" x="-10%" y="-30%" width="120%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1B1E23" flood-opacity="0.18"/></filter></defs>
+<rect x="0" y="0" width="1440" height="900" rx="0" fill="#FFFFFF"/>
+<rect x="0" y="0" width="248" height="900" rx="0" fill="#F5F6F8"/>
+<rect x="24" y="26" width="28" height="28" rx="8" fill="#1D5BD6"/>
+<circle cx="38" cy="40" r="8" fill="none" stroke="#FFFFFF" stroke-width="1.6"/><path d="M35.1 40.1 L37.2 42.2 L41.1 37.9" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="62" y="39" font-size="16" font-weight="700" fill="#1B1E23">Bollette</text>
+<text x="62" y="55" font-size="12" font-weight="400" fill="#555B65">tre appartamenti a Padova</text>
+<path d="M28 119 L36 112 L44 119 V128 H28 Z M34 128 V122 H38 V128" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="125" font-size="14.5" font-weight="500" fill="#1B1E23">Home</text>
+<path d="M28 161 L31 153 H41 L44 161 V168 H28 Z M28 161 H33 L34.5 163.5 H37.5 L39 161 H44" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="165" font-size="14.5" font-weight="500" fill="#1B1E23">Da rivedere</text>
+<path d="M29 208 V194 H39 V208 M39 199 H43 V208 M28 208 H44 M32 198 H36 M32 202 H36" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="205" font-size="14.5" font-weight="500" fill="#1B1E23">Appartamenti</text>
+<text x="224" y="165" font-size="13" font-weight="600" fill="#555B65" text-anchor="end">3</text>
+<rect x="12" y="216" width="224" height="32" rx="8" fill="#E6EDFB"/>
+<text x="56" y="236" font-size="14" font-weight="600" fill="#1B1E23">Berchet</text>
+<circle cx="222" cy="231" r="6" fill="#0D5C31"/><path d="M219.6 231.1 L221.3 232.8 L224.6 229.3" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="270" font-size="14" font-weight="400" fill="#1B1E23">Lovarini</text>
+<path d="M222 258.7 L228.3 270.1 L215.7 270.1 Z" fill="#6B4600" stroke="#6B4600" stroke-width="1.5" stroke-linejoin="round"/><line x1="222" y1="262.9" x2="222" y2="266.8" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round"/><circle cx="222" cy="269.1" r="1" fill="#FFFFFF"/>
+<text x="56" y="304" font-size="14" font-weight="400" fill="#1B1E23">Pulci</text>
+<line x1="217.8" y1="293.0" x2="217.8" y2="305.0" stroke="#9C1F15" stroke-width="2" stroke-linecap="round"/><path d="M217.8 293.0 H227.1 L224.1 296.3 L227.1 299.6 H217.8 Z" fill="#9C1F15" stroke="#9C1F15" stroke-width="1" stroke-linejoin="round"/>
+<text x="28" y="352" font-size="12" font-weight="600" fill="#555B65">Banca e fisco</text>
+<rect x="28" y="376" width="16" height="14" rx="3" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M28 381 H44 M32.5 374 V377.5 M39.5 374 V377.5" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="387" font-size="14.5" font-weight="500" fill="#1B1E23">Scadenze e pagamenti</text>
+<path d="M29 419 H42 M38 415 L42 419 L38 423 M43 426 H30 M34 422 L30 426 L34 430" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="427" font-size="14.5" font-weight="500" fill="#1B1E23">Saldo tra conti</text>
+<path d="M30 454 H42 V470 L39 468 L36 470 L33 468 L30 470 Z M33 459 H39 M33 463 H39" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="467" font-size="14.5" font-weight="500" fill="#1B1E23">Tasse e stime</text>
+<circle cx="36" cy="860" r="2.6" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="36" cy="860" r="7" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3.2 2.3"/>
+<text x="56" y="865" font-size="14.5" font-weight="500" fill="#1B1E23">Impostazioni</text>
+<rect x="288" y="16" width="276" height="34" rx="9" fill="#F2F4F7"/>
+<text x="304" y="38" font-size="14" font-weight="600" fill="#1B1E23">Berchet · 2025-26</text>
+<path d="M542 30 l5 5 l5 -5" fill="none" stroke="#555B65" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="580" y="16" width="380" height="34" rx="9" fill="#F2F4F7"/>
+<circle cx="601" cy="32" r="5.5" fill="none" stroke="#555B65" stroke-width="1.6"/><line x1="605" y1="36" x2="609" y2="40" stroke="#555B65" stroke-width="1.6" stroke-linecap="round"/>
+<text x="620" y="38" font-size="14" font-weight="400" fill="#555B65">Cerca bollette, inquilini, scadenze</text>
+<rect x="898" y="23" width="50" height="20" rx="5" fill="#FFFFFF"/>
+<text x="923" y="37" font-size="11.5" font-weight="600" fill="#555B65" text-anchor="middle">Ctrl K</text>
+<circle cx="1150" cy="33" r="6" fill="#0D5C31"/><path d="M1147.6 33.1 L1149.3 34.8 L1152.6 31.3" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1163" y="38" font-size="13" font-weight="400" fill="#555B65">Sincronizzato · 09:42</text>
+<text x="1360" y="38" font-size="14" font-weight="600" fill="#1B1E23" text-anchor="end">Carlo</text>
+<circle cx="1384" cy="33" r="15" fill="#E6EDFB"/><text x="1384" y="38.5" font-size="14" font-weight="700" fill="#1D5BD6" text-anchor="middle">C</text>
+<text x="296" y="100" font-size="13" font-weight="500" fill="#555B65">Appartamenti  ›  Berchet</text>
+<text x="294" y="138" font-size="30" font-weight="700" fill="#1B1E23" letter-spacing="-0.5">Berchet · Annualità 2025-26</text>
+<circle cx="304" cy="163.5" r="7" fill="#0D5C31"/><path d="M301.2 163.6 L303.2 165.6 L307.0 161.5" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="318" y="168" font-size="13.5" font-weight="600" fill="#0D5C31">Tutto a posto</text>
+<text x="420" y="168" font-size="13.5" font-weight="400" fill="#555B65">5 su 5 in regola · saldo di cassa € 412,30</text>
+<rect x="1184" y="112" width="208" height="46" rx="11" fill="#1D5BD6" filter="url(#sh)"/>
+<text x="1288" y="141" font-size="15.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">Prepara il messaggio</text>
+<text x="1392" y="180" font-size="12.5" font-weight="400" fill="#555B65" text-anchor="end">Lo controlli tu prima di inviarlo</text>
+<text x="296" y="222" font-size="14" font-weight="500" fill="#555B65">Affitti e pagamenti</text>
+<text x="449.1" y="222" font-size="14" font-weight="500" fill="#555B65">Bollette</text>
+<text x="530.9" y="222" font-size="14" font-weight="600" fill="#1B1E23">Conguaglio</text>
+<rect x="530.9" y="232" width="76.3" height="3" rx="1.5" fill="#1D5BD6"/>
+<text x="639.1999999999999" y="222" font-size="14" font-weight="500" fill="#555B65">Inquilini</text>
+<text x="721.9" y="222" font-size="14" font-weight="500" fill="#555B65">Condominio</text>
+<text x="833.1999999999999" y="222" font-size="14" font-weight="500" fill="#555B65">Moduli</text>
+<text x="909.6999999999999" y="222" font-size="14" font-weight="500" fill="#555B65">Excel</text>
+<text x="977.1999999999999" y="222" font-size="14" font-weight="500" fill="#555B65">Storico</text>
+<line x1="296" y1="235.5" x2="1392" y2="235.5" stroke="#ECEEF2"/>
+<text x="296" y="282" font-size="18" font-weight="700" fill="#1B1E23">Quote per inquilino</text>
+<circle cx="576" cy="277.5" r="6.1" fill="none" stroke="#9C1F15" stroke-width="1.8"/><path d="M576 274.4 V280.3 M573.3 277.9 L576 280.4 L578.7 277.9" fill="none" stroke="#9C1F15" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="590" y="282" font-size="13" font-weight="600" fill="#9C1F15">Da incassare € 80,75</text>
+<circle cx="760" cy="277.5" r="6.1" fill="none" stroke="#6B3A99" stroke-width="1.8"/><path d="M760 280.6 V274.7 M757.3 277.1 L760 274.6 L762.7 277.1" fill="none" stroke="#6B3A99" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="774" y="282" font-size="13" font-weight="600" fill="#6B3A99">Da rimborsare € 54,60</text>
+<text x="296" y="322" font-size="12.5" font-weight="600" fill="#555B65">Inquilino</text>
+<text x="486" y="322" font-size="12.5" font-weight="600" fill="#555B65" text-anchor="end">Mesi</text>
+<text x="604" y="322" font-size="12.5" font-weight="600" fill="#555B65" text-anchor="end">Quota costi</text>
+<text x="744" y="322" font-size="12.5" font-weight="600" fill="#555B65" text-anchor="end">Forfait incassato</text>
+<text x="862" y="322" font-size="12.5" font-weight="600" fill="#555B65" text-anchor="end">Differenza</text>
+<text x="888" y="322" font-size="12.5" font-weight="600" fill="#555B65">Stato</text>
+<circle cx="310" cy="360" r="13" fill="#F2F4F7"/><text x="310" y="364" font-size="12" font-weight="700" fill="#555B65" text-anchor="middle">M</text>
+<text x="332" y="365" font-size="15" font-weight="600" fill="#1B1E23">Marco T.</text>
+<text x="486" y="365" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">12</text>
+<text x="604" y="365" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 418,60</text>
+<text x="744" y="365" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 360,00</text>
+<text x="862" y="365" font-size="15" font-weight="600" fill="#9C1F15" text-anchor="end" font-variant-numeric="tabular-nums">€ 58,60</text>
+<circle cx="896" cy="360.5" r="6.1" fill="none" stroke="#9C1F15" stroke-width="1.8"/><path d="M896 357.4 V363.3 M893.3 360.9 L896 363.4 L898.7 360.9" fill="none" stroke="#9C1F15" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="910" y="365" font-size="13.5" font-weight="600" fill="#9C1F15">Da pagare</text>
+<line x1="332" y1="388" x2="1000" y2="388" stroke="#ECEEF2"/>
+<circle cx="310" cy="416" r="13" fill="#F2F4F7"/><text x="310" y="420" font-size="12" font-weight="700" fill="#555B65" text-anchor="middle">S</text>
+<text x="332" y="421" font-size="15" font-weight="600" fill="#1B1E23">Sofia B.</text>
+<text x="486" y="421" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">12</text>
+<text x="604" y="421" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 402,15</text>
+<text x="744" y="421" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 360,00</text>
+<text x="862" y="421" font-size="15" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 42,15</text>
+<circle cx="896" cy="409.5" r="6.1" fill="none" stroke="#6B4600" stroke-width="1.8"/><path d="M896 403.4 A6.1 6.1 0 0 0 896 415.6 Z" fill="#6B4600"/><text x="910" y="414" font-size="13.5" font-weight="600" fill="#6B4600">Parziale</text>
+<text x="910" y="432" font-size="12.5" font-weight="400" fill="#555B65">versati € 20,00</text>
+<line x1="332" y1="444" x2="1000" y2="444" stroke="#ECEEF2"/>
+<circle cx="310" cy="472" r="13" fill="#F2F4F7"/><text x="310" y="476" font-size="12" font-weight="700" fill="#555B65" text-anchor="middle">L</text>
+<text x="332" y="477" font-size="15" font-weight="600" fill="#1B1E23">Luca P.</text>
+<text x="486" y="477" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">10</text>
+<text x="604" y="477" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 300,00</text>
+<text x="744" y="477" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 300,00</text>
+<text x="862" y="477" font-size="15" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 0,00</text>
+<rect x="889" y="465.5" width="14" height="14" rx="2.4499999999999997" fill="#0D5C31"/><path d="M893.2 472.6 L895.2 474.6 L899.0 470.5" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="910" y="477" font-size="13.5" font-weight="600" fill="#0D5C31">Saldato</text>
+<line x1="332" y1="500" x2="1000" y2="500" stroke="#ECEEF2"/>
+<circle cx="310" cy="528" r="13" fill="#F2F4F7"/><text x="310" y="532" font-size="12" font-weight="700" fill="#555B65" text-anchor="middle">A</text>
+<text x="332" y="533" font-size="15" font-weight="600" fill="#1B1E23">Anna V.</text>
+<text x="486" y="533" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">12</text>
+<text x="604" y="533" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 305,40</text>
+<text x="744" y="533" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 360,00</text>
+<text x="862" y="533" font-size="15" font-weight="600" fill="#6B3A99" text-anchor="end" font-variant-numeric="tabular-nums">€ 54,60</text>
+<circle cx="896" cy="528.5" r="6.1" fill="none" stroke="#6B3A99" stroke-width="1.8"/><path d="M896 531.6 V525.7 M893.3 528.1 L896 525.6 L898.7 528.1" fill="none" stroke="#6B3A99" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="910" y="533" font-size="13.5" font-weight="600" fill="#6B3A99">Da rimborsare</text>
+<line x1="332" y1="556" x2="1000" y2="556" stroke="#ECEEF2"/>
+<circle cx="310" cy="584" r="13" fill="#F2F4F7"/><text x="310" y="588" font-size="12" font-weight="700" fill="#555B65" text-anchor="middle">E</text>
+<text x="332" y="589" font-size="15" font-weight="600" fill="#1B1E23">Elena C.</text>
+<text x="486" y="589" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">12</text>
+<text x="604" y="589" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 446,85</text>
+<text x="744" y="589" font-size="15" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 360,00</text>
+<text x="862" y="589" font-size="15" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 86,85</text>
+<rect x="889" y="570.5" width="14" height="14" rx="2.4499999999999997" fill="#0D5C31"/><path d="M893.2 577.6 L895.2 579.6 L899.0 575.5" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="910" y="582" font-size="13.5" font-weight="600" fill="#0D5C31">Saldato</text>
+<text x="910" y="600" font-size="12.5" font-weight="400" fill="#555B65">versati € 86,85</text>
+<line x1="296" y1="620" x2="1000" y2="620" stroke="#1B1E23" stroke-width="1"/>
+<text x="296" y="648" font-size="15" font-weight="700" fill="#1B1E23">Totale</text>
+<text x="486" y="648" font-size="13" font-weight="400" fill="#555B65" text-anchor="end">5 inquilini</text>
+<text x="604" y="648" font-size="15" font-weight="700" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 1.873,00</text>
+<text x="744" y="648" font-size="15" font-weight="700" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 1.740,00</text>
+<text x="862" y="648" font-size="15" font-weight="700" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 133,00</text>
+<text x="888" y="648" font-size="13" font-weight="400" fill="#555B65">differenza netta</text>
+<text x="296" y="712" font-size="15" font-weight="700" fill="#1B1E23">Prima di chiudere il conguaglio</text>
+<circle cx="306" cy="742" r="10" fill="#1D5BD6"/><path d="M302.4 742.2 L305.0 744.7 L309.8 739.5" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="328" y="747" font-size="14.5" font-weight="400" fill="#555B65">Bollette dell’annualità trovate nell’estratto conto e abbinate</text>
+<circle cx="306" cy="780" r="10" fill="none" stroke="#80868F" stroke-width="1.5"/>
+<text x="328" y="785" font-size="14.5" font-weight="400" fill="#1B1E23">Mandare il riepilogo a Marco T. e Sofia B. (quote ancora da pagare)</text>
+<circle cx="306" cy="818" r="10" fill="none" stroke="#80868F" stroke-width="1.5"/>
+<text x="328" y="823" font-size="14.5" font-weight="400" fill="#1B1E23">Registrare il rimborso di € 54,60 ad Anna V. quando lo fai dalla banca</text>
+<circle cx="303" cy="862" r="7" fill="none" stroke="#555B65" stroke-width="1.4"/><text x="303" y="866" font-size="10" font-weight="700" fill="#555B65" text-anchor="middle">i</text>
+<text x="318" y="867" font-size="12.5" font-weight="400" fill="#555B65">Gli importi contano solo le voci trovate nell’estratto conto.</text>
+<text x="1056" y="282" font-size="18" font-weight="700" fill="#1B1E23">Costi per tipologia</text>
+<text x="1392" y="282" font-size="15" font-weight="700" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 1.873,00</text>
+<path d="M1058 322 l4 4 l4 -4" fill="none" stroke="#555B65" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="1078" y="329" font-size="15" font-weight="600" fill="#1B1E23">Elettricità</text><text x="1154.0" y="329" font-size="13" font-weight="400" fill="#555B65">6 bollette</text><text x="1392" y="329" font-size="15" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 812,46</text>
+<rect x="1070" y="348" width="322" height="148" rx="10" fill="#F5F6F8"/>
+<circle cx="1090" cy="371" r="2.5" fill="#555B65"/><text x="1102" y="376" font-size="14" font-weight="400" fill="#1B1E23">Hera luce set-ott</text><text x="1376" y="376" font-size="14" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 98,24</text>
+<circle cx="1090" cy="405" r="2.5" fill="#555B65"/><text x="1102" y="410" font-size="14" font-weight="400" fill="#1B1E23">Hera luce lug-ago</text><text x="1376" y="410" font-size="14" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 104,10</text>
+<circle cx="1090" cy="439" r="2.5" fill="#555B65"/><text x="1102" y="444" font-size="14" font-weight="400" fill="#1B1E23">Hera luce mag-giu</text><text x="1376" y="444" font-size="14" font-weight="400" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 91,37</text>
+<text x="1102" y="478" font-size="14" font-weight="600" fill="#1D5BD6">e altre 3</text>
+<path d="M1060 524 l4 4 l-4 4" fill="none" stroke="#555B65" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="1078" y="533" font-size="15" font-weight="600" fill="#1B1E23">Gas</text><text x="1113.8" y="533" font-size="13" font-weight="400" fill="#555B65">6 bollette</text><text x="1392" y="533" font-size="15" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 412,40</text>
+<path d="M1060 570 l4 4 l-4 4" fill="none" stroke="#555B65" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="1078" y="579" font-size="15" font-weight="600" fill="#1B1E23">Acqua</text><text x="1132.2" y="579" font-size="13" font-weight="400" fill="#555B65">4 bollette</text><text x="1392" y="579" font-size="15" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 188,30</text>
+<path d="M1060 616 l4 4 l-4 4" fill="none" stroke="#555B65" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="1078" y="625" font-size="15" font-weight="600" fill="#1B1E23">Internet</text><text x="1141.9" y="625" font-size="13" font-weight="400" fill="#555B65">12 bollette</text><text x="1392" y="625" font-size="15" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 359,40</text>
+<path d="M1060 662 l4 4 l-4 4" fill="none" stroke="#555B65" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="1078" y="671" font-size="15" font-weight="600" fill="#1B1E23">TARI</text><text x="1120.5" y="671" font-size="13" font-weight="400" fill="#555B65">1 avviso</text><text x="1392" y="671" font-size="15" font-weight="600" fill="#1B1E23" text-anchor="end" font-variant-numeric="tabular-nums">€ 100,44</text>
+<path d="M1060 708 l4 4 l-4 4" fill="none" stroke="#555B65" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="1078" y="717" font-size="15" font-weight="600" fill="#1B1E23">Condominio</text><text x="1172.2" y="717" font-size="13" font-weight="400" fill="#555B65">nessuna rata trovata</text><text x="1392" y="717" font-size="15" font-weight="600" fill="#555B65" text-anchor="end" font-variant-numeric="tabular-nums">€ 0,00</text>
+</svg>
