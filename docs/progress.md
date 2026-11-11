@@ -137,6 +137,12 @@ payment, transaction, instalment, match, note`; `_app/workspace.json`. Costo: co
   risolve correggendo le date dei contratti (piano 4).
 - **R39** Nel conguaglio supplementare un inquilino senza contratti conta come uscito.
 
+- **R40** (Carlo, 11 novembre 2026) La nota TARI scrive la data di emissione dell'avviso dopo il
+  numero («Avviso 2026/1/89064 del 05/02/2026, periodo …»). Nuovo campo facoltativo
+  `Instalment.issueDate` (la data di emissione, che gli Excel hanno già); `tariNote` la accetta come
+  `avviso.issueDate` e, se manca, scrive il numero senza data come nell'esempio della specifica
+  (sezione 42). La scadenza non sostituisce la data dell'avviso.
+
 Rilievi minori rimandati dalla Fase C: azione `da-pagare` anche con differenza 0; avviso
 `contratto-mensile` anche nei mesi con un posto vuoto e senza mese; `conguaglio.ts` lungo (circa
 600 righe); `esercizioRange` facoltativo in `allocateInstalment`; rata negativa con
@@ -145,7 +151,7 @@ supplementare non filtra i contratti di altri appartamenti.
 
 ## Da decidere con Carlo
 
-1. Nota TARI: la data dell'avviso non c'è nell'esempio della specifica né nei dati in ingresso.
+Nessuna decisione aperta.
 
 ## Rilievi minori rimandati
 

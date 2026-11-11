@@ -1220,6 +1220,25 @@ describe('tariNote', () => {
     );
   });
 
+  it('writes the issue date of the notice after its number when it is known', () => {
+    const note = tariNote({
+      avviso: { ...avviso, issueDate: isoDate('2026-02-05') },
+      months,
+      transaction: tx('t-tari', '2026-03-16', -18600),
+      parts: [
+        {
+          apartmentName: 'Berchet',
+          utenzaTotal: cents(18600),
+          share: cents(18600),
+          paidFromOtherAccount: false,
+        },
+      ],
+    });
+    expect(note).toMatch(/^Avviso 2026\/1\/89064 del 05\/02\/2026, periodo gennaio–aprile 2026, /);
+    // The due date is the date of the debit, not of the notice: it never replaces the issue date.
+    expect(note).not.toContain('16/03/2026, periodo');
+  });
+
   it('has no transfer for a notice of Pulci', () => {
     const note = tariNote({
       avviso: {

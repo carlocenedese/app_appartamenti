@@ -267,6 +267,8 @@ export const InstalmentSchema = RecordBaseSchema.extend({
     })
     .meta({ enum: [...INSTALMENT_COUNTS] }),
   dueDate: ISODateSchema,
+  /** Date the notice was issued (data di emissione), written in the TARI note when present. */
+  issueDate: ISODateSchema.optional(),
   /** Amount of this instalment; it may differ from one instalment to the next. */
   rata: CentsSchema,
   /** Condominium only: the owner's yearly total for this apartment, 0 if absent. */
