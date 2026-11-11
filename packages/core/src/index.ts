@@ -16,3 +16,4 @@ export * from './interest';
 export * from './caparra';
 export * from './conguaglio';
 export * from './extraction';
+export * from './proposal';
