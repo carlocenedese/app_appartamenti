@@ -1,6 +1,7 @@
 # Regole di conguaglio ricavate dagli Excel (Task 7)
 
-Bozza dell'11 novembre 2026, da approvare da Carlo. Le regole di calcolo in vigore sono quelle della
+Approvato da Carlo l'11 novembre 2026, insieme ai valori `expected` della fixture
+`fixtures/golden/berchet-2024-25.json`. Le regole di calcolo in vigore sono quelle della
 sezione 42 della specifica (R1-R8); questo documento risponde alle domande (a)-(k) del Task 7 con
 quello che fanno oggi gli Excel e con la regola che userà l'app. Gli inquilini sono indicati con
 lettere (A-L per Berchet 2024-25), mai con il nome. I riferimenti di cella sono ai file:
@@ -10,7 +11,7 @@ lettere (A-L per Berchet 2024-25), mai con il nome. I riferimenti di cella sono 
 - Lovarini 2024-27: `Lista bollette e conguagli_2024_2027.xlsx` (stessi fogli, registro
   `RegistroBollette_dal_04.2024`).
 - Pulci 2025-26: `Lista bollette e conguagli_Set26.xlsx`.
-- Estratti conto Intesa di ottobre 2026 dei tre conti (`Lista_Operazioni_*.xlsx`).
+- Estratti conto di ottobre 2026 dei tre conti (`Lista_Operazioni_*.xlsx`).
 
 Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
 
@@ -30,8 +31,9 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
   mese per i 5 posti; ogni divisione dà la somma esatta, con i centesimi di resto ai primi mesi e,
   nel mese, ai primi posti nell'ordine dei posti dell'appartamento (Singola, Doppia marmo 1, …).
   La somma delle quote più i posti vuoti è sempre uguale all'importo.
-- **Da confermare:** l'ordine dei posti per i resti (proposta: l'ordine delle camere nella scheda
-  dell'appartamento).
+- **Deciso (Carlo):** resti ai primi mesi, poi ai primi posti nell'ordine dei posti dell'Excel.
+  L'ordine sta nell'appartamento, nel campo `rooms` (un nome per posto, `Tenancy.room` usa questi
+  nomi); per Berchet: Singola, Doppia marmo 1, Doppia marmo 2, Doppia 1, Doppia 2.
 
 ## (b) Divisore
 
@@ -65,8 +67,8 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
   compaiono «Prima rata conguaglio …», «caparra …», «promessa di sottoscrizione contratto …»: tutti
   da classificare a mano (R4). Nel foglio C la colonna I «Conguaglio versato» registra i saldi già
   pagati (C!I7 `=68.28+44.11+10.15`): non sono canone.
-- **Da chiarire:** l'inquilino I (Doppia 1, ago-set) non ha righe in AV e ha C!I17 = −6,47. Ha
-  pagato affitto e forfait di agosto e settembre? Chi è (per la fixture basta sapere se ha pagato)?
+- **Deciso (Carlo):** l'inquilino I (Doppia 1, ago-set), senza righe in AV e con C!I17 = −6,47, ha
+  pagato affitto e forfait di agosto e settembre: nella fixture ha due versamenti completi.
 
 ## (e) Commissione bancaria
 
@@ -90,16 +92,16 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
 - **Regola dell'app:** R3 (rate da 4 mesi, parte della proprietà sottratta, conguaglio dell'anno
   prima sui 12 mesi). Il condominio non si confronta con l'Excel: le fixture lo escludono da
   `expected` (Task 7).
-- **Da chiarire:** per Berchet 2024-25 servono dal preventivo, per scriverle nella fixture: il
-  totale annuo della proprietà ("Generali Proprietà"), le tre rate (importi e scadenze di ottobre,
-  gennaio e aprile) e cosa sono i 2.103,34 € dell'Excel (preventivo intero dell'unità o quota
-  conduttore?).
+- **Deciso (Carlo):** i 2.103,34 € dell'Excel sono la quota annua a carico degli inquilini del
+  preventivo 2024-25. Le rate di quell'esercizio non sono disponibili, quindi la fixture non ha rate
+  di condominio (comunque escluse da `expected`) e il controllo di fine esercizio del Task 9 non si
+  applica a questa fixture: varrà dalle annualità con le rate registrate.
 
 ## (g) Conguaglio condominiale dell'anno prima
 
 - **Excel:** non compare (nessuna riga per i 1.302,68 € a debito della scheda 2024-25).
-- **Da chiarire:** è stato pagato con una rata o con un addebito a parte, e in che data? Senza
-  questa informazione la fixture lo registra come rata a parte (`rata` 0, solo `conguaglioPrec`).
+- **Deciso (Carlo):** i 1.302,68 € sono a carico della sola proprietà e non entrano nel conguaglio
+  2024-25 degli inquilini; la fixture non li registra.
 
 ## (h) Giorni tra scadenza e addebito
 
@@ -107,8 +109,8 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
 - **Estratti di ottobre 2026:** Fastweb scade il 25 del mese (R!H4 25/11/2024, R!H5 25/12/2024)
   e l'addebito arriva il 26 (Berchet, Lovarini e Pulci, 26/10/2026): +1 giorno. Per Hera, Enel e
   la TARI gli estratti di un solo mese non bastano.
-- **Proposta:** finestra predefinita da 5 giorni prima a 10 giorni dopo la scadenza, uguale per
-  tutti i fornitori finché non ci sono più estratti; si stringe per fornitore quando l'app ne ha
+- **Deciso (Carlo):** finestra predefinita da 5 giorni prima a 10 giorni dopo la scadenza, uguale
+  per tutti i fornitori finché non ci sono più estratti; si stringe per fornitore quando l'app ne ha
   letti almeno sei mesi.
 
 ## (i) Righe del CSV da non ripartire
@@ -124,7 +126,7 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
 ## (j) Competenza degli avvisi TARI
 
 - **Excel:** usa quote fisse dell'anno solare, diverse a ogni avviso:
-  - terzo avviso del 2024 (, 101,83 € = `290.42-93.5-95.09`, R!D3): 1/12 a ottobre e
+  - terzo avviso del 2024 (101,83 € = `290.42-93.5-95.09`, R!D3): 1/12 a ottobre e
     2/12 a novembre-dicembre (R!E3, R!E7), cioè 25,46 € nell'annualità;
   - avviso gennaio-aprile 2025 (95,48 €, R!D10): per intero;
   - secondo avviso del 2025 (97,93 €, R!D24-D26): 4/8 + 3/8 + 1/8 su gennaio-agosto, con R!G26 = 48,97
@@ -169,11 +171,11 @@ Totale app 1.228,33 €, Excel 1.265,82 €; posti vuoti 0. Manca la bolletta de
 settembre-ottobre 2025: la sua metà di settembre appartiene al 2024-25 e arriverà come conguaglio
 supplementare (R5).
 
-## Domande per Carlo
+## Decisioni di Carlo (11 novembre 2026)
 
-1. Ordine dei posti per i resti di centesimo (a).
-2. Inquilino I di Berchet (ago-set 2025): ha pagato affitto e forfait (d)?
-3. Condominio Berchet 2024-25: parte della proprietà, rate e significato dei 2.103,34 € (f).
-4. Conguaglio condominiale 2023-24 di 1.302,68 €: come e quando è stato pagato (g).
-5. Finestra predefinita di 5 giorni prima e 10 dopo la scadenza (h): va bene?
-6. Le differenze della tabella sono tutte accettate come `knownDeviations`?
+1. Resti di centesimo: primi mesi, poi primi posti nell'ordine dell'Excel (a).
+2. Inquilino I di Berchet (ago-set 2025): ha pagato affitto e forfait (d).
+3. Condominio Berchet 2024-25: i 2.103,34 € sono la quota annua degli inquilini (f).
+4. Conguaglio condominiale 2023-24 di 1.302,68 €: solo proprietà, fuori dal conguaglio (g).
+5. Finestra di abbinamento da 5 giorni prima a 10 dopo la scadenza (h).
+6. Tutte le differenze della tabella sono accettate come `knownDeviations`.

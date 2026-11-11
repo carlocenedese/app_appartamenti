@@ -130,13 +130,31 @@ export const ApartmentSchema = RecordBaseSchema.extend({
   locatore: NonEmptyString,
   /** Number of beds: the divisor of shared costs, so at least 1. */
   posti: z.int().min(1),
+  /**
+   * Names of the beds in their fixed order (`Tenancy.room` uses these names). When a monthly
+   * share does not divide evenly, the leftover cents go to the first beds in this order (R30).
+   */
+  rooms: z.array(NonEmptyString).optional(),
   /** Monthly rent plus flat charges as written in the contract. Only used for a check. */
   contrattoMensile: CentsSchema.optional(),
   /** Start of the lease year (annualità). */
   annualitaStart: AnnualitaStartSchema,
   /** Start of the condominium fiscal year, when the apartment has one. */
   condominioStart: AnnualitaStartSchema.optional(),
-});
+})
+  .refine(
+    (apartment) => apartment.rooms === undefined || apartment.rooms.length === apartment.posti,
+    {
+      message: 'There must be one room name per bed',
+      path: ['rooms'],
+    },
+  )
+  .refine(
+    (apartment) =>
+      apartment.rooms === undefined || new Set(apartment.rooms).size === apartment.rooms.length,
+    { message: 'Room names must be unique', path: ['rooms'] },
+  )
+  .meta({ description: 'When rooms is present: one unique name per bed (posti).' });
 export type Apartment = z.infer<typeof ApartmentSchema>;
 
 export const ContractSchema = RecordBaseSchema.extend({

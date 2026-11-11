@@ -1,0 +1,231 @@
+// Golden fixtures (Task 7 of plan 1): anonymised apartments and lease years whose `expected`
+// values Carlo checked against the real Excel files. The settlement engine of Task 9 must
+// reproduce them; this file only checks that every fixture is well formed, free of personal data
+// and consistent with itself. The rules behind the values are in docs/rules/conguaglio-rules.md.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import {
+  ApartmentSchema,
+  BankTransactionSchema,
+  BillMatchSchema,
+  BillSchema,
+  CentsSchema,
+  ContractSchema,
+  InstalmentSchema,
+  PaymentSchema,
+  TenancySchema,
+  YearMonthSchema,
+  cents,
+  isoDate,
+  matchToTransactions,
+  monthsInPeriod,
+  splitCents,
+} from '../src/index';
+
+const GOLDEN_DIR = fileURLToPath(new URL('../../../fixtures/golden/', import.meta.url));
+
+/** Matching window decided by Carlo (R30): 5 days before to 10 days after the due date. */
+const WINDOW = { daysBefore: 5, daysAfter: 10 };
+
+const GoldenFixtureSchema = z.strictObject({
+  apartment: ApartmentSchema,
+  contract: ContractSchema,
+  period: z.strictObject({ label: z.string().min(1), from: YearMonthSchema, to: YearMonthSchema }),
+  bills: z.array(BillSchema),
+  instalments: z.array(InstalmentSchema),
+  payments: z.array(PaymentSchema),
+  transactions: z.array(BankTransactionSchema),
+  matches: z.array(BillMatchSchema),
+  tenancies: z.array(TenancySchema),
+  expectedPending: z.array(z.string()),
+  expected: z.array(
+    z.strictObject({
+      tenantId: z.string().min(1),
+      due: CentsSchema,
+      forfaitIncassato: CentsSchema,
+      byCategory: z.record(z.string(), CentsSchema),
+    }),
+  ),
+  expectedUnassigned: CentsSchema,
+  approvedBy: z.string().min(1),
+  knownDeviations: z.array(z.strictObject({ what: z.string().min(1), why: z.string().min(1) })),
+});
+type GoldenFixture = z.infer<typeof GoldenFixtureSchema>;
+
+// The patterns of Task 7, step 5. pnpm data:check runs stricter checks on every tracked file.
+const PERSONAL_DATA = [
+  { name: 'IBAN', pattern: /IT\d{2}[A-Z]\d{10}/ },
+  { name: 'codice fiscale', pattern: /[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]/ },
+  { name: 'POD', pattern: /IT\d{3}E\d{8}/ },
+];
+
+const files = readdirSync(GOLDEN_DIR)
+  .filter((name) => name.endsWith('.json'))
+  .sort();
+
+const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
+
+describe('golden fixtures', () => {
+  it('there is at least one, named <apartment>-<lease year>.json', () => {
+    expect(files.length).toBeGreaterThan(0);
+    for (const name of files) expect(name).toMatch(/^[a-z]+-\d{4}-\d{2}\.json$/);
+  });
+
+  describe.each(files)('%s', (name) => {
+    const text = readFileSync(join(GOLDEN_DIR, name), 'utf8');
+    const fixture: GoldenFixture = GoldenFixtureSchema.parse(JSON.parse(text));
+    const apartmentId = fixture.apartment.id;
+    const tenantIds = fixture.tenancies.map((tenancy) => tenancy.tenantId);
+
+    it('contains no string shaped like an IBAN, a codice fiscale or a POD', () => {
+      for (const { name: kind, pattern } of PERSONAL_DATA) {
+        expect(pattern.test(text), kind).toBe(false);
+      }
+    });
+
+    it('has a period inside the contract, named after the file', () => {
+      const { period, contract } = fixture;
+      expect(contract.apartmentId).toBe(apartmentId);
+      expect(period.from <= period.to).toBe(true);
+      expect(contract.start <= period.from && period.to <= contract.end).toBe(true);
+      expect(name.endsWith(`-${period.label}.json`)).toBe(true);
+    });
+
+    it('keeps every record on this apartment, with unique ids', () => {
+      const records = [
+        ...fixture.bills,
+        ...fixture.instalments,
+        ...fixture.payments,
+        ...fixture.transactions,
+        ...fixture.tenancies,
+      ];
+      for (const record of records) expect(record.apartmentId).toBe(apartmentId);
+      const ids = [...records, ...fixture.matches].map((record) => record.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('refers only to tenants, items and movements it contains', () => {
+      for (const payment of fixture.payments) expect(tenantIds).toContain(payment.tenantId);
+      const expectedIds = fixture.expected.map((row) => row.tenantId);
+      expect([...expectedIds].sort()).toEqual([...new Set(tenantIds)].sort());
+      const items = new Set([
+        ...fixture.bills.map((bill) => `bill:${bill.id}`),
+        ...fixture.instalments.map((instalment) => `instalment:${instalment.id}`),
+      ]);
+      const transactions = new Set(fixture.transactions.map((transaction) => transaction.id));
+      for (const match of fixture.matches) {
+        expect(items.has(`${match.itemType}:${match.itemId}`)).toBe(true);
+        if (match.by !== 'assumed') expect(transactions.has(match.transactionId)).toBe(true);
+      }
+    });
+
+    // Without statements every item is assumed paid; with them the fixture would also need the
+    // statement periods, which the fixture shape does not carry yet.
+    it.skipIf(fixture.transactions.length > 0)(
+      'records the matches the matching step produces, with the same pending items',
+      () => {
+        const result = matchToTransactions({
+          bills: fixture.bills,
+          instalments: fixture.instalments,
+          transactions: [],
+          window: WINDOW,
+          statementPeriods: [],
+          existing: [],
+        });
+        expect(result.matches).toEqual(fixture.matches);
+        expect(result.pending.map((ref) => ref.itemId).sort()).toEqual(
+          [...fixture.expectedPending].sort(),
+        );
+      },
+    );
+
+    it('names its beds in order, and every tenancy uses one of them (R30)', () => {
+      const rooms = fixture.apartment.rooms ?? [];
+      expect(rooms).toHaveLength(fixture.apartment.posti);
+      for (const tenancy of fixture.tenancies) expect(rooms).toContain(tenancy.room);
+    });
+
+    it('shares out exactly the part of each bill and TARI notice inside the period', () => {
+      // Each item is split equally over its months, remainders to the first months; only the
+      // months of the period count. byCategory leaves out categories with nothing in them.
+      const inPeriod = (amount: number, from: string, to: string): number => {
+        const months = monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`));
+        const parts = splitCents(
+          cents(amount),
+          months.map(() => 1),
+        );
+        const inside = months.map((m) => fixture.period.from <= m && m <= fixture.period.to);
+        return sum(parts.filter((_, i) => inside[i] === true));
+      };
+      const costs =
+        sum(
+          fixture.bills.map((b) =>
+            inPeriod(b.amount, b.periodStart.slice(0, 7), b.periodEnd.slice(0, 7)),
+          ),
+        ) +
+        sum(
+          fixture.instalments
+            .filter((i) => i.kind === 'tari')
+            .map((i) => inPeriod(i.rata, i.coversFrom, i.coversTo)),
+        );
+      const shared = sum(
+        fixture.expected.flatMap((row) =>
+          Object.entries(row.byCategory)
+            .filter(([category]) => category !== 'condominio')
+            .map(([, amount]) => amount),
+        ),
+      );
+      expect(shared + fixture.expectedUnassigned).toBe(costs);
+      for (const row of fixture.expected) {
+        for (const amount of Object.values(row.byCategory)) expect(amount).not.toBe(0);
+      }
+    });
+
+    it('collects the flat charge from the payments: rent first, then the flat charge (R4)', () => {
+      const months = monthsInPeriod(
+        isoDate(`${fixture.period.from}-01`),
+        isoDate(`${fixture.period.to}-01`),
+      );
+      for (const row of fixture.expected) {
+        let collected = 0;
+        for (const tenancy of fixture.tenancies.filter((t) => t.tenantId === row.tenantId)) {
+          for (const month of months) {
+            if (month < tenancy.from || (tenancy.to !== undefined && month > tenancy.to)) continue;
+            const paid = sum(
+              fixture.payments
+                .filter((p) => p.tenantId === row.tenantId && p.confirmed && p.kind === 'canone')
+                .filter((p) => (p.forMonth ?? p.date.slice(0, 7)) === month)
+                .map((p) => p.amount),
+            );
+            collected += Math.min(Math.max(paid - tenancy.monthlyRent, 0), tenancy.monthlyForfait);
+          }
+        }
+        expect(row.forfaitIncassato, row.tenantId).toBe(collected);
+      }
+    });
+
+    // Only fixtures whose bills are all assumed paid: no commission can apply (R7), and the
+    // condominium is excluded from expected (Task 7), so the costs are exactly byCategory.
+    it.skipIf(fixture.matches.some((match) => match.by !== 'assumed'))(
+      'has a due amount equal to the costs minus the flat charge collected',
+      () => {
+        for (const row of fixture.expected) {
+          expect(row.byCategory.condominio, row.tenantId).toBeUndefined();
+          expect(row.due, row.tenantId).toBe(
+            sum(Object.values(row.byCategory)) - row.forfaitIncassato,
+          );
+        }
+      },
+    );
+
+    it('documents every deviation from the Excel and who approved the values', () => {
+      expect(fixture.knownDeviations.length).toBeGreaterThan(0);
+      // A fixture waits as «da approvare» until Carlo checks its values (Task 7, step 6).
+      expect(fixture.approvedBy.trim()).not.toBe('');
+      expect(fixture.approvedBy).not.toBe('da approvare');
+    });
+  });
+});

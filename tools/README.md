@@ -49,3 +49,26 @@ pnpm tools:test
 
 Esegue `python3 -I -m unittest discover -s tools -p 'test_*.py'`. I test costruiscono da soli
 piccole cartelle di lavoro con valori inventati in una cartella temporanea.
+
+## anonymise.py
+
+Rende anonimo un documento JSON costruito dai dati reali prima che diventi una fixture (Task 7 del
+piano 1). Si usa su file che stanno fuori dal repository e scrive il risultato dove serve, di
+solito in `fixtures/golden/`.
+
+```sh
+python3 -I tools/anonymise.py --map /fuori/dal/repository/map.json /fuori/dal/repository/raw.json fixtures/golden/berchet-2024-25.json
+```
+
+Il file `map.json` (fuori dal repository) dice cosa sostituire e cosa non deve sopravvivere:
+`{"replace": {"<testo reale>": "<testo fittizio>"}, "forbid": ["<testo reale>"]}`. Per ogni testo
+del documento, chiavi comprese:
+
+1. applica le sostituzioni di `replace` a parole intere, senza distinguere maiuscole e minuscole,
+   dalla più lunga alla più corta;
+2. sostituisce con i codici d'esempio di `fixtures/README.md` IBAN, codici fiscali, POD, PDR (ogni
+   sequenza di esattamente 14 cifre) e indirizzi e-mail, e cancella i link;
+3. controlla che nessun testo di `replace` o di `forbid` compaia ancora come parola intera: se ne
+   trova, non scrive niente ed esce con codice 1.
+
+Non stampa mai i testi che sostituisce o trova, solo quanti sono. Errori di lettura: codice 2.

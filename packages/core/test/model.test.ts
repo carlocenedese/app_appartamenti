@@ -334,6 +334,20 @@ describe('Apartment', () => {
     );
   });
 
+  it('accepts one unique room name per bed and rejects anything else', () => {
+    const ok = changed(validRecords.apartment, { rooms: ['A', 'B', 'C'] });
+    expect(ApartmentSchema.safeParse(ok).success).toBe(true);
+    for (const rooms of [
+      ['A', 'B'],
+      ['A', 'A', 'B'],
+      ['A', 'B', ''],
+    ]) {
+      expect(ApartmentSchema.safeParse(changed(validRecords.apartment, { rooms })).success).toBe(
+        false,
+      );
+    }
+  });
+
   it('requires a name and a landlord', () => {
     expect(ApartmentSchema.safeParse(changed(validRecords.apartment, { name: '' })).success).toBe(
       false,

@@ -31,6 +31,13 @@
       "minimum": 1,
       "maximum": 9007199254740991
     },
+    "rooms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "contrattoMensile": {
       "type": "integer",
       "minimum": -9007199254740991,
@@ -85,5 +92,6 @@
     "locatore",
     "posti",
     "annualitaStart"
-  ]
+  ],
+  "description": "When rooms is present: one unique name per bed (posti)."
 }
