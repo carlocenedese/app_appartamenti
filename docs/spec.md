@@ -492,7 +492,7 @@ Queste 8 regole sono le uniche regole di calcolo in vigore. Prevalgono sulle sez
 - Bollette, rate di condominio, F24 e conguagli si abbinano a un addebito nel CSV del conto dell'appartamento (importo uguale, data compatibile, fornitore nella causale). Finché l'addebito non c'è la voce è "In attesa di pagamento": resta in Da rivedere, fuori dal conguaglio e dall'Excel degli inquilini.
 - Annualità storiche e CSV mancanti: l'app legge più CSV, uno per periodo (senza duplicare i movimenti già letti). Per un periodo senza estratto le voci si considerano pagate, segnate come "assunte" e non verificate; dove l'estratto c'è vale sempre R2. È il caso della prova su un'annualità già conclusa e dell'anno in corso; dai prossimi anni gli estratti si salvano ogni mese.
 - Conta l'importo addebitato. Se è diverso da quello del documento, l'app segnala "importo diverso" e chiede conferma; per una rata di condominio o un F24 la voce resta in attesa finché non si corregge il documento o non si abbina a mano.
-- Un addebito può coprire più voci (un F24, la TARI) e una voce può avere più addebiti (rate): l'abbinamento è manuale e le somme devono tornare.
+- Un addebito può coprire più voci (un F24, la TARI) e una voce può avere più addebiti (rate): l'abbinamento è manuale e le somme devono tornare, salvo l'avviso TARI comune di Berchet e Lovarini, che si abbina in automatico (R3).
 
 ### R3. Voci a rate (condominio, TARI)
 
