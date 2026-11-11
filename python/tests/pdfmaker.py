@@ -21,11 +21,14 @@ def _escape(text: str) -> bytes:
 
 
 def _content(items: list[tuple[float, float, str]]) -> bytes:
+    """Text items are `(x, y, text)`, or `(x, y, text, size)` for a size other than 10 pt."""
     parts = []
-    for x, y, text in items:
+    for item in items:
+        x, y, text = item[:3]
+        size = item[3] if len(item) > 3 else FONT_SIZE  # type: ignore[misc]
         pdf_y = PAGE_HEIGHT - y
         parts.append(
-            b"BT /F1 %d Tf %.2f %.2f Td (" % (FONT_SIZE, x, pdf_y) + _escape(text) + b") Tj ET"
+            b"BT /F1 %g Tf %.2f %.2f Td (" % (size, x, pdf_y) + _escape(text) + b") Tj ET"
         )
     return b"\n".join(parts)
 
@@ -69,6 +72,23 @@ def _document_objects(pages: list[list[tuple[float, float, str]]]) -> list[bytes
 def make_pdf(path: Path, pages: list[list[tuple[float, float, str]]]) -> None:
     """Writes a PDF with one page per list of `(x, y, text)` items."""
     _write(path, _document_objects(pages))
+
+
+def make_form_pdf(path: Path, items: list[tuple[float, float, str]]) -> None:
+    """Writes a one-page PDF whose text is inside a Form XObject drawn with `Do`."""
+    stream = _content(items)
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2f %.2f] "
+        b"/Resources << /XObject << /Fm1 6 0 R >> >> /Contents 5 0 R >>" % (PAGE_WIDTH, PAGE_HEIGHT),
+        b"<< /Length 7 >>\nstream\n/Fm1 Do\nendstream",
+        b"<< /Type /XObject /Subtype /Form /BBox [0 0 %.2f %.2f] "
+        b"/Resources << /Font << /F1 3 0 R >> >> /Length %d >>\nstream\n" % (PAGE_WIDTH, PAGE_HEIGHT, len(stream))
+        + stream + b"\nendstream",
+    ]
+    _write(path, objects)
 
 
 def make_blank_pdf(path: Path) -> None:

@@ -11,6 +11,7 @@ No network, no clock, no randomness.
 from __future__ import annotations
 
 import hashlib
+import io
 import unicodedata
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -21,7 +22,8 @@ from pdfminer.high_level import extract_pages
 from pdfminer.layout import LAParams, LTAnno, LTChar, LTContainer, LTPage, LTTextLine
 
 MIN_TEXT_CHARS = 80
-# Text lines whose top differs by less than this many points are on the same row.
+# Text lines whose vertical centre differs by less than this many points are on the same row.
+# The centre, not the top, is used because the glyph box grows with the font size.
 ROW_TOLERANCE = 2.0
 DECIMALS = 2
 
@@ -30,8 +32,9 @@ DECIMALS = 2
 # largest gap, in character widths, that still keeps two glyph runs in one line: the default 2.0
 # keeps a sentence together (even justified) but splits a label from a value in another column,
 # which is far more than 2 characters away. word_margin 0.1 is the default: a gap wider than 10%
-# of a character starts a new word. line_margin is the default 0.5.
-LA_PARAMS = LAParams(char_margin=2.0, word_margin=0.1, line_margin=0.5, boxes_flow=None)
+# of a character starts a new word. line_margin is the default 0.5. all_texts=True also builds
+# text lines for characters inside Form XObjects (otherwise that text is silently dropped).
+LA_PARAMS = LAParams(char_margin=2.0, word_margin=0.1, line_margin=0.5, boxes_flow=None, all_texts=True)
 
 
 class PdfReadError(Exception):
@@ -127,24 +130,28 @@ def _words_of(line: LTTextLine, page: int, height: float) -> list[Word]:
     return words
 
 
+def _centre(line: Line) -> float:
+    return (line.top + line.bottom) / 2
+
+
 def _page_lines(layout: LTPage, page: int) -> list[Line]:
     lines = []
     for text_line in _text_lines(layout):
         words = _words_of(text_line, page, layout.height)
         if words:
             lines.append(_make_line(page, words))
-    # Reading order: rows from the top, a row being lines whose top is within ROW_TOLERANCE of the
-    # first line of the row; inside a row from left to right.
-    lines.sort(key=lambda line: (line.top, line.x0))
+    # Reading order: rows from the top, a row being lines whose centre is within ROW_TOLERANCE of
+    # the first line of the row; inside a row from left to right.
+    lines.sort(key=lambda line: (_centre(line), line.x0))
     ordered: list[Line] = []
     row: list[Line] = []
     anchor = 0.0
     for line in lines:
-        if row and line.top - anchor >= ROW_TOLERANCE:
+        if row and _centre(line) - anchor >= ROW_TOLERANCE:
             ordered.extend(sorted(row, key=lambda item: item.x0))
             row = []
         if not row:
-            anchor = line.top
+            anchor = _centre(line)
         row.append(line)
     ordered.extend(sorted(row, key=lambda item: item.x0))
     return ordered
@@ -154,29 +161,29 @@ def read_pdf(path: Path) -> Document:
     """Reads the PDF at `path`; raises PdfReadError if it cannot be read."""
     path = Path(path)
     try:
-        with open(path, "rb") as handle:
-            data = handle.read()
+        data = path.read_bytes()
     except OSError as error:
         raise PdfReadError("Impossibile aprire il file.") from error
     file_hash = hashlib.sha256(data).hexdigest()
     lines: list[Line] = []
     pages = 0
     try:
-        # extract_pages is a generator holding the file: the with block always closes it.
-        with open(path, "rb") as handle:
-            for number, layout in enumerate(extract_pages(handle, laparams=LA_PARAMS), start=1):
-                pages = number
-                lines.extend(_page_lines(layout, number))
+        # The bytes read once are both hashed and parsed, so the hash always matches the content.
+        for number, layout in enumerate(
+            extract_pages(io.BytesIO(data), laparams=LA_PARAMS), start=1
+        ):
+            pages = number
+            lines.extend(_page_lines(layout, number))
     except (KeyboardInterrupt, MemoryError):
         raise
-    except Exception as error:
+    except Exception:
         # pdfminer raises many kinds (PDFSyntaxError, PDFPasswordIncorrect, PSException,
         # PDFEncryptionError, ...) and bad data can also surface as plain TypeError, ValueError,
         # RecursionError, so any ordinary failure of the parser is wrapped. The original error is
-        # chained for debugging but its text never reaches the message.
+        # dropped (`from None`): it may carry text from the PDF, which must never reach a log.
         raise PdfReadError(
             "Il file non è un PDF leggibile: potrebbe essere danneggiato o protetto da password."
-        ) from error
+        ) from None
     if pages == 0:
         raise PdfReadError("Il file non contiene pagine leggibili.")
     non_blank = sum(1 for line in lines for ch in line.text if not ch.isspace())

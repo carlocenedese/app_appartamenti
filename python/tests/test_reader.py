@@ -157,6 +157,46 @@ class ReaderTest(unittest.TestCase):
         self.assertEqual(a.text, "Città di Perù")
         self.assertEqual(a.text, unicodedata.normalize("NFC", a.text))
 
+    def test_text_inside_a_form_xobject_is_read(self) -> None:
+        path = self.dir / "form.pdf"
+        pdfmaker.make_form_pdf(path, [(72, 100, LONG), (72, 120, LONG)])
+        doc = read_pdf(path)
+        self.assertEqual([line.text for line in doc.lines], [LONG, LONG])
+        self.assertTrue(doc.has_text)
+        pdfmaker.make_form_pdf(path, [(72, 100, "poco testo")])
+        short = read_pdf(path)
+        self.assertEqual([line.text for line in short.lines], ["poco testo"])
+        self.assertFalse(short.has_text)
+
+    def test_mixed_font_sizes_on_one_baseline_stay_in_one_row(self) -> None:
+        doc = read_pdf(self.pdf([[(72, 300, "Totale", 10), (372, 300, "98,46", 14), (72, 330, "Fine")]]))
+        self.assertEqual([line.text for line in doc.lines], ["Totale", "98,46", "Fine"])
+
+    def test_row_tolerance_is_on_the_centre(self) -> None:
+        # same size: the centre moves with the baseline
+        near = read_pdf(self.pdf([[(300, 301, "b"), (72, 300, "a")]]))
+        self.assertEqual([line.text for line in near.lines], ["a", "b"])
+        self.assertLess(abs(near.lines[0].top - near.lines[1].top), 2)
+        far = read_pdf(self.pdf([[(300, 297, "b"), (72, 300, "a")]]))
+        self.assertEqual([line.text for line in far.lines], ["b", "a"])
+
+    def test_right_aligned_amount_column(self) -> None:
+        rows = [(72, 100 + 20 * i, f"Voce {i}") for i in range(4)]
+        amounts = [(450 + 3 * (i % 2), 100 + 20 * i, f"{i},00", 10 + 2 * (i % 2)) for i in range(4)]
+        doc = read_pdf(self.pdf([rows + amounts]))
+        self.assertEqual(
+            [line.text for line in doc.lines],
+            [t for i in range(4) for t in (f"Voce {i}", f"{i},00")],
+        )
+
+    def test_error_has_no_cause(self) -> None:
+        bad = self.dir / "bad.pdf"
+        bad.write_text("non un pdf", encoding="utf-8")
+        with self.assertRaises(PdfReadError) as caught:
+            read_pdf(bad)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertTrue(caught.exception.__suppress_context__)
+
     def test_same_file_twice(self) -> None:
         path = self.pdf([[(72, 100, "Totale"), (300, 100, "1,00")]])
         self.assertEqual(read_pdf(path), read_pdf(path))
