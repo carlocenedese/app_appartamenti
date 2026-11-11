@@ -373,6 +373,102 @@ describe('matchToTransactions: exact matches', () => {
   });
 });
 
+describe('matchToTransactions: supplier in the description of an exact match', () => {
+  const enel = () => bill('b-enel', { supplier: 'Enel Energia', amount: cents(2990) });
+
+  it('proposes, unconfirmed, a debit of the right amount whose description lacks the supplier', () => {
+    const result = run({
+      bills: [enel()],
+      transactions: [tx('t1', '2026-11-12', -2990, { description: 'ADDEBITO SDD FASTWEB' })],
+    });
+    expect(result.matches).toEqual([
+      {
+        id: 'm-bill-b-enel-amount-t1',
+        v: 1,
+        rev: 1,
+        itemType: 'bill',
+        itemId: 'b-enel',
+        transactionId: 't1',
+        transactionDate: '2026-11-12',
+        amount: 2990,
+        part: 'amount',
+        confirmed: false,
+        by: 'auto',
+      },
+    ]);
+    // A proposal to confirm by hand is neither pending nor ambiguous, and it uses the movement.
+    expect(result.pending).toEqual([]);
+    expect(result.ambiguous).toEqual([]);
+    expect(result.unmatchedTransactions).toEqual([]);
+  });
+
+  it('confirms the same debit when the supplier is in the description', () => {
+    const result = run({
+      bills: [enel()],
+      transactions: [tx('t1', '2026-11-12', -2990, { description: 'ADDEBITO SDD ENEL ENERGIA' })],
+    });
+    expect(result.matches).toEqual([
+      expect.objectContaining({
+        itemId: 'b-enel',
+        transactionId: 't1',
+        confirmed: true,
+        by: 'auto',
+      }),
+    ]);
+    expect(result.pending).toEqual([]);
+  });
+
+  it('finds the supplier whatever its case, spaces and non-breaking spaces', () => {
+    const result = run({
+      bills: [bill('b-enel', { supplier: '  enel   ENERGIA ', amount: cents(2990) })],
+      transactions: [
+        tx('t1', '2026-11-12', -2990, { description: 'ADDEBITO SDD Enel\u00a0\u00a0Energia SpA' }),
+      ],
+    });
+    expect(result.matches.map((m) => m.confirmed)).toEqual([true]);
+  });
+
+  it('confirms an instalment and a shared notice whatever their description says', () => {
+    const rata = run({
+      instalments: [instalment('cond-1')],
+      transactions: [tx('t1', '2026-10-10', -19800, { description: 'BONIFICO A CONDOMINIO' })],
+    });
+    expect(rata.matches.map((m) => m.confirmed)).toEqual([true]);
+    const tari = run({
+      instalments: tariShared(),
+      transactions: [tx('t1', '2026-03-16', -18600, { description: 'PAGOPA' })],
+    });
+    expect(tari.matches.map((m) => m.confirmed)).toEqual([true, true]);
+  });
+
+  it('keeps an ambiguous component ambiguous, supplier or not', () => {
+    const result = run({
+      bills: [enel(), bill('b-enel-2', { supplier: 'Enel Energia', amount: cents(2990) })],
+      transactions: [tx('t1', '2026-11-12', -2990, { description: 'ADDEBITO SDD FASTWEB' })],
+    });
+    expect(result.matches).toEqual([]);
+    expect(result.ambiguous.map((entry) => entry.itemId)).toEqual(['b-enel', 'b-enel-2']);
+  });
+
+  it('keeps a proposal out of the commission until a person confirms it', () => {
+    const transactions = [
+      tx('t1', '2026-11-12', -2990, { description: 'ADDEBITO SDD FASTWEB', dispCode: 'D1' }),
+      tx('t1c', '2026-11-12', -80, { description: 'COMMISSIONI E SPESE', dispCode: 'D1' }),
+    ];
+    const proposed = run({ bills: [enel()], transactions });
+    expect(proposed.matches.map((m) => [m.part, m.confirmed])).toEqual([['amount', false]]);
+    const confirmed = run({
+      bills: [enel()],
+      transactions,
+      existing: [recorded('b-enel', 't1', 2990)],
+    });
+    expect(confirmed.matches.map((m) => `${m.part}:${m.confirmed}`).sort()).toEqual([
+      'amount:true',
+      'commission:true',
+    ]);
+  });
+});
+
 describe('matchToTransactions: unconfirmed proposals', () => {
   it('proposes a debit of another amount with the supplier in the description, unconfirmed', () => {
     const result = run({

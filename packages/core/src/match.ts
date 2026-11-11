@@ -8,13 +8,19 @@
  *   bill without one, the end of its period). Only one-to-one is assigned automatically: the
  *   candidates form a graph and only its connected components with one item and one debit are
  *   matched; every other component is reported as `ambiguous` and left to a person (R15).
+ *   Section 42, R2 also asks for the supplier in the description of the debit: a bill whose
+ *   one-to-one debit does not name its supplier (compared with `foldText`) is still paired, but
+ *   as an unconfirmed proposal (`confirmed: false`, `by: 'auto'`) for a person to confirm by
+ *   hand. It is not pending, as with every other proposal. Instalments and shared notices have no
+ *   supplier and keep being confirmed.
  * - A shared notice (the TARI of Berchet and Lovarini) is one item: its instalments are matched
  *   together to one debit of `groupTotal` and the debit is split by their `weight`. A notice with
  *   one instalment only (the others not entered yet) or whose instalments disagree on paying
  *   account, due date or total, or carry a weight that is not positive, is reported in
  *   `invalidGroups`: its instalments stay pending, never matched nor assumed.
- * - Proposal: a bill whose debit has another amount but the supplier in the description gets an
- *   unconfirmed match, one-to-one only; with several possible debits it stays pending.
+ * - Proposal: besides the exact pairs without the supplier, a bill whose debit has another amount
+ *   but the supplier in the description gets an unconfirmed match, one-to-one only; with several
+ *   possible debits it stays pending.
  * - A period no statement covers: its items are taken as paid (`by: 'assumed'`, R2).
  * - Commission (R7): the debit row tied to a matched debit by the disposition code follows the
  *   items of that debit with the same split (see `commission.ts`).
@@ -76,6 +82,10 @@ export interface InvalidGroup {
   reason: 'incomplete' | 'inconsistent';
 }
 
+/** True when the description of the movement names the supplier, both folded by `foldText`. */
+const namesSupplier = (supplier: string, transaction: BankTransaction): boolean =>
+  foldText(transaction.description).includes(foldText(supplier));
+
 /** One node of the candidate graph: a bill, an instalment or all instalments of one notice. */
 interface ItemNode {
   /** Unique among nodes and the sort order. */
@@ -87,7 +97,7 @@ interface ItemNode {
   expected: Cents;
   /** Each item with its expected part, sorted by id. */
   members: (MatchItemRef & { amount: Cents })[];
-  /** Bills only: instalments have no supplier to look for. */
+  /** Bills only: instalments have no supplier to look for in the description. */
   supplier?: string;
 }
 
@@ -337,19 +347,23 @@ export function matchToTransactions(input: MatchInput): MatchResult {
     (node, t) => node.expected !== 0 && t.amount === -node.expected && inWindow(node, t),
   );
   for (const [node, t] of exact.pairs) {
+    // R2: the supplier must be in the description. Without it (a bill only) the pair is a
+    // proposal for a person to confirm, not an automatic match.
+    const confirmed = node.supplier === undefined || namesSupplier(node.supplier, t);
     for (const member of node.members) {
-      created.push(makeMatch(member, 'amount', t, member.amount, true, 'auto'));
+      created.push(makeMatch(member, 'amount', t, member.amount, confirmed, 'auto'));
     }
   }
 
-  // Proposals: bills only, among the items and movements the exact pass did not touch.
+  // Proposals of another amount: bills only, among the items and movements the exact pass did not
+  // touch.
   const proposals = solve(
     open.filter((node) => node.supplier !== undefined && !exact.touchedNodes.has(node.key)),
     free.filter((t) => !exact.touchedTransactions.has(t.id)),
     (node, t) =>
       Math.sign(t.amount) === -Math.sign(node.expected) &&
       t.amount !== -node.expected &&
-      foldText(t.description).includes(foldText(node.supplier ?? '')) &&
+      namesSupplier(node.supplier ?? '', t) &&
       inWindow(node, t),
   );
   for (const [node, t] of proposals.pairs) {
