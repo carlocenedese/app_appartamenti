@@ -16,6 +16,7 @@
     "test": "vitest run --coverage",
     "licenses:check": "node scripts/check-licenses.mjs",
     "data:check": "node scripts/check-personal-data.mjs",
+    "tools:test": "python3 -I -m unittest discover -s tools -p 'test_*.py'",
     "schemas:export": "tsx scripts/export-schemas.mjs"
   },
   "devDependencies": {
