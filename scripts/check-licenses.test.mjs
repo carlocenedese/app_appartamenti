@@ -13,7 +13,9 @@ describe('allowed list', () => {
         'CC0-1.0',
         'ISC',
         'MIT',
+        'Unicode-3.0',
         'Unlicense',
+        'Zlib',
       ].sort(),
     );
   });
@@ -30,6 +32,8 @@ describe('isLicenseAllowed', () => {
     'CC0-1.0',
     'Unlicense',
     'BlueOak-1.0.0',
+    'Unicode-3.0',
+    'Zlib',
   ])('accepts the single allowed licence %s', (expression) => {
     expect(isLicenseAllowed(expression)).toBe(true);
   });

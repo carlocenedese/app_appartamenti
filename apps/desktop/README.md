@@ -48,10 +48,10 @@ Gli installer non sono firmati:
   carica come artifact `cargo-lock`. Dopo la prima build verde: si scarica quell'artifact
   (`gh run download <id-esecuzione> -n cargo-lock`), si mette il file in `src-tauri/Cargo.lock`,
   lo si committa e poi si aggiunge `--locked` ai comandi cargo del workflow.
-- **Licenze di `cargo-deny`** (`deny.toml`, ruling R23): ammette solo l'elenco del vincolo globale
-  più MPL-2.0. L'albero di Tauri probabilmente richiede anche `Unicode-3.0` e `Zlib`, forse
-  `Apache-2.0 WITH LLVM-exception`. Non sono state aggiunte: se il passo `cargo deny` fallisce alla
-  prima esecuzione, decide Carlo quali ammettere.
+- **Licenze di `cargo-deny`** (`deny.toml`): ammette l'elenco del vincolo globale più MPL-2.0 e,
+  per decisione di Carlo dell'11 novembre 2026, `Unicode-3.0` e `Zlib` (richieste dall'albero Rust
+  di Tauri). Se alla prima esecuzione il passo `cargo deny` rifiuta altre licenze (forse
+  `Apache-2.0 WITH LLVM-exception`), decide Carlo se ammetterle.
 - **Chiave di firma degli aggiornamenti** (Task 11, passo 6; piano 6): da decidere dove si
   conserva la chiave privata. Se si perde, le app già installate non si aggiornano più.
 - **Firma del codice**: nessun certificato Windows; su Mac, se l'app si rifiuta di partire su

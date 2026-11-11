@@ -31,6 +31,10 @@ export const ALLOWED_LICENSES = new Set([
   'CC0-1.0',
   'Unlicense',
   'BlueOak-1.0.0',
+  // Added by Carlo on 11 November 2026: permissive, and the Rust crates of Tauri need them (see
+  // deny.toml). Kept here so that the npm and the Rust checks apply one and the same list.
+  'Unicode-3.0',
+  'Zlib',
 ]);
 
 const ALLOWED_LOWER_CASE = new Set([...ALLOWED_LICENSES].map((id) => id.toLowerCase()));

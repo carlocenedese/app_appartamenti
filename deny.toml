@@ -20,6 +20,11 @@ allow = [
   "CC0-1.0",
   "Unlicense",
   "BlueOak-1.0.0",
+  # Added by Carlo on 11 November 2026, with Zlib below: both are permissive and the Rust tree of
+  # Tauri carries them (unicode-ident has Unicode-3.0 in its licence expression, foldhash is Zlib).
+  # scripts/check-licenses.mjs allows them for npm packages too, so the two lists stay the same.
+  "Unicode-3.0",
+  "Zlib",
   # Weak copyleft at file level. Tauri's own dependencies carry it (for example cssparser and
   # selectors). We use those crates unmodified, so our own code stays ours; what MPL-2.0 still
   # asks (section 3.2) is that whoever receives the app is told where the source of those files
