@@ -16,6 +16,32 @@ Scheletro dell'app: una finestra che mostra `App Bollette, motore <versione>`. L
 - `pnpm --filter desktop tauri dev` apre la finestra vera, ma serve Rust (`rustup`): in CI si
   costruisce senza.
 
+## Interprete Python incorporato
+
+L'installer contiene un interprete Python 3.13 con `bollette_pdf` e le sue dipendenze, in
+`src-tauri/resources/python/` (nel pacchetto: `python/` tra le risorse dell'app). La cartella non è
+nel repository: la crea `node scripts/bundle-python.mjs` (dalla radice), che `build.yml` esegue prima
+della build Tauri. Senza la cartella `tauri build` e `tauri dev` si fermano, perché
+`tauri.conf.json` la elenca tra le risorse.
+
+- L'interprete è una distribuzione _python-build-standalone_, variante «install_only» `.tar.gz`;
+  indirizzo, impronta SHA-256 (presa dal file `SHA256SUMS` della release) e versione per
+  `windows-x86_64` e `macos-aarch64` sono in `python/runtime.json`. Lo script verifica l'impronta
+  prima di estrarre: un archivio che non corrisponde non viene mai estratto.
+- Le dipendenze vengono da `python/requirements.txt` (`--require-hashes --no-deps
+--only-binary :all:`); poi lo script toglie pip (non serve all'app e porta certifi, MPL-2.0) e
+  copia `python/bollette_pdf/` con `schemas/supplierProfile.json` e `schemas/extractionResult.json`.
+  Alla fine controlla `python -I -m bollette_pdf --version` e stampa la dimensione (circa 85 MB su
+  macOS).
+- Dopo la build, `build.yml` avvia `python -I -m bollette_pdf --version` dall'app installata
+  (Windows, in `%LOCALAPPDATA%\App Bollette`, un percorso con spazi) e dall'app costruita (macOS).
+- Per aggiornare l'interprete: si sceglie una release di python-build-standalone pubblicata da
+  almeno due settimane, si copiano in `python/runtime.json` gli indirizzi dei due file
+  `cpython-3.13.*-{x86_64-pc-windows-msvc,aarch64-apple-darwin}-install_only.tar.gz` e le loro
+  righe di `SHA256SUMS`, e si ricontrolla l'elenco delle licenze in `python/THIRD_PARTY.md`.
+- L'interprete macOS è solo per Apple Silicon: nell'app universale, su un Mac Intel la parte Python
+  non parte (punto aperto).
+
 ## Build degli installer
 
 La costruzione parte solo con un'etichetta di versione o a mano, mai a ogni push (i minuti macOS
