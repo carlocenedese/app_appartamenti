@@ -5,7 +5,27 @@ fiscali reali non entrano mai nel repository (specifica, sezione 28). I file Exc
 JPG sono esclusi da `.gitignore` ovunque tranne in questa cartella, e `pnpm data:check` cerca
 nei file tracciati stringhe che somigliano a dati personali e fallisce se ne trova.
 
-Le fixture dorate e gli strumenti di anonimizzazione arrivano con il Task 7 del piano 1.
+## Fixture dorate (`golden/`)
+
+Un file per appartamento e annualità conclusa (`<appartamento>-<annualità>.json`), costruito dagli
+Excel reali e anonimizzato con `tools/anonymise.py` (Task 7 del piano 1). Contiene appartamento,
+contratto, periodo, bollette, rate, versamenti, movimenti, abbinamenti, inquilini e i valori
+attesi del conguaglio per inquilino: `due`, `forfaitIncassato` e le spese per tipologia
+(`byCategory`), più le quote dei posti vuoti (`expectedUnassigned`).
+
+- I valori `expected` non sono «quello che dice l'Excel» ma quello che Carlo ha controllato e
+  approvato (`approvedBy`); ogni differenza dall'Excel sta in `knownDeviations` con il motivo.
+- Il condominio è escluso da `expected` per costruzione (sezione 42 della specifica, R3).
+- Gli inquilini sono `ten-a`, `ten-b`, …; nomi, codici delle bollette e link ai file non ci sono.
+- `byCategory` elenca solo le tipologie con un importo: una tipologia senza spese non compare.
+- L'ordine dei posti per i resti di centesimo è `apartment.rooms`.
+- Le regole che producono i valori sono in `docs/rules/conguaglio-rules.md`.
+- `packages/core/test/golden-fixtures.test.ts` controlla schemi, assenza di dati personali e
+  coerenza interna; il calcolo del conguaglio (Task 9) deve riprodurre i valori attesi.
+
+| File                   | Annualità | Note                                                     |
+| ---------------------- | --------- | -------------------------------------------------------- |
+| `berchet-2024-25.json` | 2024-25   | 5 posti, 12 inquilini, nessun estratto: bollette assunte |
 
 ## Codici d'esempio fittizi
 

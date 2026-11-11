@@ -104,13 +104,21 @@ payment, transaction, instalment, match, note`; `_app/workspace.json`. Costo: co
   sezione 40 della specifica. Chiude la scelta lasciata a Carlo da R23 e R24. Costo: nessuno legale;
   `cargo deny` potrebbe ancora chiedere `Apache-2.0 WITH LLVM-exception`, da decidere alla prima
   esecuzione.
+- **R30** (Carlo, 11 novembre 2026) Fase B, Task 7: resti di centesimo ai primi mesi e poi ai primi
+  posti nell'ordine dell'Excel, scritto nel nuovo campo facoltativo `Apartment.rooms` (un nome per
+  posto, unici); l'inquilino I di Berchet (ago-set 2025) ha pagato affitto e forfait;
+  i 2.103,34 € del condominio Berchet 2024-25 sono la quota annua degli inquilini (controllo di fine
+  esercizio del Task 9); il conguaglio condominiale 2023-24 di 1.302,68 € resta alla proprietà;
+  finestra di abbinamento −5/+10 giorni dalla scadenza; tutte le differenze dall'Excel di
+  `docs/rules/conguaglio-rules.md` sono `knownDeviations` accettate.
+- **R31** (Carlo, 11 novembre 2026) La chiave privata degli aggiornamenti sta nella cartella iCloud
+  di Carlo `Personale/App_appartamenti/chiave-firma-aggiornamenti/`, mai nel repository.
 - Altre: `settlementPeriods` annuale rifiuta un inizio d'annualità diverso dal giorno 1; i commit
   degli esecutori riportano il modello che li ha scritti.
 
 ## Da decidere con Carlo
 
 1. Nota TARI: la data dell'avviso non c'è nell'esempio della specifica né nei dati in ingresso.
-2. Dove conservare la chiave di firma degli aggiornamenti (Task 11, passo 6).
 
 ## Rilievi minori rimandati
 
@@ -119,6 +127,8 @@ Per fase in cui vanno affrontati.
 - **Prima del Task 7:** file UTF-16 e fixture binarie (xlsx, pdf) non controllati da `data:check`;
   `.gitignore` senza png/heic/xlsm/docx/ods e senza estensioni maiuscole su Linux; `.gitattributes`
   normalizza i fine riga dei CSV futuri (`fixtures/** -text`); solo IBAN italiani riconosciuti.
+- **Task 9 (golden:report):** la fixture di Berchet 2024-25 non contiene ancora gli importi dell'Excel
+  per inquilino e per voce, che il rapporto delle differenze deve mostrare: aggiungerli allora.
 - **Prima del Task 9:** `MatchResult` non dice quali abbinamenti esistenti ha scartato (chi li
   salva deve marcarli `deleted`); `coversFrom`/`coversTo` non confrontati con `rateCoverage`;
   `annualitaOf` con inizio 1 gennaio non va usato per etichettare l'anno TARI.

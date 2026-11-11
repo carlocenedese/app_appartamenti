@@ -10,6 +10,10 @@ apps/desktop/src-tauri/gen/schemas/
 # Working folder of the orchestration skill (progress log, briefs, reports)
 .superpowers/
 
+# Python bytecode (tools/*.py)
+__pycache__/
+*.pyc
+
 # OS and editor files
 .DS_Store
 Thumbs.db
