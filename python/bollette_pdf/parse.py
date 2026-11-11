@@ -124,3 +124,31 @@ def parse_quantity(text: str) -> tuple[str, str | None]:
         raise ValueError(f"Quantità non valida o ambigua: «{text}».")
     number = match.group("num").replace(".", "").replace(",", ".")
     return (number, match.group("unit"))
+
+
+# YYYY-MM-DD, optionally followed by THH:MM[:SS[.fff]] and a zone (Z or ±HH:MM).
+_AT = re.compile(
+    r"([0-9]{4})-([0-9]{2})-([0-9]{2})"
+    r"(?:T([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.[0-9]{1,9})?)?"
+    r"(?:Z|[+-]([0-9]{2}):([0-9]{2}))?)?"
+)
+
+
+def valid_iso_at(value: object) -> bool:
+    """Whether `value` is an ISO date or date-time, the form of the `at` / `now` arguments."""
+    match = _AT.fullmatch(value) if isinstance(value, str) else None
+    if match is None:
+        return False
+    year, month, day = int(match[1]), int(match[2]), int(match[3])
+    try:
+        date(year, month, day)
+    except ValueError:
+        return False
+    hour = int(match[4]) if match[4] is not None else 0
+    minute = int(match[5]) if match[5] is not None else 0
+    second = int(match[6]) if match[6] is not None else 0
+    if hour > 23 or minute > 59 or second > 59:
+        return False
+    if match[7] is not None and (int(match[7]) > 23 or int(match[8]) > 59):
+        return False
+    return True

@@ -1,11 +1,15 @@
 """Command line of bollette_pdf.
 
     python -I -m bollette_pdf extract --pdf <file> --profiles <directory> --at <ISO date(-time)>
+    python -I -m bollette_pdf build-profile --pdf <file> --spec <file.json> --at <ISO date(-time)>
     python -I -m bollette_pdf --version
 
-Prints ONE JSON document (a validated ExtractionResult) and a newline on stdout, in UTF-8 with
-`\\n` line endings. Exit code 0 for every valid result (also non-riconosciuta, senza-testo and
-illeggibile), 2 for wrong arguments, an unreadable path or a result that does not validate.
+`extract` prints ONE JSON document (a validated ExtractionResult) and a newline on stdout, in
+UTF-8 with `\\n` line endings. Exit code 0 for every valid result (also non-riconosciuta,
+senza-testo and illeggibile), 2 for wrong arguments, an unreadable path or a result that does not
+validate. `build-profile` prints, the same way, the supplierProfile built from the selections of
+the spec file (see `_read_spec`); a malformed spec, an unreadable PDF or a selection that cannot
+be turned into a profile give code 2 and a constant message.
 Messages on stderr are generic Italian sentences: they never contain text read from a PDF, a
 profile or a path.
 
@@ -17,16 +21,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import sys
 import unicodedata
 from collections.abc import Callable
-from datetime import date
 from pathlib import Path
 from typing import Any, NoReturn, TextIO
 
 from . import __version__
+from .builder import ProfileDataError, Selection, build_profile
 from .extract import extract
+from .parse import valid_iso_at
 from .profiles import load_profiles
 from .reader import PdfReadError, read_pdf
 from .schemas import validate
@@ -34,13 +38,12 @@ from .schemas import validate
 EXIT_OK = 0
 EXIT_ERROR = 2
 INTERNAL_ERROR = "Errore interno: nessun output."
-
-# YYYY-MM-DD, optionally followed by THH:MM[:SS[.fff]] and a zone (Z or ±HH:MM).
-_AT = re.compile(
-    r"([0-9]{4})-([0-9]{2})-([0-9]{2})"
-    r"(?:T([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.[0-9]{1,9})?)?"
-    r"(?:Z|[+-]([0-9]{2}):([0-9]{2}))?)?"
+SPEC_ERROR = "Specifica non valida: nessun profilo costruito."
+SELECTION_ERROR = "Selezione non valida: nessun profilo costruito."
+_SPEC_KEYS = frozenset(
+    {"profileId", "supplier", "kind", "category", "validFrom", "recognise", "fields"}
 )
+
 # Keys first, in the order of the schema; the rest follows in the order of `extract`.
 _HEAD_KEYS = ("v", "engineVersion", "fileHash", "fileName", "pages", "status")
 
@@ -81,6 +84,13 @@ def _build_parser(stdout: TextIO, stderr: TextIO) -> argparse.ArgumentParser:
     command.add_argument("--pdf", required=True, help="file PDF da leggere")
     command.add_argument("--profiles", required=True, help="cartella dei profili dei fornitori")
     command.add_argument("--at", required=True, help="data o data-ora ISO di riferimento")
+    build = sub.add_parser(
+        "build-profile", help="costruisce un profilo da selezioni di testo", add_help=False
+    )
+    build.add_argument("-h", "--help", action="help", help="mostra questo aiuto")
+    build.add_argument("--pdf", required=True, help="file PDF da leggere")
+    build.add_argument("--spec", required=True, help="file JSON con il profilo e le selezioni")
+    build.add_argument("--at", required=True, help="data o data-ora ISO di riferimento")
     return parser
 
 
@@ -89,25 +99,6 @@ def _sub_parser_factory(streams: tuple[TextIO, TextIO]) -> Callable[..., _Parser
         return _Parser(streams, **kwargs)
 
     return make
-
-
-def _valid_at(value: str) -> bool:
-    match = _AT.fullmatch(value)
-    if match is None:
-        return False
-    year, month, day = int(match[1]), int(match[2]), int(match[3])
-    try:
-        date(year, month, day)
-    except ValueError:
-        return False
-    hour = int(match[4]) if match[4] is not None else 0
-    minute = int(match[5]) if match[5] is not None else 0
-    second = int(match[6]) if match[6] is not None else 0
-    if hour > 23 or minute > 59 or second > 59:
-        return False
-    if match[7] is not None and (int(match[7]) > 23 or int(match[8]) > 59):
-        return False
-    return True
 
 
 def _is_file(value: str) -> bool:
@@ -188,7 +179,7 @@ def _run_extract(pdf: str, profiles: str, at: str, stdout: TextIO) -> None:
         raise _Rejected("Il file indicato con --pdf non esiste o non è un file.")
     if not _is_dir(profiles):
         raise _Rejected("La cartella indicata con --profiles non esiste o non è una cartella.")
-    if not _valid_at(at):
+    if not valid_iso_at(at):
         raise _Rejected("Il valore di --at non è una data o data-ora ISO valida.")
     path = Path(pdf)
     file_name = _nfc(path.name)
@@ -212,6 +203,71 @@ def _run_extract(pdf: str, profiles: str, at: str, stdout: TextIO) -> None:
     _print_json(final, stdout)
 
 
+def _selection(raw: Any) -> Selection:
+    if not isinstance(raw, dict) or set(raw) != {"page", "box"}:
+        raise _Rejected(SPEC_ERROR)
+    page, box = raw["page"], raw["box"]
+    if isinstance(page, float) and page.is_integer():
+        page = int(page)
+    if isinstance(page, bool) or not isinstance(page, int):
+        raise _Rejected(SPEC_ERROR)
+    if not isinstance(box, list) or len(box) != 4:
+        raise _Rejected(SPEC_ERROR)
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in box):
+        raise _Rejected(SPEC_ERROR)
+    return Selection(page, (box[0], box[1], box[2], box[3]))
+
+
+def _read_spec(path: Path) -> dict[str, Any]:
+    """The spec file: {"profileId", "supplier", "kind", "category", "validFrom",
+    "recognise": [{"page", "box"}], "fields": {"<field>": {"page", "box"}}}, box being
+    [x0, top, x1, bottom] in points from the top-left of the page."""
+    try:
+        spec = json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError):
+        raise _Rejected(SPEC_ERROR) from None
+    if not isinstance(spec, dict) or set(spec) != _SPEC_KEYS:
+        raise _Rejected(SPEC_ERROR)
+    for key in ("profileId", "supplier", "kind", "validFrom"):
+        if not isinstance(spec[key], str):
+            raise _Rejected(SPEC_ERROR)
+    if spec["category"] is not None and not isinstance(spec["category"], str):
+        raise _Rejected(SPEC_ERROR)
+    if not isinstance(spec["recognise"], list) or not isinstance(spec["fields"], dict):
+        raise _Rejected(SPEC_ERROR)
+    return {
+        "profile_id": spec["profileId"],
+        "supplier": spec["supplier"],
+        "kind": spec["kind"],
+        "category": spec["category"],
+        "valid_from": spec["validFrom"],
+        "recognise": [_selection(raw) for raw in spec["recognise"]],
+        "fields": {name: _selection(raw) for name, raw in spec["fields"].items()},
+    }
+
+
+def _run_build(pdf: str, spec_path: str, at: str, stdout: TextIO) -> None:
+    if not _is_file(pdf):
+        raise _Rejected("Il file indicato con --pdf non esiste o non è un file.")
+    if not _is_file(spec_path):
+        raise _Rejected("Il file indicato con --spec non esiste o non è un file.")
+    if not valid_iso_at(at):
+        raise _Rejected("Il valore di --at non è una data o data-ora ISO valida.")
+    arguments = _read_spec(Path(spec_path))
+    try:
+        doc = read_pdf(Path(pdf))
+    except PdfReadError as error:
+        raise _Rejected(str(error)) from None
+    try:
+        profile = build_profile(doc, now=at, **arguments)
+    except ProfileDataError:
+        raise _Rejected(SPEC_ERROR) from None
+    except ValueError:
+        # The builder's messages name a field at most; the command keeps one constant message.
+        raise _Rejected(SELECTION_ERROR) from None
+    _print_json(profile, stdout)
+
+
 def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
@@ -224,11 +280,14 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
         out.write(f"{__version__}\n")
         out.flush()
         return EXIT_OK
-    if args.command != "extract":
-        err.write("Manca il comando: usare «extract» oppure --version.\n")
+    if args.command not in ("extract", "build-profile"):
+        err.write("Manca il comando: usare «extract», «build-profile» oppure --version.\n")
         return EXIT_ERROR
     try:
-        _run_extract(args.pdf, args.profiles, args.at, out)
+        if args.command == "extract":
+            _run_extract(args.pdf, args.profiles, args.at, out)
+        else:
+            _run_build(args.pdf, args.spec, args.at, out)
     except _Rejected as rejected:
         err.write(f"{rejected}\n")
         return EXIT_ERROR
