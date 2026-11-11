@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "locatore": {
+      "type": "string",
+      "minLength": 1
+    },
+    "posti": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "contrattoMensile": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "annualitaStart": {
+      "type": "object",
+      "properties": {
+        "month": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "day": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 31
+        }
+      },
+      "required": [
+        "month",
+        "day"
+      ],
+      "description": "A month and day that exist every year; day must exist in that month."
+    },
+    "condominioStart": {
+      "type": "object",
+      "properties": {
+        "month": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "day": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 31
+        }
+      },
+      "required": [
+        "month",
+        "day"
+      ],
+      "description": "A month and day that exist every year; day must exist in that month."
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "name",
+    "locatore",
+    "posti",
+    "annualitaStart"
+  ]
+}

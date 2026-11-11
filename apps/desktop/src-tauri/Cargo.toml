@@ -1,0 +1,27 @@
+[package]
+name = "app-bollette"
+version = "0.1.0"
+description = "App Bollette: gestione delle bollette degli appartamenti in affitto"
+edition = "2024"
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the library name different from the binary name: with the same name
+# Cargo overwrites output files on Windows (https://github.com/rust-lang/cargo/issues/8519).
+name = "app_bollette_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# Exact versions (`=`): a build never moves to a newer Tauri without a commit that says so.
+# tauri-build 2.7.4 and tauri 2.12.5 are released together and agree on tauri-utils 2.10.x.
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.5", features = [] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
