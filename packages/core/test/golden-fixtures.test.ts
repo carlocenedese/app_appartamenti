@@ -2,67 +2,12 @@
 // values Carlo checked against the real Excel files. The settlement engine of Task 9 must
 // reproduce them; this file only checks that every fixture is well formed, free of personal data
 // and consistent with itself. The rules behind the values are in docs/rules/conguaglio-rules.md.
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
-import {
-  ApartmentSchema,
-  BankTransactionSchema,
-  BillMatchSchema,
-  BillSchema,
-  CentsSchema,
-  ContractSchema,
-  InstalmentSchema,
-  PaymentSchema,
-  TenancySchema,
-  YearMonthSchema,
-  cents,
-  isoDate,
-  matchToTransactions,
-  monthsInPeriod,
-  splitCents,
-} from '../src/index';
-
-const GOLDEN_DIR = fileURLToPath(new URL('../../../fixtures/golden/', import.meta.url));
+import { cents, isoDate, matchToTransactions, monthsInPeriod, splitCents } from '../src/index';
+import { goldenFiles, readGolden } from './helpers/golden';
 
 /** Matching window decided by Carlo (R30): 5 days before to 10 days after the due date. */
 const WINDOW = { daysBefore: 5, daysAfter: 10 };
-
-const GoldenFixtureSchema = z.strictObject({
-  apartment: ApartmentSchema,
-  contract: ContractSchema,
-  period: z.strictObject({ label: z.string().min(1), from: YearMonthSchema, to: YearMonthSchema }),
-  bills: z.array(BillSchema),
-  instalments: z.array(InstalmentSchema),
-  payments: z.array(PaymentSchema),
-  transactions: z.array(BankTransactionSchema),
-  matches: z.array(BillMatchSchema),
-  tenancies: z.array(TenancySchema),
-  expectedPending: z.array(z.string()),
-  expected: z.array(
-    z.strictObject({
-      tenantId: z.string().min(1),
-      due: CentsSchema,
-      forfaitIncassato: CentsSchema,
-      byCategory: z.record(z.string(), CentsSchema),
-    }),
-  ),
-  expectedUnassigned: CentsSchema,
-  /** What the Excel charges each tenant, by category (costs only), for the difference report. */
-  excel: z
-    .array(
-      z.strictObject({
-        tenantId: z.string().min(1),
-        byCategory: z.record(z.string(), CentsSchema),
-      }),
-    )
-    .optional(),
-  approvedBy: z.string().min(1),
-  knownDeviations: z.array(z.strictObject({ what: z.string().min(1), why: z.string().min(1) })),
-});
-type GoldenFixture = z.infer<typeof GoldenFixtureSchema>;
 
 // The patterns of Task 7, step 5. pnpm data:check runs stricter checks on every tracked file.
 const PERSONAL_DATA = [
@@ -71,9 +16,7 @@ const PERSONAL_DATA = [
   { name: 'POD', pattern: /IT\d{3}E\d{8}/ },
 ];
 
-const files = readdirSync(GOLDEN_DIR)
-  .filter((name) => name.endsWith('.json'))
-  .sort();
+const files = goldenFiles();
 
 const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
 
@@ -84,8 +27,7 @@ describe('golden fixtures', () => {
   });
 
   describe.each(files)('%s', (name) => {
-    const text = readFileSync(join(GOLDEN_DIR, name), 'utf8');
-    const fixture: GoldenFixture = GoldenFixtureSchema.parse(JSON.parse(text));
+    const { text, fixture } = readGolden(name);
     const apartmentId = fixture.apartment.id;
     const tenantIds = fixture.tenancies.map((tenancy) => tenancy.tenantId);
 
