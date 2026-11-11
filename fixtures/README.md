@@ -49,3 +49,11 @@ qui tra apici inversi, con una nota: la revisione deve verificare che sia davver
 Nelle fixture e nei test si scrivono questi codici così come sono. Per un caso che richiede un
 codice diverso (per esempio due POD distinti) si costruisce il valore a partire da questi, e se
 serve nei file tracciati lo si dichiara nella tabella sopra.
+
+## PDF e profili dei fornitori (piano 2a)
+
+- `fixtures/pdf/`: PDF sintetici generati da uno script, con testi e importi inventati. Nessun PDF
+  reale entra mai nel repository, nemmeno anonimizzato a mano.
+- `python/seed-profiles/` (fuori da `fixtures/`): profili dei fornitori (`SupplierProfile`) che
+  riconoscono per parole chiave, senza codici cliente, POD, PDR o indirizzi; quelli dell'utente
+  stanno nei suoi dati, in `_app/dati/supplierProfile/`.

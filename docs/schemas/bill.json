@@ -68,6 +68,25 @@
       "minimum": -9007199254740991,
       "maximum": 9007199254740991
     },
+    "consumption": {
+      "type": "object",
+      "properties": {
+        "quantity": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$",
+          "description": "Decimal number as text with a dot, e.g. \"123.4\"; never a float."
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "quantity",
+        "unit"
+      ],
+      "description": "Quantity consumed and its unit, e.g. 123.4 kWh."
+    },
     "includedInConguaglio": {
       "type": "boolean"
     },

@@ -190,10 +190,25 @@ export const TenancySchema = RecordBaseSchema.extend({
   .meta({ description: 'When to is present, from must not be after to.' });
 export type Tenancy = z.infer<typeof TenancySchema>;
 
+/** The categories of a bill; a supplier profile of kind `bill` names one. */
+export const BillCategorySchema = z.enum(['elettricita', 'gas', 'acqua', 'internet', 'altro']);
+
+/** A consumption read from a bill: a decimal quantity written as text with a dot, and its unit. */
+export const ConsumptionSchema = z
+  .object({
+    quantity: z
+      .string()
+      .regex(/^-?[0-9]+(?:\.[0-9]+)?$/)
+      .meta({ description: 'Decimal number as text with a dot, e.g. "123.4"; never a float.' }),
+    unit: NonEmptyString,
+  })
+  .meta({ description: 'Quantity consumed and its unit, e.g. 123.4 kWh.' });
+export type Consumption = z.infer<typeof ConsumptionSchema>;
+
 export const BillSchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,
   /** Condominium and TARI are instalments, IMU is the owner's tax: none of them is a bill. */
-  category: z.enum(['elettricita', 'gas', 'acqua', 'internet', 'altro']),
+  category: BillCategorySchema,
   supplier: NonEmptyString,
   number: z.string().optional(),
   issueDate: ISODateSchema.optional(),
@@ -203,6 +218,8 @@ export const BillSchema = RecordBaseSchema.extend({
   periodEnd: ISODateSchema,
   /** Negative for a credit note. */
   amount: CentsSchema,
+  /** What the bill says was consumed in the period, when it says so. */
+  consumption: ConsumptionSchema.optional(),
   includedInConguaglio: z.boolean(),
   sharedWithTenants: z.boolean(),
   fileHash: NonEmptyString,
@@ -347,6 +364,138 @@ export const NoteSchema = RecordBaseSchema.extend({
 });
 export type Note = z.infer<typeof NoteSchema>;
 
+// --- Supplier profile -------------------------------------------------------------------------
+
+/** The kinds of identifier a bill carries: electricity point, gas point, customer code. */
+export const IdentifierKindSchema = z.enum(['pod', 'pdr', 'customer']);
+
+// The profile is read by a Python program, so a pattern must compile in JavaScript and use only
+// what `re` and `RegExp` share: numbered groups, no lookbehind, no inline flags. Escapes and
+// character classes are removed before looking for these constructs, so `\(?<` and `[(?<=]` pass.
+const FORBIDDEN_CONSTRUCTS: readonly [RegExp, string][] = [
+  [/\(\?P?<(?![=!])/, 'named groups'],
+  [/\(\?<[=!]/, 'lookbehind'],
+  [/\(\?[a-zA-Z]+(?:-[a-zA-Z]+)?[:)]/, 'inline flags'],
+];
+
+/** Why `pattern` is not allowed, or `undefined` when it is. */
+function patternProblem(pattern: string): string | undefined {
+  try {
+    new RegExp(pattern);
+  } catch {
+    return 'The pattern is not a valid regular expression';
+  }
+  const bare = pattern.replace(/\\./gs, '').replace(/\[[^\]]*\]/g, '');
+  const found = FORBIDDEN_CONSTRUCTS.find(([construct]) => construct.test(bare));
+  return found === undefined ? undefined : `The pattern uses ${found[1]}, not shared with Python`;
+}
+
+/**
+ * A regular expression that compiles in JavaScript and stays in the subset shared with Python's
+ * `re`: numbered groups only, no lookbehind, no inline flags. JSON Schema cannot express this.
+ */
+const PatternSchema = NonEmptyString.superRefine((pattern, ctx) => {
+  const problem = patternProblem(pattern);
+  if (problem !== undefined) ctx.addIssue({ code: 'custom', message: problem });
+}).meta({
+  description:
+    'Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind ' +
+    '("(?<=", "(?<!"), no inline flags such as "(?i)".',
+});
+
+export const RuleValueTypeSchema = z.enum(['euro', 'date', 'date-range', 'text', 'quantity']);
+
+/** How to read one value: find the anchor text, look in `position`, match `pattern`. */
+export const RuleSchema = z.object({
+  /** Text of the label next to the value. */
+  anchor: NonEmptyString,
+  position: z.enum(['same-line', 'right', 'below']),
+  pattern: PatternSchema,
+  valueType: RuleValueTypeSchema,
+  /** The capture group of `pattern` that holds the value. */
+  group: z.int().min(0).default(1),
+});
+export type Rule = z.infer<typeof RuleSchema>;
+
+const FieldRulesSchema = z.object({
+  required: z.boolean(),
+  /** Tried in order; the first that matches wins. */
+  rules: z.array(RuleSchema).min(1),
+});
+
+/** The fields a profile can read, and the only value type each one accepts. */
+const FIELD_VALUE_TYPES = {
+  number: 'text',
+  issueDate: 'date',
+  dueDate: 'date',
+  period: 'date-range',
+  amount: 'euro',
+  consumption: 'quantity',
+} as const;
+
+export const SupplierProfileSchema = RecordBaseSchema.extend({
+  supplier: NonEmptyString,
+  kind: z.enum(['bill', 'tari']),
+  category: BillCategorySchema.optional(),
+  /** `bozza` until the owner confirms the first reading made with it. */
+  status: z.enum(['bozza', 'confermato']),
+  /** Register a bill that passes every check without asking. */
+  autoRegister: z.boolean(),
+  /** First day the layout is in use; a new layout is a new profile and the old one stays. */
+  validFrom: ISODateSchema,
+  validTo: ISODateSchema.optional(),
+  /** The PDF belongs to this supplier when all `allOf` texts appear and no `noneOf` text does. */
+  recognise: z.object({
+    allOf: z.array(NonEmptyString).min(1),
+    noneOf: z.array(NonEmptyString),
+  }),
+  fields: z.partialRecord(
+    z.enum(Object.keys(FIELD_VALUE_TYPES) as [keyof typeof FIELD_VALUE_TYPES]),
+    FieldRulesSchema,
+  ),
+  identifiers: z.array(z.object({ kind: IdentifierKindSchema, pattern: PatternSchema })),
+  /** TARI only: one match per part of the notice, label in group 1 and amount in group 2. */
+  parts: z.object({ pattern: PatternSchema }).optional(),
+  /** One match per line item, amount in group 1; the items are summed to check the total. */
+  items: z.object({ pattern: PatternSchema }).optional(),
+})
+  .refine((profile) => profile.kind === 'tari' || profile.category !== undefined, {
+    message: 'A bill profile needs a category',
+    path: ['category'],
+  })
+  .refine((profile) => profile.kind === 'bill' || profile.category === undefined, {
+    message: 'A TARI profile must not have a category',
+    path: ['category'],
+  })
+  .refine((profile) => profile.kind === 'tari' || profile.parts === undefined, {
+    message: 'Only a TARI profile has parts',
+    path: ['parts'],
+  })
+  .refine(
+    (profile) => profile.validTo === undefined || notAfter(profile.validFrom, profile.validTo),
+    {
+      message: 'The profile ends before it starts',
+      path: ['validTo'],
+    },
+  )
+  .refine(
+    (profile) =>
+      Object.entries(profile.fields).every(([name, spec]) =>
+        spec.rules.every(
+          (rule) => rule.valueType === FIELD_VALUE_TYPES[name as keyof typeof FIELD_VALUE_TYPES],
+        ),
+      ),
+    { message: 'A rule has a value type that its field cannot hold', path: ['fields'] },
+  )
+  .meta({
+    description:
+      'kind "bill" needs a category and kind "tari" must not have one; parts only with kind ' +
+      '"tari"; validFrom must not be after validTo; the valueType of every rule of a field is ' +
+      'fixed: amount euro, issueDate and dueDate date, period date-range, consumption quantity, ' +
+      'number text.',
+  });
+export type SupplierProfile = z.infer<typeof SupplierProfileSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -361,6 +510,7 @@ export const recordSchemas = {
   instalment: InstalmentSchema,
   match: BillMatchSchema,
   note: NoteSchema,
+  supplierProfile: SupplierProfileSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

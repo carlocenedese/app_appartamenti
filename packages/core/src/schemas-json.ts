@@ -7,12 +7,14 @@
  * throws instead of silently turning into an empty schema.
  */
 import { z } from 'zod';
+import { ExtractionResultSchema } from './extraction';
 import { OperationSchema } from './journal';
 import { WorkspaceSchema, recordSchemas } from './model';
 
 /**
  * The JSON Schema of each record kind (keys of `recordSchemas`), of the workspace file (key
- * `workspace`) and of an operation of the journal (key `operation`). The key order is fixed, so
+ * `workspace`) and of an operation of the journal (key `operation`) and of an extraction result (key
+ * `extractionResult`). The key order is fixed, so
  * the output is stable.
  */
 export function exportJsonSchemas(): Record<string, object> {
@@ -20,6 +22,7 @@ export function exportJsonSchemas(): Record<string, object> {
     ...recordSchemas,
     workspace: WorkspaceSchema,
     operation: OperationSchema,
+    extractionResult: ExtractionResultSchema,
   };
   return Object.fromEntries(
     Object.entries(schemas).map(([kind, schema]) => [
