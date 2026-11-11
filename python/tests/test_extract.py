@@ -170,17 +170,54 @@ class FieldsTest(ExtractTestCase):
         self.assertEqual((amount["value"], amount["confidence"]), (8765, "high"))
         self.assertEqual(amount["source"]["box"], box_of(find_word(doc, "87,65")))
 
-    def test_right_reads_a_far_column(self) -> None:
-        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale da pagare"),
-                        (300, 200, "Note varie"), (450, 200, "87,65"), (72, 400, FILLER)])
-        self.assertEqual(len([ln for ln in doc.lines if abs(ln.baseline - 200) < 2]), 3)
-        same_line = extract(doc, [light_profile()], AT)["fields"]["amount"]
-        self.assertEqual(same_line["confidence"], "missing")
+    def right_profile(self):
         profile = light_profile()
         profile["fields"]["amount"]["rules"] = [rule("Totale da pagare", EURO, "euro", "right")]
-        amount = extract(doc, [profile], AT)["fields"]["amount"]
+        return profile
+
+    def test_right_reads_a_far_column(self) -> None:
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale da pagare"),
+                        (450, 200, "€ 87,65"), (72, 400, FILLER)])
+        self.assertEqual(len([ln for ln in doc.lines if abs(ln.baseline - 200) < 2]), 2)
+        same_line = extract(doc, [light_profile()], AT)["fields"]["amount"]
+        self.assertEqual(same_line["confidence"], "missing")
+        amount = extract(doc, [self.right_profile()], AT)["fields"]["amount"]
         self.assertEqual((amount["value"], amount["confidence"]), (8765, "high"))
         self.assertEqual(amount["source"]["box"], box_of(find_word(doc, "87,65")))
+
+    def test_right_reads_only_the_first_cell(self) -> None:
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale da pagare"),
+                        (300, 200, "Note varie"), (450, 200, "87,65"), (72, 400, FILLER)])
+        amount = extract(doc, [self.right_profile()], AT)["fields"]["amount"]
+        self.assertEqual(amount, {"value": None, "confidence": "missing", "source": None})
+
+    def test_right_value_from_a_neighbouring_column_is_never_high(self) -> None:
+        # The total cell is empty; the next cell holds another amount among other words.
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale da pagare"),
+                        (350, 200, "di cui IVA 12,00"), (72, 400, FILLER)])
+        amount = extract(doc, [self.right_profile()], AT)["fields"]["amount"]
+        self.assertEqual((amount["value"], amount["confidence"]), (1200, "medium"))
+
+    def test_right_cell_with_currency_noise_is_high(self) -> None:
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale da pagare"),
+                        (400, 200, "(EUR: 98,46 euro)"), (72, 400, FILLER)])
+        amount = extract(doc, [self.right_profile()], AT)["fields"]["amount"]
+        self.assertEqual((amount["value"], amount["confidence"]), (9846, "high"))
+
+    def test_right_cell_with_extra_words_is_medium(self) -> None:
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale da pagare"),
+                        (400, 200, "pari a € 98,46"), (72, 400, FILLER)])
+        amount = extract(doc, [self.right_profile()], AT)["fields"]["amount"]
+        self.assertEqual((amount["value"], amount["confidence"]), (9846, "medium"))
+
+    def test_below_cell_with_euro_is_high_and_extra_words_medium(self) -> None:
+        profile = light_profile()
+        profile["fields"]["amount"]["rules"] = [rule("Totale da pagare", EURO, "euro", "below")]
+        for cell, confidence in (("€ 98,46", "high"), ("98,46 € circa", "medium")):
+            doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale da pagare"),
+                            (72, 215, cell), (72, 400, FILLER)])
+            amount = extract(doc, [profile], AT)["fields"]["amount"]
+            self.assertEqual((amount["value"], amount["confidence"]), (9846, confidence), cell)
 
     def test_right_ignores_words_left_of_the_anchor(self) -> None:
         doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "12,00"),
@@ -258,11 +295,32 @@ class FieldsTest(ExtractTestCase):
         self.assertEqual(result["profileId"], "luce-2025")
         self.assertValid(result)
 
-    def test_quantity_without_unit_has_empty_unit(self) -> None:
+    def test_quantity_without_unit_is_missing(self) -> None:
+        # Ruling R53: a consumption without its unit is no value.
         doc = self.doc([(72, 80, "Luce Inventata"), (72, 180, "Consumo 1.234"),
+                        (72, 200, "Totale da pagare 87,65"), (72, 400, FILLER)])
+        result = extract(doc, [light_profile()], AT)
+        self.assertEqual(result["fields"]["consumption"],
+                         {"value": None, "confidence": "missing", "source": None})
+        self.assertValid(result)
+
+    def test_anchor_ignores_edge_punctuation_of_words(self) -> None:
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale da pagare: 87,65"),
                         (72, 400, FILLER)])
-        consumption = extract(doc, [light_profile()], AT)["fields"]["consumption"]
-        self.assertEqual(consumption["value"], {"quantity": "1234", "unit": ""})
+        amount = extract(doc, [light_profile()], AT)["fields"]["amount"]
+        self.assertEqual((amount["value"], amount["confidence"]), (8765, "high"))
+        profile = light_profile()
+        profile["fields"]["amount"]["rules"] = [rule("Totale:", EURO, "euro")]
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Totale, 87,65"),
+                        (72, 400, FILLER)])
+        self.assertEqual(extract(doc, [profile], AT)["fields"]["amount"]["value"], 8765)
+
+    def test_single_word_anchor_is_still_whole_word(self) -> None:
+        profile = light_profile()
+        profile["fields"]["amount"]["rules"] = [rule("Totale", EURO, "euro")]
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, "Subtotale: 87,65"),
+                        (72, 220, "Totalectomia 12,00"), (72, 400, FILLER)])
+        self.assertEqual(extract(doc, [profile], AT)["fields"]["amount"]["confidence"], "missing")
 
     def test_group_zero_and_text_value(self) -> None:
         doc = self.doc([(72, 80, "Luce Inventata"), (72, 100, "Fattura n. AB 77"),
@@ -410,6 +468,51 @@ class ProfileChoiceTest(ExtractTestCase):
         result = extract(doc, self.profiles(), AT)
         self.assertEqual((result["profileId"], result["status"]), ("luce-2025", "da-confermare"))
 
+    def test_bill_before_the_only_profile_is_da_confermare(self) -> None:
+        only_new = [light_profile(id="luce-2025", validFrom="2025-01-01")]
+        result = extract(self.bill("15/03/2023"), only_new, AT)
+        self.assertEqual((result["profileId"], result["status"]), ("luce-2025", "da-confermare"))
+        self.assertEqual(result["fields"]["amount"]["value"], 8765)
+
+    def test_incomplete_old_profile_and_complete_new_one_is_da_confermare(self) -> None:
+        old = light_profile(id="luce-2020", validFrom="2020-01-01", validTo="2024-12-31")
+        old["fields"]["amount"]["rules"] = [rule("Importo complessivo", EURO, "euro")]
+        new = light_profile(id="luce-2025", validFrom="2025-01-01")
+        result = extract(self.bill("15/03/2023"), [old, new], AT)
+        self.assertEqual((result["profileId"], result["status"]), ("luce-2025", "da-confermare"))
+
+    def test_validity_boundaries(self) -> None:
+        cases = [
+            ("01/01/2025", "luce-2025"),  # exactly on validFrom of the new profile
+            ("31/12/2024", "luce-2020"),  # exactly on validTo of the old profile
+            ("01/01/2020", "luce-2020"),  # exactly on validFrom of the old profile
+        ]
+        for issue, expected in cases:
+            result = extract(self.bill(issue), self.profiles(), AT)
+            self.assertEqual((result["profileId"], result["status"]),
+                             (expected, "riconosciuta"), issue)
+
+    def test_day_after_valid_to_is_out(self) -> None:
+        old = light_profile(id="luce-2020", validFrom="2020-01-01", validTo="2024-12-31")
+        result = extract(self.bill("01/01/2025"), [old], AT)
+        self.assertEqual((result["profileId"], result["status"]), ("luce-2020", "da-confermare"))
+        result = extract(self.bill("31/12/2024"), [old], AT)
+        self.assertEqual(result["status"], "riconosciuta")
+
+    def test_no_valid_to_is_open_ended(self) -> None:
+        items = [item for item in STANDARD if "emissione" not in item[2] and "Scadenza" not in item[2]]
+        doc = self.doc(items + [(72, 120, "Data emissione 15/03/2099")])
+        result = extract(doc, self.profiles(), AT)
+        self.assertEqual((result["profileId"], result["status"]), ("luce-2025", "riconosciuta"))
+
+    def test_at_date_time_decides_by_its_date_part(self) -> None:
+        old = light_profile(id="luce-2020", validFrom="2020-01-01", validTo="2024-12-31")
+        doc = self.bill(None)
+        late = extract(doc, [old], "2024-12-31T23:59:59+01:00")
+        self.assertEqual(late["status"], "riconosciuta")
+        after = extract(doc, [old], "2025-01-01T00:00:00Z")
+        self.assertEqual(after["status"], "da-confermare")
+
     def test_profile_that_reads_the_required_fields_wins_over_newer(self) -> None:
         newer = light_profile(id="luce-2026", validFrom="2026-01-01")
         newer["fields"]["amount"]["rules"] = [rule("Importo complessivo", EURO, "euro")]
@@ -449,7 +552,32 @@ class TariTest(ExtractTestCase):
         self.assertEqual(source["box"], box_of(*line.words))
         self.assertEqual(source["text"], "Utenza abitazione 120,00")
         self.assertEqual(result["warnings"], [])
+        self.assertEqual([(c["code"], c["ok"]) for c in result["checks"]],
+                         [("parts-found", True), ("parts-unique", True)])
         self.assertValid(result)
+
+    def test_no_parts_found_is_da_confermare(self) -> None:
+        doc = self.doc([(72, 80, "Comune Inventato - Avviso TARI"),
+                        (72, 200, "Totale avviso 150,50"), (72, 400, FILLER)])
+        result = extract(doc, [self.tari_profile()], AT)
+        self.assertEqual(result["parts"], [])
+        self.assertIn(("parts-found", False), [(c["code"], c["ok"]) for c in result["checks"]])
+        self.assertEqual(result["status"], "da-confermare")
+        self.assertValid(result)
+
+    def test_same_pair_on_two_pages_is_flagged(self) -> None:
+        # Two utenze may really share label and amount: collapsing them must ask for a check.
+        doc = self.doc(
+            [(72, 80, "Comune Inventato - Avviso TARI"), (72, 120, "Utenza box 30,50"),
+             (72, 200, "Totale avviso 61,00"), (72, 400, FILLER)],
+            [(72, 120, "Utenza box 30,50"), (72, 400, FILLER)],
+        )
+        result = extract(doc, [self.tari_profile()], AT)
+        self.assertEqual(len(result["parts"]), 1)
+        unique = [c for c in result["checks"] if c["code"] == "parts-unique"]
+        self.assertEqual([c["ok"] for c in unique], [False])
+        self.assertNotIn("box", unique[0]["message"])
+        self.assertEqual(result["status"], "da-confermare")
 
     def test_same_part_on_two_pages_is_read_once(self) -> None:
         doc = self.doc(
@@ -465,6 +593,7 @@ class TariTest(ExtractTestCase):
         for warning in result["warnings"]:
             self.assertNotIn("garage", warning)
             self.assertNotIn("box", warning)
+        self.assertEqual(result["status"], "da-confermare")
         self.assertValid(result)
 
 

@@ -2,11 +2,14 @@
 
 Rules (controller decisions of plan 2a, Task 5):
 - an anchor is a run of consecutive WORDS of one `Line`, compared case-insensitively after NFC
-  and whitespace collapsing; its box is the union of its words. Words, not `Line.text`, because
+  and whitespace collapsing, ignoring the punctuation `: ; , .` at either end of each word
+  (ruling R58; still whole words: `Totale` never matches `Subtotale`); its box is the union of
+  its words. Words, not `Line.text`, because
   pdfminer may merge a label and a nearby value into one `Line`;
 - `same-line`: the words of the same `Line` after the anchor;
-- `right`: the words of any `Line` of the page whose baseline is within ROW_TOLERANCE of the
-  anchor's and that start at or after the anchor's right edge, in `x0` order;
+- `right`: the first `Line` to the right of the anchor on its row (baseline within ROW_TOLERANCE,
+  words starting at or after the anchor's right edge), never the union of further columns
+  (ruling R57); the rest of the anchor's own line counts as such a line;
 - `below`: the first `Line` of the next BELOW_ROWS rows whose horizontal extent overlaps the
   anchor's.
 
@@ -25,6 +28,12 @@ from .reader import ROW_TOLERANCE, Document, Line, Word
 
 MAX_CANDIDATE = 400
 BELOW_ROWS = 3
+_EDGE_PUNCTUATION = ":;,."
+
+
+def word_key(text: str) -> str:
+    """How a word is compared with an anchor word."""
+    return normalize(text).strip(_EDGE_PUNCTUATION)
 
 
 @dataclass(frozen=True)
@@ -100,7 +109,7 @@ class Layout:
                 row_page, row_baseline = line.page, line.baseline
             self.rows[-1].append(index)
             self.row_of.append(len(self.rows) - 1)
-        self._keys = [tuple(normalize(w.text) for w in line.words) for line in self.lines]
+        self._keys = [tuple(word_key(w.text) for w in line.words) for line in self.lines]
 
     def page_text(self, page: int) -> Text:
         """The page's lines joined by newlines, words by spaces (not cut)."""
@@ -108,10 +117,10 @@ class Layout:
 
     def anchors(self, anchor: str) -> list[Anchor]:
         """Every occurrence of `anchor` as consecutive words of one line, in reading order."""
-        tokens = tuple(normalize(anchor).split(" "))
+        tokens = tuple(word_key(token) for token in normalize(anchor).split(" "))
         size = len(tokens)
-        found = []
-        if not tokens or tokens == ("",):
+        found: list[Anchor] = []
+        if not any(tokens):
             return found
         for index, keys in enumerate(self._keys):
             for start in range(len(keys) - size + 1):
@@ -130,17 +139,14 @@ class Layout:
         if position == "same-line":
             words: Sequence[Word] = line.words[anchor.last_word + 1 :]
         elif position == "right":
-            words = sorted(
-                (
-                    word
-                    for other in self.lines
-                    if other.page == anchor.page
-                    and abs(other.baseline - anchor.baseline) <= ROW_TOLERANCE
-                    for word in other.words
-                    if word.x0 >= anchor.x1
-                ),
-                key=lambda word: (word.x0, word.top),
-            )
+            cells = [
+                [word for word in other.words if word.x0 >= anchor.x1]
+                for other in self.lines
+                if other.page == anchor.page
+                and abs(other.baseline - anchor.baseline) <= ROW_TOLERANCE
+            ]
+            cells = [cell for cell in cells if cell]
+            words = min(cells, key=lambda cell: (cell[0].x0, cell[0].top), default=())
         elif position == "below":
             words = self._below(anchor)
         else:

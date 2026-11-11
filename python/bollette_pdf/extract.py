@@ -10,7 +10,11 @@
 - a value that does not parse is no value for that occurrence, never an exception;
 - profile choice: among the profiles that recognise the document, newest `validFrom` first, the
   first whose validity contains the issue date it read (or the date of `at` when it read none) and
-  that reads every required field; when none does, the newest recognising profile, `da-confermare`.
+  that reads every required field; when none does, the newest recognising profile, and the result
+  is always `da-confermare` (ruling R55);
+- a TARI profile with `parts` adds the checks `parts-found` and `parts-unique` (ruling R56);
+- for `right` and `below`, a value is `high` only when it fills its cell, apart from `€`, `EUR`,
+  `euro`, parentheses, colons and spaces (ruling R57).
 
 Warnings and check messages are generic Italian sentences that never quote the document.
 No network, no clock: `at` is an argument.
@@ -21,7 +25,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .checks import run_checks
+from .checks import parts_checks, run_checks
 from .locate import Layout, Text, box_of
 from .parse import parse_date, parse_date_range, parse_euro, parse_quantity
 from .profiles import matching_profiles
@@ -54,7 +58,8 @@ def _parse(value_type: str, text: str) -> Any:
             return parse_date_range(text)
         if value_type == "quantity":
             quantity, unit = parse_quantity(text)
-            return {"quantity": quantity, "unit": unit or ""}
+            # Ruling R53: a quantity without a unit is no value.
+            return {"quantity": quantity, "unit": unit} if unit else None
         if value_type == "text":
             return text.strip() or None
     except ValueError:
@@ -66,8 +71,22 @@ def _source(page: int, words: list[Any], text: str) -> dict[str, Any]:
     return {"page": page, "box": box_of(words), "text": text}
 
 
-def _read_at(candidate: Text, page: int, rule: dict[str, Any]) -> tuple[Any, dict] | None:
-    """(value, source) read with `rule` from one candidate text, or None."""
+# What may surround a value in its cell without making it doubtful (ruling R57).
+_CELL_NOISE = re.compile(r"€|\beur(?:o)?\b|[():\s]", re.IGNORECASE)
+
+
+def _whole_cell(candidate: Text, start: int, end: int) -> bool:
+    rest = candidate.text[:start] + " " + candidate.text[end:]
+    return _CELL_NOISE.sub("", rest) == ""
+
+
+def _read_at(
+    candidate: Text, page: int, rule: dict[str, Any]
+) -> tuple[Any, dict[str, Any], bool] | None:
+    """(value, source, whole) read with `rule` from one candidate text, or None.
+
+    `whole` is False when a `right` or `below` match leaves other text in its cell.
+    """
     compiled = _compile(rule.get("pattern"))
     if compiled is None:
         return None
@@ -85,7 +104,8 @@ def _read_at(candidate: Text, page: int, rule: dict[str, Any]) -> tuple[Any, dic
     words = candidate.words_in(start, end)
     if value is None or not words:
         return None
-    return value, _source(page, words, text)
+    whole = rule.get("position") == "same-line" or _whole_cell(candidate, start, end)
+    return value, _source(page, words, text), whole
 
 
 def _read_field(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, dict | None]:
@@ -98,9 +118,9 @@ def _read_field(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, dict | 
             if reading is not None:
                 readings.append(reading)
         if readings:
-            value, source = readings[0]
-            agree = all(other == value for other, _ in readings[1:])
-            return value, "high" if index == 0 and agree else "medium", source
+            value, source, whole = readings[0]
+            agree = all(other == value for other, _, _ in readings[1:])
+            return value, "high" if index == 0 and agree and whole else "medium", source
     return None, "missing", None
 
 
@@ -156,10 +176,14 @@ def _identifiers(layout: Layout, profile: dict[str, Any]) -> list[dict[str, str]
     return found
 
 
-def _parts(layout: Layout, profile: dict[str, Any], warnings: list[str]) -> list[dict[str, Any]]:
+def _parts(
+    layout: Layout, profile: dict[str, Any], warnings: list[str]
+) -> tuple[list[dict[str, Any]], bool]:
+    """(parts, whether a repeated pair was collapsed) of a TARI notice."""
     compiled = _compile((profile.get("parts") or {}).get("pattern"))
     if compiled is None:
-        return []
+        return [], False
+    repeated = False
     parts: list[dict[str, Any]] = []
     first_page: dict[tuple[str, int], int] = {}
     for page in range(1, layout.pages + 1):
@@ -168,7 +192,7 @@ def _parts(layout: Layout, profile: dict[str, Any], warnings: list[str]) -> list
             try:
                 label, amount_text = match.group(1), match.group(2)
             except IndexError:
-                return []
+                return [], False
             amount = _parse("euro", amount_text) if amount_text is not None else None
             if label is None or amount is None:
                 warnings.append(WARNING_UNREADABLE_PART)
@@ -176,6 +200,7 @@ def _parts(layout: Layout, profile: dict[str, Any], warnings: list[str]) -> list
             key = (label.strip(), amount)
             if first_page.setdefault(key, page) != page:
                 warnings.append(WARNING_REPEATED_PART)
+                repeated = True
                 continue
             words = page_text.words_in(*match.span()) or [w for _, _, w in page_text.spans]
             if not words:
@@ -183,7 +208,7 @@ def _parts(layout: Layout, profile: dict[str, Any], warnings: list[str]) -> list
             parts.append(
                 {"label": key[0], "amount": amount, "source": _source(page, words, match.group(0))}
             )
-    return parts
+    return parts, repeated
 
 
 def _items_sum(doc: Document, profile: dict[str, Any], warnings: list[str]) -> int | None:
@@ -237,14 +262,24 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
         if not _missing_required(profile, fields):
             chosen = index
             break
+    # Ruling R55: without an in-validity profile that reads every required field, the newest
+    # recognising profile is used, and the result always needs confirmation.
+    fallback = chosen is None
     if chosen is None:
         chosen = 0
     profile, fields = matching[chosen], readings[chosen]
 
     warnings: list[str] = []
-    parts = _parts(layout, profile, warnings) if profile["kind"] == "tari" else []
     checks = run_checks(fields, _items_sum(doc, profile, warnings))
-    doubtful = _missing_required(profile, fields) or not all(c["ok"] for c in checks)
+    parts: list[dict[str, Any]] = []
+    if profile["kind"] == "tari" and profile.get("parts") is not None:
+        parts, repeated = _parts(layout, profile, warnings)
+        checks.extend(parts_checks(len(parts), repeated))
+    doubtful = (
+        fallback
+        or _missing_required(profile, fields)
+        or not all(c["ok"] for c in checks)
+    )
     result = _result(doc, "da-confermare" if doubtful else "riconosciuta")
     result.update(
         profileId=profile["id"],

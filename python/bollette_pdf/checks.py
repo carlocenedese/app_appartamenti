@@ -52,3 +52,21 @@ def run_checks(fields: dict[str, Any], items_sum: int | None) -> list[dict[str, 
             )
         )
     return checks
+
+
+def parts_checks(found: int, repeated: bool) -> list[dict[str, Any]]:
+    """Checks of a TARI notice read with `parts`: `parts-found` and `parts-unique` (R56)."""
+    return [
+        _check(
+            "parts-found",
+            found > 0,
+            "Le parti dell'avviso sono state lette.",
+            "Nessuna parte dell'avviso è stata letta.",
+        ),
+        _check(
+            "parts-unique",
+            not repeated,
+            "Nessuna parte dell'avviso è ripetuta.",
+            "Una parte dell'avviso compare su più pagine ed è stata contata una volta.",
+        ),
+    ]
