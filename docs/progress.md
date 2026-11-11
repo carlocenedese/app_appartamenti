@@ -75,27 +75,42 @@ payment, transaction, instalment, match, note`; `_app/workspace.json`. Costo: co
   centesimi tra Berchet e Lovarini.
 - **R23 e R24** `deny.toml` ammette esattamente le licenze dei vincoli globali più MPL-2.0. Le
   licenze in più che servono quasi certamente all'albero Rust di Tauri (Unicode-3.0, probabilmente
-  Zlib) sono una scelta di Carlo (sezione 40). Costo: la prima build su etichetta si ferma a
-  `cargo deny`.
+  Zlib) sono una scelta di Carlo (sezione 40), presa l'11 novembre 2026: R29. Costo: la prima
+  build su etichetta si ferma a `cargo deny`.
 - **R25** Dopo la revisione finale si correggono subito: `parseEuro` con spazi interni ambigui,
   avviso comune incompleto che bloccava l'abbinamento, id duplicati e file con nome diverso dall'id,
   annullamento su record non allineato al registro, nota MPL-2.0, `expectedDebit`, build macOS più
   leggera e `Cargo.lock` come artefatto. Restano a Carlo: fornitore nella causale per l'abbinamento
-  esatto (sezione 42 R2 contro il Task 8) e abbinamenti rifiutati che tornano (piani 3-4). Costo:
-  fino alla decisione un addebito con importo uguale ma di un altro fornitore può essere abbinato.
+  esatto (sezione 42 R2 contro il Task 8, deciso l'11 novembre 2026: R27) e abbinamenti rifiutati
+  che tornano (piani 3-4). Costo: fino alla decisione un addebito con importo uguale ma di un altro
+  fornitore può essere abbinato.
 - **R26** Questo file lo scrive l'orchestratore, come dice il piano.
+- **R27** (Carlo, 11 novembre 2026) Abbinamento esatto di una bolletta: serve anche il fornitore
+  nella causale (sezione 42, R2). Se un solo addebito ha importo, finestra e conto giusti ma la
+  causale non nomina il fornitore (confronto con `foldText`), l'abbinamento è una proposta
+  (`confirmed: false`, `by: 'auto'`) da confermare a mano, non in `pending`. Rate e avvisi comuni
+  non hanno un fornitore e restano confermati. Costo: se la regola è sbagliata, ogni addebito con
+  causale generica chiede una conferma in più e, finché la voce non è confermata, la commissione di
+  quell'addebito non la segue; tornare indietro vuol dire togliere il controllo in
+  `matchToTransactions`.
+- **R28** (Carlo, 11 novembre 2026) L'avviso TARI comune di Berchet e Lovarini resta ad abbinamento
+  automatico quando l'addebito comune è uno solo, come fa il codice (Review Focus 16 del piano). La
+  sezione 42, R3 è stata corretta di conseguenza (resti ai resti maggiori, come in R3 qui sopra).
+  Costo: un addebito sbagliato ma dello stesso importo, sul conto di Berchet e nella finestra di
+  date, verrebbe diviso tra i due appartamenti senza conferma.
+- **R29** (Carlo, 11 novembre 2026) Ammesse anche le licenze Unicode-3.0 e Zlib, permissive e
+  richieste dall'albero Rust di Tauri, in tutti i punti dove l'elenco è definito: `deny.toml`,
+  `scripts/check-licenses.mjs` e il suo test, `CLAUDE.md`, i vincoli globali del piano 1 e la
+  sezione 40 della specifica. Chiude la scelta lasciata a Carlo da R23 e R24. Costo: nessuno legale;
+  `cargo deny` potrebbe ancora chiedere `Apache-2.0 WITH LLVM-exception`, da decidere alla prima
+  esecuzione.
 - Altre: `settlementPeriods` annuale rifiuta un inizio d'annualità diverso dal giorno 1; i commit
   degli esecutori riportano il modello che li ha scritti.
 
 ## Da decidere con Carlo
 
-1. Licenza Unicode-3.0 (e Zlib) in `deny.toml` e nell'elenco della sezione 40.
-2. Abbinamento esatto delle bollette: richiedere il fornitore nella causale (sezione 42, R2) o
-   lasciarlo «da confermare» quando manca.
-3. Avviso TARI comune: la sezione 42 parla di abbinamento a mano, il piano (Review Focus 16) di
-   abbinamento automatico. Il codice segue il piano.
-4. Nota TARI: la data dell'avviso non c'è nell'esempio della specifica né nei dati in ingresso.
-5. Dove conservare la chiave di firma degli aggiornamenti (Task 11, passo 6).
+1. Nota TARI: la data dell'avviso non c'è nell'esempio della specifica né nei dati in ingresso.
+2. Dove conservare la chiave di firma degli aggiornamenti (Task 11, passo 6).
 
 ## Rilievi minori rimandati
 
