@@ -153,7 +153,8 @@ describe('Step 1: values of the specification', () => {
           rateCount: 3,
           coversFrom: coverage.from,
           coversTo: coverage.to,
-          rata: cents(int(0, 60000)),
+          // Some records carry only last year's settlement, some a rata below the owner share.
+          rata: cents(next() < 0.2 ? 0 : next() < 0.2 ? int(1, 1000) : int(0, 60000)),
           quotaProprieta: cents(int(0, 3000)),
           conguaglioPrec: cents(int(-5000, 5000)),
           straordinaria: next() < 0.1,
@@ -162,10 +163,13 @@ describe('Step 1: values of the specification', () => {
         const expected = item.rata + item.conguaglioPrec;
         const paid = next() < 0.8 ? expected : expected + int(1, 100);
         matches.push(match(item, paid));
-        if (paid === expected && item.straordinaria !== true) {
-          // The owner's yearly share in three equal parts, the leftover cents to the first.
-          const share =
-            Math.floor(item.quotaProprieta / 3) + (index <= item.quotaProprieta % 3 ? 1 : 0);
+        // The owner's yearly share in three equal parts, the leftover cents to the first; none on
+        // a record with rata 0, and a share above the rata keeps the instalment pending (R-C8).
+        const share =
+          item.rata === 0
+            ? 0
+            : Math.floor(item.quotaProprieta / 3) + (index <= item.quotaProprieta % 3 ? 1 : 0);
+        if (paid === expected && item.straordinaria !== true && share <= item.rata) {
           expectedTotal += paid - share;
         }
       }
@@ -202,6 +206,8 @@ describe('Step 1: values of the specification', () => {
       });
       const tenants = result.tenants;
       for (const t of tenants) {
+        // Every rata is non-negative here: no tenant may get a condominium credit from it.
+        expect(t.condominio.rata, `case ${run}`).toBeGreaterThanOrEqual(0);
         expect(Number.isSafeInteger(t.due)).toBe(true);
         expect(t.due).toBe(
           t.spese +

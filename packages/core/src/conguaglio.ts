@@ -13,7 +13,10 @@
  *   the beds are the tenants present that month sorted by id, then the empty beds.
  * - Only the months inside the period count: the others belong to another period's settlement.
  * - The owner's yearly condominium share (`quotaProprieta`) comes off the instalments in equal
- *   parts; an extraordinary instalment is the owner's alone and never reaches the tenants.
+ *   parts, only from records with a non-zero `rata` (a record that only carries last year's
+ *   settlement has no owner share). An instalment whose owner share exceeds its `rata` stays
+ *   pending (`parte della proprietà maggiore della rata`) rather than giving the tenants a credit.
+ *   An extraordinary instalment is the owner's alone and never reaches the tenants.
  * - A commission row matched to an item follows the item: same months, same beds (R7).
  * - The amount due is the tenant's share of the costs minus the flat charge actually collected
  *   (R4), with each month's rent payments going to the rent first.
@@ -153,9 +156,13 @@ export function billsForAnnualita(
   );
 }
 
-/** This instalment's part of the owner's yearly condominium share, split equally among the rates. */
+/**
+ * This instalment's part of the owner's yearly condominium share, split equally among the rates.
+ * A record with `rata` 0 (last year's settlement paid on its own) carries no owner share, whatever
+ * its `quotaProprieta` says (R-C8): the yearly share comes off the ordinary instalments only.
+ */
 function ownerShare(instalment: Instalment): Cents {
-  if (instalment.kind !== 'condominio') return cents(0);
+  if (instalment.kind !== 'condominio' || instalment.rata === 0) return cents(0);
   return equalSplit(instalment.quotaProprieta, instalment.rateCount)[
     instalment.rateIndex - 1
   ] as Cents;
@@ -163,9 +170,10 @@ function ownerShare(instalment: Instalment): Cents {
 
 /**
  * The monthly shares of an instalment debited for `paid`, sorted by month. The instalment, net of
- * the owner's share, goes over the months it covers; a condominium's `conguaglioPrec` over the
+ * the owner's share (none on a record with `rata` 0), goes over the months it covers; a condominium's `conguaglioPrec` over the
  * months of `esercizioRange`, the current fiscal year (required when it is not 0). An
- * extraordinary instalment gives nothing to the tenants.
+ * extraordinary instalment gives nothing to the tenants. An owner's share larger than the rata
+ * would give the tenants a credit: `calcConguaglio` keeps such an instalment pending instead.
  */
 export function allocateInstalment(
   instalment: Instalment,
@@ -399,6 +407,14 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     }
     if (instalment.kind === 'condominio' && paid.amount !== expectedDebit(instalment)) {
       pending.push({ itemType: 'instalment', itemId: instalment.id, reason: 'importo diverso' });
+      continue;
+    }
+    if (instalment.rata > 0 && ownerShare(instalment) > instalment.rata) {
+      pending.push({
+        itemType: 'instalment',
+        itemId: instalment.id,
+        reason: 'parte della proprietà maggiore della rata',
+      });
       continue;
     }
     for (const part of allocateInstalment(instalment, cents(paid.amount), esercizio)) {

@@ -160,12 +160,10 @@ describe('Step 3: condominium instalments (R3)', () => {
     ]);
   });
 
-  it('spreads last year settlement paid on its own over the 12 months', () => {
-    const alone = rata(1, {
-      rata: cents(0),
-      quotaProprieta: cents(0),
-      conguaglioPrec: cents(4800),
-    });
+  it('spreads last year settlement paid on its own over the 12 months, without owner share', () => {
+    // The record repeats the owner's yearly 24,00 €, as every record of the fiscal year does.
+    const alone = rata(1, { rata: cents(0), conguaglioPrec: cents(4800) });
+    expect(allocateInstalment(alone, cents(4800), ESERCIZIO).every((p) => p.rata === 0)).toBe(true);
     const result = calc([alone], [match(alone, 4800)]);
     expect(view(result)).toEqual([
       ['a', 0, 1200, 1200],
@@ -174,6 +172,43 @@ describe('Step 3: condominium instalments (R3)', () => {
       ['d', 0, 900, 900],
       ['e', 0, 300, 300],
     ]);
+  });
+
+  it('takes the owner share once a year, from the ordinary instalments only (R-C8)', () => {
+    const alone = instalment('cond-0', {
+      rateIndex: 1,
+      rateCount: 4,
+      rata: cents(0),
+      quotaProprieta: cents(2400),
+      conguaglioPrec: cents(4800),
+      coversFrom: yearMonth('2026-05'),
+      coversTo: yearMonth('2026-07'),
+    });
+    const ordinary = [1, 2, 3, 4].map((index) => rata(index, { conguaglioPrec: cents(0) }));
+    const items = [alone, ...ordinary];
+    const result = calc(
+      items,
+      items.map((item) => match(item, item.rata + item.conguaglioPrec)),
+    );
+    expect(result.pending).toEqual([]);
+    expect(result.tenants.every((t) => t.condominio.rata >= 0)).toBe(true);
+    // Debited 600,00 € + 48,00 €; the owner keeps exactly 24,00 €.
+    expect(4 * 15000 + 4800 - shared(result)).toBe(2400);
+    expect(sum(result.tenants.map((t) => t.condominio.conguaglioPrec))).toBe(4800);
+  });
+
+  it('keeps pending an instalment smaller than its owner share', () => {
+    const small = rata(1, { rata: cents(500), conguaglioPrec: cents(0) });
+    const result = calc([small], [match(small, 500)]);
+    expect(result.pending).toEqual([
+      {
+        itemType: 'instalment',
+        itemId: 'cond-1',
+        reason: 'parte della proprietà maggiore della rata',
+      },
+    ]);
+    expect(result.tenants.every((t) => t.due === 0)).toBe(true);
+    expect(result.unassigned).toBe(0);
   });
 
   it('does not depend on the order of the data', () => {
