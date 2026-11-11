@@ -7,6 +7,7 @@ import {
   annualitaRange,
   calcConguaglio,
   cents,
+  SettlementInputError,
   rateCoverage,
   yearMonth,
 } from '../src/index';
@@ -209,6 +210,29 @@ describe('Step 3: condominium instalments (R3)', () => {
     ]);
     expect(result.tenants.every((t) => t.due === 0)).toBe(true);
     expect(result.unassigned).toBe(0);
+  });
+
+  it('refuses last year settlement without the start of the fiscal year, months aside', () => {
+    // Its months are outside the period and it is not even matched: still refused (R-C9).
+    const other = rata(1, {
+      esercizio: '2030-31',
+      coversFrom: yearMonth('2030-05'),
+      coversTo: yearMonth('2030-07'),
+    });
+    const run = () =>
+      calcConguaglio({
+        apartment: apartment({ posti: 4 }),
+        period: period('2026-05', '2027-04', '2026-27'),
+        bills: [],
+        instalments: [other],
+        matches: [],
+        tenancies: TENANCIES,
+        payments: [],
+      });
+    expect(run).toThrow(SettlementInputError);
+    expect(run).toThrow(
+      expect.objectContaining({ code: 'missing-condominio-start', instalmentId: 'cond-1' }),
+    );
   });
 
   it('does not depend on the order of the data', () => {

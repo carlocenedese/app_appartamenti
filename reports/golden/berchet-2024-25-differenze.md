@@ -13,17 +13,17 @@ Condominio escluso (sezione 42, R3). Differenza = app − Excel.
 | ten-a | Internet | € 43,05 | € 41,93 | - € 1,12 |
 | ten-a | TARI | € 42,58 | € 34,41 | - € 8,17 |
 | ten-a | **Totale** | € 159,83 | € 150,09 | - € 9,74 |
-| ten-b | Luce | € 40,02 | € 40,04 | € 0,02 |
+| ten-b | Luce | € 40,02 | € 40,04 | + € 0,02 |
 | ten-b | Internet | € 29,95 | € 29,95 | € 0,00 |
 | ten-b | TARI | € 27,29 | € 25,70 | - € 1,59 |
 | ten-b | **Totale** | € 97,26 | € 95,69 | - € 1,57 |
-| ten-c | Luce | € 94,57 | € 113,78 | € 19,21 |
+| ten-c | Luce | € 94,57 | € 113,78 | + € 19,21 |
 | ten-c | Internet | € 67,01 | € 65,89 | - € 1,12 |
 | ten-c | TARI | € 67,85 | € 53,99 | - € 13,86 |
-| ten-c | **Totale** | € 229,43 | € 233,66 | € 4,23 |
+| ten-c | **Totale** | € 229,43 | € 233,66 | + € 4,23 |
 | ten-d | Internet | € 5,99 | € 5,99 | € 0,00 |
-| ten-d | TARI | € 2,03 | € 6,10 | € 4,07 |
-| ten-d | **Totale** | € 8,02 | € 12,09 | € 4,07 |
+| ten-d | TARI | € 2,03 | € 6,10 | + € 4,07 |
+| ten-d | **Totale** | € 8,02 | € 12,09 | + € 4,07 |
 | ten-e | Luce | € 104,39 | € 103,90 | - € 0,49 |
 | ten-e | Internet | € 61,02 | € 59,90 | - € 1,12 |
 | ten-e | TARI | € 56,02 | € 49,05 | - € 6,97 |
@@ -34,12 +34,12 @@ Condominio escluso (sezione 42, R3). Differenza = app − Excel.
 | ten-f | **Totale** | € 35,66 | € 32,79 | - € 2,87 |
 | ten-g | Luce | € 11,46 | € 11,30 | - € 0,16 |
 | ten-g | Internet | € 6,15 | € 5,99 | - € 0,16 |
-| ten-g | TARI | € 1,86 | € 5,09 | € 3,23 |
-| ten-g | **Totale** | € 19,47 | € 22,38 | € 2,91 |
+| ten-g | TARI | € 1,86 | € 5,09 | + € 3,23 |
+| ten-g | **Totale** | € 19,47 | € 22,38 | + € 2,91 |
 | ten-h | Luce | € 92,93 | € 92,58 | - € 0,35 |
 | ten-h | Internet | € 54,87 | € 53,91 | - € 0,96 |
-| ten-h | TARI | € 39,95 | € 43,94 | € 3,99 |
-| ten-h | **Totale** | € 187,75 | € 190,43 | € 2,68 |
+| ten-h | TARI | € 39,95 | € 43,94 | + € 3,99 |
+| ten-h | **Totale** | € 187,75 | € 190,43 | + € 2,68 |
 | ten-i | Luce | € 9,82 | € 9,82 | € 0,00 |
 | ten-i | Internet | € 11,98 | € 11,98 | € 0,00 |
 | ten-i | TARI | € 28,07 | € 10,98 | - € 17,09 |
@@ -53,8 +53,27 @@ Condominio escluso (sezione 42, R3). Differenza = app − Excel.
 | ten-k | TARI | € 23,23 | € 14,67 | - € 8,56 |
 | ten-k | **Totale** | € 71,03 | € 62,46 | - € 8,57 |
 | ten-l | Internet | € 5,99 | € 5,99 | € 0,00 |
-| ten-l | TARI | € 2,03 | € 6,09 | € 4,06 |
-| ten-l | **Totale** | € 8,02 | € 12,08 | € 4,06 |
+| ten-l | TARI | € 2,03 | € 6,09 | + € 4,06 |
+| ten-l | **Totale** | € 8,02 | € 12,08 | + € 4,06 |
+
+## Dovuto per inquilino (app)
+
+Dovuto = spese − forfait incassato (negativo: da restituire).
+
+| Inquilino | Spese | Forfait incassato | Dovuto |
+| --- | ---: | ---: | ---: |
+| ten-a | € 150,09 | € 210,00 | - € 59,91 |
+| ten-b | € 95,69 | € 150,00 | - € 54,31 |
+| ten-c | € 233,66 | € 330,00 | - € 96,34 |
+| ten-d | € 12,09 | € 30,00 | - € 17,91 |
+| ten-e | € 212,85 | € 300,00 | - € 87,15 |
+| ten-f | € 32,79 | € 60,00 | - € 27,21 |
+| ten-g | € 22,38 | € 30,00 | - € 7,62 |
+| ten-h | € 190,43 | € 270,00 | - € 79,57 |
+| ten-i | € 32,78 | € 60,00 | - € 27,22 |
+| ten-j | € 171,03 | € 240,00 | - € 68,97 |
+| ten-k | € 62,46 | € 90,00 | - € 27,54 |
+| ten-l | € 12,08 | € 30,00 | - € 17,92 |
 
 ## Totali
 

@@ -8,18 +8,30 @@
 // The output is deterministic; reports/golden is in .prettierignore and
 // scripts/golden-report.test.mjs checks that the committed reports are up to date.
 
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { formatEuro } from '../packages/core/src/index.ts';
 import {
+  GoldenFixtureSchema,
   costsWithoutCondominio,
-  goldenFiles,
-  readGolden,
   settleGolden,
-} from '../packages/core/test/helpers/golden.ts';
+} from '../packages/core/src/golden.ts';
+import { formatEuro } from '../packages/core/src/index.ts';
 
 const DEFAULT_OUT_DIR = fileURLToPath(new URL('../reports/golden/', import.meta.url));
+const GOLDEN_DIR = fileURLToPath(new URL('../fixtures/golden/', import.meta.url));
+
+/** The file names of the golden fixtures, sorted. */
+export function goldenFiles(dir = GOLDEN_DIR) {
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.json'))
+    .sort();
+}
+
+/** The fixture in `fixtures/golden/<name>`, checked against its schema. */
+export function readGolden(name, dir = GOLDEN_DIR) {
+  return GoldenFixtureSchema.parse(JSON.parse(readFileSync(join(dir, name), 'utf8')));
+}
 
 const CATEGORY_LABELS = {
   elettricita: 'Luce',
@@ -32,6 +44,9 @@ const CATEGORY_LABELS = {
 
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const euro = (amount) => (amount === undefined ? '—' : formatEuro(amount));
+/** A difference: `+ € 4,23`, `- € 9,74`, `€ 0,00`. */
+const signed = (amount) =>
+  amount === undefined ? '—' : amount > 0 ? `+ ${formatEuro(amount)}` : formatEuro(amount);
 
 /** The report file name of a fixture: `berchet-2024-25.json` gives `berchet-2024-25-differenze.md`. */
 export function reportName(fixtureName) {
@@ -63,9 +78,12 @@ export function goldenReport(fixtureName, fixture) {
   );
   let excelTotal = 0;
   let appTotal = 0;
-  for (const tenant of result.tenants) {
-    const app = costsWithoutCondominio(tenant.byCategory);
-    const excel = excelOf.get(tenant.tenantId);
+  const appOf = new Map(result.tenants.map((tenant) => [tenant.tenantId, tenant]));
+  // Every tenant of either side: one the app does not know must not vanish from the report.
+  const tenantIds = [...new Set([...appOf.keys(), ...excelOf.keys()])].sort();
+  for (const tenantId of tenantIds) {
+    const app = costsWithoutCondominio(appOf.get(tenantId)?.byCategory ?? {});
+    const excel = excelOf.get(tenantId);
     const categories = Object.keys(CATEGORY_LABELS).filter(
       (category) => app[category] !== undefined || excel?.[category] !== undefined,
     );
@@ -74,8 +92,8 @@ export function goldenReport(fixtureName, fixture) {
       const excelAmount = excel === undefined ? undefined : (excel[category] ?? 0);
       const difference = excelAmount === undefined ? undefined : appAmount - excelAmount;
       lines.push(
-        `| ${tenant.tenantId} | ${CATEGORY_LABELS[category]} | ${euro(excelAmount)} | ` +
-          `${euro(appAmount)} | ${euro(difference)} |`,
+        `| ${tenantId} | ${CATEGORY_LABELS[category]} | ${euro(excelAmount)} | ` +
+          `${euro(appAmount)} | ${signed(difference)} |`,
       );
     }
     const appSum = sum(Object.values(app));
@@ -83,8 +101,26 @@ export function goldenReport(fixtureName, fixture) {
     appTotal += appSum;
     excelTotal += excelSum ?? 0;
     lines.push(
-      `| ${tenant.tenantId} | **Totale** | ${euro(excelSum)} | ${euro(appSum)} | ` +
-        `${euro(excelSum === undefined ? undefined : appSum - excelSum)} |`,
+      `| ${tenantId} | **Totale** | ${euro(excelSum)} | ${euro(appSum)} | ` +
+        `${signed(excelSum === undefined ? undefined : appSum - excelSum)} |`,
+    );
+  }
+  lines.push(
+    '',
+    '## Dovuto per inquilino (app)',
+    '',
+    'Dovuto = spese − forfait incassato (negativo: da restituire).',
+    '',
+    '| Inquilino | Spese | Forfait incassato | Dovuto |',
+    '| --- | ---: | ---: | ---: |',
+  );
+  for (const tenantId of tenantIds) {
+    const tenant = appOf.get(tenantId);
+    lines.push(
+      tenant === undefined
+        ? `| ${tenantId} | — | — | — |`
+        : `| ${tenantId} | ${euro(sum(Object.values(costsWithoutCondominio(tenant.byCategory))))} | ` +
+            `${euro(tenant.forfaitIncassato)} | ${euro(tenant.due)} |`,
     );
   }
   lines.push(
@@ -96,7 +132,7 @@ export function goldenReport(fixtureName, fixture) {
   if (fixture.excel !== undefined) {
     lines.push(
       `- Excel: ${formatEuro(excelTotal)}.`,
-      `- Differenza: ${formatEuro(appTotal - excelTotal)}.`,
+      `- Differenza: ${signed(appTotal - excelTotal)}.`,
     );
   }
   lines.push('', '## Scostamenti noti', '');
@@ -111,7 +147,7 @@ export function writeGoldenReports(outDir = DEFAULT_OUT_DIR) {
   mkdirSync(outDir, { recursive: true });
   return goldenFiles().map((name) => {
     const file = reportName(name);
-    writeFileSync(join(outDir, file), goldenReport(name, readGolden(name).fixture), 'utf8');
+    writeFileSync(join(outDir, file), goldenReport(name, readGolden(name)), 'utf8');
     return file;
   });
 }

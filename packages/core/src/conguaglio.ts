@@ -21,6 +21,12 @@
  * - The amount due is the tenant's share of the costs minus the flat charge actually collected
  *   (R4), with each month's rent payments going to the rent first.
  *
+ * - Deleted records (`deleted: true`) are ignored.
+ * - Input that cannot be settled (a tenant with two tenancies in one month, two tenants in one
+ *   room, a room that is not a bed, more tenants than beds, last year's condominium settlement
+ *   without `apartment.condominioStart`) throws a `SettlementInputError` before any amount is
+ *   computed (R-C9).
+ *
  * The result never depends on the order of the input.
  */
 import { expectedDebit } from './match';
@@ -102,6 +108,8 @@ export interface ConguaglioResult {
   tenants: TenantSettlement[];
   /** The shares of empty beds, left to the owner. */
   unassigned: Cents;
+  /** `unassigned` by kind of cost, like the tenant rows (bills and TARI are `spese`). */
+  unassignedByBucket: { spese: Cents; rata: Cents; conguaglioPrec: Cents; commissione: Cents };
   /** Items in the period that do not count yet, sorted by type and id. */
   pending: PendingItem[];
   warnings: ConguaglioWarning[];
@@ -135,6 +143,73 @@ const isPresent = (tenancy: Tenancy, month: YearMonth): boolean =>
 
 const byTenancy = (a: Tenancy, b: Tenancy): number =>
   compareText(a.tenantId, b.tenantId) || compareText(a.from, b.from) || compareText(a.id, b.id);
+
+/** What is wrong with the input of a settlement (R-C9). */
+export type SettlementInputErrorCode =
+  | 'tenant-overlap'
+  | 'room-overlap'
+  | 'unknown-room'
+  | 'too-many-tenants'
+  | 'missing-condominio-start';
+
+/**
+ * Input that cannot be settled: tenancies that do not fit the beds, or a condominium instalment
+ * that cannot be placed in its fiscal year. Thrown before any amount is computed. The message is
+ * in Italian (it reaches the interface); the fix is to correct the records (for an overlap, the
+ * tenancy dates: rule (c) of conguaglio-rules.md).
+ */
+export class SettlementInputError extends Error {
+  readonly code: SettlementInputErrorCode;
+  readonly month?: YearMonth;
+  readonly room?: string;
+  readonly tenancyIds?: string[];
+  readonly tenantId?: string;
+  readonly instalmentId?: string;
+
+  constructor(
+    code: SettlementInputErrorCode,
+    message: string,
+    details: {
+      month?: YearMonth;
+      room?: string;
+      tenancyIds?: string[];
+      tenantId?: string;
+      instalmentId?: string;
+    } = {},
+  ) {
+    super(message);
+    this.name = 'SettlementInputError';
+    this.code = code;
+    Object.assign(this, details);
+  }
+}
+
+const live = <T extends { deleted?: boolean }>(records: readonly T[]): T[] =>
+  records.filter((record) => record.deleted !== true);
+
+/**
+ * Throws `tenant-overlap` when a tenant has two tenancies present in the same month of `months`
+ * (a room change must end one month and start the next: months are whole and inclusive).
+ */
+function checkTenantOverlaps(tenancies: readonly Tenancy[], months: readonly YearMonth[]): void {
+  for (const month of months) {
+    const byTenant = new Map<string, Tenancy[]>();
+    for (const tenancy of tenancies) {
+      if (!isPresent(tenancy, month)) continue;
+      byTenant.set(tenancy.tenantId, [...(byTenant.get(tenancy.tenantId) ?? []), tenancy]);
+    }
+    for (const [tenantId, overlapping] of byTenant) {
+      if (overlapping.length < 2) continue;
+      const tenancyIds = overlapping.map((tenancy) => tenancy.id).sort(compareText);
+      throw new SettlementInputError(
+        'tenant-overlap',
+        `L'inquilino ${tenantId} ha due periodi di presenza nel mese ${month} ` +
+          `(${tenancyIds.join(', ')}): correggi le date.`,
+        { month, tenantId, tenancyIds },
+      );
+    }
+  }
+}
 
 /** A bill's amount (or `amount`) split equally over the months of its period. */
 export function allocateBillToMonths(bill: Bill, amount: Cents = bill.amount): MonthShare[] {
@@ -218,7 +293,8 @@ export function allocateInstalment(
 
 /**
  * Rent and flat charge of every month of `months` in which a tenancy is present, sorted by tenant
- * and month. Only confirmed `canone` payments count, for their `forMonth` (else the month of their
+ * and month. Deleted records are ignored; a tenant with two tenancies in one month throws a
+ * `SettlementInputError` (`tenant-overlap`). Only confirmed `canone` payments count, for their `forMonth` (else the month of their
  * date); they go to the rent first, then to the flat charge, and any excess is ignored (R4).
  */
 export function collectedForfait(input: {
@@ -226,14 +302,16 @@ export function collectedForfait(input: {
   payments: Payment[];
   months: YearMonth[];
 }): ForfaitMonth[] {
+  const tenancies = live(input.tenancies);
+  checkTenantOverlaps(tenancies, input.months);
   const paidBy = new Map<string, number>();
-  for (const payment of input.payments) {
+  for (const payment of live(input.payments)) {
     if (!payment.confirmed || payment.kind !== 'canone') continue;
     const key = `${payment.tenantId}\u0000${payment.forMonth ?? payment.date.slice(0, 7)}`;
     paidBy.set(key, (paidBy.get(key) ?? 0) + payment.amount);
   }
   const rows: ForfaitMonth[] = [];
-  for (const tenancy of [...input.tenancies].sort(byTenancy)) {
+  for (const tenancy of [...tenancies].sort(byTenancy)) {
     for (const month of input.months) {
       if (!isPresent(tenancy, month)) continue;
       const paid = paidBy.get(`${tenancy.tenantId}\u0000${month}`) ?? 0;
@@ -256,8 +334,9 @@ export function collectedForfait(input: {
 
 /**
  * Who sleeps in each bed in `month`: a tenant id, or `undefined` for an empty bed. Throws a
- * `RangeError` when the tenancies do not fit the beds: a room that is not a bed of the apartment,
- * two tenancies in one room in the same month, more tenants than beds.
+ * `SettlementInputError` when the tenancies do not fit the beds: a room that is not a bed of the
+ * apartment (`unknown-room`), two tenancies in one room (`room-overlap`), more tenants than beds
+ * (`too-many-tenants`).
  */
 function bedsIn(
   apartment: Apartment,
@@ -268,22 +347,41 @@ function bedsIn(
   if (rooms !== undefined) {
     for (const tenancy of present) {
       if (tenancy.room === undefined || !rooms.includes(tenancy.room)) {
-        throw new RangeError(
-          `Tenancy ${tenancy.id} is in room ${String(tenancy.room)}, not one of the beds of ${apartment.id}`,
+        throw new SettlementInputError(
+          'unknown-room',
+          tenancy.room === undefined
+            ? `Il periodo di presenza ${tenancy.id} non indica il posto.`
+            : `Il periodo di presenza ${tenancy.id} indica il posto «${tenancy.room}», che non è ` +
+                `un posto dell'appartamento ${apartment.name}.`,
+          {
+            month,
+            tenantId: tenancy.tenantId,
+            tenancyIds: [tenancy.id],
+            ...(tenancy.room === undefined ? {} : { room: tenancy.room }),
+          },
         );
       }
     }
     return rooms.map((room) => {
       const inRoom = present.filter((tenancy) => tenancy.room === room);
       if (inRoom.length > 1) {
-        const ids = inRoom.map((tenancy) => tenancy.id).join(', ');
-        throw new RangeError(`Room ${room} has two tenancies in ${month}: ${ids}`);
+        const tenancyIds = inRoom.map((tenancy) => tenancy.id).sort(compareText);
+        throw new SettlementInputError(
+          'room-overlap',
+          `Il posto «${room}» ha due inquilini nel mese ${month} (${tenancyIds.join(', ')}): ` +
+            'correggi le date.',
+          { month, room, tenancyIds },
+        );
       }
       return inRoom[0]?.tenantId;
     });
   }
   if (present.length > posti) {
-    throw new RangeError(`${present.length} tenancies in ${month} for ${posti} beds`);
+    throw new SettlementInputError(
+      'too-many-tenants',
+      `Nel mese ${month} ci sono ${present.length} inquilini per ${posti} posti.`,
+      { month, tenancyIds: present.map((tenancy) => tenancy.id).sort(compareText) },
+    );
   }
   return [
     ...present.map((tenancy) => tenancy.tenantId),
@@ -302,15 +400,16 @@ interface Tally {
 }
 
 /**
- * The settlement of `input.period` for `input.apartment` (records of other apartments are
- * ignored). Throws a `RangeError` when the tenancies do not fit the beds, or when a matched
- * condominium instalment carries last year's settlement and the apartment has no
- * `condominioStart` to place its fiscal year.
+ * The settlement of `input.period` for `input.apartment`. Records of other apartments and deleted
+ * records are ignored. Before computing anything it throws a `SettlementInputError` when the
+ * tenancies do not fit the beds or overlap for one tenant, or when a condominium instalment
+ * carries last year's settlement and the apartment has no `condominioStart` to place its fiscal
+ * year (whatever its months: without the fiscal year they cannot be known).
  */
 export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   const { apartment, period } = input;
-  const own = <T extends { apartmentId: string }>(records: T[]): T[] =>
-    records.filter((record) => record.apartmentId === apartment.id);
+  const own = <T extends { apartmentId: string; deleted?: boolean }>(records: T[]): T[] =>
+    live(records).filter((record) => record.apartmentId === apartment.id);
   const periodMonths = monthRange(period.from, period.to);
   const inPeriod = new Set(periodMonths);
   const touchesPeriod = (months: YearMonth[]): boolean => months.some((m) => inPeriod.has(m));
@@ -318,6 +417,24 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   const tenancies = own(input.tenancies)
     .filter((tenancy) => periodMonths.some((month) => isPresent(tenancy, month)))
     .sort(byTenancy);
+  checkTenantOverlaps(tenancies, periodMonths);
+  const instalments = own(input.instalments)
+    .filter((instalment) => instalment.straordinaria !== true)
+    .sort((a, b) => compareText(a.id, b.id));
+  for (const instalment of instalments) {
+    if (
+      instalment.kind === 'condominio' &&
+      instalment.conguaglioPrec !== 0 &&
+      apartment.condominioStart === undefined
+    ) {
+      throw new SettlementInputError(
+        'missing-condominio-start',
+        `La rata ${instalment.id} contiene il conguaglio dell'anno prima, ma per l'appartamento ` +
+          `${apartment.name} manca l'inizio dell'esercizio condominiale.`,
+        { instalmentId: instalment.id },
+      );
+    }
+  }
   const beds = new Map(
     periodMonths.map((month) => {
       const present = tenancies.filter((tenancy) => isPresent(tenancy, month));
@@ -337,7 +454,12 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
       });
     }
   }
-  let unassigned = 0;
+  const unassigned: Record<Bucket, number> = {
+    spese: 0,
+    rata: 0,
+    conguaglioPrec: 0,
+    commissione: 0,
+  };
   // A month's amount over the beds; months outside the period belong to another settlement.
   const share = (month: YearMonth, amount: number, bucket: Bucket, category?: CostCategory) => {
     const occupants = beds.get(month);
@@ -346,7 +468,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
       const tenantId = occupants[bed];
       const tally = tenantId === undefined ? undefined : tallies.get(tenantId);
       if (tally === undefined) {
-        unassigned += part;
+        unassigned[bucket] += part;
         return;
       }
       tally[bucket] += part;
@@ -358,7 +480,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
 
   // Confirmed matches by item and part.
   const matched = new Map<string, { amount: number; commission: number; hasAmount: boolean }>();
-  for (const match of input.matches) {
+  for (const match of live(input.matches)) {
     if (!match.confirmed) continue;
     const key = `${match.itemType}\u0000${match.itemId}`;
     const entry = matched.get(key) ?? { amount: 0, commission: 0, hasAmount: false };
@@ -388,8 +510,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     }
   }
 
-  for (const instalment of [...own(input.instalments)].sort((a, b) => compareText(a.id, b.id))) {
-    if (instalment.straordinaria === true) continue;
+  for (const instalment of instalments) {
     const covered = monthRange(instalment.coversFrom, instalment.coversTo);
     const esercizio =
       instalment.kind === 'condominio' && apartment.condominioStart !== undefined
@@ -462,7 +583,15 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   return {
     engineVersion: CORE_VERSION,
     tenants,
-    unassigned: cents(unassigned),
+    unassigned: cents(
+      unassigned.spese + unassigned.rata + unassigned.conguaglioPrec + unassigned.commissione,
+    ),
+    unassignedByBucket: {
+      spese: cents(unassigned.spese),
+      rata: cents(unassigned.rata),
+      conguaglioPrec: cents(unassigned.conguaglioPrec),
+      commissione: cents(unassigned.commissione),
+    },
     pending: pending.sort(
       (a, b) => compareText(a.itemType, b.itemType) || compareText(a.itemId, b.itemId),
     ),
@@ -510,6 +639,9 @@ export interface SupplementaryRow {
  * difference in costs (`spese + condominio.rata + commissione`) between `current` and the
  * `snapshot` taken at closing. The flat charge is left out (a period closes only when all of it
  * is collected) and so is last year's condominium settlement (it belongs to the next fiscal year).
+ * `unassignedDelta` is the same difference for the empty beds, so the deltas and `unassignedDelta`
+ * add up to the net cost of the late items. A tenant with no tenancy in `tenancies` counts as
+ * departed (R-C10).
  */
 export function calcConguaglioSupplementare(input: {
   current: ConguaglioResult;
@@ -517,6 +649,8 @@ export function calcConguaglioSupplementare(input: {
   tenancies: Tenancy[];
   asOf: ISODate;
 }): { tenants: SupplementaryRow[]; unassignedDelta: Cents } {
+  const emptyBeds = (result: ConguaglioResult): number =>
+    result.unassigned - result.unassignedByBucket.conguaglioPrec;
   const costs = (result: ConguaglioResult): Map<string, number> =>
     new Map(result.tenants.map((t) => [t.tenantId, t.spese + t.condominio.rata + t.commissione]));
   const now = costs(input.current);
@@ -526,8 +660,10 @@ export function calcConguaglioSupplementare(input: {
   const tenants = ids.map((tenantId): SupplementaryRow => {
     const delta = cents((now.get(tenantId) ?? 0) - (before.get(tenantId) ?? 0));
     const own = input.tenancies.filter((tenancy) => tenancy.tenantId === tenantId);
-    const departed =
-      own.length > 0 && own.every((tenancy) => tenancy.to !== undefined && tenancy.to < asOfMonth);
+    // A tenant without tenancies is no longer here either (R-C10).
+    const departed = live(own).every(
+      (tenancy) => tenancy.to !== undefined && tenancy.to < asOfMonth,
+    );
     const action =
       delta < 0
         ? 'da-rimborsare'
@@ -538,7 +674,7 @@ export function calcConguaglioSupplementare(input: {
   });
   return {
     tenants,
-    unassignedDelta: cents(input.current.unassigned - input.snapshot.unassigned),
+    unassignedDelta: cents(emptyBeds(input.current) - emptyBeds(input.snapshot)),
   };
 }
 

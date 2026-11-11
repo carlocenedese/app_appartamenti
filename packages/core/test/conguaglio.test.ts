@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CORE_VERSION,
   InstalmentSchema,
+  SettlementInputError,
   allocateBillToMonths,
   allocateInstalment,
   annualitaRange,
@@ -361,34 +362,126 @@ describe('Step 2: review focus', () => {
     expect(result.unassigned).toBe(51);
   });
 
-  it('refuses tenancies that do not fit the beds', () => {
+  describe('input that cannot be settled (R-C9)', () => {
     const luce = bill('luce', '2026-10-01', '2026-10-31', 100);
-    const rooms = { apartment: apartment({ posti: 2, rooms: ['Uno', 'Due'] }) };
     const input = { bills: [luce], matches: [match(luce, 100)] };
-    expect(() =>
-      calc({
-        ...input,
-        ...rooms,
-        tenancies: [tenancy('a', '2026-10', undefined, { room: 'Tre' })],
-      }),
-    ).toThrow(RangeError);
-    expect(() =>
-      calc({
-        ...input,
-        ...rooms,
-        tenancies: [
-          tenancy('a', '2026-10', undefined, { room: 'Uno' }),
-          tenancy('b', '2026-10', '2026-10', { room: 'Uno' }),
-        ],
-      }),
-    ).toThrow(/Uno/);
-    expect(() =>
-      calc({
-        ...input,
-        apartment: apartment({ posti: 1 }),
-        tenancies: [tenancy('a', '2026-10', undefined), tenancy('b', '2026-10', undefined)],
-      }),
-    ).toThrow(RangeError);
+    const withRooms = apartment({ posti: 2, rooms: ['Uno', 'Due'] });
+    const settlementError = (run: () => unknown): SettlementInputError => {
+      try {
+        run();
+      } catch (error) {
+        if (error instanceof SettlementInputError) return error;
+        throw error;
+      }
+      throw new Error('No SettlementInputError thrown');
+    };
+
+    it('refuses a room that is not a bed', () => {
+      const error = settlementError(() =>
+        calc({
+          ...input,
+          apartment: withRooms,
+          tenancies: [tenancy('a', '2026-10', undefined, { room: 'Tre' })],
+        }),
+      );
+      expect(error).toMatchObject({ code: 'unknown-room', room: 'Tre', tenantId: 'a' });
+      expect(error.name).toBe('SettlementInputError');
+      expect(error.message).toContain('non è un posto');
+      const missing = settlementError(() =>
+        calc({ ...input, apartment: withRooms, tenancies: [tenancy('a', '2026-10', undefined)] }),
+      );
+      expect(missing).toMatchObject({ code: 'unknown-room', tenancyIds: ['tcy-a-2026-10'] });
+      expect(missing.room).toBeUndefined();
+    });
+
+    it('refuses two tenants in one room in the same month, with their ids', () => {
+      const error = settlementError(() =>
+        calc({
+          ...input,
+          apartment: withRooms,
+          tenancies: [
+            tenancy('b', '2026-10', '2026-10', { room: 'Uno' }),
+            tenancy('a', '2026-10', undefined, { room: 'Uno' }),
+          ],
+        }),
+      );
+      expect(error).toMatchObject({
+        code: 'room-overlap',
+        room: 'Uno',
+        month: '2026-10',
+        tenancyIds: ['tcy-a-2026-10', 'tcy-b-2026-10'],
+      });
+      expect(error.message).toContain('correggi le date');
+    });
+
+    it('refuses more tenants than beds', () => {
+      const error = settlementError(() =>
+        calc({
+          ...input,
+          apartment: apartment({ posti: 1 }),
+          tenancies: [tenancy('a', '2026-10', undefined), tenancy('b', '2026-10', undefined)],
+        }),
+      );
+      expect(error).toMatchObject({ code: 'too-many-tenants', month: '2026-10' });
+    });
+
+    it.each([
+      ['with rooms', withRooms, { room: 'Uno' }, { room: 'Due' }],
+      ['without rooms', apartment({ posti: 2 }), {}, {}],
+    ])('refuses a room change that counts the same month twice, %s', (_, apt, first, second) => {
+      // Months are inclusive: ending in March and starting again in March overlap.
+      const tenancies = [
+        tenancy('a', '2026-10', '2027-03', first),
+        tenancy('a', '2027-03', undefined, second),
+      ];
+      const error = settlementError(() => calc({ ...input, apartment: apt, tenancies }));
+      expect(error).toMatchObject({
+        code: 'tenant-overlap',
+        tenantId: 'a',
+        month: '2027-03',
+        tenancyIds: ['tcy-a-2026-10', 'tcy-a-2027-03'],
+      });
+      const months = [yearMonth('2027-03')];
+      const payments = [payment('a', '2027-03', 48000)];
+      expect(() => collectedForfait({ tenancies, payments, months })).toThrow(SettlementInputError);
+      expect(() => canClosePeriod({ tenancies, payments, months, pending: [] })).toThrow(
+        SettlementInputError,
+      );
+      // Ending in February instead, March is counted once.
+      const fixed = [
+        tenancy('a', '2026-10', '2027-02', first),
+        tenancy('a', '2027-03', undefined, second),
+      ];
+      const rows = collectedForfait({ tenancies: fixed, payments, months });
+      expect(calc({ ...input, apartment: apt, tenancies: fixed }).tenants).toHaveLength(1);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.forfaitCollected).toBe(3000);
+    });
+  });
+
+  it('ignores deleted records', () => {
+    const luce = bill('luce', '2026-10-01', '2026-10-31', 20000);
+    const gas = bill('gas', '2026-10-01', '2026-10-31', 8000, { category: 'gas' });
+    const base = {
+      bills: [luce],
+      matches: [match(luce, 20000)],
+      tenancies: FOUR_FULL_YEAR,
+      payments: [payment('a', '2026-10', 48000)],
+    };
+    const expected = calc(base);
+    const withDeleted = calc({
+      bills: [luce, { ...gas, deleted: true }],
+      matches: [
+        ...base.matches,
+        match(gas, 8000),
+        match(luce, 500, { id: 'm-extra', transactionId: 'tx-extra', deleted: true }),
+      ],
+      tenancies: [...FOUR_FULL_YEAR, tenancy('x', '2026-10', undefined, { deleted: true })],
+      payments: [...base.payments, payment('b', '2026-10', 48000, { deleted: true })],
+    });
+    expect(withDeleted).toEqual(expected);
+    const deletedMatch = calc({ ...base, matches: [match(luce, 20000, { deleted: true })] });
+    expect(deletedMatch.pending).toEqual([{ itemType: 'bill', itemId: 'luce' }]);
   });
 
   it('ignores records of other apartments', () => {
@@ -664,6 +757,15 @@ describe('Step 3d: supplementary settlement (R5)', () => {
   const frozen = structuredClone(snapshot);
   const asOf = isoDate('2025-11-20');
 
+  const late9000 = () => {
+    const luce = bill('luce-tardiva', '2025-07-01', '2025-09-30', 9000);
+    return calcConguaglio({
+      ...base,
+      bills: [internet, luce],
+      matches: [match(internet, 3000), match(luce, 9000)],
+    });
+  };
+
   const late = (amount: number) => {
     const luce = bill('luce-tardiva', '2025-07-01', '2025-09-30', amount);
     const current = calcConguaglio({
@@ -716,7 +818,13 @@ describe('Step 3d: supplementary settlement (R5)', () => {
     const empty = calcConguaglio({ ...base, tenancies: [], bills: [], matches: [] });
     const withOnlyCosts = {
       ...empty,
-      unassigned: cents(500),
+      unassigned: cents(500 + 70),
+      unassignedByBucket: {
+        spese: cents(500),
+        rata: cents(0),
+        conguaglioPrec: cents(70),
+        commissione: cents(0),
+      },
       tenants: [
         {
           tenantId: 'a',
@@ -739,6 +847,65 @@ describe('Step 3d: supplementary settlement (R5)', () => {
       { tenantId: 'a', delta: 111, departed: false, action: 'da-pagare' },
     ]);
     expect(result.unassignedDelta).toBe(500);
+  });
+
+  it('treats a tenant without tenancies as departed (R-C10)', () => {
+    const result = calcConguaglioSupplementare({
+      current: late9000(),
+      snapshot,
+      tenancies: tenancies.filter((t) => t.tenantId !== 'd'),
+      asOf,
+    });
+    expect(result.tenants.find((t) => t.tenantId === 'd')).toEqual({
+      tenantId: 'd',
+      delta: 1200,
+      departed: true,
+      action: 'da-trattenere-o-richiedere',
+    });
+  });
+
+  it('adds up to the net cost of a late condominium instalment, last year settlement left out', () => {
+    // 4 beds, one empty from August; condominium year October-September like the lease year.
+    const apt = apartment({ posti: 4, condominioStart: { month: 10, day: 1 } });
+    const people = [
+      tenancy('a', '2024-10', undefined),
+      tenancy('b', '2024-10', undefined),
+      tenancy('c', '2024-10', undefined),
+      tenancy('d', '2024-10', '2025-07'),
+    ];
+    const rata = instalment('cond-3', {
+      esercizio: '2024-25',
+      rateIndex: 3,
+      rateCount: 3,
+      rata: cents(12000),
+      quotaProprieta: cents(2400),
+      conguaglioPrec: cents(3600),
+      coversFrom: yearMonth('2025-06'),
+      coversTo: yearMonth('2025-09'),
+    });
+    const common = {
+      apartment: apt,
+      period: annualita,
+      bills: [],
+      tenancies: people,
+      payments: [],
+    };
+    const before = calcConguaglio({ ...common, instalments: [rata], matches: [] });
+    const after = calcConguaglio({
+      ...common,
+      instalments: [rata],
+      matches: [match(rata, 15600)],
+    });
+    expect(after.unassignedByBucket.conguaglioPrec).toBeGreaterThan(0);
+    const result = calcConguaglioSupplementare({
+      current: after,
+      snapshot: before,
+      tenancies: people,
+      asOf,
+    });
+    // 120,00 € of rata minus the owner's 8,00 €; the 36,00 € of last year are not part of it.
+    expect(sum(result.tenants.map((t) => t.delta)) + result.unassignedDelta).toBe(12000 - 800);
+    expect(result.unassignedDelta).toBe(after.unassignedByBucket.rata);
   });
 });
 
