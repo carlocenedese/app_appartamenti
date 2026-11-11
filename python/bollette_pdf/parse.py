@@ -25,8 +25,9 @@ for _index, _name in enumerate(_MONTHS, start=1):
 _MINUS = "-−–"  # hyphen-minus, minus sign, en dash
 
 # A thousands-grouped number with a comma and exactly two decimals, a plain number with a comma
-# and exactly two decimals, a dot with exactly two decimals (no other separator), or integers.
-_EURO_NUMBER = r"(?:\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}|\d+\.\d{2}|\d+)"
+# and exactly two decimals, or a dot with exactly two decimals (no other separator). A bare
+# integer is never an amount (ruling R50).
+_EURO_NUMBER = r"(?:\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}|\d+\.\d{2})"
 _EURO = re.compile(
     rf"(?P<neg>[{_MINUS}]\s*)?(?:€\s*)?(?P<num>{_EURO_NUMBER})(?:\s*€)?",
 )
