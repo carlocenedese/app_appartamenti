@@ -11,8 +11,8 @@
  * - `confirmProfile` and `setProfileAutoRegister` change a supplier profile through the journal.
  *
  * Pure: no clock and no random source. The ids of the records come from the proposal, and the id
- * of each operation is derived from them (`op-<first record id>`; for a profile, the profile id
- * and the `rev` it gets), so the functions take no `newId`.
+ * of each operation is derived from them and from the time of the attempt (see `operationId`),
+ * so the functions take no `newId`.
  */
 import { findBillDuplicate, hashBytes, registerBill } from './dedupe';
 import type { ExtractedField, ExtractionResult } from './extraction';
@@ -23,8 +23,20 @@ import { parseOrThrow } from './parse';
 import { FIELD_LABELS } from './proposal';
 import type { Proposal } from './proposal';
 import { loadAll } from './store/load';
+import { compactTimestamp } from './time';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
+
+/**
+ * The id of an operation made at `at`: `<prefix>-<at as YYYYMMDDTHHmmssSSSZ>`. The time makes it
+ * unique per attempt: a write retried after the journal file of a failed attempt was written gets
+ * another id, so the journal never has two files with one id (which `readJournal` would drop
+ * both of as `duplicate-id`, leaving the retried operation impossible to undo). The caller then
+ * gives `commitChange` a clock that returns that same `at`.
+ */
+function operationId(prefix: string, at: string): string {
+  return `${prefix}-${compactTimestamp(at)}`;
+}
 
 export type RegistrationDecision = { action: 'auto-register' | 'review'; reasons: string[] };
 
@@ -147,6 +159,7 @@ async function writeInstalments(
   clock: () => string,
 ): Promise<RegisterProposalResult> {
   const [first] = records;
+  const at = clock();
   const apartments = new Set(records.map((r) => r.apartmentId));
   const operation = await commitChange(
     store,
@@ -163,8 +176,8 @@ async function writeInstalments(
         after: record,
       })),
     },
-    clock,
-    () => `op-${first.id}`,
+    () => at,
+    () => operationId(`op-${first.id}`, at),
   );
   return { status: 'registered', ids: records.map((r) => r.id), operationId: operation.id };
 }
@@ -189,8 +202,13 @@ async function writeInstalments(
  * `mode: 'manual'` a person has confirmed the proposal, so the checks do not stop it, but the
  * duplicate checks still do.
  *
- * The operation id is `op-<id of the first record>`: a proposal registered once cannot be
- * registered again after an undo (its record ids are taken); a new reading makes new ids.
+ * `mode: 'auto'` does not look at the supplier profile (confirmed, `autoRegister`, the profile
+ * the reading was made with): the caller must call `decideRegistration` first and use `auto`
+ * only when it says `auto-register`.
+ *
+ * The operation id is `op-<id of the first record>-<time of the attempt>` (see `operationId`), so
+ * a retry after a failed write is a new operation. A proposal registered and then undone cannot
+ * be registered again (its record ids are taken); a new reading makes new ids.
  */
 export async function registerProposal(
   store: Store,
@@ -234,14 +252,14 @@ export async function registerProposal(
   const known = await findBillDuplicate(store, record);
   if (known !== undefined) return known;
   if (autoReasons.length > 0) return { status: 'rejected', reason: autoReasons.join(' ') };
-  const operationId = `op-${proposal.bill.id}`;
+  const at = clock();
   const registered = await registerBill(
     store,
     proposal.bill,
     bytes,
     profileId,
-    clock,
-    () => operationId,
+    () => at,
+    () => operationId(`op-${proposal.bill.id}`, at),
     { kind: `bill.register${suffix}` },
   );
   if (registered.status !== 'registered') return registered; // written by someone in between
@@ -259,6 +277,7 @@ async function updateProfile(
   clock: () => string,
 ): Promise<SupplierProfile> {
   const after = parseOrThrow(SupplierProfileSchema, { ...profile, ...patch }, 'supplier profile');
+  const at = clock();
   const operation = await commitChange(
     store,
     {
@@ -267,8 +286,8 @@ async function updateProfile(
       summary: op.summary,
       changes: [{ path: recordPath('supplierProfile', profile.id), before: profile, after }],
     },
-    clock,
-    () => `${op.idPrefix}-${profile.id}-r${String(profile.rev + 1)}`,
+    () => at,
+    () => operationId(`${op.idPrefix}-${profile.id}-r${String(profile.rev + 1)}`, at),
   );
   return parseOrThrow(SupplierProfileSchema, operation.changes[0]?.after, 'supplier profile');
 }

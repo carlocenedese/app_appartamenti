@@ -147,6 +147,18 @@ async function billCase(bytes: Uint8Array = PDF, overrides: Record<string, unkno
   return { result, proposal };
 }
 
+/** A store whose next write of a record fails with EIO, after the journal file is written. */
+class FailingRecordStore extends MemoryStore {
+  failNext = true;
+  override async writeJsonAtomic(path: string, value: unknown): Promise<void> {
+    if (this.failNext && path.startsWith('_app/dati/')) {
+      this.failNext = false;
+      throw Object.assign(new Error(`EIO: i/o error, write ${path}`), { code: 'EIO' });
+    }
+    return super.writeJsonAtomic(path, value);
+  }
+}
+
 const withCheck = (proposal: Proposal, severity: 'warn' | 'fail'): Proposal =>
   ({
     ...proposal,
@@ -242,7 +254,8 @@ describe('registerProposal: bills', () => {
       { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'auto' },
       clock,
     );
-    expect(outcome).toEqual({ status: 'registered', ids: ['bill-1'], operationId: 'op-bill-1' });
+    const operationId = 'op-bill-1-20261112T090000000Z';
+    expect(outcome).toEqual({ status: 'registered', ids: ['bill-1'], operationId });
 
     const { records } = await loadAll(store, 'bill', BillSchema);
     expect(records.map((b) => b.id)).toEqual(['bill-1']);
@@ -250,7 +263,7 @@ describe('registerProposal: bills', () => {
     const { operations } = await readJournal(store);
     expect(operations.map((o) => o.kind)).toEqual(['bill.register-auto']);
 
-    await undoOperation(store, 'op-bill-1', 'carlo', clock, () => 'undo-1');
+    await undoOperation(store, operationId, 'carlo', clock, () => 'undo-1');
     const stored = BillSchema.parse(await store.readJson(recordPath('bill', 'bill-1')));
     expect(stored.deleted).toBe(true);
     expect((await loadAll(store, 'bill', BillSchema)).records).toEqual([]);
@@ -381,6 +394,52 @@ describe('registerProposal: bills', () => {
   });
 });
 
+describe('registerProposal: retry after a failed write (R68)', () => {
+  it('gives the retry its own operation, listed in the journal and undoable', async () => {
+    const store = new FailingRecordStore();
+    const clock = tickingClock();
+    const { result, proposal } = await billCase();
+    const input = { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'auto' as const };
+    await expect(registerProposal(store, input, clock)).rejects.toThrow(/EIO/);
+    expect(await store.list('_app/journal')).toHaveLength(1);
+    expect(await store.readJson(recordPath('bill', 'bill-1'))).toBeUndefined();
+
+    const retry = await registerProposal(store, input, clock);
+    if (retry.status !== 'registered') throw new Error(`expected registered, got ${retry.status}`);
+    const { operations, problems } = await readJournal(store);
+    expect(problems.filter((p) => p.reason === 'duplicate-id')).toEqual([]);
+    expect(operations.map((o) => o.id)).toContain(retry.operationId);
+    expect(new Set(operations.map((o) => o.id)).size).toBe(operations.length);
+
+    await undoOperation(store, retry.operationId, 'carlo', clock, () => 'undo-1');
+    const stored = BillSchema.parse(await store.readJson(recordPath('bill', 'bill-1')));
+    expect(stored.deleted).toBe(true);
+  });
+
+  it('does the same for confirmProfile', async () => {
+    const store = new FailingRecordStore();
+    store.failNext = false;
+    const clock = tickingClock();
+    const draft = profile({ status: 'bozza' });
+    await store.writeJsonAtomic(recordPath('supplierProfile', draft.id), draft);
+    store.failNext = true;
+    await expect(confirmProfile(store, draft, 'carlo', clock)).rejects.toThrow(/EIO/);
+    const confirmed = await confirmProfile(store, draft, 'carlo', clock);
+    expect(confirmed.status).toBe('confermato');
+
+    const { operations, problems } = await readJournal(store);
+    expect(problems.filter((p) => p.reason === 'duplicate-id')).toEqual([]);
+    expect(operations).toHaveLength(2);
+    expect(new Set(operations.map((o) => o.id)).size).toBe(2);
+    const retryOp = operations.at(-1);
+    await undoOperation(store, retryOp?.id ?? '', 'carlo', clock, () => 'undo-1');
+    const undone = SupplierProfileSchema.parse(
+      await store.readJson(recordPath('supplierProfile', draft.id)),
+    );
+    expect(undone.status).toBe('bozza');
+  });
+});
+
 describe('registerProposal: TARI', () => {
   async function tariCase(prefix = 'i') {
     const result = tariResult(await hashBytes(TARI_PDF));
@@ -399,7 +458,8 @@ describe('registerProposal: TARI', () => {
       clock,
     );
     const newIds = proposal.instalments.map((i) => i.id);
-    expect(outcome).toEqual({ status: 'registered', ids: newIds, operationId: `op-${newIds[0]}` });
+    const operationId = `op-${String(newIds[0])}-20261112T090000000Z`;
+    expect(outcome).toEqual({ status: 'registered', ids: newIds, operationId });
 
     const { records } = await loadAll(store, 'instalment', InstalmentSchema);
     expect(records.map((i) => i.apartmentId).sort()).toEqual(['apt-b', 'apt-l']);
@@ -410,7 +470,7 @@ describe('registerProposal: TARI', () => {
     expect(operations[0]?.changes).toHaveLength(2);
     expect(operations[0]?.apartmentId).toBeUndefined();
 
-    await undoOperation(store, `op-${newIds[0]}`, 'carlo', clock, () => 'undo-1');
+    await undoOperation(store, operationId, 'carlo', clock, () => 'undo-1');
     expect((await loadAll(store, 'instalment', InstalmentSchema)).records).toEqual([]);
     const all = await loadAll(store, 'instalment', InstalmentSchema, { includeDeleted: true });
     expect(all.records.map((i) => i.deleted)).toEqual([true, true]);
