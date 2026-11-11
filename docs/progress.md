@@ -116,6 +116,33 @@ payment, transaction, instalment, match, note`; `_app/workspace.json`. Costo: co
 - Altre: `settlementPeriods` annuale rifiuta un inizio d'annualità diverso dal giorno 1; i commit
   degli esecutori riportano il modello che li ha scritti.
 
+## Fase C (Task 9): decisioni dell'orchestratore
+
+- **R32** Resti di centesimo: ogni mese la quota si divide sui `posti` nell'ordine di `Apartment.rooms`;
+  senza `rooms`, prima gli inquilini presenti in ordine di `tenantId`, poi i posti vuoti.
+- **R33** `byCategory` elenca solo le tipologie con un importo.
+- **R34** `calcConguaglio` restituisce anche `warnings` (`contratto-mensile`: somma di affitti e
+  forfait diversa da `contrattoMensile`), senza fermare il calcolo.
+- **R35** Test dorato: se app ed Excel differiscono, `knownDeviations` non può essere vuoto; i
+  motivi non sono legati riga per riga. `pnpm golden:report` scrive
+  `reports/golden/<fixture>-differenze.md`, che si salva nel repository.
+- **R36** Controllo di fine esercizio del condominio (passo 4b) generico, saltato finché nessuna
+  fixture ha rate di condominio.
+- **R37** La parte della proprietà si toglie solo dalle rate con `rata` diversa da 0; se supera la
+  rata, la rata resta in sospeso con motivo «parte della proprietà maggiore della rata».
+- **R38** Dati non calcolabili (stesso inquilino in due stanze nello stesso mese, due inquilini
+  nello stesso posto, stanza sconosciuta, più inquilini dei posti, condominio con conguaglio senza
+  inizio d'esercizio) danno `SettlementInputError` con un codice e un messaggio in italiano, prima
+  di calcolare qualsiasi importo. La domanda della regola (c), «a chi assegnare il mese», si
+  risolve correggendo le date dei contratti (piano 4).
+- **R39** Nel conguaglio supplementare un inquilino senza contratti conta come uscito.
+
+Rilievi minori rimandati dalla Fase C: azione `da-pagare` anche con differenza 0; avviso
+`contratto-mensile` anche nei mesi con un posto vuoto e senza mese; `conguaglio.ts` lungo (circa
+600 righe); `esercizioRange` facoltativo in `allocateInstalment`; rata negativa con
+`quotaProprieta`; nel rapporto la colonna «Spese» non comprende la commissione; il conguaglio
+supplementare non filtra i contratti di altri appartamenti.
+
 ## Da decidere con Carlo
 
 1. Nota TARI: la data dell'avviso non c'è nell'esempio della specifica né nei dati in ingresso.
