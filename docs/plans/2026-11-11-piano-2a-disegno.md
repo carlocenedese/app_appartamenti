@@ -31,15 +31,17 @@ inventato (sezione 22).
    L'app lo lancia, riceve un JSON su stdout e il programma termina. Niente servizio sempre acceso,
    nessuna porta di rete (sezione 28), un PDF guasto non ferma gli altri.
 2. **I profili sono record JSON**, come gli altri, nella cartella dei dati condivisa
-   (`_app/dati/profili-fornitore/<id>.json`, con `id`, `v`, `rev`, `deleted`). Lo schema vive nel
+   (`_app/dati/supplierProfile/<id>.json`, con `id`, `v`, `rev`, `deleted`: il nome della cartella è quello del tipo di record). Lo schema vive nel
    core TypeScript ed è esportato in `docs/schemas/`; Python valida profili e risultati sugli stessi
    schemi, così i due lati non possono divergere.
 3. **Il core resta puro.** Python estrae; il core TypeScript confronta, controlla e decide. Nessun
    orologio e nessun generatore di `id` dentro i due lati: arrivano come argomenti.
 4. **Python incorporato nell'installer** come interprete autonomo (*python-build-standalone*) più
    le librerie, senza programmi che congelano il codice. Motivo: PyInstaller ha licenza GPL con
-   un'eccezione, e il progetto vieta la GPL (sezione 40). Librerie previste: pdfplumber e
-   pdfminer.six (MIT), jsonschema (MIT). Il controllo delle licenze copre anche i pacchetti Python.
+   un'eccezione, e il progetto vieta la GPL (sezione 40). Librerie previste: pdfminer.six e
+   jsonschema (MIT). pdfplumber, citato come esempio dalla specifica, non si usa: porta Pillow, con
+   licenza MIT-CMU, che non è nell'elenco ammesso. Il controllo delle licenze copre anche i pacchetti
+   Python.
 
 ## Componenti
 
@@ -57,7 +59,7 @@ inventato (sezione 22).
 Comando: `python -I -m bollette_pdf extract --pdf <file> --profiles <cartella> --at <data-ora ISO>`.
 Uscita (stdout, un solo documento JSON, UTF-8; gli errori vanno su stderr con codice 2):
 
-- `status`: `riconosciuta` | `da-confermare` | `non-riconosciuta` | `senza-testo`;
+- `status`: `riconosciuta` | `da-confermare` | `non-riconosciuta` | `senza-testo` | `illeggibile` (PDF guasto o protetto: ogni PDF dà comunque una risposta);
 - `profileId` e `profileRev` del profilo scelto (o `null`), `fileHash` (SHA-256 del file);
 - `kind` (`bill` o `tari`) e `category`;
 - `fields`: per ogni campo (`supplier`, `number`, `issueDate`, `dueDate`, `periodStart`,
