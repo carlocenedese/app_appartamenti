@@ -43,15 +43,13 @@ Gli installer non sono firmati:
 
 ## Punti aperti
 
-- **Cargo.lock**: non c'è, perché in locale manca Rust. La CI lo crea a ogni esecuzione dalle
-  versioni di `Cargo.toml`, quindi le dipendenze indirette non sono fissate. Il job Windows lo
-  carica come artifact `cargo-lock`. Dopo la prima build verde: si scarica quell'artifact
-  (`gh run download <id-esecuzione> -n cargo-lock`), si mette il file in `src-tauri/Cargo.lock`,
-  lo si committa e poi si aggiunge `--locked` ai comandi cargo del workflow.
+- **Cargo.lock**: fissato l'11 novembre 2026 con il file generato dalla prima build verde
+  (esecuzione 42946109167); il workflow usa `--locked`. Per aggiornare le dipendenze Rust serve
+  Rust in locale (`cargo update` in `src-tauri`), oppure si toglie `--locked` per una build, si
+  scarica l'artifact `cargo-lock` e lo si committa.
 - **Licenze di `cargo-deny`** (`deny.toml`): ammette l'elenco del vincolo globale più MPL-2.0 e,
   per decisione di Carlo dell'11 novembre 2026, `Unicode-3.0` e `Zlib` (richieste dall'albero Rust
-  di Tauri). Se alla prima esecuzione il passo `cargo deny` rifiuta altre licenze (forse
-  `Apache-2.0 WITH LLVM-exception`), decide Carlo se ammetterle.
+  di Tauri). Con queste la prima build è passata; se una dipendenza nuova porta altre licenze, decide Carlo.
 - **Chiave di firma degli aggiornamenti** (Task 11, passo 6; piano 6): da decidere dove si
   conserva la chiave privata. Se si perde, le app già installate non si aggiornano più.
 - **Firma del codice**: nessun certificato Windows; su Mac, se l'app si rifiuta di partire su

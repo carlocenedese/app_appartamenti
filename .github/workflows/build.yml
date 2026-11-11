@@ -85,10 +85,10 @@ jobs:
       # versions in Cargo.toml, and the build below uses the same one.
       - name: Check Rust dependency licences
         if: runner.os == 'Windows'
-        run: cargo deny --manifest-path apps/desktop/src-tauri/Cargo.toml --config deny.toml check licenses
+        run: cargo deny --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --config deny.toml check licenses
 
       - name: Build the installers
-        run: pnpm --filter desktop tauri build ${{ matrix.tauri-args }}
+        run: pnpm --filter desktop tauri build ${{ matrix.tauri-args }} -- --locked
 
       - name: Collect the Windows installers
         if: runner.os == 'Windows'
