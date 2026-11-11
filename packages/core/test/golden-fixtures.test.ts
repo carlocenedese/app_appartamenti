@@ -50,6 +50,15 @@ const GoldenFixtureSchema = z.strictObject({
     }),
   ),
   expectedUnassigned: CentsSchema,
+  /** What the Excel charges each tenant, by category (costs only), for the difference report. */
+  excel: z
+    .array(
+      z.strictObject({
+        tenantId: z.string().min(1),
+        byCategory: z.record(z.string(), CentsSchema),
+      }),
+    )
+    .optional(),
   approvedBy: z.string().min(1),
   knownDeviations: z.array(z.strictObject({ what: z.string().min(1), why: z.string().min(1) })),
 });
@@ -111,6 +120,10 @@ describe('golden fixtures', () => {
       for (const payment of fixture.payments) expect(tenantIds).toContain(payment.tenantId);
       const expectedIds = fixture.expected.map((row) => row.tenantId);
       expect([...expectedIds].sort()).toEqual([...new Set(tenantIds)].sort());
+      if (fixture.excel !== undefined) {
+        const excelIds = fixture.excel.map((row) => row.tenantId);
+        expect([...excelIds].sort()).toEqual([...expectedIds].sort());
+      }
       const items = new Set([
         ...fixture.bills.map((bill) => `bill:${bill.id}`),
         ...fixture.instalments.map((instalment) => `instalment:${instalment.id}`),

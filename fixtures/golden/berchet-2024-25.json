@@ -1750,6 +1750,102 @@
     }
   ],
   "expectedUnassigned": 0,
+  "excel": [
+    {
+      "tenantId": "ten-a",
+      "byCategory": {
+        "elettricita": 7420,
+        "internet": 4305,
+        "tari": 4258
+      }
+    },
+    {
+      "tenantId": "ten-b",
+      "byCategory": {
+        "elettricita": 4002,
+        "internet": 2995,
+        "tari": 2729
+      }
+    },
+    {
+      "tenantId": "ten-c",
+      "byCategory": {
+        "elettricita": 9457,
+        "internet": 6701,
+        "tari": 6785
+      }
+    },
+    {
+      "tenantId": "ten-d",
+      "byCategory": {
+        "internet": 599,
+        "tari": 203
+      }
+    },
+    {
+      "tenantId": "ten-e",
+      "byCategory": {
+        "elettricita": 10439,
+        "internet": 6102,
+        "tari": 5602
+      }
+    },
+    {
+      "tenantId": "ten-f",
+      "byCategory": {
+        "elettricita": 982,
+        "internet": 1198,
+        "tari": 1386
+      }
+    },
+    {
+      "tenantId": "ten-g",
+      "byCategory": {
+        "elettricita": 1146,
+        "internet": 615,
+        "tari": 186
+      }
+    },
+    {
+      "tenantId": "ten-h",
+      "byCategory": {
+        "elettricita": 9293,
+        "internet": 5487,
+        "tari": 3995
+      }
+    },
+    {
+      "tenantId": "ten-i",
+      "byCategory": {
+        "elettricita": 982,
+        "internet": 1198,
+        "tari": 2807
+      }
+    },
+    {
+      "tenantId": "ten-j",
+      "byCategory": {
+        "elettricita": 8438,
+        "internet": 4904,
+        "tari": 4462
+      }
+    },
+    {
+      "tenantId": "ten-k",
+      "byCategory": {
+        "elettricita": 2983,
+        "internet": 1797,
+        "tari": 2323
+      }
+    },
+    {
+      "tenantId": "ten-l",
+      "byCategory": {
+        "internet": 599,
+        "tari": 203
+      }
+    }
+  ],
   "approvedBy": "Carlo, 11 novembre 2026",
   "knownDeviations": [
     {
@@ -1763,6 +1859,14 @@
     {
       "what": "Quota TARI di agosto 2025 scritta a mano",
       "why": "RegistroBollette G26 = 48,97 € invece della formula (12,24 €); l'app calcola dalla regola."
+    },
+    {
+      "what": "Luce dell'inquilino C (Doppia marmo 1, ott 2024 - ago 2025)",
+      "why": "Conguagli D9 somma la luce fino a giugno (RegistroBollette G17:G21) e omette luglio-agosto 2025 (G22-G23): 94,57 € nell'Excel contro 113,78 € dell'app."
+    },
+    {
+      "what": "Importi dell'Excel per voce (campo excel)",
+      "why": "Ricavati dalle formule di Conguagli D/5 per tipologia, con la commissione compresa dove l'Excel la somma; arrotondati al centesimo per voce, quindi il totale può differire di 1 centesimo da D/5 (inquilini I e K)."
     },
     {
       "what": "Spese dell'inquilino I (Doppia 1, ago-set 2025)",

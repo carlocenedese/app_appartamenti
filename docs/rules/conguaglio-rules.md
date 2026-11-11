@@ -156,7 +156,7 @@ con `C!D/5` dell'Excel. Il forfait incassato è 30 € per ogni mese con un vers
 | ---- | ---- | -------- | -------- | -------- | -------------------------------------------- |
 | A    | 7    | 150,09 € | 159,83 € | −9,74 €  | commissione; TARI                            |
 | B    | 5    | 95,69 €  | 97,26 €  | −1,57 €  | TARI                                         |
-| C    | 11   | 233,66 € | 229,43 € | +4,23 €  | TARI (terzo avviso 2024 per 3/4)             |
+| C    | 11   | 233,66 € | 229,43 € | +4,23 €  | luce lug-ago omessa (C!D9); TARI             |
 | D    | 1    | 12,09 €  | 8,02 €   | +4,07 €  | TARI di settembre                            |
 | E    | 10   | 212,85 € | 221,43 € | −8,58 €  | commissione; TARI                            |
 | F    | 2    | 32,79 €  | 35,66 €  | −2,87 €  | TARI (R!G26 scritto a mano)                  |
