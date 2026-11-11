@@ -62,14 +62,14 @@ export interface TariNotePart {
 }
 
 /**
- * The Italian note of a TARI notice: number, declared period, assigned months, the debit with its
+ * The Italian note of a TARI notice: number, date of issue when known, declared period, assigned months, the debit with its
  * date and account; with more than one part, the supply totals, the shares of the debit and one
  * "Storno" sentence for each apartment that owes its share to the paying account.
  * Throws a `RangeError` unless exactly one part is paid from its own account and the shares sum
  * to the debit.
  */
 export function tariNote(input: {
-  avviso: { number: string; periodLabel: string; dueDate: ISODate };
+  avviso: { number: string; periodLabel: string; dueDate: ISODate; issueDate?: ISODate };
   months: { from: YearMonth; to: YearMonth };
   transaction: BankTransaction;
   parts: TariNotePart[];
@@ -86,7 +86,7 @@ export function tariNote(input: {
   }
 
   const sentences = [
-    `Avviso ${avviso.number}, periodo ${avviso.periodLabel}, mesi assegnati ${monthRange(months.from, months.to)}.`,
+    `Avviso ${avviso.number}${avviso.issueDate === undefined ? '' : ` del ${noteDate(avviso.issueDate)}`}, periodo ${avviso.periodLabel}, mesi assegnati ${monthRange(months.from, months.to)}.`,
     `Addebito ${noteEuro(debit)} il ${noteDate(transaction.date)} sul conto di ${payer.apartmentName}.`,
   ];
   const list = (amountOf: (part: TariNotePart) => Cents): string =>

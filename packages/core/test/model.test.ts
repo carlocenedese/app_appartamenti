@@ -539,6 +539,15 @@ describe('BankTransaction', () => {
 });
 
 describe('Instalment', () => {
+  it('may carry the issue date of the notice, which must be a real date', () => {
+    const parse = (issueDate: unknown) =>
+      InstalmentSchema.safeParse(changed(validRecords.instalment, { issueDate })).success;
+    expect(parse('2026-02-05')).toBe(true);
+    expect(parse(undefined)).toBe(true);
+    expect(parse('2026-02-30')).toBe(false);
+    expect(parse('05/02/2026')).toBe(false);
+  });
+
   it.each([5, 7, 8, 9, 10, 11, 0, -3, 13, 24, 2.5])('rejects rateCount %j', (rateCount) => {
     expect(
       InstalmentSchema.safeParse(changed(validRecords.instalment, { rateCount, rateIndex: 1 }))

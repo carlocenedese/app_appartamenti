@@ -18,6 +18,8 @@ attesi del conguaglio per inquilino: `due`, `forfaitIncassato` e le spese per ti
 - Il condominio è escluso da `expected` per costruzione (sezione 42 della specifica, R3).
 - Gli inquilini sono `ten-a`, `ten-b`, …; nomi, codici delle bollette e link ai file non ci sono.
 - `byCategory` elenca solo le tipologie con un importo: una tipologia senza spese non compare.
+- `excel` (facoltativo) riporta per inquilino e tipologia quanto addebita l'Excel, per il rapporto
+  delle differenze (`pnpm golden:report`).
 - L'ordine dei posti per i resti di centesimo è `apartment.rooms`.
 - Le regole che producono i valori sono in `docs/rules/conguaglio-rules.md`.
 - `packages/core/test/golden-fixtures.test.ts` controlla schemi, assenza di dati personali e

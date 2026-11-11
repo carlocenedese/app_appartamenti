@@ -17,7 +17,8 @@
     "licenses:check": "node scripts/check-licenses.mjs",
     "data:check": "node scripts/check-personal-data.mjs",
     "tools:test": "python3 -I -m unittest discover -s tools -p 'test_*.py'",
-    "schemas:export": "tsx scripts/export-schemas.mjs"
+    "schemas:export": "tsx scripts/export-schemas.mjs",
+    "golden:report": "tsx scripts/golden-report.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
