@@ -18,6 +18,9 @@ import {
   interpreterPath,
   main,
   pickRuntime,
+  removeTkinter,
+  TKINTER_PATHS,
+  tkinterPaths,
   verifySha256,
 } from './bundle-python.mjs';
 
@@ -169,6 +172,120 @@ describe('copyPackage', () => {
   });
 });
 
+/** Creates the files (ending without "/") and folders (ending with "/") under `base`. */
+function makeTree(base, entries) {
+  for (const entry of entries) {
+    const path = join(base, ...entry.split('/'));
+    if (entry.endsWith('/')) mkdirSync(path, { recursive: true });
+    else {
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, 'x');
+    }
+  }
+}
+
+describe('removeTkinter', () => {
+  it('lists Tcl/Tk, tkinter, IDLE and turtle for both systems', () => {
+    expect(TKINTER_PATHS).toEqual({
+      win32: [
+        'Lib/tkinter',
+        'Lib/idlelib',
+        'Lib/turtledemo',
+        'Lib/turtle.py',
+        'Lib/__pycache__/turtle.*',
+        'DLLs/_tkinter.*',
+        'DLLs/tcl*.dll',
+        'DLLs/tk*.dll',
+        'tcl',
+      ],
+      other: [
+        'bin/idle3*',
+        'lib/libtcl*',
+        'lib/libtk*',
+        'lib/tcl*',
+        'lib/tk*',
+        'lib/itcl*',
+        'lib/thread*',
+        'lib/python3.*/tkinter',
+        'lib/python3.*/idlelib',
+        'lib/python3.*/turtledemo',
+        'lib/python3.*/turtle.py',
+        'lib/python3.*/__pycache__/turtle.*',
+        'lib/python3.*/lib-dynload/_tkinter.*',
+      ],
+    });
+  });
+
+  it('removes the Windows layout of python-build-standalone and keeps the rest', () => {
+    makeTree(root, [
+      'python.exe',
+      'DLLs/_tkinter.pyd',
+      'DLLs/_tkinter.pdb',
+      'DLLs/tcl86t.dll',
+      'DLLs/tk86t.dll',
+      'DLLs/_ssl.pyd',
+      'DLLs/sqlite3.dll',
+      'Lib/tkinter/__init__.py',
+      'Lib/idlelib/idle.py',
+      'Lib/turtledemo/__main__.py',
+      'Lib/turtle.py',
+      'Lib/json/__init__.py',
+      'tcl/tcl8.6/init.tcl',
+      'tcl/tk8.6/tk.tcl',
+      'tcl/tix8.4.3/Tix.tcl',
+    ]);
+    const removed = removeTkinter(root, 'win32');
+    expect(removed).toHaveLength(9);
+    expect(tkinterPaths(root, 'win32')).toEqual([]);
+    expect(readdirSync(root).sort()).toEqual(['DLLs', 'Lib', 'python.exe']);
+    expect(readdirSync(join(root, 'DLLs')).sort()).toEqual(['_ssl.pyd', 'sqlite3.dll']);
+    expect(readdirSync(join(root, 'Lib'))).toEqual(['json']);
+  });
+
+  it('removes the macOS layout of python-build-standalone and keeps the rest', () => {
+    makeTree(root, [
+      'bin/python3',
+      'bin/idle3',
+      'bin/idle3.13',
+      'bin/pydoc3',
+      'lib/libpython3.13.dylib',
+      'lib/libtcl9.0.dylib',
+      'lib/libtcl9tk9.0.dylib',
+      'lib/tcl9/',
+      'lib/tcl9.0/init.tcl',
+      'lib/tk9.0/tk.tcl',
+      'lib/itcl4.3.8/itcl.tcl',
+      'lib/thread3.0.6/pkgIndex.tcl',
+      'lib/pkgconfig/python3.pc',
+      'lib/python3.13/tkinter/__init__.py',
+      'lib/python3.13/idlelib/idle.py',
+      'lib/python3.13/turtledemo/__main__.py',
+      'lib/python3.13/turtle.py',
+      'lib/python3.13/json/__init__.py',
+      'lib/python3.13/lib-dynload/_tkinter.cpython-313-darwin.so',
+      'lib/python3.13/lib-dynload/_ssl.cpython-313-darwin.so',
+    ]);
+    removeTkinter(root, 'darwin');
+    expect(tkinterPaths(root, 'darwin')).toEqual([]);
+    expect(readdirSync(join(root, 'bin')).sort()).toEqual(['pydoc3', 'python3']);
+    expect(readdirSync(join(root, 'lib')).sort()).toEqual([
+      'libpython3.13.dylib',
+      'pkgconfig',
+      'python3.13',
+    ]);
+    expect(readdirSync(join(root, 'lib', 'python3.13')).sort()).toEqual(['json', 'lib-dynload']);
+    expect(readdirSync(join(root, 'lib', 'python3.13', 'lib-dynload'))).toEqual([
+      '_ssl.cpython-313-darwin.so',
+    ]);
+  });
+
+  it('does nothing on a folder without Tcl/Tk', () => {
+    makeTree(root, ['python.exe', 'Lib/json/__init__.py']);
+    expect(removeTkinter(root, 'win32')).toEqual([]);
+    expect(removeTkinter(root, 'darwin')).toEqual([]);
+  });
+});
+
 describe('directorySize', () => {
   it('adds up the sizes of the files, in every subfolder', () => {
     mkdirSync(join(root, 'a', 'b'), { recursive: true });
@@ -224,13 +341,15 @@ describe('main', () => {
       expect(readdirSync(into)).toEqual([]);
       expect(sha256(bytes)).toBe(ARCHIVE_SHA);
       writeFileSync(join(into, 'extracted'), 'x');
+      mkdirSync(join(into, 'lib', 'tk9.0'), { recursive: true });
     });
     mkdirSync(join(root, 'site-packages'));
 
     await main({ root, manifest, platform: 'darwin', arch: 'arm64', ...steps });
 
     expect(steps.extract).toHaveBeenCalledTimes(1);
-    expect(readdirSync(destination)).toEqual(['extracted']);
+    expect(readdirSync(destination).sort()).toEqual(['extracted', 'lib']);
+    expect(readdirSync(join(destination, 'lib'))).toEqual([]);
     const python = interpreterPath(destination, 'darwin');
     expect(steps.install).toHaveBeenCalledWith(python, join(root, 'python', 'requirements.txt'));
     expect(existsSync(join(root, 'site-packages', 'bollette_pdf', 'schemas'))).toBe(true);

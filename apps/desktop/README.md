@@ -31,8 +31,9 @@ della build Tauri. Senza la cartella `tauri build` e `tauri dev` si fermano, per
 - Le dipendenze vengono da `python/requirements.txt` (`--require-hashes --no-deps
 --only-binary :all:`); poi lo script toglie pip (non serve all'app e porta certifi, MPL-2.0) e
   copia `python/bollette_pdf/` con `schemas/supplierProfile.json` e `schemas/extractionResult.json`.
-  Alla fine controlla `python -I -m bollette_pdf --version` e stampa la dimensione (circa 85 MB su
-  macOS).
+  Subito dopo l'estrazione toglie Tcl/Tk, `tkinter`, IDLE e `turtle` (non usati; licenza TCL fuori
+  elenco). Alla fine controlla `python -I -m bollette_pdf --version`, che `tkinter` non ci sia più,
+  e stampa la dimensione (circa 76 MB su macOS).
 - Dopo la build, `build.yml` avvia `python -I -m bollette_pdf --version` dall'app installata
   (Windows, in `%LOCALAPPDATA%\App Bollette`, un percorso con spazi) e dall'app costruita (macOS).
 - Per aggiornare l'interprete: si sceglie una release di python-build-standalone pubblicata da

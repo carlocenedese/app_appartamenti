@@ -18,6 +18,8 @@
 //      schemas/extractionResult.json from docs/schemas/ inside it (bollette_pdf/schemas.py looks
 //      there), so that `python -I -m bollette_pdf` works without PYTHONPATH;
 //   6. run `python -I -m bollette_pdf --version` and print the final size.
+// Right after the extraction, Tcl/Tk, tkinter, IDLE and turtle are removed (TKINTER_PATHS): the
+// app does not use them and the TCL licence is not in the allowed list.
 // Only Node built-ins: no npm dependencies.
 
 import { spawnSync } from 'node:child_process';
@@ -79,6 +81,72 @@ export function verifySha256(bytes, expected) {
 /** The interpreter inside an extracted install_only distribution. */
 export function interpreterPath(directory, platform) {
   return platform === 'win32' ? join(directory, 'python.exe') : join(directory, 'bin', 'python3');
+}
+
+/**
+ * Tcl/Tk and everything that needs it (ruling R69): the app does not use tkinter, and the TCL
+ * licence is not in the allowed list. Paths relative to the interpreter folder; `*` matches any
+ * run of characters inside one path segment.
+ */
+export const TKINTER_PATHS = {
+  win32: [
+    'Lib/tkinter',
+    'Lib/idlelib',
+    'Lib/turtledemo',
+    'Lib/turtle.py',
+    'Lib/__pycache__/turtle.*',
+    'DLLs/_tkinter.*',
+    'DLLs/tcl*.dll',
+    'DLLs/tk*.dll',
+    'tcl',
+  ],
+  other: [
+    'bin/idle3*',
+    'lib/libtcl*',
+    'lib/libtk*',
+    'lib/tcl*',
+    'lib/tk*',
+    'lib/itcl*',
+    'lib/thread*',
+    'lib/python3.*/tkinter',
+    'lib/python3.*/idlelib',
+    'lib/python3.*/turtledemo',
+    'lib/python3.*/turtle.py',
+    'lib/python3.*/__pycache__/turtle.*',
+    'lib/python3.*/lib-dynload/_tkinter.*',
+  ],
+};
+
+function segmentMatcher(segment) {
+  const escaped = segment.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+/** The paths of TKINTER_PATHS that exist under `directory`, sorted. */
+export function tkinterPaths(directory, platform) {
+  const patterns = TKINTER_PATHS[platform === 'win32' ? 'win32' : 'other'];
+  const found = new Set();
+  for (const pattern of patterns) {
+    let current = [directory];
+    for (const segment of pattern.split('/')) {
+      const matcher = segmentMatcher(segment);
+      current = current.flatMap((folder) => {
+        if (!existsSync(folder) || !lstatSync(folder).isDirectory()) return [];
+        return readdirSync(folder)
+          .filter((name) => matcher.test(name))
+          .map((name) => join(folder, name));
+      });
+    }
+    for (const path of current) found.add(path);
+  }
+  return [...found].sort();
+}
+
+/** Removes Tcl/Tk, tkinter, IDLE and turtle from an extracted interpreter; returns what it removed. */
+export function removeTkinter(directory, platform) {
+  const paths = tkinterPaths(directory, platform);
+  for (const path of paths) rmSync(path, { recursive: true, force: true });
+  return paths;
 }
 
 /** Copies python/bollette_pdf/ (without bytecode) and the two schemas it needs into sitePackages. */
@@ -200,6 +268,15 @@ export function check(python) {
     env: isolatedEnvironment(),
   }).trim();
   console.log(`python -I -m bollette_pdf --version: ${version}`);
+  run(
+    python,
+    [
+      '-I',
+      '-c',
+      "import importlib.util, sys; sys.exit(any(importlib.util.find_spec(m) for m in ('tkinter', '_tkinter')))",
+    ],
+    { env: isolatedEnvironment() },
+  );
 }
 
 /**
@@ -234,6 +311,7 @@ export async function main(options = {}) {
     rmSync(destination, { recursive: true, force: true });
     mkdirSync(destination, { recursive: true });
     steps.extract(bytes, destination);
+    steps.log(`Tolti Tcl/Tk e tkinter: ${removeTkinter(destination, platform).length} percorsi.`);
 
     const python = interpreterPath(destination, platform);
     const sitePackages = steps.install(python, join(root, 'python', 'requirements.txt'));
