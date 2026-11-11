@@ -414,6 +414,24 @@ async function idsOf(rows: Row[]): Promise<string[]> {
   return (await keyTransactions(rows)).map((transaction) => transaction.id);
 }
 
+describe('registerBill: kind of the operation', () => {
+  it('writes the kind given in opts and returns the id of the operation', async () => {
+    const store = new MemoryStore();
+    const result = await registerBill(
+      store,
+      newBill('bill-1'),
+      bytes('%PDF luce'),
+      'carlo',
+      tickingClock(),
+      idSequence(),
+      { kind: 'bill.register-auto' },
+    );
+    expect(result).toMatchObject({ status: 'registered', operationId: 'op-001' });
+    const { operations } = await readJournal(store);
+    expect(operations.map((o) => [o.id, o.kind])).toEqual([['op-001', 'bill.register-auto']]);
+  });
+});
+
 describe('transactionKey', () => {
   const base = {
     apartmentId: 'apt-1',

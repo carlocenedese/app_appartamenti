@@ -48,7 +48,8 @@ export type ProposalContext = {
 type Fields = ExtractionResult['fields'];
 type FieldName = keyof Fields;
 
-const FIELD_LABELS: Record<FieldName, string> = {
+/** The Italian name of each field, for the messages. */
+export const FIELD_LABELS: Record<FieldName, string> = {
   supplier: 'fornitore',
   number: 'numero',
   issueDate: 'data di emissione',
