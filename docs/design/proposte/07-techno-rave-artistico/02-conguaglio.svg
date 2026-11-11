@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+<defs>
+  <pattern id="halftone" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="1.6" fill="#CCFF00"/></pattern>
+  <pattern id="halftoneUV" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="3.5" cy="3.5" r="1.4" fill="#9D7BFF"/></pattern>
+  <pattern id="dither" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="1" height="1" fill="#FFFFFF" opacity="0.07"/><rect x="2" y="2" width="1" height="1" fill="#FFFFFF" opacity="0.07"/></pattern>
+  <pattern id="scan" width="4" height="3" patternUnits="userSpaceOnUse"><rect width="4" height="1" fill="#FFFFFF" opacity="0.035"/></pattern>
+  <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="6" fill="#2E2E2E"/></pattern>
+  <linearGradient id="fadeR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="1"/></linearGradient>
+  <radialGradient id="fadeC" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <mask id="mR"><rect width="1440" height="900" fill="url(#fadeR)"/></mask>
+  <linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF"/><stop offset="0.45" stop-color="#BDBDBD"/><stop offset="0.5" stop-color="#4A4A4A"/><stop offset="0.62" stop-color="#E8E8E8"/><stop offset="1" stop-color="#8A8A8A"/>
+  </linearGradient>
+  <filter id="glow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<rect width="1440" height="900" fill="#0A0A0A"/>
+<rect x="0" y="0" width="240" height="900" fill="#050505"/>
+<rect x="239" y="0" width="1" height="900" fill="#2E2E2E"/>
+<rect x="24" y="24" width="40" height="40" fill="#CCFF00"/>
+<path d="M30,44 L36,44 L39,34 L44,54 L48,40 L52,44 L58,44" fill="none" stroke="#0A0A0A" stroke-width="2.5" stroke-linejoin="round"/>
+<g transform="translate(76,50) scale(1.0,1.35)"><text x="0" y="0" font-family="Unbounded, 'Arial Black', sans-serif" font-size="17" font-weight="900" fill="#F2F2F2" text-anchor="start" letter-spacing="0.5">BOLLETTE</text></g>
+<text x="76" y="64" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">CAT. BLT-001</text>
+<text x="28" y="137" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">01</text>
+<text x="56" y="137" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="start" >Home</text>
+<text x="28" y="185" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">02</text>
+<text x="56" y="185" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="start" >Da rivedere</text>
+<rect x="184" y="170" width="32" height="20" rx="10" fill="#CCFF00"/>
+<text x="200" y="185" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="12" font-weight="700" fill="#0A0A0A" text-anchor="middle" >3</text>
+<rect x="12" y="208" width="216" height="40" rx="4" fill="#CCFF00"/>
+<text x="28" y="233" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#0A0A0A" text-anchor="start" letter-spacing="1.2">03</text>
+<text x="56" y="233" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#0A0A0A" text-anchor="start" >Appartamenti</text>
+<text x="28" y="272" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="2">BANCA E FISCO</text>
+<text x="28" y="309" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">04</text>
+<text x="56" y="309" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="start" >Scadenze e pagamenti</text>
+<text x="28" y="357" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">05</text>
+<text x="56" y="357" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="start" >Saldo tra conti</text>
+<text x="28" y="405" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">06</text>
+<text x="56" y="405" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="start" >Tasse e stime</text>
+<g transform="translate(212,700) rotate(-90)"><text x="0" y="0" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#3A3A3A" text-anchor="start" letter-spacing="3">SIDE A · 33 RPM · PD-35</text></g>
+<rect x="12" y="780" width="216" height="1" fill="#2E2E2E"/>
+<text x="28" y="821" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">07</text>
+<text x="56" y="821" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="start" >Impostazioni</text>
+<text x="28" y="872" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">v0.1 · build 2611</text>
+<rect x="240" y="0" width="1200" height="64" fill="#0A0A0A"/>
+<rect x="240" y="63" width="1200" height="1" fill="#2E2E2E"/>
+<rect x="288" y="14" width="300" height="36" rx="4" fill="#161616" stroke="#2E2E2E"/>
+<text x="302" y="36" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">APP</text>
+<text x="336" y="37" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="start" >Berchet</text>
+<rect x="438" y="20" width="1" height="24" fill="#2E2E2E"/>
+<text x="450" y="36" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">ANNO</text>
+<text x="490" y="37" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="start" >2025-26</text>
+<path d="M568,29 l5,5 l5,-5" fill="none" stroke="#A3A3A3" stroke-width="1.6"/>
+<rect x="612" y="14" width="400" height="36" rx="4" fill="#161616" stroke="#2E2E2E"/>
+<circle cx="634" cy="31" r="6" fill="none" stroke="#A3A3A3" stroke-width="1.6"/><path d="M638.5,35.5 l5,5" stroke="#A3A3A3" stroke-width="1.6"/>
+<text x="652" y="37" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#A3A3A3" text-anchor="start" >Cerca inquilini, bollette, movimenti…</text>
+<rect x="954" y="22" width="48" height="20" rx="3" fill="none" stroke="#2E2E2E"/>
+<text x="978" y="36" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="11" font-weight="500" fill="#A3A3A3" text-anchor="middle" >Ctrl K</text>
+<circle cx="1102" cy="32" r="4" fill="#2EE59D"/>
+<text x="1114" y="37" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#A3A3A3" text-anchor="start" >Sincronizzato · 2 min fa</text>
+<rect x="1340" y="16" width="32" height="32" rx="16" fill="#9D7BFF"/>
+<text x="1356" y="37" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="800" fill="#0A0A0A" text-anchor="middle" >C</text>
+<text x="1330" y="37" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="end" >Carlo</text>
+<rect x="980" y="64" width="460" height="150" fill="url(#halftoneUV)" opacity="0.25" mask="url(#mR)"/>
+<text x="288" y="100" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="11" font-weight="500" fill="#CCFF00" text-anchor="start" letter-spacing="2">BLT-2526 · LATO B · CONGUAGLIO</text>
+<g transform="translate(286,160) scale(1.2,1.25)"><text x="0" y="0" font-family="Unbounded, 'Arial Black', sans-serif" font-size="50" font-weight="900" fill="url(#chrome)" text-anchor="start" letter-spacing="1">BERCHET</text></g>
+<text x="624" y="150" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="20" font-weight="600" fill="#F2F2F2" text-anchor="start" >Annualità 2025-26</text>
+<text x="624" y="172" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#A3A3A3" text-anchor="start" >set 2025 – ago 2026 · 5 posti · calcolato il 10/11/2026, non ancora inviato</text>
+<rect x="1140" y="116" width="256" height="56" fill="#9D7BFF"/><rect x="1136" y="112" width="256" height="56" fill="#CCFF00"/><text x="1160" y="145.76" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="800" fill="#0A0A0A" text-anchor="start" >Prepara il messaggio</text><path d="M1356,140.0 h14 m-6,-6 l6,6 l-6,6" fill="none" stroke="#0A0A0A" stroke-width="2.4" stroke-linecap="square"/>
+<rect x="288" y="248" width="1104" height="1" fill="#2E2E2E"/>
+<text x="302" y="235" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="500" fill="#A3A3A3" text-anchor="start" >Affitti e pagamenti</text>
+<text x="446" y="235" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="500" fill="#A3A3A3" text-anchor="start" >Bollette</text>
+<rect x="512" y="212" width="100" height="37" fill="#1F1F1F"/>
+<rect x="512" y="245" width="100" height="4" fill="#CCFF00"/>
+<text x="526" y="235" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="700" fill="#F2F2F2" text-anchor="start" >Conguaglio</text>
+<text x="630" y="235" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="500" fill="#A3A3A3" text-anchor="start" >Inquilini</text>
+<text x="718" y="235" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="500" fill="#A3A3A3" text-anchor="start" >Condominio</text>
+<text x="822" y="235" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="500" fill="#A3A3A3" text-anchor="start" >Moduli</text>
+<text x="894" y="235" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="500" fill="#A3A3A3" text-anchor="start" >Excel</text>
+<text x="962" y="235" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="500" fill="#A3A3A3" text-anchor="start" >Storico</text>
+<rect x="288" y="272" width="1104" height="300" rx="6" fill="#161616" stroke="#2E2E2E"/>
+<text x="308" y="302" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#A3A3A3" text-anchor="start" letter-spacing="1.2">INQUILINO</text>
+<text x="464" y="302" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#A3A3A3" text-anchor="start" letter-spacing="1.2">MESI · PATTERN 12 STEP</text>
+<text x="800" y="302" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#A3A3A3" text-anchor="end" letter-spacing="1.2">QUOTA COSTI</text>
+<text x="930" y="302" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#A3A3A3" text-anchor="end" letter-spacing="1.2">FORFAIT</text>
+<text x="930" y="316" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#A3A3A3" text-anchor="end" letter-spacing="1.2">INCASSATO</text>
+<text x="1070" y="302" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#A3A3A3" text-anchor="end" letter-spacing="1.2">DA PAGARE /</text>
+<text x="1070" y="316" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#A3A3A3" text-anchor="end" letter-spacing="1.2">DA RIMBORSARE</text>
+<text x="1092" y="302" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#A3A3A3" text-anchor="start" letter-spacing="1.2">STATO</text>
+<text x="472.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >S</text>
+<text x="491.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >O</text>
+<text x="510.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >N</text>
+<text x="529.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >D</text>
+<text x="554.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >G</text>
+<text x="573.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >F</text>
+<text x="592.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >M</text>
+<text x="611.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >A</text>
+<text x="636.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >M</text>
+<text x="655.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >G</text>
+<text x="674.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >L</text>
+<text x="693.0" y="322" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="middle" >A</text>
+<rect x="289" y="336" width="1102" height="1" fill="#2E2E2E"/>
+<text x="308" y="361" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Giulia R.</text>
+<text x="428" y="360" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="11" font-weight="500" fill="#CCFF00" text-anchor="start" letter-spacing="1.2">12</text>
+<rect x="464" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="483" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="502" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="521" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="546" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="565" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="584" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="603" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="628" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="647" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="666" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="685" y="348" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<text x="800" y="361" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 734,88</text>
+<text x="930" y="361" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 660,00</text>
+<text x="1070" y="361" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 74,88</text>
+<circle cx="1100" cy="356" r="7" fill="none" stroke="#FFB020" stroke-width="2"/><path d="M1100,349 A7,7 0 0 1 1100,363 Z" fill="#FFB020"/>
+<text x="1116" y="361" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#FFB020" text-anchor="start" >Parziale · versati € 40,00</text>
+<rect x="289" y="376" width="1102" height="1" fill="#2E2E2E"/>
+<text x="308" y="401" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Marco T.</text>
+<text x="428" y="400" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="11" font-weight="500" fill="#CCFF00" text-anchor="start" letter-spacing="1.2">12</text>
+<rect x="464" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="483" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="502" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="521" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="546" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="565" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="584" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="603" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="628" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="647" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="666" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="685" y="388" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<text x="800" y="401" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 734,88</text>
+<text x="930" y="401" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 660,00</text>
+<text x="1070" y="401" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 74,88</text>
+<circle cx="1100" cy="396" r="7" fill="#2EE59D"/><path d="M1096.85,396 l2.24,2.3800000000000003 l4.2,-4.8999999999999995" fill="none" stroke="#0A0A0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1116" y="401" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#2EE59D" text-anchor="start" >Saldato</text>
+<rect x="289" y="416" width="1102" height="1" fill="#2E2E2E"/>
+<text x="308" y="441" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Sofia B.</text>
+<text x="428" y="440" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="11" font-weight="500" fill="#CCFF00" text-anchor="start" letter-spacing="1.2">12</text>
+<rect x="464" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="483" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="502" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="521" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="546" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="565" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="584" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="603" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="628" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="647" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="666" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="685" y="428" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<text x="800" y="441" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 734,88</text>
+<text x="930" y="441" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 780,00</text>
+<text x="1070" y="441" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#9D7BFF" text-anchor="end" font-variant-numeric="tabular-nums">- € 45,12</text>
+<circle cx="1100" cy="436" r="7" fill="#2EE59D"/><path d="M1096.85,436 l2.24,2.3800000000000003 l4.2,-4.8999999999999995" fill="none" stroke="#0A0A0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1116" y="441" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#2EE59D" text-anchor="start" >Rimborsato</text>
+<rect x="289" y="456" width="1102" height="1" fill="#2E2E2E"/>
+<text x="308" y="481" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Luca P.</text>
+<text x="428" y="480" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="11" font-weight="500" fill="#CCFF00" text-anchor="start" letter-spacing="1.2">12</text>
+<rect x="464" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="483" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="502" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="521" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="546" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="565" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="584" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="603" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="628" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="647" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="666" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="685" y="468" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<text x="800" y="481" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 734,88</text>
+<text x="930" y="481" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 690,00</text>
+<text x="1070" y="481" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 44,88</text>
+<circle cx="1100" cy="476" r="6" fill="none" stroke="#F2F2F2" stroke-width="2"/>
+<text x="1116" y="481" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="start" >Da pagare</text>
+<rect x="289" y="496" width="1102" height="1" fill="#2E2E2E"/>
+<text x="308" y="521" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Anna V.</text>
+<text x="428" y="520" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="11" font-weight="500" fill="#FFB020" text-anchor="start" letter-spacing="1.2">10</text>
+<rect x="464" y="508" width="16" height="16" rx="2" fill="url(#hatch)" stroke="#2E2E2E"/>
+<rect x="483" y="508" width="16" height="16" rx="2" fill="url(#hatch)" stroke="#2E2E2E"/>
+<rect x="502" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="521" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="546" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="565" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="584" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="603" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="628" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="1"/>
+<rect x="647" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="666" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<rect x="685" y="508" width="16" height="16" rx="2" fill="#CCFF00" opacity="0.82"/>
+<text x="800" y="521" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 612,40</text>
+<text x="930" y="521" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 550,00</text>
+<text x="1070" y="521" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" font-variant-numeric="tabular-nums">€ 62,40</text>
+<circle cx="1100" cy="516" r="6" fill="none" stroke="#F2F2F2" stroke-width="2"/>
+<text x="1116" y="521" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="start" >Da pagare</text>
+<rect x="289" y="536" width="1102" height="36" fill="#1F1F1F"/>
+<text x="308" y="559" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#A3A3A3" text-anchor="start" >Totale inquilini</text>
+<text x="464" y="558" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">2 MESI VUOTI A CARICO TUO</text>
+<text x="800" y="559" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="700" fill="#F2F2F2" text-anchor="end" >€ 3.551,92</text>
+<text x="930" y="559" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="700" fill="#F2F2F2" text-anchor="end" >€ 3.340,00</text>
+<text x="1070" y="559" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="800" fill="#CCFF00" text-anchor="end" >€ 211,92</text>
+<text x="1092" y="559" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#A3A3A3" text-anchor="start" >da incassare in totale</text>
+<text x="288" y="602" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="11" font-weight="500" fill="#A3A3A3" text-anchor="start" letter-spacing="2">BOLLETTE PER TIPOLOGIA · TOTALE € 3.674,40</text>
+<rect x="288" y="614" width="640" height="240" rx="6" fill="#161616" stroke="#CCFF00" stroke-opacity="0.5"/>
+<path d="M308,636 l6,6 l6,-6" fill="none" stroke="#CCFF00" stroke-width="2"/>
+<text x="332" y="645" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="700" fill="#F2F2F2" text-anchor="start" >Elettricità</text>
+<text x="432" y="644" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">CH 01 · 12 BOLLETTE</text>
+<text x="908" y="645" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="700" fill="#F2F2F2" text-anchor="end" >€ 1.178,88</text>
+<polyline points="308.0,674.0 311.0,674.5 314.0,675.0 317.0,675.2 320.0,675.1 323.0,675.0 326.0,674.9 329.0,675.1 332.0,675.4 335.0,675.5 338.0,675.2 341.0,674.3 344.0,672.9 347.0,671.4 350.0,670.4 353.0,670.2 356.0,670.7 359.0,671.7 362.0,672.6 365.0,673.1 368.0,673.0 371.0,672.9 374.0,673.1 377.0,674.0 380.0,675.7 383.0,677.7 386.0,679.3 389.0,679.8 392.0,679.1 395.0,677.4 398.0,675.5 401.0,674.1 404.0,673.5 407.0,673.5 410.0,673.6 413.0,673.1 416.0,671.7 419.0,669.7 422.0,667.9 425.0,667.0 428.0,667.7 431.0,669.8 434.0,672.5 437.0,675.0 440.0,676.5 443.0,676.9 446.0,676.5 449.0,676.3 452.0,676.9 455.0,678.3 458.0,680.0 461.0,681.0 464.0,680.6 467.0,678.6 470.0,675.3 473.0,672.0 476.0,669.5 479.0,668.6 482.0,668.9 485.0,669.9 488.0,670.5 491.0,670.1 494.0,669.1 497.0,668.1 500.0,668.1 503.0,669.8 506.0,673.0 509.0,676.8 512.0,680.0 515.0,681.6 518.0,681.4 521.0,680.0 524.0,678.2 527.0,677.2 530.0,677.2 533.0,677.8 536.0,678.0 539.0,677.0 542.0,674.4 545.0,670.8 548.0,667.2 551.0,665.0 554.0,664.8 557.0,666.5 560.0,669.1 563.0,671.4 566.0,672.7 569.0,672.9 572.0,672.6 575.0,672.9 578.0,674.6 581.0,677.5 584.0,680.8 587.0,683.3 590.0,683.9 593.0,682.4 596.0,679.4 599.0,676.0 602.0,673.5 605.0,672.4 608.0,672.4 611.0,672.6 614.0,672.1 617.0,670.4 620.0,667.8 623.0,665.5 626.0,664.5 629.0,665.6 632.0,668.6 635.0,672.4 638.0,675.9 641.0,678.0 644.0,678.5 647.0,677.9 650.0,677.4 653.0,677.7 656.0,679.1 659.0,680.8 662.0,681.9 665.0,681.4 668.0,678.9 671.0,675.1 674.0,671.2 677.0,668.4 680.0,667.4 683.0,667.9 686.0,669.2 689.0,670.1 692.0,670.1 695.0,669.3 698.0,668.5 701.0,668.6 704.0,670.3 707.0,673.4 710.0,677.2 713.0,680.3 716.0,681.8 719.0,681.5 722.0,679.9 725.0,678.0 728.0,676.7 731.0,676.5 734.0,676.8 737.0,677.0 740.0,676.1 743.0,673.9 746.0,670.9 749.0,668.0 752.0,666.2 755.0,666.1 758.0,667.7 761.0,670.0 764.0,672.2 767.0,673.5 770.0,673.7 773.0,673.6 776.0,673.7 779.0,674.8 782.0,676.8 785.0,679.1 788.0,680.8 791.0,681.1 794.0,679.9 797.0,677.6 800.0,675.1 803.0,673.2 806.0,672.4 809.0,672.4 812.0,672.7 815.0,672.5 818.0,671.6 821.0,670.3 824.0,669.0 827.0,668.6 830.0,669.3 833.0,671.1 836.0,673.4 839.0,675.3 842.0,676.5 845.0,676.7 848.0,676.3 851.0,675.9 854.0,675.8 857.0,676.2 860.0,676.9 863.0,677.2 866.0,676.8 869.0,675.8 872.0,674.3 875.0,672.8 878.0,671.9 881.0,671.7 884.0,672.0 887.0,672.6 890.0,673.0 893.0,673.2 896.0,673.2 899.0,673.2 902.0,673.4 905.0,673.7 908.0,674.0" fill="none" stroke="#CCFF00" stroke-width="1.2" opacity="0.5" stroke-linejoin="round"/>
+<rect x="308" y="698" width="600" height="38" rx="4" fill="#1F1F1F"/>
+<text x="322" y="722" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#CCFF00" text-anchor="start" letter-spacing="1.2">SET 2025</text>
+<text x="406" y="722" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="start" >Enel Energia</text>
+<text x="506" y="722" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#A3A3A3" text-anchor="start" >Bimestre luglio–agosto, conguaglio</text>
+<circle cx="738" cy="717" r="6" fill="#2EE59D"/><path d="M735.3,717 l1.92,2.04 l3.5999999999999996,-4.199999999999999" fill="none" stroke="#0A0A0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="750" y="722" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#2EE59D" text-anchor="start" >in estratto</text>
+<text x="894" y="722" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="end" >€ 98,24</text>
+<rect x="308" y="742" width="600" height="38" rx="4" fill="#1F1F1F"/>
+<text x="322" y="766" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#CCFF00" text-anchor="start" letter-spacing="1.2">OTT 2025</text>
+<text x="406" y="766" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="start" >Enel Energia</text>
+<text x="506" y="766" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#A3A3A3" text-anchor="start" >Mese di settembre</text>
+<circle cx="738" cy="761" r="6" fill="#2EE59D"/><path d="M735.3,761 l1.92,2.04 l3.5999999999999996,-4.199999999999999" fill="none" stroke="#0A0A0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="750" y="766" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#2EE59D" text-anchor="start" >in estratto</text>
+<text x="894" y="766" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="end" >€ 104,17</text>
+<rect x="308" y="786" width="600" height="38" rx="4" fill="#1F1F1F"/>
+<text x="322" y="810" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#CCFF00" text-anchor="start" letter-spacing="1.2">NOV 2025</text>
+<text x="406" y="810" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="start" >Enel Energia</text>
+<text x="506" y="810" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#A3A3A3" text-anchor="start" >Mese di ottobre</text>
+<circle cx="738" cy="805" r="6" fill="#2EE59D"/><path d="M735.3,805 l1.92,2.04 l3.5999999999999996,-4.199999999999999" fill="none" stroke="#0A0A0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="750" y="810" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#2EE59D" text-anchor="start" >in estratto</text>
+<text x="894" y="810" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F2F2F2" text-anchor="end" >€ 112,85</text>
+<text x="308" y="838" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#CCFF00" text-anchor="start" >+ altre 9 bollette di elettricità</text>
+<rect x="952" y="614" width="440" height="44" rx="6" fill="#161616" stroke="#2E2E2E"/>
+<path d="M970,630 l6,6 l-6,6" fill="none" stroke="#A3A3A3" stroke-width="2"/>
+<text x="992" y="641" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Gas</text>
+<text x="1102" y="640" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">CH 02 · 6 BOLLETTE</text>
+<text x="1372" y="641" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" >€ 1.052,30</text>
+<rect x="952" y="663" width="440" height="44" rx="6" fill="#161616" stroke="#2E2E2E"/>
+<path d="M970,679 l6,6 l-6,6" fill="none" stroke="#A3A3A3" stroke-width="2"/>
+<text x="992" y="690" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Acqua</text>
+<text x="1102" y="689" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">CH 03 · 4 BOLLETTE</text>
+<text x="1372" y="690" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" >€ 312,66</text>
+<rect x="952" y="712" width="440" height="44" rx="6" fill="#161616" stroke="#2E2E2E"/>
+<path d="M970,728 l6,6 l-6,6" fill="none" stroke="#A3A3A3" stroke-width="2"/>
+<text x="992" y="739" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Internet</text>
+<text x="1102" y="738" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">CH 04 · 12 BOLLETTE</text>
+<text x="1372" y="739" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" >€ 359,40</text>
+<rect x="952" y="761" width="440" height="44" rx="6" fill="#161616" stroke="#2E2E2E"/>
+<path d="M970,777 l6,6 l-6,6" fill="none" stroke="#A3A3A3" stroke-width="2"/>
+<text x="992" y="788" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >TARI</text>
+<text x="1102" y="787" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">CH 05 · 4 AVVISI</text>
+<text x="1372" y="788" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" >€ 404,16</text>
+<rect x="952" y="810" width="440" height="44" rx="6" fill="#161616" stroke="#2E2E2E"/>
+<path d="M970,826 l6,6 l-6,6" fill="none" stroke="#A3A3A3" stroke-width="2"/>
+<text x="992" y="837" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#F2F2F2" text-anchor="start" >Condominio</text>
+<text x="1102" y="836" font-family="'JetBrains Mono', 'Andale Mono', monospace" font-size="10" font-weight="500" fill="#6E6E6E" text-anchor="start" letter-spacing="1.2">CH 06 · QUOTE CONDUTTORE</text>
+<text x="1372" y="837" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="700" fill="#F2F2F2" text-anchor="end" >€ 367,00</text>
+<rect x="288" y="872" width="3" height="14" fill="#9D7BFF"/>
+<text x="298" y="884" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#A3A3A3" text-anchor="start" >Nota: gli importi contano solo le voci trovate nell’estratto conto della banca. Le bollette non ancora pagate restano fuori finché non compaiono.</text>
+<rect width="1440" height="900" fill="url(#dither)" pointer-events="none"/>
+</svg>

@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+  <title>Home desktop - Proposta 02, Minimale svizzero</title>
+  <style>
+    text { font-family: Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #0A0A0A; }
+    .g { fill: #5C5C5C; }
+    .w { fill: #FFFFFF; }
+    .r { fill: #D40511; }
+    .b { font-weight: 700; }
+    .sb { font-weight: 600; }
+    .cap { font-size: 12px; font-weight: 600; letter-spacing: 1.2px; fill: #5C5C5C; }
+    .hair { stroke: #DADAD6; stroke-width: 1; }
+    .rule { stroke: #0A0A0A; stroke-width: 2; }
+    .num { font-feature-settings: 'tnum'; }
+  </style>
+  <rect width="1440" height="900" fill="#FFFFFF"/>
+
+  <!-- ============ BARRA LATERALE ============ -->
+  <line x1="240.5" y1="0" x2="240.5" y2="900" class="hair"/>
+  <text x="32" y="44" font-size="20" class="b" letter-spacing="-0.4">Bollette</text>
+  <text x="32" y="64" font-size="12" class="g">Berchet · Lovarini · Pulci</text>
+
+  <rect x="16" y="106" width="4" height="20" fill="#0A0A0A"/>
+  <text x="32" y="122" font-size="15" class="b">Home</text>
+  <text x="32" y="162" font-size="15">Da rivedere</text>
+  <text x="208" y="162" font-size="15" class="b num" text-anchor="end">3</text>
+  <text x="32" y="202" font-size="15">Appartamenti</text>
+  <text x="32" y="254" class="cap">BANCA E FISCO</text>
+  <text x="32" y="286" font-size="15">Scadenze e pagamenti</text>
+  <text x="32" y="326" font-size="15">Saldo tra conti</text>
+  <text x="32" y="366" font-size="15">Tasse e stime</text>
+  <line x1="32" y1="828" x2="208" y2="828" class="hair"/>
+  <text x="32" y="864" font-size="15">Impostazioni</text>
+
+  <!-- ============ BARRA SUPERIORE ============ -->
+  <line x1="240" y1="64.5" x2="1440" y2="64.5" class="hair"/>
+  <text x="288" y="38" font-size="15" class="sb">Tutti gli appartamenti</text>
+  <path d="M450 31 l4 4 l4 -4" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="466" y="38" font-size="15" class="g">·</text>
+  <text x="478" y="38" font-size="15" class="sb">In corso</text>
+  <path d="M546 31 l4 4 l4 -4" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+
+  <circle cx="671" cy="32" r="6" fill="none" stroke="#5C5C5C" stroke-width="1.5"/>
+  <line x1="675.5" y1="36.5" x2="680" y2="41" stroke="#5C5C5C" stroke-width="1.5"/>
+  <text x="690" y="38" font-size="15" class="g">Cerca appartamenti, inquilini, bollette</text>
+  <text x="1016" y="38" font-size="13" class="g sb" text-anchor="end">Ctrl K</text>
+  <line x1="664" y1="50.5" x2="1016" y2="50.5" class="hair"/>
+
+  <circle cx="1146" cy="33" r="4" fill="#007A3D"/>
+  <text x="1158" y="38" font-size="13" class="g">Sincronizzato alle 09:42</text>
+  <text x="1392" y="38" font-size="15" class="b" text-anchor="end">Carlo</text>
+
+  <!-- ============ INTESTAZIONE ============ -->
+  <text x="288" y="112" font-size="14" class="g">Martedì 11 novembre 2026</text>
+  <text x="286" y="164" font-size="56" class="b" letter-spacing="-1.2">Buongiorno, Carlo.</text>
+  <text x="288" y="200" font-size="18">Tre documenti aspettano una conferma. Inizia da qui.</text>
+
+  <!-- Pulsante principale: unico elemento rosso pieno della pagina -->
+  <rect x="1176" y="120" width="216" height="56" fill="#D40511"/>
+  <text x="1200" y="154" font-size="18" class="b w">Rivedi (3)</text>
+  <path d="M1352 148 h20 m-7 -7 l7 7 l-7 7" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="1392" y="200" font-size="13" class="g" text-anchor="end">Invio per confermare · Esc per uscire</text>
+
+  <!-- ============ APPARTAMENTI ============ -->
+  <line x1="288" y1="241" x2="1392" y2="241" class="rule"/>
+  <text x="288" y="268" font-size="14" class="b">Appartamenti</text>
+  <text x="1392" y="268" font-size="14" class="g" text-anchor="end">Annualità in corso · saldo del conto dedicato</text>
+
+  <!-- Berchet -->
+  <text x="288" y="316" font-size="28" class="b" letter-spacing="-0.6">Berchet</text>
+  <circle cx="294" cy="341" r="6" fill="#007A3D"/>
+  <path d="M291 341 l2.2 2.2 l4 -4.4" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>
+  <text x="308" y="346" font-size="16" class="sb">Tutto a posto</text>
+  <text x="286" y="412" font-size="48" class="b num" letter-spacing="-0.8">€ 1.284,50</text>
+  <text x="288" y="436" font-size="14" class="g">Saldo di cassa</text>
+  <line x1="288" y1="456.5" x2="640" y2="456.5" class="hair"/>
+  <text x="288" y="482" font-size="16">5 su 5 in regola</text>
+  <g fill="#0A0A0A"><rect x="566" y="471" width="10" height="10"/><rect x="580" y="471" width="10" height="10"/><rect x="594" y="471" width="10" height="10"/><rect x="608" y="471" width="10" height="10"/><rect x="622" y="471" width="10" height="10"/></g>
+  <line x1="288" y1="500.5" x2="640" y2="500.5" class="hair"/>
+  <text x="288" y="526" font-size="15" class="g">Nessuna azione richiesta.</text>
+
+  <!-- Lovarini -->
+  <text x="664" y="316" font-size="28" class="b" letter-spacing="-0.6">Lovarini</text>
+  <path d="M670 334 l7 13 h-14 z" fill="#B57F00"/>
+  <text x="670" y="345.5" font-size="9" class="b w" text-anchor="middle">!</text>
+  <text x="684" y="346" font-size="16" class="sb">2 cose da fare</text>
+  <text x="662" y="412" font-size="48" class="b num" letter-spacing="-0.8">€ 742,10</text>
+  <text x="664" y="436" font-size="14" class="g">Saldo di cassa</text>
+  <line x1="664" y1="456.5" x2="1016" y2="456.5" class="hair"/>
+  <text x="664" y="482" font-size="16">3 su 4 in regola</text>
+  <g fill="#0A0A0A"><rect x="956" y="471" width="10" height="10"/><rect x="970" y="471" width="10" height="10"/><rect x="984" y="471" width="10" height="10"/></g>
+  <rect x="998.5" y="471.5" width="9" height="9" fill="none" stroke="#0A0A0A"/>
+  <line x1="664" y1="500.5" x2="1016" y2="500.5" class="hair"/>
+  <text x="664" y="526" font-size="15">Bolletta gas da confermare</text>
+  <text x="1016" y="526" font-size="15" text-anchor="end">→</text>
+  <text x="664" y="550" font-size="15">Affitto di novembre: manca Elena M.</text>
+  <text x="1016" y="550" font-size="15" text-anchor="end">→</text>
+
+  <!-- Pulci -->
+  <text x="1040" y="316" font-size="28" class="b" letter-spacing="-0.6">Pulci</text>
+  <rect x="1040" y="335" width="12" height="12" fill="#D40511"/>
+  <text x="1046" y="345" font-size="10" class="b w" text-anchor="middle">!</text>
+  <text x="1060" y="346" font-size="16" class="sb r">1 scadenza passata</text>
+  <text x="1038" y="412" font-size="48" class="b num" letter-spacing="-0.8">- € 63,00</text>
+  <text x="1040" y="436" font-size="14" class="g">Saldo di cassa · uscite più alte delle entrate</text>
+  <line x1="1040" y1="456.5" x2="1392" y2="456.5" class="hair"/>
+  <text x="1040" y="482" font-size="16">4 su 4 in regola</text>
+  <g fill="#0A0A0A"><rect x="1340" y="471" width="10" height="10"/><rect x="1354" y="471" width="10" height="10"/><rect x="1368" y="471" width="10" height="10"/><rect x="1382" y="471" width="10" height="10"/></g>
+  <line x1="1040" y1="500.5" x2="1392" y2="500.5" class="hair"/>
+  <text x="1040" y="526" font-size="15">Conguaglio da inviare, scaduto il 31/10</text>
+  <text x="1392" y="526" font-size="15" text-anchor="end">→</text>
+
+  <!-- ============ COSE DA FARE ============ -->
+  <line x1="288" y1="593" x2="1016" y2="593" class="rule"/>
+  <text x="288" y="620" font-size="14" class="b">Cose da fare</text>
+  <text x="904" y="620" font-size="14" class="b" text-anchor="end">Tutti</text>
+  <line x1="870" y1="626" x2="904" y2="626" stroke="#0A0A0A" stroke-width="2"/>
+  <text x="914" y="620" font-size="14" class="g">|</text>
+  <text x="1016" y="620" font-size="14" class="g" text-anchor="end">Per me (2)</text>
+
+  <!-- riga 1: scaduto -->
+  <rect x="288" y="652" width="12" height="12" fill="#D40511"/>
+  <text x="294" y="662" font-size="10" class="b w" text-anchor="middle">!</text>
+  <text x="316" y="664" font-size="16" class="sb">Conguaglio Pulci da inviare</text>
+  <text x="316" y="684" font-size="13" class="g">Scaduto il 31/10 · Pulci · assegnato a Carlo</text>
+  <text x="1016" y="664" font-size="15" class="sb" text-anchor="end">Apri</text>
+  <line x1="288" y1="696.5" x2="1016" y2="696.5" class="hair"/>
+  <!-- riga 2 -->
+  <path d="M294 708 l7 13 h-14 z" fill="#B57F00"/>
+  <text x="294" y="719.5" font-size="9" class="b w" text-anchor="middle">!</text>
+  <text x="316" y="720" font-size="16" class="sb">Bolletta Hera gas da confermare</text>
+  <text x="316" y="740" font-size="13" class="g">Arrivata ieri · Lovarini · assegnata a Carlo</text>
+  <text x="1016" y="720" font-size="15" class="sb" text-anchor="end">Controlla</text>
+  <line x1="288" y1="752.5" x2="1016" y2="752.5" class="hair"/>
+  <!-- riga 3 -->
+  <path d="M294 764 l7 13 h-14 z" fill="#B57F00"/>
+  <text x="294" y="775.5" font-size="9" class="b w" text-anchor="middle">!</text>
+  <text x="316" y="776" font-size="16" class="sb">Affitto di novembre non ricevuto — Elena M.</text>
+  <text x="316" y="796" font-size="13" class="g">Atteso entro il 5/11 · Lovarini · assegnato a Nicola</text>
+  <text x="1016" y="776" font-size="15" class="sb" text-anchor="end">Prepara un sollecito</text>
+  <line x1="288" y1="808.5" x2="1016" y2="808.5" class="hair"/>
+  <!-- riga 4 -->
+  <circle cx="294" cy="826" r="5.5" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="316" y="832" font-size="16" class="sb">Rata condominio Lovarini in scadenza il 10/12</text>
+  <text x="316" y="852" font-size="13" class="g num">€ 214,00 · tra 29 giorni · Lovarini</text>
+  <text x="1016" y="832" font-size="15" class="sb" text-anchor="end">Vedi</text>
+  <line x1="288" y1="864.5" x2="1016" y2="864.5" class="hair"/>
+
+  <!-- ============ OPERAZIONI RECENTI ============ -->
+  <line x1="1040" y1="593" x2="1392" y2="593" class="rule"/>
+  <text x="1040" y="620" font-size="14" class="b">Operazioni recenti</text>
+  <text x="1392" y="620" font-size="14" class="g" text-anchor="end">Registro</text>
+
+  <text x="1040" y="664" font-size="15">Bolletta Enel luce registrata</text>
+  <text x="1040" y="684" font-size="13" class="g">Nicola · oggi 09:12 · Berchet</text>
+  <text x="1392" y="664" font-size="15" class="num" text-anchor="end">€ 98,24</text>
+  <line x1="1040" y1="696.5" x2="1392" y2="696.5" class="hair"/>
+
+  <text x="1040" y="720" font-size="15">Affitto Anna V. abbinato</text>
+  <text x="1040" y="740" font-size="13" class="g">Carlo · ieri 18:40 · Berchet</text>
+  <text x="1392" y="720" font-size="15" class="num" text-anchor="end">€ 380,00</text>
+  <line x1="1040" y1="752.5" x2="1392" y2="752.5" class="hair"/>
+
+  <text x="1040" y="776" font-size="15">Excel Berchet rigenerato</text>
+  <text x="1040" y="796" font-size="13" class="g">Carlo · ieri 18:02</text>
+  <line x1="1040" y1="808.5" x2="1392" y2="808.5" class="hair"/>
+
+  <text x="1040" y="832" font-size="15">Pagamento a mano: Marco T.</text>
+  <text x="1040" y="852" font-size="13" class="g">Nicola · 9 nov 11:30 · Annulla</text>
+  <text x="1392" y="832" font-size="15" class="num" text-anchor="end">€ 40,00</text>
+  <line x1="1040" y1="864.5" x2="1392" y2="864.5" class="hair"/>
+</svg>

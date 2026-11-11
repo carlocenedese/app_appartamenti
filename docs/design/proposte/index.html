@@ -1,0 +1,737 @@
+<title>Vesti grafiche App Bollette</title>
+<meta name="claude:viewport-fit-sides" content="cover" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+/>
+<style>
+  /* Layout: a neutral exhibition wall — index strip, then one "room" per proposal with its three screens side by side. The proposals carry the colour; the wall stays quiet. */
+  :root {
+    --bg: #f3f2ef;
+    --panel: #ffffff;
+    --ink: #1d1c1a;
+    --muted: #6a675f;
+    --line: #dcd8cf;
+    --accent: #2f4a7a;
+    --display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --bg: #161615;
+      --panel: #1f1f1d;
+      --ink: #ecebe6;
+      --muted: #a29f96;
+      --line: #34332f;
+      --accent: #9db4e3;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme='dark'] {
+    --bg: #161615;
+    --panel: #1f1f1d;
+    --ink: #ecebe6;
+    --muted: #a29f96;
+    --line: #34332f;
+    --accent: #9db4e3;
+    color-scheme: dark;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 var(--body);
+  }
+  .wrap {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding-block: 40px 80px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  header h1 {
+    font: 700 clamp(30px, 5vw, 48px)/1.08 var(--display);
+    margin: 0 0 12px;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    max-width: 68ch;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  .meta {
+    font: 12px var(--mono);
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 28px 0 8px;
+  }
+  nav a {
+    font: 500 13px var(--body);
+    color: var(--ink);
+    text-decoration: none;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 6px 12px;
+    border-radius: 999px;
+  }
+  nav a:hover,
+  nav a:focus-visible {
+    border-color: var(--accent);
+    outline: none;
+    color: var(--accent);
+  }
+  nav a span {
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-right: 6px;
+  }
+  section {
+    padding-top: 48px;
+    margin-top: 40px;
+    border-top: 1px solid var(--line);
+    scroll-margin-top: 16px;
+  }
+  .head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 12px 40px;
+    align-items: start;
+    margin-bottom: 20px;
+  }
+  .num {
+    font: 500 12px var(--mono);
+    color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+  h2 {
+    font: 600 clamp(22px, 3vw, 30px)/1.15 var(--display);
+    margin: 4px 0 8px;
+    text-wrap: balance;
+  }
+  .idea {
+    margin: 0;
+    color: var(--ink);
+  }
+  dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 6px 14px;
+    font-size: 14px;
+  }
+  dt {
+    font: 500 11px var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    padding-top: 3px;
+  }
+  dd {
+    margin: 0;
+  }
+  .screens {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.34fr);
+    gap: 16px;
+    align-items: start;
+  }
+  figure {
+    margin: 0;
+  }
+  figure a {
+    display: block;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  figure a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  figcaption {
+    font: 12px var(--mono);
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .readme {
+    font-size: 13px;
+    margin-top: 10px;
+    display: inline-block;
+    color: var(--accent);
+  }
+  footer {
+    margin-top: 64px;
+    color: var(--muted);
+    font-size: 13px;
+    max-width: 70ch;
+  }
+  @media (max-width: 860px) {
+    .head {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .screens {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .screens figure:last-child {
+      max-width: 260px;
+    }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="meta">Proposte di veste grafica · 11 novembre 2026 · nessuna è implementata</div>
+    <h1>Dieci vesti grafiche per App Bollette</h1>
+    <p>
+      Ogni proposta mostra le stesse tre schermate con dati inventati: la Home desktop, la scheda
+      Conguaglio di Berchet e la Home del telefono. Tocca una schermata per vederla a grandezza
+      piena. Le schede complete (reference, palette con contrasto, font, token) sono nel README di
+      ogni cartella.
+    </p>
+    <p>
+      Le anteprime usano i font indicati da ogni proposta solo se il dispositivo li ha; altrimenti
+      compare il carattere di riserva.
+    </p>
+    <nav aria-label="Proposte">
+      <a href="#p01"><span>01</span>Classico</a>
+      <a href="#p02"><span>02</span>Svizzero</a>
+      <a href="#p03"><span>03</span>Mascotte</a>
+      <a href="#p04"><span>04</span>Precisione scura</a>
+      <a href="#p05"><span>05</span>Pixel RPG</a>
+      <a href="#p06"><span>06</span>Neo-brutalismo</a>
+      <a href="#p07"><span>07</span>Techno</a>
+      <a href="#p08"><span>08</span>Y2K vetro</a>
+      <a href="#p09"><span>09</span>Modernismo italiano</a>
+      <a href="#p10"><span>10</span>Carta calma</a>
+    </nav>
+  </header>
+
+  <section id="p01">
+    <div class="head">
+      <div>
+        <div class="num">01 · CLASSICO</div>
+        <h2>Private banking</h2>
+        <p class="idea">
+          Un estratto conto di banca privata ben stampato: carta avorio, blu notte, titoli in serif
+          editoriale, cifre in colonna e un solo tocco d'oro per dire dove sei.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Newsreader per i titoli, Inter per dati e testo</dd>
+        <dt>Pro</dt>
+        <dd>Ispira fiducia, non stanca, legge bene chiunque</dd>
+        <dt>Rischi</dt>
+        <dd>Il meno sorprendente dei dieci; il serif va dosato sui numeri</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="01-classico-private-banking/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="01-classico-private-banking/01-home.svg"
+            alt="Home desktop, stile private banking"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="01-classico-private-banking/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="01-classico-private-banking/02-conguaglio.svg"
+            alt="Conguaglio Berchet, stile private banking"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="01-classico-private-banking/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="01-classico-private-banking/03-mobile.svg"
+            alt="Telefono, stile private banking"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p02">
+    <div class="head">
+      <div>
+        <div class="num">02 · MINIMALE</div>
+        <h2>Scuola svizzera</h2>
+        <p class="idea">
+          Griglia a 12 colonne, un solo grottesco in tre pesi, linee al posto delle card, numeri
+          grandi protagonisti e un unico rosso svizzero per l'azione principale e le scadenze
+          passate.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Inter in tre pesi</dd>
+        <dt>Pro</dt>
+        <dd>Chiarezza massima, si implementa in fretta, invecchia bene</dd>
+        <dt>Rischi</dt>
+        <dd>Il rosso vale sia «agisci» sia «in ritardo»; può sembrare freddo</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="02-minimal-svizzero/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="02-minimal-svizzero/01-home.svg"
+            alt="Home desktop, stile svizzero"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="02-minimal-svizzero/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="02-minimal-svizzero/02-conguaglio.svg"
+            alt="Conguaglio Berchet, stile svizzero"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="02-minimal-svizzero/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="02-minimal-svizzero/03-mobile.svg"
+            alt="Telefono, stile svizzero"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p03">
+    <div class="head">
+      <div>
+        <div class="num">03 · GIOCOSO</div>
+        <h2>Amichevole con mascotte</h2>
+        <p class="idea">
+          Fintech simpatica alla Duolingo o Monzo: forme tonde, pulsanti «gommosi» e Bollino, una
+          bolletta con una casetta sul petto, felice, pensieroso o preoccupato insieme al semaforo.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Nunito</dd>
+        <dt>Pro</dt>
+        <dd>Rende leggero un compito noioso; la mascotte spiega cosa fare</dd>
+        <dt>Rischi</dt>
+        <dd>La mascotte deve tacere quando si parla di soldi; regole d'uso nel README</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="03-amichevole-con-mascotte/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="03-amichevole-con-mascotte/01-home.svg"
+            alt="Home desktop con la mascotte Bollino"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="03-amichevole-con-mascotte/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="03-amichevole-con-mascotte/02-conguaglio.svg"
+            alt="Conguaglio Berchet con la mascotte"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="03-amichevole-con-mascotte/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="03-amichevole-con-mascotte/03-mobile.svg"
+            alt="Telefono con la mascotte"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p04">
+    <div class="head">
+      <div>
+        <div class="num">04 · TECH</div>
+        <h2>Precisione scura</h2>
+        <p class="idea">
+          Uno strumento di precisione alla Linear o Raycast: superfici quasi nere, bordi da 1 px,
+          cifre in monospaziato, ⌘K sempre visibile e un solo pulsante con l'alone di luce.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Inter, JetBrains Mono per importi e date</dd>
+        <dt>Pro</dt>
+        <dd>Denso e veloce, piacevole per chi usa la tastiera; tema chiaro previsto</dd>
+        <dt>Rischi</dt>
+        <dd>Può sembrare troppo «da programmatori» per Nicola</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="04-tech-dark-precisione/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="04-tech-dark-precisione/01-home.svg"
+            alt="Home desktop, stile precisione scura"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="04-tech-dark-precisione/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="04-tech-dark-precisione/02-conguaglio.svg"
+            alt="Conguaglio Berchet, stile precisione scura"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="04-tech-dark-precisione/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="04-tech-dark-precisione/03-mobile.svg"
+            alt="Telefono, stile precisione scura"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p05">
+    <div class="head">
+      <div>
+        <div class="num">05 · VIDEOGIOCO</div>
+        <h2>Pixel art gestionale</h2>
+        <p class="idea">
+          Un gioco gestionale accogliente in 16 bit: casette pixel su una mappa, le cose da fare
+          come registro delle missioni e il conguaglio come inventario, con la mascotte Coppo, una
+          tegola di Padova.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Pixelify Sans solo per i titoli, Atkinson Hyperlegible Next per testo e importi</dd>
+        <dt>Pro</dt>
+        <dd>Il più divertente; importi sempre in un carattere leggibilissimo</dd>
+        <dt>Rischi</dt>
+        <dd>Poco serio per soldi veri; i pixel si disegnano a mano</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="05-videogioco-pixel-rpg/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="05-videogioco-pixel-rpg/01-home.svg"
+            alt="Home desktop in pixel art"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="05-videogioco-pixel-rpg/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="05-videogioco-pixel-rpg/02-conguaglio.svg"
+            alt="Conguaglio Berchet in pixel art"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="05-videogioco-pixel-rpg/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="05-videogioco-pixel-rpg/03-mobile.svg"
+            alt="Telefono in pixel art"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p06">
+    <div class="head">
+      <div>
+        <div class="num">06 · AUDACE</div>
+        <h2>Neo-brutalismo</h2>
+        <p class="idea">
+          Un quaderno pieno di adesivi: bordi neri da 3 px, ombre piene spostate, blocchi di colore
+          piatto e semafori grandi come etichette appiccicate, un po' inclinate.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Archivo Black, Space Grotesk, Space Mono per gli importi</dd>
+        <dt>Pro</dt>
+        <dd>Si capisce tutto al primo sguardo; personalità forte</dd>
+        <dt>Rischi</dt>
+        <dd>Molto rumoroso su schermate dense; è un trend che potrebbe passare</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="06-neo-brutalismo/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="06-neo-brutalismo/01-home.svg"
+            alt="Home desktop neo-brutalista"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="06-neo-brutalismo/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="06-neo-brutalismo/02-conguaglio.svg"
+            alt="Conguaglio Berchet neo-brutalista"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="06-neo-brutalismo/03-mobile.svg" target="_blank" rel="noopener"
+          ><img src="06-neo-brutalismo/03-mobile.svg" alt="Telefono neo-brutalista" loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p07">
+    <div class="head">
+      <div>
+        <div class="num">07 · ARTISTICO</div>
+        <h2>Techno «BLT-2526»</h2>
+        <p class="idea">
+          L'app come un disco techno in edizione limitata: nero vinile, un solo giallo acido, titoli
+          cromati da flyer berlinese, appartamenti come tracce del mixer e l'annualità come pattern
+          di 12 step.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Unbounded per i titoli, Inter per testo e importi</dd>
+        <dt>Pro</dt>
+        <dd>Il più estroverso e memorabile; il sequencer dei mesi è un'idea vera</dd>
+        <dt>Rischi</dt>
+        <dd>Solo scuro; serve una «modalità sobria» per l'uso settimanale</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="07-techno-rave-artistico/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="07-techno-rave-artistico/01-home.svg"
+            alt="Home desktop in stile techno"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="07-techno-rave-artistico/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="07-techno-rave-artistico/02-conguaglio.svg"
+            alt="Conguaglio Berchet in stile techno"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="07-techno-rave-artistico/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="07-techno-rave-artistico/03-mobile.svg"
+            alt="Telefono in stile techno"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p08">
+    <div class="head">
+      <div>
+        <div class="num">08 · NOSTALGIA</div>
+        <h2>Y2K vetro liquido</h2>
+        <p class="idea">
+          L'ottimismo lucido dei primi anni Duemila (cielo, acqua, bolle, pulsanti a gel) rifatto
+          con il vetro liquido del 2025-2026, con un velo chiaro sotto ogni testo per tenerlo
+          leggibile.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Nunito e Nunito Sans</dd>
+        <dt>Pro</dt>
+        <dd>Luminoso e piacevole; in linea con il vetro di macOS e iOS</dd>
+        <dt>Rischi</dt>
+        <dd>Trasparenze e sfocature costano su Windows; contrasto da sorvegliare</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="08-y2k-vetro-liquido/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="08-y2k-vetro-liquido/01-home.svg"
+            alt="Home desktop in vetro liquido"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="08-y2k-vetro-liquido/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="08-y2k-vetro-liquido/02-conguaglio.svg"
+            alt="Conguaglio Berchet in vetro liquido"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="08-y2k-vetro-liquido/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="08-y2k-vetro-liquido/03-mobile.svg"
+            alt="Telefono in vetro liquido"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p09">
+    <div class="head">
+      <div>
+        <div class="num">09 · NICCHIA</div>
+        <h2>Cerchio, quadrato, triangolo</h2>
+        <p class="idea">
+          Uno stampato Olivetti o un cartello della metropolitana di Milano: carta calda, nero
+          pieno, un blu da macchina per scrivere. Il semaforo usa le tre forme di Munari: cerchio in
+          regola, triangolo da fare, quadrato scaduto.
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Archivo</dd>
+        <dt>Pro</dt>
+        <dd>
+          Italiano, colto e originale; le forme rendono i semafori leggibili anche ai daltonici
+        </dd>
+        <dt>Rischi</dt>
+        <dd>Le illustrazioni geometriche vanno curate bene per non sembrare vuote</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="09-modernismo-italiano-anni-70/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="09-modernismo-italiano-anni-70/01-home.svg"
+            alt="Home desktop, modernismo italiano"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="09-modernismo-italiano-anni-70/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="09-modernismo-italiano-anni-70/02-conguaglio.svg"
+            alt="Conguaglio Berchet, modernismo italiano"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="09-modernismo-italiano-anni-70/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="09-modernismo-italiano-anni-70/03-mobile.svg"
+            alt="Telefono, modernismo italiano"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="p10">
+    <div class="head">
+      <div>
+        <div class="num">10 · CALMO</div>
+        <h2>Carta calma</h2>
+        <p class="idea">
+          Un quaderno di casa ben tenuto, di ispirazione giapponese: carta calda, righe a
+          inchiostro, nastro washi sulle card, il conguaglio come pagina di registro e un timbro
+          rosso «SALDATO».
+        </p>
+      </div>
+      <dl>
+        <dt>Font</dt>
+        <dd>Shippori Mincho per i titoli, Zen Kaku Gothic New per il testo</dd>
+        <dt>Pro</dt>
+        <dd>Toglie l'ansia ai conti; molto spazio, ritmo lento</dd>
+        <dt>Rischi</dt>
+        <dd>Ocra e kaki passano l'AA di poco; il timbro rosso somiglia al colore d'errore</dd>
+      </dl>
+    </div>
+    <div class="screens">
+      <figure>
+        <a href="10-carta-calma-giapponese/01-home.svg" target="_blank" rel="noopener"
+          ><img
+            src="10-carta-calma-giapponese/01-home.svg"
+            alt="Home desktop, carta calma"
+            loading="lazy"
+        /></a>
+        <figcaption>Home · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="10-carta-calma-giapponese/02-conguaglio.svg" target="_blank" rel="noopener"
+          ><img
+            src="10-carta-calma-giapponese/02-conguaglio.svg"
+            alt="Conguaglio Berchet, carta calma"
+            loading="lazy"
+        /></a>
+        <figcaption>Conguaglio · 1440 × 900</figcaption>
+      </figure>
+      <figure>
+        <a href="10-carta-calma-giapponese/03-mobile.svg" target="_blank" rel="noopener"
+          ><img
+            src="10-carta-calma-giapponese/03-mobile.svg"
+            alt="Telefono, carta calma"
+            loading="lazy"
+        /></a>
+        <figcaption>Telefono</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <footer>
+    Brief comune e schede complete in <code>docs/design/proposte/</code> sul ramo
+    <code>design/proposte-veste-grafica</code>. Per il piano 4 si può anche mescolare: per esempio
+    la struttura della 02 con le forme dei semafori della 09.
+  </footer>
+</div>

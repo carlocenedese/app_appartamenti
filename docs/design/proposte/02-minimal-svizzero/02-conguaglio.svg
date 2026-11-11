@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+  <title>Scheda appartamento, tab Conguaglio - Proposta 02, Minimale svizzero</title>
+  <style>
+    text { font-family: Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #0A0A0A; }
+    .g { fill: #5C5C5C; }
+    .w { fill: #FFFFFF; }
+    .b { font-weight: 700; }
+    .sb { font-weight: 600; }
+    .cap { font-size: 12px; font-weight: 600; letter-spacing: 1.2px; fill: #5C5C5C; }
+    .hair { stroke: #DADAD6; stroke-width: 1; }
+    .rule { stroke: #0A0A0A; stroke-width: 2; }
+    .num { font-feature-settings: 'tnum'; }
+  </style>
+  <rect width="1440" height="900" fill="#FFFFFF"/>
+
+  <!-- ============ BARRA LATERALE ============ -->
+  <line x1="240.5" y1="0" x2="240.5" y2="900" class="hair"/>
+  <text x="32" y="44" font-size="20" class="b" letter-spacing="-0.4">Bollette</text>
+  <text x="32" y="64" font-size="12" class="g">Berchet · Lovarini · Pulci</text>
+  <text x="32" y="122" font-size="15">Home</text>
+  <text x="32" y="162" font-size="15">Da rivedere</text>
+  <text x="208" y="162" font-size="15" class="b num" text-anchor="end">3</text>
+  <rect x="16" y="186" width="4" height="20" fill="#0A0A0A"/>
+  <text x="32" y="202" font-size="15" class="b">Appartamenti</text>
+  <text x="32" y="254" class="cap">BANCA E FISCO</text>
+  <text x="32" y="286" font-size="15">Scadenze e pagamenti</text>
+  <text x="32" y="326" font-size="15">Saldo tra conti</text>
+  <text x="32" y="366" font-size="15">Tasse e stime</text>
+  <line x1="32" y1="828" x2="208" y2="828" class="hair"/>
+  <text x="32" y="864" font-size="15">Impostazioni</text>
+
+  <!-- ============ BARRA SUPERIORE ============ -->
+  <line x1="240" y1="64.5" x2="1440" y2="64.5" class="hair"/>
+  <text x="288" y="38" font-size="15" class="sb">Berchet</text>
+  <path d="M352 31 l4 4 l4 -4" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="368" y="38" font-size="15" class="g">·</text>
+  <text x="380" y="38" font-size="15" class="sb num">2025-26</text>
+  <path d="M452 31 l4 4 l4 -4" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+  <circle cx="671" cy="32" r="6" fill="none" stroke="#5C5C5C" stroke-width="1.5"/>
+  <line x1="675.5" y1="36.5" x2="680" y2="41" stroke="#5C5C5C" stroke-width="1.5"/>
+  <text x="690" y="38" font-size="15" class="g">Cerca appartamenti, inquilini, bollette</text>
+  <text x="1016" y="38" font-size="13" class="g sb" text-anchor="end">Ctrl K</text>
+  <line x1="664" y1="50.5" x2="1016" y2="50.5" class="hair"/>
+  <circle cx="1146" cy="33" r="4" fill="#007A3D"/>
+  <text x="1158" y="38" font-size="13" class="g">Sincronizzato alle 09:42</text>
+  <text x="1392" y="38" font-size="15" class="b" text-anchor="end">Carlo</text>
+
+  <!-- ============ INTESTAZIONE ============ -->
+  <text x="288" y="104" font-size="13" class="g">Appartamenti  /  Berchet  /  5 posti</text>
+  <text x="287" y="152" font-size="40" class="b" letter-spacing="-1">Berchet · Annualità 2025-26</text>
+
+  <!-- Pulsante principale -->
+  <rect x="1144" y="104" width="248" height="56" fill="#D40511"/>
+  <text x="1168" y="138" font-size="17" class="b w">Prepara il messaggio</text>
+  <path d="M1352 132 h20 m-7 -7 l7 7 l-7 7" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+
+  <!-- Schede -->
+  <text x="288" y="208" font-size="15" class="g">Affitti e pagamenti</text>
+  <text x="455" y="208" font-size="15" class="g">Bollette</text>
+  <text x="545" y="208" font-size="15" class="b">Conguaglio</text>
+  <text x="663" y="208" font-size="15" class="g">Inquilini</text>
+  <text x="755" y="208" font-size="15" class="g">Condominio</text>
+  <text x="872" y="208" font-size="15" class="g">Moduli</text>
+  <text x="954" y="208" font-size="15" class="g">Excel</text>
+  <text x="1022" y="208" font-size="15" class="g">Storico</text>
+  <line x1="288" y1="224.5" x2="1392" y2="224.5" class="hair"/>
+  <rect x="545" y="221" width="85" height="4" fill="#0A0A0A"/>
+
+  <!-- ============ CIFRE CHIAVE ============ -->
+  <circle cx="293.5" cy="258" r="5" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="306" y="263" font-size="14">Calcolato oggi alle 09:40 · non ancora inviato agli inquilini</text>
+  <text x="1392" y="263" font-size="14" class="g" text-anchor="end">Ricalcola</text>
+
+  <text x="286" y="328" font-size="48" class="b num" letter-spacing="-0.8">€ 3.199,36</text>
+  <text x="288" y="352" font-size="14" class="g">Costi da ripartire · 6 tipologie · 60 mesi-posto</text>
+  <text x="662" y="328" font-size="48" class="b num" letter-spacing="-0.8">€ 119,64</text>
+  <text x="664" y="352" font-size="14" class="g">Da incassare da 3 inquilini</text>
+  <text x="1038" y="328" font-size="48" class="b num" letter-spacing="-0.8">- € 60,13</text>
+  <text x="1040" y="352" font-size="14" class="g">Da rimborsare a 1 inquilina</text>
+
+  <line x1="288" y1="377" x2="1392" y2="377" class="rule"/>
+
+  <!-- ============ TABELLA INQUILINI ============ -->
+  <text x="288" y="412" font-size="13" class="g sb">Inquilino</text>
+  <text x="470" y="412" font-size="13" class="g sb" text-anchor="end">Mesi</text>
+  <text x="580" y="396" font-size="13" class="g sb" text-anchor="end">Quota</text>
+  <text x="580" y="412" font-size="13" class="g sb" text-anchor="end">costi</text>
+  <text x="710" y="396" font-size="13" class="g sb" text-anchor="end">Forfait</text>
+  <text x="710" y="412" font-size="13" class="g sb" text-anchor="end">incassato</text>
+  <text x="870" y="396" font-size="13" class="g sb" text-anchor="end">Da pagare /</text>
+  <text x="870" y="412" font-size="13" class="g sb" text-anchor="end">da rimborsare</text>
+  <text x="896" y="412" font-size="13" class="g sb">Stato</text>
+  <line x1="288" y1="424.5" x2="1016" y2="424.5" class="hair"/>
+
+  <!-- Giulia R. -->
+  <text x="288" y="454" font-size="15" class="sb">Giulia R.</text>
+  <text x="470" y="454" font-size="15" class="num" text-anchor="end">12</text>
+  <text x="580" y="454" font-size="15" class="num" text-anchor="end">€ 639,87</text>
+  <text x="710" y="454" font-size="15" class="num" text-anchor="end">€ 600,00</text>
+  <text x="870" y="454" font-size="15" class="b num" text-anchor="end">€ 39,87</text>
+  <circle cx="902" cy="449" r="6" fill="#007A3D"/>
+  <path d="M899 449 l2.2 2.2 l4 -4.4" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>
+  <text x="916" y="454" font-size="14">Saldato</text>
+  <line x1="288" y1="472.5" x2="1016" y2="472.5" class="hair"/>
+
+  <!-- Marco T. -->
+  <text x="288" y="502" font-size="15" class="sb">Marco T.</text>
+  <text x="470" y="502" font-size="15" class="num" text-anchor="end">12</text>
+  <text x="580" y="502" font-size="15" class="num" text-anchor="end">€ 639,87</text>
+  <text x="710" y="502" font-size="15" class="num" text-anchor="end">€ 550,00</text>
+  <text x="870" y="502" font-size="15" class="b num" text-anchor="end">€ 89,87</text>
+  <path d="M902 490 l7 13 h-14 z" fill="#B57F00"/>
+  <text x="902" y="501.5" font-size="9" class="b w" text-anchor="middle">!</text>
+  <text x="916" y="502" font-size="14">Parziale</text>
+  <line x1="288" y1="520.5" x2="1016" y2="520.5" class="hair"/>
+
+  <!-- Sofia B. -->
+  <text x="288" y="550" font-size="15" class="sb">Sofia B.</text>
+  <text x="470" y="550" font-size="15" class="num" text-anchor="end">12</text>
+  <text x="580" y="550" font-size="15" class="num" text-anchor="end">€ 639,87</text>
+  <text x="710" y="550" font-size="15" class="num" text-anchor="end">€ 700,00</text>
+  <text x="870" y="550" font-size="15" class="b num" text-anchor="end">- € 60,13</text>
+  <circle cx="902" cy="545" r="5.5" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="916" y="550" font-size="14">Da rimborsare</text>
+  <line x1="288" y1="568.5" x2="1016" y2="568.5" class="hair"/>
+
+  <!-- Luca P. -->
+  <text x="288" y="598" font-size="15" class="sb">Luca P.</text>
+  <text x="470" y="598" font-size="15" class="num" text-anchor="end">9</text>
+  <text x="580" y="598" font-size="15" class="num" text-anchor="end">€ 479,90</text>
+  <text x="710" y="598" font-size="15" class="num" text-anchor="end">€ 450,00</text>
+  <text x="870" y="598" font-size="15" class="b num" text-anchor="end">€ 29,90</text>
+  <circle cx="902" cy="593" r="5.5" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="916" y="598" font-size="14">Da pagare</text>
+  <line x1="288" y1="616.5" x2="1016" y2="616.5" class="hair"/>
+
+  <!-- Anna V. -->
+  <text x="288" y="646" font-size="15" class="sb">Anna V.</text>
+  <text x="470" y="646" font-size="15" class="num" text-anchor="end">12</text>
+  <text x="580" y="646" font-size="15" class="num" text-anchor="end">€ 639,87</text>
+  <text x="710" y="646" font-size="15" class="num" text-anchor="end">€ 600,00</text>
+  <text x="870" y="646" font-size="15" class="b num" text-anchor="end">€ 39,87</text>
+  <circle cx="902" cy="641" r="5.5" fill="none" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="916" y="646" font-size="14">Da pagare</text>
+  <line x1="288" y1="664.5" x2="1016" y2="664.5" class="hair"/>
+
+  <!-- Posto vuoto -->
+  <text x="288" y="694" font-size="15" class="g">Posto vuoto, giu-ago</text>
+  <text x="470" y="694" font-size="15" class="g num" text-anchor="end">3</text>
+  <text x="580" y="694" font-size="15" class="g num" text-anchor="end">€ 159,98</text>
+  <text x="710" y="694" font-size="15" class="g" text-anchor="end">—</text>
+  <text x="896" y="694" font-size="14" class="g">Al proprietario</text>
+
+  <!-- Totale -->
+  <line x1="288" y1="713" x2="1016" y2="713" class="rule"/>
+  <text x="288" y="744" font-size="15" class="b">Totale</text>
+  <text x="470" y="744" font-size="15" class="b num" text-anchor="end">60</text>
+  <text x="580" y="744" font-size="15" class="b num" text-anchor="end">€ 3.199,36</text>
+  <text x="710" y="744" font-size="15" class="b num" text-anchor="end">€ 2.900,00</text>
+  <text x="870" y="744" font-size="15" class="b num" text-anchor="end">€ 139,38</text>
+  <text x="896" y="744" font-size="14" class="g">netto</text>
+
+  <text x="288" y="800" font-size="15" class="sb">+ Registra pagamento a mano</text>
+  <line x1="288" y1="806" x2="503" y2="806" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="520" y="800" font-size="14" class="g">per un versamento che non compare nell'estratto conto</text>
+
+  <text x="288" y="852" font-size="12" class="g">Nota · Gli importi contano solo le voci trovate nell'estratto conto della banca (CSV).</text>
+  <text x="288" y="870" font-size="12" class="g">La bolletta Hera acqua di agosto non è ancora addebitata e per ora resta fuori dal conguaglio.</text>
+
+  <!-- ============ BOLLETTE PER TIPOLOGIA ============ -->
+  <text x="1040" y="412" font-size="13" class="g sb">Bollette per tipologia</text>
+  <text x="1392" y="412" font-size="13" class="g sb" text-anchor="end">Totale</text>
+  <line x1="1040" y1="424.5" x2="1392" y2="424.5" class="hair"/>
+
+  <!-- Elettricità aperto -->
+  <line x1="1040" y1="449" x2="1050" y2="449" stroke="#0A0A0A" stroke-width="2"/>
+  <text x="1064" y="454" font-size="15" class="b">Elettricità</text>
+  <text x="1148" y="454" font-size="13" class="g">6 bollette</text>
+  <text x="1392" y="454" font-size="15" class="b num" text-anchor="end">€ 589,44</text>
+  <line x1="1064" y1="470" x2="1064" y2="594" stroke="#0A0A0A" stroke-width="2"/>
+  <text x="1080" y="492" font-size="13">Enel · set-ott 2025</text>
+  <text x="1392" y="492" font-size="13" class="num" text-anchor="end">€ 98,24</text>
+  <text x="1080" y="524" font-size="13">Enel · nov-dic 2025</text>
+  <text x="1392" y="524" font-size="13" class="num" text-anchor="end">€ 104,10</text>
+  <text x="1080" y="556" font-size="13">Enel · gen-feb 2026</text>
+  <text x="1392" y="556" font-size="13" class="num" text-anchor="end">€ 87,62</text>
+  <text x="1080" y="588" font-size="13" class="g">Mostra le altre 3</text>
+  <line x1="1040" y1="608.5" x2="1392" y2="608.5" class="hair"/>
+
+  <!-- Chiusi -->
+  <g stroke="#0A0A0A" stroke-width="2">
+    <path d="M1040 633 h10 M1045 628 v10"/>
+    <path d="M1040 681 h10 M1045 676 v10"/>
+    <path d="M1040 729 h10 M1045 724 v10"/>
+    <path d="M1040 777 h10 M1045 772 v10"/>
+    <path d="M1040 825 h10 M1045 820 v10"/>
+  </g>
+  <text x="1064" y="638" font-size="15" class="sb">Gas</text>
+  <text x="1100" y="638" font-size="13" class="g">6 bollette</text>
+  <text x="1392" y="638" font-size="15" class="num" text-anchor="end">€ 1.120,60</text>
+  <line x1="1040" y1="656.5" x2="1392" y2="656.5" class="hair"/>
+  <text x="1064" y="686" font-size="15" class="sb">Acqua</text>
+  <text x="1120" y="686" font-size="13" class="g">3 bollette · 1 esclusa</text>
+  <text x="1392" y="686" font-size="15" class="num" text-anchor="end">€ 214,80</text>
+  <line x1="1040" y1="704.5" x2="1392" y2="704.5" class="hair"/>
+  <text x="1064" y="734" font-size="15" class="sb">Internet</text>
+  <text x="1134" y="734" font-size="13" class="g">12 bollette</text>
+  <text x="1392" y="734" font-size="15" class="num" text-anchor="end">€ 359,40</text>
+  <line x1="1040" y1="752.5" x2="1392" y2="752.5" class="hair"/>
+  <text x="1064" y="782" font-size="15" class="sb">TARI</text>
+  <text x="1112" y="782" font-size="13" class="g">3 rate</text>
+  <text x="1392" y="782" font-size="15" class="num" text-anchor="end">€ 303,12</text>
+  <line x1="1040" y1="800.5" x2="1392" y2="800.5" class="hair"/>
+  <text x="1064" y="830" font-size="15" class="sb">Condominio</text>
+  <text x="1162" y="830" font-size="13" class="g">4 rate · quote conduttore</text>
+  <text x="1392" y="830" font-size="15" class="num" text-anchor="end">€ 612,00</text>
+  <line x1="1040" y1="848.5" x2="1392" y2="848.5" class="hair"/>
+</svg>

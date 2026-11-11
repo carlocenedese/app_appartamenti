@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+  <title>App del telefono, sola lettura — Classico private banking</title>
+  <style>
+    .serif { font-family: 'Newsreader', 'Libre Baskerville', Baskerville, Georgia, serif; }
+    .sans { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; }
+    .num { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+    .caps { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; font-size: 10px; letter-spacing: 1.4px; font-weight: 600; }
+  </style>
+  <defs>
+    <symbol id="ok" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#2E6B47"/><path d="M4.6 8.3 L7 10.6 L11.4 5.8" fill="none" stroke="#FFFDF8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="warn" viewBox="0 0 16 16"><path d="M8 0.8 L15.4 14.6 L0.6 14.6 Z" fill="#B07A16"/><rect x="7.1" y="5.2" width="1.8" height="5" rx="0.9" fill="#FFFDF8"/><circle cx="8" cy="12.2" r="1" fill="#FFFDF8"/></symbol>
+    <symbol id="err" viewBox="0 0 16 16"><path d="M8 0.3 L15.7 8 L8 15.7 L0.3 8 Z" fill="#9E2B25"/><path d="M5.9 5.9 L10.1 10.1 M10.1 5.9 L5.9 10.1" stroke="#FFFDF8" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7.5" rx="1.2" fill="none" stroke="#5C6370" stroke-width="1.3"/><path d="M5.3 7 V5 A2.7 2.7 0 0 1 10.7 5 V7" fill="none" stroke="#5C6370" stroke-width="1.3"/></symbol>
+    <clipPath id="screen"><rect width="390" height="844" rx="44"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#screen)">
+  <rect width="390" height="844" fill="#F7F3EA"/>
+
+  <!-- barra di stato -->
+  <text x="32" y="34" class="num" font-size="15" font-weight="600" fill="#1C2433">9:41</text>
+  <rect x="318" y="24" width="24" height="12" rx="3" fill="none" stroke="#1C2433" stroke-width="1.2"/>
+  <rect x="320" y="26" width="17" height="8" rx="1.5" fill="#1C2433"/>
+  <rect x="290" y="28" width="3" height="8" rx="1" fill="#1C2433"/><rect x="295" y="25" width="3" height="11" rx="1" fill="#1C2433"/><rect x="300" y="22" width="3" height="14" rx="1" fill="#1C2433"/><rect x="305" y="22" width="3" height="14" rx="1" fill="#1C2433" opacity="0.3"/>
+
+  <!-- intestazione -->
+  <text x="20" y="80" class="caps" fill="#8C6C38">MERCOLEDÌ 11 NOVEMBRE</text>
+  <text x="20" y="114" class="serif" font-size="30" fill="#1C2433">Le Bollette</text>
+  <rect x="262" y="94" width="108" height="26" rx="13" fill="#EFE8D8"/>
+  <use href="#lock" x="272" y="99" width="15" height="15"/>
+  <text x="292" y="112" class="sans" font-size="12" font-weight="600" fill="#5C6370">Sola lettura</text>
+  <line x1="20" y1="132" x2="44" y2="132" stroke="#B8965A"/>
+
+  <!-- card appartamenti -->
+  <g>
+    <rect x="16" y="148" width="358" height="68" rx="4" fill="#FFFDF8" stroke="#E3DCCB"/>
+    <rect x="16" y="148" width="3" height="68" fill="#2E6B47"/>
+    <text x="32" y="176" class="serif" font-size="21" fill="#1C2433">Berchet</text>
+    <use href="#ok" x="32" y="188" width="14" height="14"/>
+    <text x="52" y="200" class="sans" font-size="13" font-weight="600" fill="#2E6B47">Tutto a posto</text>
+    <text x="358" y="176" class="num" font-size="15" font-weight="600" fill="#1C2433" text-anchor="end">€ 2.418,60</text>
+    <text x="358" y="200" class="sans" font-size="12" fill="#5C6370" text-anchor="end">5 su 5 in regola</text>
+
+    <rect x="16" y="224" width="358" height="68" rx="4" fill="#FFFDF8" stroke="#E3DCCB"/>
+    <rect x="16" y="224" width="3" height="68" fill="#B07A16"/>
+    <text x="32" y="252" class="serif" font-size="21" fill="#1C2433">Lovarini</text>
+    <use href="#warn" x="32" y="264" width="14" height="14"/>
+    <text x="52" y="276" class="sans" font-size="13" font-weight="600" fill="#8A5A0B">2 cose da fare</text>
+    <text x="358" y="252" class="num" font-size="15" font-weight="600" fill="#1C2433" text-anchor="end">€ 1.126,35</text>
+    <text x="358" y="276" class="sans" font-size="12" fill="#5C6370" text-anchor="end">3 su 4 in regola</text>
+
+    <rect x="16" y="300" width="358" height="68" rx="4" fill="#FFFDF8" stroke="#E3DCCB"/>
+    <rect x="16" y="300" width="3" height="68" fill="#9E2B25"/>
+    <text x="32" y="328" class="serif" font-size="21" fill="#1C2433">Pulci</text>
+    <use href="#err" x="32" y="340" width="14" height="14"/>
+    <text x="52" y="352" class="sans" font-size="13" font-weight="600" fill="#9E2B25">1 scadenza passata</text>
+    <text x="358" y="328" class="num" font-size="15" font-weight="600" fill="#9E2B25" text-anchor="end">- € 63,00</text>
+    <text x="358" y="352" class="sans" font-size="12" fill="#5C6370" text-anchor="end">4 su 4 in regola</text>
+  </g>
+
+  <!-- prossime scadenze -->
+  <text x="20" y="408" class="serif" font-size="21" fill="#1C2433">Prossime scadenze</text>
+  <line x1="20" y1="420" x2="370" y2="420" stroke="#1C2433"/>
+  <g class="sans">
+    <use href="#err" x="20" y="436" width="14" height="14"/>
+    <text x="44" y="448" font-size="14" font-weight="600" fill="#1C2433">Conguaglio Pulci da inviare</text>
+    <text x="44" y="466" font-size="12" fill="#9E2B25">scaduto il 31/10</text>
+    <line x1="20" y1="480" x2="370" y2="480" stroke="#E3DCCB"/>
+
+    <use href="#warn" x="20" y="492" width="14" height="14"/>
+    <text x="44" y="504" font-size="14" font-weight="600" fill="#1C2433">Rata condominio Lovarini</text>
+    <text x="44" y="522" font-size="12" fill="#5C6370">10/12 · tra 29 giorni</text>
+    <text x="370" y="504" class="num" font-size="14" font-weight="600" fill="#1C2433" text-anchor="end">€ 186,00</text>
+    <line x1="20" y1="536" x2="370" y2="536" stroke="#E3DCCB"/>
+
+    <circle cx="27" cy="555" r="6.5" fill="none" stroke="#5C6370" stroke-width="1.4"/>
+    <text x="44" y="560" font-size="14" font-weight="600" fill="#1C2433">TARI Berchet, rata 4</text>
+    <text x="44" y="578" font-size="12" fill="#5C6370">16/12 · tra 35 giorni</text>
+    <text x="370" y="560" class="num" font-size="14" font-weight="600" fill="#1C2433" text-anchor="end">€ 101,04</text>
+  </g>
+
+  <!-- chi ha pagato -->
+  <text x="20" y="624" class="serif" font-size="21" fill="#1C2433">Affitto di novembre</text>
+  <line x1="20" y1="636" x2="370" y2="636" stroke="#1C2433"/>
+  <g class="sans" font-size="14">
+    <text x="20" y="662" font-weight="600" fill="#1C2433">Berchet</text>
+    <text x="370" y="662" class="num" fill="#2E6B47" font-weight="600" text-anchor="end">5 su 5 pagato</text>
+    <text x="20" y="680" font-size="12" fill="#5C6370">Giulia R., Marco T., Sofia B., Luca P., Anna V.</text>
+    <line x1="20" y1="692" x2="370" y2="692" stroke="#E3DCCB"/>
+    <text x="20" y="716" font-weight="600" fill="#1C2433">Lovarini</text>
+    <text x="370" y="716" class="num" fill="#8A5A0B" font-weight="600" text-anchor="end">3 su 4 · manca Elena M.</text>
+    <line x1="20" y1="730" x2="370" y2="730" stroke="#E3DCCB"/>
+    <text x="20" y="754" font-weight="600" fill="#1C2433">Pulci</text>
+    <text x="370" y="754" class="num" fill="#2E6B47" font-weight="600" text-anchor="end">4 su 4 pagato</text>
+  </g>
+
+  <!-- barra in basso -->
+  <rect x="0" y="772" width="390" height="72" fill="#15233A"/>
+  <g class="sans" font-size="11" text-anchor="middle">
+    <rect x="76" y="782" width="2" height="0" fill="none"/>
+    <path d="M57 796 L65 789 L73 796 V804 H57 Z" fill="none" stroke="#F2EBDD" stroke-width="1.5"/>
+    <text x="65" y="820" fill="#F2EBDD" font-weight="600">Home</text>
+    <rect x="57" y="826" width="16" height="2" fill="#B8965A"/>
+    <rect x="187" y="788" width="16" height="16" rx="2" fill="none" stroke="#A9B1C0" stroke-width="1.5"/>
+    <line x1="187" y1="793" x2="203" y2="793" stroke="#A9B1C0" stroke-width="1.5"/>
+    <text x="195" y="820" fill="#A9B1C0">Scadenze</text>
+    <rect x="317" y="790" width="16" height="14" fill="none" stroke="#A9B1C0" stroke-width="1.5"/>
+    <line x1="325" y1="790" x2="325" y2="804" stroke="#A9B1C0" stroke-width="1.5"/>
+    <text x="325" y="820" fill="#A9B1C0">Appartamenti</text>
+  </g>
+  <rect x="128" y="832" width="134" height="5" rx="2.5" fill="#F2EBDD" opacity="0.6"/>
+  </g>
+</svg>

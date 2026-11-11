@@ -1,0 +1,396 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="900" viewBox="0 0 1440 900">
+
+<title>App Bollette · Berchet · Conguaglio · proposta 08</title>
+<defs>
+
+  <linearGradient id="sky" x1="0" y1="0" x2="0.35" y2="1">
+    <stop offset="0" stop-color="#9ED8F5"/>
+    <stop offset="0.45" stop-color="#D4EFFB"/>
+    <stop offset="0.78" stop-color="#E9F8FB"/>
+    <stop offset="1" stop-color="#B5E6EE"/>
+  </linearGradient>
+  <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+    <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="wave1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5CC8DF" stop-opacity="0.75"/>
+    <stop offset="1" stop-color="#1E93C2" stop-opacity="0.9"/>
+  </linearGradient>
+  <linearGradient id="wave2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#9BE3C4" stop-opacity="0.85"/>
+    <stop offset="1" stop-color="#47B88E" stop-opacity="0.9"/>
+  </linearGradient>
+  <radialGradient id="bubble" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.05"/>
+    <stop offset="0.72" stop-color="#FFFFFF" stop-opacity="0.18"/>
+    <stop offset="0.93" stop-color="#FFFFFF" stop-opacity="0.85"/>
+    <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="glassTint" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.80"/>
+    <stop offset="1" stop-color="#F2FAFE" stop-opacity="0.74"/>
+  </linearGradient>
+  <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.85"/>
+    <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="1"/>
+    <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.35"/>
+    <stop offset="1" stop-color="#7CC3E6" stop-opacity="0.6"/>
+  </linearGradient>
+  <linearGradient id="aqua" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#1478BA"/>
+    <stop offset="1" stop-color="#075A94"/>
+  </linearGradient>
+  <linearGradient id="aquaSoft" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#E4F4FD"/>
+    <stop offset="1" stop-color="#C7E6F8"/>
+  </linearGradient>
+  <linearGradient id="row" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+    <stop offset="1" stop-color="#F4FAFE" stop-opacity="0.95"/>
+  </linearGradient>
+  <radialGradient id="orbG" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#8BE59D"/><stop offset="0.6" stop-color="#3DB45A"/><stop offset="1" stop-color="#1F7A37"/></radialGradient>
+  <radialGradient id="orbY" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#FFE48A"/><stop offset="0.6" stop-color="#FFC233"/><stop offset="1" stop-color="#C98A00"/></radialGradient>
+  <radialGradient id="orbR" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#FF9C92"/><stop offset="0.6" stop-color="#F0524F"/><stop offset="1" stop-color="#B3261E"/></radialGradient>
+  <radialGradient id="orbB" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#9AD9FA"/><stop offset="0.6" stop-color="#2E9AD6"/><stop offset="1" stop-color="#0A66A3"/></radialGradient>
+  <radialGradient id="orbV" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#C7B8FF"/><stop offset="0.6" stop-color="#7C66E0"/><stop offset="1" stop-color="#4B37A8"/></radialGradient>
+  <filter id="blur" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="18"/></filter>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+    <feOffset dy="8" result="b"/>
+    <feFlood flood-color="#0B4A73" flood-opacity="0.16"/>
+    <feComposite in2="b" operator="in"/>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="btnShadow" x="-20%" y="-30%" width="140%" height="180%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="5"/>
+    <feOffset dy="4" result="b"/>
+    <feFlood flood-color="#075A94" flood-opacity="0.35"/>
+    <feComposite in2="b" operator="in"/>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="txtShadow" x="-5%" y="-20%" width="110%" height="150%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="0.6"/>
+    <feOffset dy="1" result="b"/>
+    <feFlood flood-color="#03375C" flood-opacity="0.55"/>
+    <feComposite in2="b" operator="in"/>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+<g id="bgArt"><rect width="1440" height="900" fill="url(#sky)"/>
+<circle cx="1180" cy="110" r="360" fill="url(#sun)"/>
+<circle cx="420" cy="820" r="300" fill="url(#sun)" opacity="0.6"/>
+<path d="M0 760 C 300 700 520 800 820 740 S 1260 690 1440 730 L1440 900 L0 900 Z" fill="url(#wave2)" opacity="0.6"/>
+<path d="M0 820 C 260 770 600 860 900 800 S 1300 770 1440 800 L1440 900 L0 900 Z" fill="url(#wave1)"/>
+<circle cx="300" cy="70" r="44" fill="url(#bubble)"/>
+<ellipse cx="285.9" cy="51.5" rx="14.1" ry="7.0" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 285.9 51.5)"/>
+<circle cx="1380" cy="260" r="58" fill="url(#bubble)"/>
+<ellipse cx="1361.4" cy="235.6" rx="18.6" ry="9.3" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 1361.4 235.6)"/>
+<circle cx="960" cy="420" r="30" fill="url(#bubble)"/>
+<ellipse cx="950.4" cy="407.4" rx="9.6" ry="4.8" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 950.4 407.4)"/>
+<circle cx="560" cy="520" r="64" fill="url(#bubble)"/>
+<ellipse cx="539.5" cy="493.1" rx="20.5" ry="10.2" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 539.5 493.1)"/>
+<circle cx="1320" cy="640" r="36" fill="url(#bubble)"/>
+<ellipse cx="1308.5" cy="624.9" rx="11.5" ry="5.8" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 1308.5 624.9)"/>
+<circle cx="130" cy="640" r="50" fill="url(#bubble)"/>
+<ellipse cx="114.0" cy="619.0" rx="16.0" ry="8.0" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 114.0 619.0)"/>
+<circle cx="800" cy="860" r="40" fill="url(#bubble)"/>
+<ellipse cx="787.2" cy="843.2" rx="12.8" ry="6.4" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 787.2 843.2)"/>
+<circle cx="1100" cy="120" r="18" fill="url(#bubble)"/>
+<ellipse cx="1094.2" cy="112.4" rx="5.8" ry="2.9" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 1094.2 112.4)"/>
+<circle cx="250" cy="330" r="26" fill="url(#bubble)"/>
+<ellipse cx="241.7" cy="319.1" rx="8.3" ry="4.2" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 241.7 319.1)"/>
+<circle cx="1200" cy="520" r="20" fill="url(#bubble)"/>
+<ellipse cx="1193.6" cy="511.6" rx="6.4" ry="3.2" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 1193.6 511.6)"/></g>
+</defs>
+<use xlink:href="#bgArt"/>
+<clipPath id="cl1"><rect x="16" y="16" width="240" height="868" rx="28"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="16" y="16" width="240" height="868" rx="28" fill="#EAF6FC"/>
+<g clip-path="url(#cl1)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="16" y="16" width="240" height="868" rx="28" fill="url(#glassTint)"/>
+<g clip-path="url(#cl1)"><rect x="16" y="16" width="240" height="90" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="16.75" y="16.75" width="238.5" height="866.5" rx="27.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<circle cx="52" cy="61.5" r="18" fill="#0B4A73" opacity="0.12"/>
+<circle cx="52" cy="60" r="18" fill="url(#orbB)"/>
+<ellipse cx="52" cy="51.4" rx="11.2" ry="6.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="52" cy="60" r="17.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M44 62 C 48 52, 56 52, 60 62" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/>
+<text x="80" y="57" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="21" font-weight="800" fill="#0B2E4A" text-anchor="start" >Bollette</text>
+<text x="80" y="76" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="start" >Berchet · Lovarini · Pulci</text>
+<path d="M44 139 L53 131 L62 139 M47 137 L47 148 L59 148 L59 137" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="146" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="start" >Home</text>
+<path d="M44 189 L48 180 L58 180 L62 189 L62 196 L44 196 Z M44 189 L49 189 L51 192 L55 192 L57 189 L62 189" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="194" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="start" >Da rivedere</text>
+<circle cx="214" cy="189.5" r="13" fill="#0B4A73" opacity="0.12"/><circle cx="214" cy="188" r="13" fill="url(#orbR)"/><ellipse cx="214" cy="182" rx="8" ry="4" fill="#FFFFFF" opacity="0.5"/>
+<text x="214" y="193" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">3</text>
+<g filter="url(#btnShadow)"><rect x="28" y="216" width="216" height="40" rx="20" fill="url(#aqua)"/><rect x="31" y="218" width="210" height="16" rx="8" fill="url(#gloss)" opacity="0.4"/></g>
+<path d="M45 245 L45 229 L55 227 L55 245 M55 234 L61 234 L61 245 M43 245 L63 245 M49 233 L51 233 M49 237 L51 237 M49 241 L51 241" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="242" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#FFFFFF" text-anchor="start" filter="url(#txtShadow)">Appartamenti</text>
+<line x1="40" y1="276" x2="232" y2="276" stroke="#FFFFFF" stroke-width="1.5"/>
+<line x1="40" y1="277.5" x2="232" y2="277.5" stroke="#9CCBE6" stroke-opacity="0.6"/>
+<text x="42" y="302" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="800" fill="#3C5F78" text-anchor="start" letter-spacing="1.2">BANCA E FISCO</text>
+<path d="M44 330 L62 330 L62 345 L44 345 Z M44 335 L62 335 M49 327 L49 332 M57 327 L57 332" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="342" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="start" >Scadenze e pagamenti</text>
+<path d="M45 380 L60 380 M56 376 L60 380 L56 384 M61 388 L46 388 M50 384 L46 388 L50 392" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="390" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="start" >Saldo tra conti</text>
+<path d="M46 423 L60 423 L60 441 L57 439 L53 441 L49 439 L46 441 Z M50 434 L56 428" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50.5" cy="428.5" r="1.2" fill="#3C5F78"/><circle cx="55.5" cy="433.5" r="1.2" fill="#3C5F78"/>
+<text x="74" y="438" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="start" >Tasse e stime</text>
+<rect x="32" y="700" width="208" height="104" rx="20" fill="#FFFFFF" fill-opacity="0.82" stroke="#BFE1F3"/>
+<circle cx="56" cy="727.5" r="12" fill="#0B4A73" opacity="0.12"/>
+<circle cx="56" cy="726" r="12" fill="url(#orbG)"/>
+<ellipse cx="56" cy="720.2" rx="7.4" ry="4.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="56" cy="726" r="11.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M51.4 726.5 L55.1 729.4 L60.6 723.3" fill="none" stroke="#FFFFFF" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="76" y="731" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="800" fill="#1E6B33" text-anchor="start" >Tutto salvato</text>
+<text x="48" y="758" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="start" >Ultima copia su Dropbox</text>
+<text x="48" y="778" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="start" >oggi alle 09:42</text>
+<circle cx="53" cy="848" r="3.2" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M53 838.5 L53 841.5 M53 854.5 L53 857.5 M43.5 848 L46.5 848 M59.5 848 L62.5 848 M46.3 841.3 L48.4 843.4 M57.6 852.6 L59.7 854.7 M46.3 854.7 L48.4 852.6 M57.6 843.4 L59.7 841.3" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="53" cy="848" r="7" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="74" y="854" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="start" >Impostazioni</text>
+<clipPath id="cl2"><rect x="272" y="16" width="1152" height="64" rx="32"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="272" y="16" width="1152" height="64" rx="32" fill="#EAF6FC"/>
+<g clip-path="url(#cl2)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="272" y="16" width="1152" height="64" rx="32" fill="url(#glassTint)"/>
+<g clip-path="url(#cl2)"><rect x="272" y="16" width="1152" height="29" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="272.75" y="16.75" width="1150.5" height="62.5" rx="31.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<rect x="284" y="28" width="300" height="40" rx="20" fill="#FFFFFF" fill-opacity="0.9" stroke="#A9D3EC"/>
+<rect x="287" y="30" width="294" height="15" rx="7.5" fill="url(#gloss)" opacity="0.6"/>
+<path d="M301 57 L301 41 L311 39 L311 57 M311 46 L317 46 L317 57 M299 57 L319 57 M305 45 L307 45 M305 49 L307 49 M305 53 L307 53" fill="none" stroke="#0A5C99" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="328" y="53" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Berchet</text>
+<path d="M414 45 L419 50 L424 45" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="438" y1="36" x2="438" y2="60" stroke="#A9D3EC"/>
+<path d="M452 42 L470 42 L470 57 L452 57 Z M452 47 L470 47 M457 39 L457 44 M465 39 L465 44" fill="none" stroke="#0A5C99" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="480" y="53" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >2025-26</text>
+<path d="M558 45 L563 50 L568 45" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="608" y="28" width="420" height="40" rx="20" fill="#FFFFFF" fill-opacity="0.78" stroke="#BFDDEE"/>
+<circle cx="633" cy="46" r="6.5" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M638 51 L643 56" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="654" y="53" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="400" fill="#3C5F78" text-anchor="start" >Cerca inquilini, bollette, scadenze…</text>
+<rect x="954" y="36" width="60" height="24" rx="8" fill="#EAF4FA" stroke="#BFDDEE"/>
+<text x="984" y="53" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="700" fill="#3C5F78" text-anchor="middle" >Ctrl K</text>
+<circle cx="1170" cy="49.5" r="7" fill="#0B4A73" opacity="0.12"/>
+<circle cx="1170" cy="48" r="7" fill="url(#orbG)"/>
+<ellipse cx="1170" cy="44.6" rx="4.3" ry="2.4" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="1170" cy="48" r="6.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M1167.3 48.5 L1169.5 50.0 L1172.7 46.4" fill="none" stroke="#FFFFFF" stroke-width="0" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1184" y="53" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="700" fill="#1E6B33" text-anchor="start" >Sincronizzato</text>
+<circle cx="1386" cy="49.5" r="18" fill="#0B4A73" opacity="0.12"/>
+<circle cx="1386" cy="48" r="18" fill="url(#orbB)"/>
+<ellipse cx="1386" cy="39.4" rx="11.2" ry="6.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="1386" cy="48" r="17.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<text x="1386" y="54.48" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="17.099999999999998" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">C</text>
+<text x="1360" y="53" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="700" fill="#0B2E4A" text-anchor="end" >Carlo</text>
+<circle cx="296" cy="127.5" r="20" fill="#0B4A73" opacity="0.12"/>
+<circle cx="296" cy="126" r="20" fill="url(#orbG)"/>
+<ellipse cx="296" cy="116.4" rx="12.4" ry="6.8" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="296" cy="126" r="19.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M288.4 126.5 L294.5 131.7 L303.6 121.4" fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="328" y="136" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="30" font-weight="800" fill="#0B2E4A" text-anchor="start" >Berchet · Annualità 2025-26</text>
+<text x="328" y="162" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#3C5F78" text-anchor="start" >5 posti · conguaglio ricalcolato oggi alle 09:40 con l'ultima bolletta Enel</text>
+<rect x="1028" y="112" width="160" height="44" rx="22.0" fill="url(#aquaSoft)" stroke="#8CC5E6"/>
+<rect x="1031" y="114" width="154" height="17.6" rx="8.8" fill="#FFFFFF" opacity="0.7"/>
+<text x="1108.0" y="139.04" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="700" fill="#0A5C99" text-anchor="middle" >Ricalcola</text>
+<g filter="url(#btnShadow)">
+<rect x="1200" y="106" width="224" height="56" rx="28.0" fill="url(#aqua)"/>
+<rect x="1203" y="108" width="218" height="23.5" rx="11.8" fill="url(#gloss)" opacity="0.38"/>
+<rect x="1200.5" y="106.5" width="223" height="55" rx="27.5" fill="none" stroke="#04406B" stroke-opacity="0.5"/>
+<ellipse cx="1312.0" cy="158" rx="72" ry="4" fill="#7FD3FF" opacity="0.35"/>
+</g>
+<text x="1312.0" y="140.12" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="17" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">Prepara il messaggio</text>
+<clipPath id="cl3"><rect x="272" y="184" width="1152" height="52" rx="26"/></clipPath>
+<g >
+<rect x="272" y="184" width="1152" height="52" rx="26" fill="#EAF6FC"/>
+<g clip-path="url(#cl3)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="272" y="184" width="1152" height="52" rx="26" fill="url(#glassTint)"/>
+<rect x="272.75" y="184.75" width="1150.5" height="50.5" rx="25.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<text x="380.375" y="215" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Affitti e pagamenti</text>
+<text x="533.75" y="215" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Bollette</text>
+<g filter="url(#btnShadow)"><rect x="590.75" y="190" width="118" height="40" rx="20" fill="url(#aqua)"/><rect x="593.75" y="192" width="112" height="16" rx="8" fill="url(#gloss)" opacity="0.4"/></g>
+<text x="650.0" y="215" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">Conguaglio</text>
+<text x="770.375" y="215" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Inquilini</text>
+<text x="890.75" y="215" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Condominio</text>
+<text x="998.75" y="215" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Moduli</text>
+<text x="1086.125" y="215" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Excel</text>
+<text x="1177.625" y="215" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Storico</text>
+<clipPath id="cl4"><rect x="272" y="256" width="752" height="628" rx="28"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="272" y="256" width="752" height="628" rx="28" fill="#EAF6FC"/>
+<g clip-path="url(#cl4)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="272" y="256" width="752" height="628" rx="28" fill="url(#glassTint)"/>
+<g clip-path="url(#cl4)"><rect x="272" y="256" width="752" height="90" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="272.75" y="256.75" width="750.5" height="626.5" rx="27.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<text x="304" y="300" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="22" font-weight="800" fill="#0B2E4A" text-anchor="start" >Quanto deve ciascuno</text>
+<text x="304" y="324" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="600" fill="#3C5F78" text-anchor="start" >Costi divisi per 5 posti, a mesi interi</text>
+<rect x="783.28" y="288" width="209" height="28" rx="14.0" fill="#FFF3D1" stroke="#F0CB6A"/>
+<rect x="786.28" y="290" width="203" height="10.6" rx="5.3" fill="#FFFFFF" opacity="0.65"/>
+<path d="M797.28 297.0 L797.28 303.0" stroke="#7A4F00" stroke-width="2" stroke-linecap="round"/><circle cx="797.28" cy="306.0" r="1.2" fill="#7A4F00"/>
+<text x="809.28" y="306.68" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="700" fill="#7A4F00" text-anchor="start" >2 da pagare · 1 parziale</text>
+<rect x="288" y="334" width="720" height="48" rx="14" fill="#DDEFF9" fill-opacity="0.9"/>
+<text x="304" y="362" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="start" >Inquilino</text>
+<text x="468" y="362" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="end" >Mesi</text>
+<text x="588" y="353" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="end" >Quota</text>
+<text x="588" y="370" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="end" >costi</text>
+<text x="718" y="353" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="end" >Forfait</text>
+<text x="718" y="370" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="end" >incassato</text>
+<text x="852" y="353" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="end" >Da pagare /</text>
+<text x="852" y="370" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="end" >rimborsare</text>
+<text x="876" y="362" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#3C5F78" text-anchor="start" >Stato</text>
+<rect x="288" y="394" width="720" height="60" rx="16" fill="url(#row)" stroke="#D3E8F4"/>
+<circle cx="322" cy="425.5" r="15" fill="#0B4A73" opacity="0.12"/>
+<circle cx="322" cy="424" r="15" fill="url(#orbB)"/>
+<ellipse cx="322" cy="416.8" rx="9.3" ry="5.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="322" cy="424" r="14.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<text x="322" y="429.4" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="14.25" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">G</text>
+<text x="346" y="430" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="start" >Giulia R.</text>
+<text x="468" y="430" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >12</text>
+<text x="588" y="430" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 612,40</text>
+<text x="718" y="430" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 540,00</text>
+<text x="852" y="422" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 72,40</text>
+<text x="852" y="440" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="end" >entro il 30/11</text>
+<rect x="876" y="411" width="100" height="26" rx="13.0" fill="#FDE4E2" stroke="#F2A7A2"/>
+<rect x="879" y="413" width="94" height="9.9" rx="4.9" fill="#FFFFFF" opacity="0.65"/>
+<path d="M886.5 420.5 L893.5 427.5 M893.5 420.5 L886.5 427.5" stroke="#A3201F" stroke-width="2" stroke-linecap="round"/>
+<text x="902" y="428.68" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="700" fill="#A3201F" text-anchor="start" >Da pagare</text>
+<rect x="288" y="462" width="720" height="60" rx="16" fill="url(#row)" stroke="#D3E8F4"/>
+<circle cx="322" cy="493.5" r="15" fill="#0B4A73" opacity="0.12"/>
+<circle cx="322" cy="492" r="15" fill="url(#orbB)"/>
+<ellipse cx="322" cy="484.8" rx="9.3" ry="5.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="322" cy="492" r="14.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<text x="322" y="497.4" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="14.25" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">M</text>
+<text x="346" y="498" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="start" >Marco T.</text>
+<text x="468" y="498" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >12</text>
+<text x="588" y="498" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 612,40</text>
+<text x="718" y="498" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 540,00</text>
+<text x="852" y="490" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 72,40</text>
+<text x="852" y="508" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="end" >versati € 40,00</text>
+<rect x="876" y="479" width="92" height="26" rx="13.0" fill="#FFF3D1" stroke="#F0CB6A"/>
+<rect x="879" y="481" width="86" height="9.9" rx="4.9" fill="#FFFFFF" opacity="0.65"/>
+<path d="M890 487.0 L890 493.0" stroke="#7A4F00" stroke-width="2" stroke-linecap="round"/><circle cx="890" cy="496.0" r="1.2" fill="#7A4F00"/>
+<text x="902" y="496.68" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="700" fill="#7A4F00" text-anchor="start" >Parziale</text>
+<rect x="288" y="530" width="720" height="60" rx="16" fill="url(#row)" stroke="#D3E8F4"/>
+<circle cx="322" cy="561.5" r="15" fill="#0B4A73" opacity="0.12"/>
+<circle cx="322" cy="560" r="15" fill="url(#orbB)"/>
+<ellipse cx="322" cy="552.8" rx="9.3" ry="5.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="322" cy="560" r="14.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<text x="322" y="565.4" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="14.25" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">S</text>
+<text x="346" y="566" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="start" >Sofia B.</text>
+<text x="468" y="566" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >10</text>
+<text x="588" y="566" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 510,33</text>
+<text x="718" y="566" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 450,00</text>
+<text x="852" y="558" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 60,33</text>
+<text x="852" y="576" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="end" >versato il 06/11</text>
+<rect x="876" y="547" width="85" height="26" rx="13.0" fill="#E1F5E6" stroke="#9AD8AA"/>
+<rect x="879" y="549" width="79" height="9.9" rx="4.9" fill="#FFFFFF" opacity="0.65"/>
+<path d="M886 560.0 L889 563.0 L894 557.0" fill="none" stroke="#1E6B33" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="902" y="564.68" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="700" fill="#1E6B33" text-anchor="start" >Saldato</text>
+<rect x="288" y="598" width="720" height="60" rx="16" fill="url(#row)" stroke="#D3E8F4"/>
+<circle cx="322" cy="629.5" r="15" fill="#0B4A73" opacity="0.12"/>
+<circle cx="322" cy="628" r="15" fill="url(#orbB)"/>
+<ellipse cx="322" cy="620.8" rx="9.3" ry="5.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="322" cy="628" r="14.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<text x="322" y="633.4" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="14.25" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">L</text>
+<text x="346" y="634" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="start" >Luca P.</text>
+<text x="468" y="634" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >12</text>
+<text x="588" y="634" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 612,40</text>
+<text x="718" y="634" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 660,00</text>
+<text x="852" y="626" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0A5C99" text-anchor="end" >- € 47,60</text>
+<text x="852" y="644" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="end" >rimborsato il 07/11</text>
+<rect x="876" y="615" width="85" height="26" rx="13.0" fill="#E1F5E6" stroke="#9AD8AA"/>
+<rect x="879" y="617" width="79" height="9.9" rx="4.9" fill="#FFFFFF" opacity="0.65"/>
+<path d="M886 628.0 L889 631.0 L894 625.0" fill="none" stroke="#1E6B33" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="902" y="632.68" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="700" fill="#1E6B33" text-anchor="start" >Saldato</text>
+<rect x="288" y="666" width="720" height="60" rx="16" fill="url(#row)" stroke="#D3E8F4"/>
+<circle cx="322" cy="697.5" r="15" fill="#0B4A73" opacity="0.12"/>
+<circle cx="322" cy="696" r="15" fill="url(#orbB)"/>
+<ellipse cx="322" cy="688.8" rx="9.3" ry="5.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="322" cy="696" r="14.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<text x="322" y="701.4" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="14.25" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">A</text>
+<text x="346" y="702" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="start" >Anna V.</text>
+<text x="468" y="702" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >2</text>
+<text x="588" y="702" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 102,07</text>
+<text x="718" y="702" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="600" fill="#0B2E4A" text-anchor="end" >€ 90,00</text>
+<text x="852" y="694" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 12,07</text>
+<text x="852" y="712" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="end" >entro il 30/11</text>
+<rect x="876" y="683" width="100" height="26" rx="13.0" fill="#FDE4E2" stroke="#F2A7A2"/>
+<rect x="879" y="685" width="94" height="9.9" rx="4.9" fill="#FFFFFF" opacity="0.65"/>
+<path d="M886.5 692.5 L893.5 699.5 M893.5 692.5 L886.5 699.5" stroke="#A3201F" stroke-width="2" stroke-linecap="round"/>
+<text x="902" y="700.68" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="700" fill="#A3201F" text-anchor="start" >Da pagare</text>
+<line x1="304" y1="740" x2="992" y2="740" stroke="#9CCBE6"/>
+<text x="304" y="770" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Totale annualità</text>
+<text x="468" y="770" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >48</text>
+<text x="588" y="770" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 2.449,60</text>
+<text x="718" y="770" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 2.280,00</text>
+<text x="852" y="770" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 169,60</text>
+<text x="876" y="770" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="start" >netto da incassare</text>
+<rect x="288" y="820" width="720" height="48" rx="16" fill="#FFFFFF" fill-opacity="0.6" stroke="#CFE6F3" stroke-dasharray="4 4"/>
+<circle cx="314" cy="844" r="9" fill="none" stroke="#3C5F78" stroke-width="1.6"/>
+<text x="314" y="849" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="800" fill="#3C5F78" text-anchor="middle" >i</text>
+<text x="334" y="841" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="start" >Gli importi contano solo le voci trovate nell'estratto conto della banca.</text>
+<text x="334" y="858" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="400" fill="#3C5F78" text-anchor="start" >Sofia B. ha preso il posto di Anna V. a novembre. Un posto è rimasto libero: € 612,40 restano al proprietario.</text>
+<clipPath id="cl5"><rect x="1048" y="256" width="376" height="628" rx="28"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="1048" y="256" width="376" height="628" rx="28" fill="#EAF6FC"/>
+<g clip-path="url(#cl5)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="1048" y="256" width="376" height="628" rx="28" fill="url(#glassTint)"/>
+<g clip-path="url(#cl5)"><rect x="1048" y="256" width="376" height="90" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="1048.75" y="256.75" width="374.5" height="626.5" rx="27.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<text x="1076" y="300" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="22" font-weight="800" fill="#0B2E4A" text-anchor="start" >Bollette per tipo</text>
+<text x="1076" y="324" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="600" fill="#3C5F78" text-anchor="start" >Apri un blocco per vedere le bollette</text>
+<rect x="1064" y="344" width="344" height="200" rx="18" fill="url(#row)" stroke="#CFE6F3"/>
+<circle cx="1088" cy="368" r="9" fill="#FFC233"/><ellipse cx="1088" cy="364" rx="5.5" ry="3" fill="#FFFFFF" opacity="0.6"/>
+<text x="1106" y="366" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Elettricità</text>
+<text x="1106" y="383" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="start" >6 bollette</text>
+<text x="1364" y="374" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 842,16</text>
+<path d="M1376 371 L1381 366 L1386 371" fill="none" stroke="#0A5C99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1080" y="400" width="312" height="34" rx="12" fill="#EEF7FC" stroke="#D6EAF5"/>
+<text x="1096" y="422" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="600" fill="#0B2E4A" text-anchor="start" >Enel · set-ott 2025</text>
+<text x="1376" y="422" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="700" fill="#0B2E4A" text-anchor="end" >€ 98,24</text>
+<rect x="1080" y="440" width="312" height="34" rx="12" fill="#EEF7FC" stroke="#D6EAF5"/>
+<text x="1096" y="462" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="600" fill="#0B2E4A" text-anchor="start" >Enel · nov-dic 2025</text>
+<text x="1376" y="462" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="700" fill="#0B2E4A" text-anchor="end" >€ 161,05</text>
+<rect x="1080" y="480" width="312" height="34" rx="12" fill="#EEF7FC" stroke="#D6EAF5"/>
+<text x="1096" y="502" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="600" fill="#0B2E4A" text-anchor="start" >Enel · gen-feb 2026</text>
+<text x="1376" y="502" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="700" fill="#0B2E4A" text-anchor="end" >€ 172,39</text>
+<text x="1096" y="538" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#0A5C99" text-anchor="start" >Mostra le altre 3 bollette</text>
+<rect x="1064" y="550" width="344" height="48" rx="18" fill="url(#row)" stroke="#CFE6F3"/>
+<circle cx="1088" cy="574" r="9" fill="#F0524F"/><ellipse cx="1088" cy="570" rx="5.5" ry="3" fill="#FFFFFF" opacity="0.6"/>
+<text x="1106" y="572" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Gas</text>
+<text x="1106" y="589" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="start" >6 bollette</text>
+<text x="1364" y="580" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 1.204,58</text>
+<path d="M1376 571 L1381 576 L1386 571" fill="none" stroke="#0A5C99" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1064" y="604" width="344" height="48" rx="18" fill="url(#row)" stroke="#CFE6F3"/>
+<circle cx="1088" cy="628" r="9" fill="#2E9AD6"/><ellipse cx="1088" cy="624" rx="5.5" ry="3" fill="#FFFFFF" opacity="0.6"/>
+<text x="1106" y="626" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Acqua</text>
+<text x="1106" y="643" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="start" >4 bollette</text>
+<text x="1364" y="634" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 286,40</text>
+<path d="M1376 625 L1381 630 L1386 625" fill="none" stroke="#0A5C99" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1064" y="658" width="344" height="48" rx="18" fill="url(#row)" stroke="#CFE6F3"/>
+<circle cx="1088" cy="682" r="9" fill="#7C66E0"/><ellipse cx="1088" cy="678" rx="5.5" ry="3" fill="#FFFFFF" opacity="0.6"/>
+<text x="1106" y="680" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Internet</text>
+<text x="1106" y="697" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="start" >12 bollette</text>
+<text x="1364" y="688" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 359,40</text>
+<path d="M1376 679 L1381 684 L1386 679" fill="none" stroke="#0A5C99" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1064" y="712" width="344" height="48" rx="18" fill="url(#row)" stroke="#CFE6F3"/>
+<circle cx="1088" cy="736" r="9" fill="#3DB45A"/><ellipse cx="1088" cy="732" rx="5.5" ry="3" fill="#FFFFFF" opacity="0.6"/>
+<text x="1106" y="734" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >TARI</text>
+<text x="1106" y="751" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="start" >2 avvisi</text>
+<text x="1364" y="742" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 202,08</text>
+<path d="M1376 733 L1381 738 L1386 733" fill="none" stroke="#0A5C99" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1064" y="766" width="344" height="48" rx="18" fill="url(#row)" stroke="#CFE6F3"/>
+<circle cx="1088" cy="790" r="9" fill="#5CC8DF"/><ellipse cx="1088" cy="786" rx="5.5" ry="3" fill="#FFFFFF" opacity="0.6"/>
+<text x="1106" y="788" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Condominio</text>
+<text x="1106" y="805" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="600" fill="#3C5F78" text-anchor="start" >quote conduttore</text>
+<text x="1364" y="796" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 167,38</text>
+<path d="M1376 787 L1381 792 L1386 787" fill="none" stroke="#0A5C99" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="1076" y1="824" x2="1396" y2="824" stroke="#9CCBE6"/>
+<text x="1076" y="852" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="start" >Totale costi</text>
+<text x="1396" y="852" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="18" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 3.062,00</text>
+</svg>
