@@ -1,0 +1,11 @@
+# Direct runtime dependencies of bollette_pdf, pinned to exact versions, each published at least
+# two weeks before the pin was made. requirements.txt (with hashes for every platform wheel) is
+# generated from this file; pip-tools is a development tool and is never shipped:
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras \
+#       --output-file python/requirements.txt python/requirements.in
+# Compile and test on Python 3.13: on 3.12 the referencing library would need typing-extensions,
+# whose licence (PSF-2.0) is not on the allowed list.
+pdfminer.six==20260107
+jsonschema==4.26.0
+# cffi 2.1 and later use MIT-0, which is not on the allowed list; cryptography needs cffi>=2.0.
+cffi==2.0.0

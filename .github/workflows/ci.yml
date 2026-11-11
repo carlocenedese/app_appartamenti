@@ -69,5 +69,20 @@ jobs:
       - name: Check dependency licences
         run: pnpm licenses:check
 
+      # Python 3.13: on 3.12 the referencing library needs typing-extensions (PSF-2.0, not allowed).
+      - name: Install Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install Python dependencies
+        run: python -m pip install --require-hashes -r python/requirements.txt
+
+      - name: Test the Python package
+        run: pnpm python:test
+
+      - name: Check Python dependency licences
+        run: pnpm python:licenses
+
       - name: Check for personal data
         run: pnpm data:check

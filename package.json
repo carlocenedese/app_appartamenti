@@ -17,6 +17,8 @@
     "licenses:check": "node scripts/check-licenses.mjs",
     "data:check": "node scripts/check-personal-data.mjs",
     "tools:test": "python3 -I -m unittest discover -s tools -p 'test_*.py'",
+    "python:test": "node scripts/python.mjs -I -m unittest discover -s python/tests",
+    "python:licenses": "node scripts/python.mjs -I python/tools/check_licenses.py",
     "schemas:export": "tsx scripts/export-schemas.mjs",
     "golden:report": "tsx scripts/golden-report.mjs"
   },

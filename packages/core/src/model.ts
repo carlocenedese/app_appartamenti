@@ -375,7 +375,7 @@ export const IdentifierKindSchema = z.enum(['pod', 'pdr', 'customer']);
 const FORBIDDEN_CONSTRUCTS: readonly [RegExp, string][] = [
   [/\(\?P?<(?![=!])/, 'named groups'],
   [/\(\?<[=!]/, 'lookbehind'],
-  [/\(\?[a-zA-Z]+(?:-[a-zA-Z]+)?[:)]/, 'inline flags'],
+  [/\(\?(?:[a-zA-Z]+(?:-[a-zA-Z]+)?|-[a-zA-Z]+)[:)]/, 'inline flags'],
 ];
 
 /** Why `pattern` is not allowed, or `undefined` when it is. */
