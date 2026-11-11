@@ -33,6 +33,7 @@ from .schemas import validate
 
 EXIT_OK = 0
 EXIT_ERROR = 2
+INTERNAL_ERROR = "Errore interno: nessun output."
 
 # YYYY-MM-DD, optionally followed by THH:MM[:SS[.fff]] and a zone (Z or ±HH:MM).
 _AT = re.compile(
@@ -230,6 +231,10 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
         _run_extract(args.pdf, args.profiles, args.at, out)
     except _Rejected as rejected:
         err.write(f"{rejected}\n")
+        return EXIT_ERROR
+    except Exception:
+        # Never show the exception: its message may quote text read from the PDF or a path.
+        err.write(f"{INTERNAL_ERROR}\n")
         return EXIT_ERROR
     return EXIT_OK
 

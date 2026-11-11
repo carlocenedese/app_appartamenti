@@ -216,6 +216,24 @@ class ExtractTest(CliTestCase):
         self.assertNotIn("segreto", stderr.getvalue())
         self.assertNotEqual(stderr.getvalue(), "")
 
+    def assertInternalError(self, target: str, error: Exception) -> None:
+        self.write_profile()
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch(target, side_effect=error):
+            code = main(
+                ["extract", "--pdf", str(self.pdf), "--profiles", str(self.profiles), "--at", AT],
+                stdout,
+                stderr,
+            )
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "Errore interno: nessun output.\n")
+
+    def test_unexpected_errors_give_code_two_and_a_constant_message(self) -> None:
+        self.assertInternalError("bollette_pdf.__main__.extract", ValueError("testo riservato"))
+        self.assertInternalError("bollette_pdf.__main__.load_profiles", OSError("percorso riservato"))
+        self.assertInternalError("bollette_pdf.__main__.read_pdf", RuntimeError("contenuto riservato"))
+
 
 class ErrorsTest(CliTestCase):
     def assertRejected(self, completed: subprocess.CompletedProcess) -> None:
