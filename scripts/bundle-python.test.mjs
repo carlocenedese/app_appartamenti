@@ -4,8 +4,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  lstatSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,6 +18,7 @@ import {
   copyPackage,
   directorySize,
   interpreterPath,
+  keepOneLauncher,
   main,
   pickRuntime,
   removeTkinter,
@@ -283,6 +286,44 @@ describe('removeTkinter', () => {
     makeTree(root, ['python.exe', 'Lib/json/__init__.py']);
     expect(removeTkinter(root, 'win32')).toEqual([]);
     expect(removeTkinter(root, 'darwin')).toEqual([]);
+  });
+});
+
+describe('keepOneLauncher', () => {
+  // Symbolic links need a privilege on Windows, where the function does nothing anyway.
+  const posix = process.platform === 'win32' ? it.skip : it;
+
+  function distribution() {
+    makeTree(root, ['bin/python3.13', 'bin/pydoc3', 'bin/pydoc3.13', 'bin/python3-config']);
+    writeFileSync(join(root, 'bin', 'python3.13'), 'the interpreter');
+    symlinkSync('python3.13', join(root, 'bin', 'python3'));
+    symlinkSync('python3.13', join(root, 'bin', 'python'));
+  }
+
+  posix('leaves bin/python3 as the one real file, without the other names', () => {
+    distribution();
+    keepOneLauncher(root, 'darwin');
+    expect(readdirSync(join(root, 'bin')).sort()).toEqual(['python3', 'python3-config']);
+    expect(lstatSync(join(root, 'bin', 'python3')).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(root, 'bin', 'python3'), 'utf8')).toBe('the interpreter');
+  });
+
+  posix('is idempotent and also takes a real python3 with links around it', () => {
+    makeTree(root, ['bin/python3']);
+    writeFileSync(join(root, 'bin', 'python3'), 'the interpreter');
+    symlinkSync('python3', join(root, 'bin', 'python3.13'));
+    keepOneLauncher(root, 'darwin');
+    keepOneLauncher(root, 'darwin');
+    expect(readdirSync(join(root, 'bin'))).toEqual(['python3']);
+    expect(readFileSync(join(root, 'bin', 'python3'), 'utf8')).toBe('the interpreter');
+  });
+
+  it('does nothing on Windows or without bin/python3', () => {
+    makeTree(root, ['python.exe', 'bin/python3.13']);
+    keepOneLauncher(root, 'win32');
+    expect(readdirSync(join(root, 'bin'))).toEqual(['python3.13']);
+    keepOneLauncher(root, 'darwin');
+    expect(readdirSync(join(root, 'bin'))).toEqual(['python3.13']);
   });
 });
 

@@ -19,7 +19,8 @@
 //      there), so that `python -I -m bollette_pdf` works without PYTHONPATH;
 //   6. run `python -I -m bollette_pdf --version` and print the final size.
 // Right after the extraction, Tcl/Tk, tkinter, IDLE and turtle are removed (TKINTER_PATHS): the
-// app does not use them and the TCL licence is not in the allowed list.
+// app does not use them and the TCL licence is not in the allowed list. On macOS `bin/python3` is
+// then made the only copy of the interpreter (keepOneLauncher).
 // Only Node built-ins: no npm dependencies.
 
 import { spawnSync } from 'node:child_process';
@@ -33,6 +34,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -147,6 +149,26 @@ export function removeTkinter(directory, platform) {
   const paths = tkinterPaths(directory, platform);
   for (const path of paths) rmSync(path, { recursive: true, force: true });
   return paths;
+}
+
+/**
+ * Leaves `bin/python3` (the name the app runs) as the only copy of the interpreter. In the
+ * distribution `python` and `python3.13` are links to it, but Tauri copies a link as a whole file
+ * when it bundles the resources: 18 MB each. The pydoc scripts name `python3.13` and are removed.
+ */
+export function keepOneLauncher(directory, platform) {
+  const launcher = join(directory, 'bin', 'python3');
+  if (platform === 'win32' || !existsSync(launcher)) return;
+  if (lstatSync(launcher).isSymbolicLink()) {
+    const real = realpathSync(launcher);
+    rmSync(launcher);
+    renameSync(real, launcher);
+  }
+  for (const name of readdirSync(join(directory, 'bin'))) {
+    if (/^(python|python3\.\d+|pydoc3(\.\d+)?)$/.test(name)) {
+      rmSync(join(directory, 'bin', name), { force: true });
+    }
+  }
 }
 
 /** Copies python/bollette_pdf/ (without bytecode) and the two schemas it needs into sitePackages. */
@@ -312,6 +334,7 @@ export async function main(options = {}) {
     mkdirSync(destination, { recursive: true });
     steps.extract(bytes, destination);
     steps.log(`Tolti Tcl/Tk e tkinter: ${removeTkinter(destination, platform).length} percorsi.`);
+    keepOneLauncher(destination, platform);
 
     const python = interpreterPath(destination, platform);
     const sitePackages = steps.install(python, join(root, 'python', 'requirements.txt'));
