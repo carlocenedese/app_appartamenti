@@ -197,7 +197,7 @@ qui ne resta la sintesi.
 | 11   | Prova di integrazione tra core e programma Python    | 64d197d..52753f0 | R72                |
 | —    | Revisione finale e correzioni                        | 52753f0..        | R73                |
 
-### Decisioni (Ruling) R41-R73
+### Decisioni (Ruling) R41-R76
 
 Ognuna: che cosa, perché, costo se è sbagliata.
 
@@ -315,6 +315,24 @@ Ognuna: che cosa, perché, costo se è sbagliata.
   macOS: quarantena di Gatekeeper sul binario scaricato dal browser (`Killed: 9` finché non si
   toglie `com.apple.quarantine`); l'app firmata ad-hoc si apre con tasto destro, «Apri», ma la
   lettura dei PDF dall'app installata resta da provare. Costo: nessuno su Windows.
+- **R75** (12 novembre 2026, Fase B, Task 12 parziale) Profili dei fornitori reali costruiti con Carlo presente, in
+  sola lettura sulle cartelle di Dropbox (nessuna copia dei PDF; il rapporto stampa solo
+  conteggi, le fixture contengono solo righe anonimizzate): Hera Comm (luce e gas),
+  AcegasApsAmga (acqua e TARI Padova), Fastweb ed Enel Energia, in `python/seed-profiles/`, tutti
+  `bozza`. Importo = «Totale da pagare» (decisione di Carlo, anche con «Altri servizi»;
+  da confermare per il canone TV di Enel). Il riconoscimento non usa link (le fixture li cancellano)
+  e `validFrom` è `2020-01-01` per i layout vecchi. Maggior tutela di Berchet, scansioni, `parts`
+  della TARI condivisa e il campione di dieci PDF controllati a mano restano da fare. Costo:
+  nessun profilo è approvato finché Carlo non rilegge `docs/rules/lettura-pdf.md`.
+- **R76** (12 novembre 2026, Fase B) Dal controllo a mano di Carlo sul campione: il tipo `date-range`
+  legge anche intervalli di mesi interi («Gennaio - Aprile 2024» è dal 1 gennaio al 30 aprile; con
+  l'anno una volta sola, un primo mese dopo il secondo comincia nell'anno prima); nella posizione
+  `below` le righe di un solo carattere (testo ruotato a margine) non contano per BELOW_ROWS;
+  nuove regole per la nota di credito del gas («Totale fattura» negativo), il numero e il periodo
+  di Enel 2020-23 (confidenza `medium`), il periodo e il numero della TARI e un profilo per la TARI
+  2021-22. Decisione di Carlo: il periodo di una bolletta dell'acqua è l'unione dei periodi di
+  consumo («rilevato» e «stimato»); non ancora implementata (il motore legge un solo intervallo
+  per campo). Costo: i periodi a mesi interi sono una convenzione, da confermare.
 
 ### Da confermare da Carlo
 

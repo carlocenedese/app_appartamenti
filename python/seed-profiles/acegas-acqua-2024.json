@@ -1,0 +1,79 @@
+{
+  "id": "acegas-acqua-2024",
+  "v": 1,
+  "rev": 1,
+  "supplier": "AcegasApsAmga",
+  "kind": "bill",
+  "category": "acqua",
+  "status": "bozza",
+  "autoRegister": true,
+  "validFrom": "2020-01-01",
+  "recognise": {
+    "allOf": ["servizio idrico"],
+    "noneOf": ["gestore della tassa sui rifiuti"]
+  },
+  "fields": {
+    "number": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "fini fiscali",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*(\\S+)",
+          "valueType": "text",
+          "group": 1
+        }
+      ]
+    },
+    "issueDate": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "emissione",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*(\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4})(?![\\d.,])",
+          "valueType": "date",
+          "group": 1
+        }
+      ]
+    },
+    "dueDate": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "Scadenza",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*(\\d{1,2}[°º]?\\s+[A-Za-z]+\\.?\\s+\\d{2,4})(?![\\d.,])",
+          "valueType": "date",
+          "group": 1
+        }
+      ]
+    },
+    "amount": {
+      "required": true,
+      "rules": [
+        {
+          "anchor": "pagare",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*((?:[-−–]\\s?)?(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2})(?![\\d.,])",
+          "valueType": "euro",
+          "group": 1
+        }
+      ]
+    },
+    "consumption": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "cubi)",
+          "position": "right",
+          "pattern": "^[\\s:€]*(\\d[\\d.]*(?:,\\d+)?\\s*[A-Za-zµ]+[²³]?)(?![\\d.,])",
+          "valueType": "quantity",
+          "group": 1
+        }
+      ]
+    }
+  },
+  "identifiers": [],
+  "validTo": "2024-12-31"
+}

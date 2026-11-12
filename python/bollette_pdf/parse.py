@@ -8,6 +8,7 @@ this file: nothing depends on the system language. No network, no clock.
 
 from __future__ import annotations
 
+import calendar
 import re
 import unicodedata
 from datetime import date
@@ -41,6 +42,12 @@ _TEXT_DATE_RE = re.compile(r"(\d{1,2})[°º]?\s+([^\W\d_]+)\.?\s+(\d{4}|\d{2})")
 _RANGE_RE = re.compile(
     rf"(?:dal\s+)?(?P<start>{_ANY_DATE})(?:\s+al\s+|\s*[-–—/]\s*)(?P<end>{_ANY_DATE})",
     re.IGNORECASE,
+)
+
+# Whole months: the year is written once at the end or after each month, the month names are
+# full or 3-letter abbreviations with an optional dot.
+_MONTH_RANGE_RE = re.compile(
+    r"(?P<m1>[^\W\d_]+)\.?(?:\s+(?P<y1>\d{4}|\d{2}))?\s*[-–—]\s*(?P<m2>[^\W\d_]+)\.?\s+(?P<y2>\d{4}|\d{2})",
 )
 
 _QUANTITY_RE = re.compile(
@@ -105,11 +112,35 @@ def parse_date(text: str) -> str:
     raise ValueError(f"Data non valida (serve giorno-mese-anno): «{text}».")
 
 
+def _month_range(match: re.Match[str], text: str) -> tuple[str, str]:
+    first, last = _month_number(match.group("m1")), _month_number(match.group("m2"))
+    if first is None or last is None:
+        raise ValueError("Mese non riconosciuto nel periodo.")
+    end_year = _year(match.group("y2"))
+    if match.group("y1") is not None:
+        start_year = _year(match.group("y1"))
+    else:  # year written once: «Novembre - Febbraio 2025» starts in the previous year
+        start_year = end_year - 1 if first > last else end_year
+    start = _build(1, first, start_year, text)
+    end = _build(calendar.monthrange(end_year, last)[1], last, end_year, text)
+    if end < start:
+        raise ValueError(f"La fine del periodo precede l'inizio: «{text}».")
+    return (start, end)
+
+
 def parse_date_range(text: str) -> tuple[str, str]:
-    """(start, end) ISO dates from «dal … al …» or «… - …». The end must not precede the start."""
-    match = _RANGE_RE.fullmatch(_clean(text))
+    """(start, end) ISO dates from «dal … al …», «… - …» or whole months («Gen - Ago 2024»).
+
+    A month range starts on the first day of the first month and ends on the last day of the
+    last month. The end must not precede the start.
+    """
+    cleaned = _clean(text)
+    match = _RANGE_RE.fullmatch(cleaned)
     if match is None:
-        raise ValueError(f"Periodo non valido: «{text}».")
+        months = _MONTH_RANGE_RE.fullmatch(cleaned)
+        if months is None:
+            raise ValueError(f"Periodo non valido: «{text}».")
+        return _month_range(months, text)
     start = parse_date(match.group("start"))
     end = parse_date(match.group("end"))
     if end < start:

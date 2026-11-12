@@ -1,0 +1,77 @@
+{
+  "id": "acegas-tari-2024",
+  "v": 1,
+  "rev": 1,
+  "supplier": "AcegasApsAmga",
+  "kind": "tari",
+  "status": "bozza",
+  "autoRegister": true,
+  "validFrom": "2020-01-01",
+  "recognise": {
+    "allOf": ["gestore della tassa sui rifiuti (tari)"],
+    "noneOf": ["pagare:*", "bolletta nr."]
+  },
+  "fields": {
+    "number": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "pagamento nr.",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*(\\S+)",
+          "valueType": "text",
+          "group": 1
+        }
+      ]
+    },
+    "issueDate": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "Emissione:",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*(\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4})(?![\\d.,])",
+          "valueType": "date",
+          "group": 1
+        }
+      ]
+    },
+    "dueDate": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "Scadenza",
+          "position": "below",
+          "pattern": "^[\\s:€]*(\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4})(?![\\d.,])",
+          "valueType": "date",
+          "group": 1
+        }
+      ]
+    },
+    "amount": {
+      "required": true,
+      "rules": [
+        {
+          "anchor": "Totale",
+          "position": "below",
+          "pattern": "^[\\s:€]*((?:[-−–]\\s?)?(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2})(?![\\d.,])",
+          "valueType": "euro",
+          "group": 1
+        }
+      ]
+    },
+    "period": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "Periodo",
+          "position": "below",
+          "pattern": "^[\\s:€]*([A-Za-z]+\\.?(?:\\s+\\d{2,4})?\\s*-\\s*[A-Za-z]+\\.?\\s+\\d{2,4})(?![\\d.,])",
+          "valueType": "date-range",
+          "group": 1
+        }
+      ]
+    }
+  },
+  "identifiers": []
+}

@@ -52,8 +52,11 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 
 ## PDF e profili dei fornitori (piano 2a)
 
-- `fixtures/pdf/`: PDF sintetici generati da uno script, con testi e importi inventati. Nessun PDF
-  reale entra mai nel repository, nemmeno anonimizzato a mano.
+- `fixtures/pdf/`: estratti di testo di bollette reali (Task 12 del piano 2a), ridotti al minimo che
+  serve a un profilo e anonimizzati: nomi, vie, codici, IBAN, e-mail, telefoni e link tolti, numero
+  di fattura e impronta del file inventati. Restano importi e date della bolletta. Nessun PDF reale
+  entra mai nel repository, nemmeno anonimizzato; i PDF sintetici dei test li genera uno script
+  (`python/tests/make_sample.py`), con testi e importi inventati.
 - `python/seed-profiles/` (fuori da `fixtures/`): profili dei fornitori (`SupplierProfile`) che
   riconoscono per parole chiave, senza codici cliente, POD, PDR o indirizzi; quelli dell'utente
   stanno nei suoi dati, in `_app/dati/supplierProfile/`.

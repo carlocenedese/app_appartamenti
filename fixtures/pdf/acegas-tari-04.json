@@ -1,0 +1,293 @@
+{
+  "layout": "TARI Padova, bolletta con asterisco e Bolletta nr. (2023)",
+  "profileId": "acegas-tari-2024-b",
+  "expected": {
+    "status": "riconosciuta",
+    "number": "5114/21/62591",
+    "issueDate": "2023-10-27",
+    "dueDate": "2023-12-10",
+    "periodStart": "2023-01-01",
+    "periodEnd": "2023-12-31",
+    "amount": 10000,
+    "confidence": {
+      "number": "medium",
+      "issueDate": "high",
+      "dueDate": "high",
+      "periodStart": "high",
+      "periodEnd": "high",
+      "amount": "high"
+    }
+  },
+  "dump": {
+    "fileHash": "989cc95a78132fdca3ed6bd69998ec5cac4a7b2db9bac35fb00f1aa95e73aaae",
+    "pages": 4,
+    "hasText": true,
+    "lines": [
+      {
+        "page": 1,
+        "x0": 20.0,
+        "top": 71.97,
+        "x1": 219.98,
+        "bottom": 83.97,
+        "baseline": 80.97,
+        "words": [
+          {
+            "text": "GESTORE",
+            "x0": 20.0,
+            "top": 71.97,
+            "x1": 65.07,
+            "bottom": 83.97
+          },
+          {
+            "text": "DELLA",
+            "x0": 67.78,
+            "top": 71.97,
+            "x1": 98.04,
+            "bottom": 83.97
+          },
+          {
+            "text": "TASSA",
+            "x0": 100.75,
+            "top": 71.97,
+            "x1": 131.48,
+            "bottom": 83.97
+          },
+          {
+            "text": "SUI",
+            "x0": 134.19,
+            "top": 71.97,
+            "x1": 150.4,
+            "bottom": 83.97
+          },
+          {
+            "text": "RIFIUTI",
+            "x0": 153.12,
+            "top": 71.97,
+            "x1": 187.7,
+            "bottom": 83.97
+          },
+          {
+            "text": "(TARI)",
+            "x0": 190.41,
+            "top": 71.97,
+            "x1": 219.98,
+            "bottom": 83.97
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 21.0,
+        "top": 295.98,
+        "x1": 120.78,
+        "bottom": 304.98,
+        "baseline": 302.73,
+        "words": [
+          {
+            "text": "Bolletta",
+            "x0": 21.0,
+            "top": 295.98,
+            "x1": 49.55,
+            "bottom": 304.98
+          },
+          {
+            "text": "nr.",
+            "x0": 51.58,
+            "top": 295.98,
+            "x1": 61.71,
+            "bottom": 304.98
+          },
+          {
+            "text": "5114/21/62591",
+            "x0": 63.74,
+            "top": 295.98,
+            "x1": 120.78,
+            "bottom": 304.98
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 401.0,
+        "top": 295.98,
+        "x1": 504.69,
+        "bottom": 304.98,
+        "baseline": 302.73,
+        "words": [
+          {
+            "text": "Data",
+            "x0": 401.0,
+            "top": 295.98,
+            "x1": 418.16,
+            "bottom": 304.98
+          },
+          {
+            "text": "Emissione:",
+            "x0": 420.2,
+            "top": 295.98,
+            "x1": 459.28,
+            "bottom": 304.98
+          },
+          {
+            "text": "27/10/2023",
+            "x0": 461.31,
+            "top": 295.98,
+            "x1": 504.69,
+            "bottom": 304.98
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 464.99,
+        "top": 383.63,
+        "x1": 571.0,
+        "bottom": 397.63,
+        "baseline": 394.13,
+        "words": [
+          {
+            "text": "Totale",
+            "x0": 464.99,
+            "top": 383.63,
+            "x1": 500.73,
+            "bottom": 397.63
+          },
+          {
+            "text": "da",
+            "x0": 503.9,
+            "top": 383.63,
+            "x1": 517.95,
+            "bottom": 397.63
+          },
+          {
+            "text": "pagare:*",
+            "x0": 521.12,
+            "top": 383.63,
+            "x1": 571.0,
+            "bottom": 397.63
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 500.78,
+        "top": 407.62,
+        "x1": 571.0,
+        "bottom": 427.62,
+        "baseline": 422.62,
+        "words": [
+          {
+            "text": "€",
+            "x0": 500.78,
+            "top": 407.62,
+            "x1": 510.9,
+            "bottom": 427.62
+          },
+          {
+            "text": "100,00",
+            "x0": 515.42,
+            "top": 407.62,
+            "x1": 571.0,
+            "bottom": 427.62
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 20.0,
+        "top": 437.98,
+        "x1": 48.52,
+        "bottom": 446.98,
+        "baseline": 444.73,
+        "words": [
+          {
+            "text": "Periodo",
+            "x0": 20.0,
+            "top": 437.98,
+            "x1": 48.52,
+            "bottom": 446.98
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 446.29,
+        "top": 439.63,
+        "x1": 571.0,
+        "bottom": 453.63,
+        "baseline": 450.13,
+        "words": [
+          {
+            "text": "Scadenza",
+            "x0": 446.29,
+            "top": 439.63,
+            "x1": 499.22,
+            "bottom": 453.63
+          },
+          {
+            "text": "pagamento:",
+            "x0": 502.39,
+            "top": 439.63,
+            "x1": 571.0,
+            "bottom": 453.63
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 20.0,
+        "top": 456.97,
+        "x1": 175.27,
+        "bottom": 471.97,
+        "baseline": 468.22,
+        "words": [
+          {
+            "text": "Gennaio",
+            "x0": 20.0,
+            "top": 456.97,
+            "x1": 71.18,
+            "bottom": 471.97
+          },
+          {
+            "text": "-",
+            "x0": 74.57,
+            "top": 456.97,
+            "x1": 79.16,
+            "bottom": 471.97
+          },
+          {
+            "text": "Dicembre",
+            "x0": 82.55,
+            "top": 456.97,
+            "x1": 141.52,
+            "bottom": 471.97
+          },
+          {
+            "text": "2023",
+            "x0": 144.91,
+            "top": 456.97,
+            "x1": 175.27,
+            "bottom": 471.97
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 478.6,
+        "top": 467.41,
+        "x1": 575.0,
+        "bottom": 487.41,
+        "baseline": 482.41,
+        "words": [
+          {
+            "text": "10/12/2023",
+            "x0": 478.6,
+            "top": 467.41,
+            "x1": 575.0,
+            "bottom": 487.41
+          }
+        ]
+      }
+    ]
+  }
+}

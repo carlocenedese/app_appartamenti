@@ -13,3 +13,4 @@ apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
 # Python interpreter put there by scripts/bundle-python.mjs
 apps/desktop/src-tauri/resources/python/
+.venv-python/

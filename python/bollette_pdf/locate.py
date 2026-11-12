@@ -11,7 +11,8 @@ Rules (controller decisions of plan 2a, Task 5):
   words starting at or after the anchor's right edge), never the union of further columns
   (ruling R57); the rest of the anchor's own line counts as such a line;
 - `below`: the first `Line` of the next BELOW_ROWS rows whose horizontal extent overlaps the
-  anchor's.
+  anchor's. Rows made only of one-character lines (a rotated strip of text down a margin, a
+  bullet) are skipped: they neither count toward BELOW_ROWS nor provide the candidate.
 
 A candidate keeps, for every word, its character span in the candidate text, so a regular
 expression match can be mapped back to the words (and the box) it covers. Candidate text is cut
@@ -157,7 +158,12 @@ class Layout:
 
     def _below(self, anchor: Anchor) -> Sequence[Word]:
         row = self.row_of[anchor.line]
-        for next_row in self.rows[row + 1 : row + 1 + BELOW_ROWS]:
+        real_rows = [
+            r
+            for r in self.rows[row + 1 :]
+            if any(len("".join(self.lines[i].text.split())) > 1 for i in r)
+        ]
+        for next_row in real_rows[:BELOW_ROWS]:
             lines = sorted((self.lines[i] for i in next_row), key=lambda line: line.x0)
             for line in lines:
                 if line.page != anchor.page:
