@@ -19,7 +19,8 @@
 //      there), so that `python -I -m bollette_pdf` works without PYTHONPATH;
 //   6. run `python -I -m bollette_pdf --version` and print the final size.
 // Right after the extraction, Tcl/Tk, tkinter, IDLE and turtle are removed (TKINTER_PATHS): the
-// app does not use them and the TCL licence is not in the allowed list.
+// app does not use them and the TCL licence is not in the allowed list. On macOS `bin/python3` is
+// then made the only copy of the interpreter (keepOneLauncher).
 // Only Node built-ins: no npm dependencies.
 
 import { spawnSync } from 'node:child_process';
@@ -33,11 +34,12 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { devNull, tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
@@ -147,6 +149,30 @@ export function removeTkinter(directory, platform) {
   const paths = tkinterPaths(directory, platform);
   for (const path of paths) rmSync(path, { recursive: true, force: true });
   return paths;
+}
+
+/**
+ * Leaves `bin/python3` (the name the app runs) as the only copy of the interpreter. In the
+ * distribution `python3` and `python` are links to `python3.13`, but Tauri copies a link as a whole
+ * file when it bundles the resources: 18 MB each. The `-config` and pydoc scripts name
+ * `python3.13` too and are removed with the other names; the app uses none of them.
+ */
+export function keepOneLauncher(directory, platform) {
+  const bin = join(directory, 'bin');
+  const launcher = join(bin, 'python3');
+  if (platform === 'win32' || !existsSync(launcher)) return;
+  if (lstatSync(launcher).isSymbolicLink()) {
+    const real = realpathSync(launcher);
+    if (dirname(real) !== realpathSync(bin)) {
+      throw new Error('Il link bin/python3 punta fuori da bin/: la distribuzione è cambiata.');
+    }
+    renameSync(real, launcher); // replaces the link in one step
+  }
+  for (const name of readdirSync(bin)) {
+    if (/^(python|python3\.\d+|python3(\.\d+)?-config|pydoc3(\.\d+)?)$/.test(name)) {
+      rmSync(join(bin, name), { force: true });
+    }
+  }
 }
 
 /** Copies python/bollette_pdf/ (without bytecode) and the two schemas it needs into sitePackages. */
@@ -312,6 +338,7 @@ export async function main(options = {}) {
     mkdirSync(destination, { recursive: true });
     steps.extract(bytes, destination);
     steps.log(`Tolti Tcl/Tk e tkinter: ${removeTkinter(destination, platform).length} percorsi.`);
+    keepOneLauncher(destination, platform);
 
     const python = interpreterPath(destination, platform);
     const sitePackages = steps.install(python, join(root, 'python', 'requirements.txt'));

@@ -308,6 +308,13 @@ Ognuna: che cosa, perché, costo se è sbagliata.
   `registerProposal` in automatico legge il profilo dal negozio e applica `decideRegistration`;
   messaggi di `pdfminer` spenti; capture group controllati anche in Zod; il costruttore scarta
   etichette di solo rumore o con meno di 3 lettere. Costo: qualche revisione in più.
+- **R74** (12 novembre 2026) Nell'app macOS `bin/python3` è l'unica copia dell'interprete:
+  Tauri copia ogni collegamento simbolico come file intero (`python`, `python3`, `python3.13`
+  erano tre copie da 18 MB, `.app` da 123 MB). `keepOneLauncher` in `bundle-python.mjs` toglie gli
+  altri nomi e gli script `pydoc3*` e `*-config`, che nominavano `python3.13`. Primo giro su
+  macOS: quarantena di Gatekeeper sul binario scaricato dal browser (`Killed: 9` finché non si
+  toglie `com.apple.quarantine`); l'app firmata ad-hoc si apre con tasto destro, «Apri», ma la
+  lettura dei PDF dall'app installata resta da provare. Costo: nessuno su Windows.
 - **R75** (12 novembre 2026, Fase B, Task 12 parziale) Profili dei fornitori reali costruiti con Carlo presente, in
   sola lettura sulle cartelle di Dropbox (nessuna copia dei PDF; il rapporto stampa solo
   conteggi, le fixture contengono solo righe anonimizzate): Hera Comm (luce e gas),
