@@ -72,6 +72,11 @@ PYTHON=.venv-python/bin/python pnpm python:dev-install
 PYTHON=.venv-python/bin/python REQUIRE_PYTHON=1 pnpm test
 ```
 
+### Strumenti (`tools/`)
+
+- `tools/dump_text.py <file.pdf>`: stampa il testo di un PDF come documento JSON (`dump_document`), da rileggere con `load_dump`.
+- `tools/pdf_report.py --profiles <cartella> --at AAAA-MM-GG <cartelle-di-pdf>...`: legge i PDF delle cartelle (anche annidate, senza scrivere nulla) e stampa solo conteggi per stato e fornitore, mai nomi, percorsi o testo.
+
 ## Dipendenze
 
 `requirements.in` elenca le dipendenze dirette con versione esatta; `requirements.txt` ha tutte le
