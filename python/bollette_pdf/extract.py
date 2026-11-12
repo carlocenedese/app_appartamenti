@@ -12,6 +12,8 @@
   first whose validity contains the issue date it read (or the date of `at` when it read none) and
   that reads every required field; when none does, the newest recognising profile, and the result
   is always `da-confermare` (ruling R55);
+- when another recognising profile, in validity and reading every required field, differs from
+  the chosen one in supplier, kind or category, the check `profile-unique` fails (ruling R73);
 - a TARI profile with `parts` adds the checks `parts-found` and `parts-unique` (ruling R56);
 - for `right` and `below`, a value is `high` only when it fills its cell, apart from `€`, `EUR`,
   `euro`, parentheses, colons and spaces (ruling R57); for `same-line`, only when nothing but
@@ -35,6 +37,8 @@ from .reader import Document
 WARNING_REPEATED_PART = "Avviso TARI: parte ripetuta su più pagine, contata una volta."
 WARNING_UNREADABLE_PART = "Avviso TARI: parte non leggibile, esclusa."
 WARNING_UNREADABLE_ITEM = "Voce non leggibile, esclusa dalla somma delle voci."
+
+MESSAGE_PROFILE_UNIQUE = "Più profili di fornitori diversi riconoscono il documento."
 
 _MISSING: dict[str, Any] = {"value": None, "confidence": "missing", "source": None}
 
@@ -174,6 +178,10 @@ def _in_validity(profile: dict[str, Any], day: str) -> bool:
     return profile["validFrom"] <= day and (valid_to is None or day <= valid_to)
 
 
+def _identity(profile: dict[str, Any]) -> tuple[Any, ...]:
+    return profile["supplier"], profile["kind"], profile.get("category")
+
+
 def _identifiers(layout: Layout, profile: dict[str, Any]) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -269,15 +277,15 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
     layout = Layout(doc)
     today = at[:10]
     readings: dict[int, dict[str, dict[str, Any]]] = {}
-    chosen = None
+    complete: list[int] = []
     for index, profile in enumerate(matching):
         fields = readings[index] = _read_fields(layout, profile)
         issue = fields.get("issueDate", _MISSING)["value"]
         if not _in_validity(profile, issue if issue is not None else today):
             continue
         if not _missing_required(profile, fields):
-            chosen = index
-            break
+            complete.append(index)
+    chosen = complete[0] if complete else None
     # Ruling R55: without an in-validity profile that reads every required field, the newest
     # recognising profile is used, and the result always needs confirmation.
     fallback = chosen is None
@@ -291,6 +299,10 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
     if profile["kind"] == "tari" and profile.get("parts") is not None:
         parts, repeated = _parts(layout, profile, warnings)
         checks.extend(parts_checks(len(parts), repeated))
+    # Ruling R73: another complete profile of a different supplier, kind or category also reads
+    # the document (an electricity bill advertising gas): which one is right is the user's call.
+    if any(_identity(matching[other]) != _identity(profile) for other in complete):
+        checks.append({"code": "profile-unique", "ok": False, "message": MESSAGE_PROFILE_UNIQUE})
     doubtful = (
         fallback
         or _missing_required(profile, fields)

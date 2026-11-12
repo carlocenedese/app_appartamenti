@@ -562,6 +562,51 @@ class ProfileChoiceTest(ExtractTestCase):
         self.assertEqual(result["profileId"], "luce-2025")
 
 
+class ProfileUniqueTest(ExtractTestCase):
+    """Ruling R73 item 2: profiles of different suppliers that both read the document."""
+
+    def pair(self):
+        luce = light_profile(id="finta-luce", supplier="Energia Finta",
+                             recognise={"allOf": ["energia finta", "luce"], "noneOf": []})
+        gas = light_profile(id="finta-gas", supplier="Energia Finta", category="gas",
+                            recognise={"allOf": ["energia finta", "gas"], "noneOf": []})
+        return [luce, gas]
+
+    def bill(self, *extra):
+        return self.doc([(72, 80, "Energia Finta - bolletta luce"), *extra,
+                         (72, 200, "Totale da pagare € 87,65"), (72, 400, FILLER)])
+
+    def test_two_categories_reading_one_bill_need_confirmation(self) -> None:
+        result = extract(self.bill((72, 300, "Scopri la nostra offerta gas")), self.pair(), AT)
+        self.assertEqual(result["status"], "da-confermare")
+        unique = [c for c in result["checks"] if c["code"] == "profile-unique"]
+        self.assertEqual(unique, [{
+            "code": "profile-unique", "ok": False,
+            "message": "Più profili di fornitori diversi riconoscono il documento.",
+        }])
+        self.assertValid(result)
+
+    def test_only_one_recognising_profile_has_no_check(self) -> None:
+        result = extract(self.bill(), self.pair(), AT)
+        self.assertEqual((result["profileId"], result["status"]), ("finta-luce", "riconosciuta"))
+        self.assertNotIn("profile-unique", [c["code"] for c in result["checks"]])
+
+    def test_other_profile_without_required_fields_or_out_of_validity_is_ignored(self) -> None:
+        luce, gas = self.pair()
+        gas["fields"]["amount"]["rules"] = [rule("Importo complessivo", EURO, "euro")]
+        late = copy.deepcopy(self.pair()[1])
+        late.update(id="finta-gas-2099", validFrom="2099-01-01")
+        doc = self.bill((72, 300, "Scopri la nostra offerta gas"))
+        for other in (gas, late):
+            result = extract(doc, [luce, other], AT)
+            self.assertEqual(result["status"], "riconosciuta", other["id"])
+
+    def test_two_versions_of_the_same_supplier_profile_are_fine(self) -> None:
+        older = light_profile(id="luce-2024", validFrom="2024-01-01")
+        result = extract(self.doc(STANDARD), [older, light_profile()], AT)
+        self.assertEqual((result["profileId"], result["status"]), ("luce-2025", "riconosciuta"))
+
+
 class TariTest(ExtractTestCase):
     def tari_profile(self):
         return {
