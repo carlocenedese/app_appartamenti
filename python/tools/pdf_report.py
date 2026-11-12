@@ -5,7 +5,7 @@
 Walks the folders recursively (sorted), reads every `*.pdf` in place (read only: nothing is
 copied or written) and runs `extract` with the profiles of `--profiles`. Prints ONLY counts: per
 supplier (`profileId`, or «(nessun profilo)»), per status, how many fields of the recognised
-documents have confidence `high`, and a total. It never prints a file name, a path, an amount, a
+documents have confidence `high` (the `supplier` field, always high, is not counted), and a total. It never prints a file name, a path, an amount, a
 text read from a PDF or an exception message: any of them can quote the PDFs, which are real.
 A PDF that cannot be read counts as `illeggibile`. No network, no clock (`--at` is an argument).
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -30,6 +31,8 @@ from bollette_pdf.reader import read_pdf  # noqa: E402
 
 STATUSES = ("riconosciuta", "da-confermare", "non-riconosciuta", "senza-testo", "illeggibile")
 NO_PROFILE = "(nessun profilo)"
+OTHER = "(altro)"
+_PLAIN_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 ARGUMENTS_ERROR = "Argomenti non validi: serve --profiles <cartella> --at AAAA-MM-GG <cartella>..."
 FOLDER_ERROR = "Una cartella indicata non esiste o non è una cartella."
 DATE_ERROR = "Il valore di --at non è una data ISO valida."
@@ -44,11 +47,20 @@ class _Parser(argparse.ArgumentParser):
         raise _Rejected(ARGUMENTS_ERROR)
 
 
-def _pdfs(folder: Path) -> list[Path]:
+def _pdfs(folder: Path, unreadable: list[int]) -> list[Path]:
     found: list[Path] = []
-    for root, dirs, files in os.walk(folder):
+
+    def failed(_error: OSError) -> None:
+        unreadable[0] += 1
+
+    for root, dirs, files in os.walk(folder, onerror=failed):
         dirs.sort()
-        found.extend(Path(root) / name for name in sorted(files) if name.lower().endswith(".pdf"))
+        # Dot files are AppleDouble leftovers (`._x.pdf`), not documents.
+        found.extend(
+            Path(root) / name
+            for name in sorted(files)
+            if name.lower().endswith(".pdf") and not name.startswith(".")
+        )
     return found
 
 
@@ -59,25 +71,45 @@ def _read(path: Path, profiles: list[dict[str, Any]], at: str) -> dict[str, Any]
         return None
 
 
-def report(folders: list[Path], profiles: list[dict[str, Any]], at: str) -> str:
+def report(folders: list[Path], profiles: list[dict[str, Any]], ignored: int, at: str) -> str:
     statuses: Counter[str] = Counter()
     suppliers: Counter[str] = Counter()
     high = total_fields = 0
+    unreadable = [0]
+    seen: set[Path] = set()
     for folder in folders:
-        for path in _pdfs(folder):
+        for path in _pdfs(folder, unreadable):
+            real = path.resolve()
+            if real in seen:
+                continue
+            seen.add(real)
             result = _read(path, profiles, at)
             status = result["status"] if result is not None else "illeggibile"
             statuses[status] += 1
-            suppliers[(result or {}).get("profileId") or NO_PROFILE] += 1
+            profile_id = (result or {}).get("profileId")
+            if profile_id is None:
+                profile_id = NO_PROFILE
+            elif not (isinstance(profile_id, str) and _PLAIN_ID.fullmatch(profile_id)):
+                profile_id = OTHER
+            suppliers[profile_id] += 1
             if result is not None and status == "riconosciuta":
-                confidences = [f["confidence"] for f in result["fields"].values()]
+                # `supplier` is always high (it comes from the profile): not a reading.
+                confidences = [
+                    f["confidence"] for name, f in result["fields"].items() if name != "supplier"
+                ]
                 high += confidences.count("high")
                 total_fields += len(confidences)
     lines = [f"Totale: {sum(statuses.values())}", "Per stato:"]
     lines += [f"  {status}: {statuses[status]}" for status in STATUSES]
     lines.append("Per fornitore:")
     lines += [f"  {name}: {suppliers[name]}" for name in sorted(suppliers)]
-    lines.append(f"Campi con confidenza high nelle riconosciute: {high} su {total_fields}")
+    lines.append(
+        f"Campi con confidenza high nelle riconosciute (senza supplier): {high} su {total_fields}"
+    )
+    if unreadable[0]:
+        lines.append(f"Cartelle non leggibili: {unreadable[0]}")
+    if ignored:
+        lines.append(f"Profili ignorati: {ignored}")
     return "\n".join(lines) + "\n"
 
 
@@ -95,8 +127,8 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
         folders = [Path(f) for f in args.folders]
         if not all(f.is_dir() for f in [Path(args.profiles), *folders]):
             raise _Rejected(FOLDER_ERROR)
-        profiles, _warnings = load_profiles(Path(args.profiles))
-        text = report(folders, profiles, args.at)
+        profiles, warnings = load_profiles(Path(args.profiles))
+        text = report(folders, profiles, len(warnings), args.at)
     except _Rejected as rejected:  # only the constant messages above
         err.write(f"{rejected}\n")
         return 2

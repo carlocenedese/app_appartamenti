@@ -29,11 +29,10 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
     try:
         if len(argv) != 1:
             raise ValueError
-        document = dump_document(read_pdf(Path(argv[0])))
+        _print_json(dump_document(read_pdf(Path(argv[0]))), out)
     except Exception:  # the message of a PDF error may quote text of the PDF
         err.write(f"{ERROR}\n")
         return 2
-    _print_json(document, out)
     return 0
 
 

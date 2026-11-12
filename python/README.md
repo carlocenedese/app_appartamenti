@@ -75,7 +75,7 @@ PYTHON=.venv-python/bin/python REQUIRE_PYTHON=1 pnpm test
 ### Strumenti (`tools/`)
 
 - `tools/dump_text.py <file.pdf>`: stampa il testo di un PDF come documento JSON (`dump_document`), da rileggere con `load_dump`.
-- `tools/pdf_report.py --profiles <cartella> --at AAAA-MM-GG <cartelle-di-pdf>...`: legge i PDF delle cartelle (anche annidate, senza scrivere nulla) e stampa solo conteggi per stato e fornitore, mai nomi, percorsi o testo.
+- `tools/pdf_report.py --profiles <cartella> --at AAAA-MM-GG <cartelle-di-pdf>...`: legge i PDF delle cartelle (anche annidate, senza scrivere nulla) e stampa solo conteggi per stato e fornitore, i campi letti con confidenza `high` (escluso `supplier`, sempre `high`), le cartelle non leggibili e i profili ignorati, mai nomi, percorsi o testo.
 
 ## Dipendenze
 
