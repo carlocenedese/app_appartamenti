@@ -344,6 +344,14 @@ Ognuna: che cosa, perché, costo se è sbagliata.
 
 ### Seguiti rimandati
 
+- **R77** (12 novembre 2026, Fase B) Periodo dell'acqua come unione (decisione di Carlo, R76): un campo
+  `period` può avere `combine: "span"`; allora tutte le regole si applicano a tutte le occorrenze
+  delle loro àncore e il periodo va dal primo inizio all'ultima fine (`high` se ogni intervallo
+  riempie la sua cella, altrimenti `medium`; ogni estremo ha la fonte della propria riga). Un
+  intervallo non leggibile è saltato; senza `combine` vale ancora la prima regola. Schema, Zod e
+  Python concordano (solo `period` accetta `combine`). Profili `acegas-acqua-2024` e `-2025`:
+  «Consumo rilevato», «Consumo stimato», «relativi al periodo». Non coperti dalla regola, da
+  confermare con Carlo: intervalli con buchi o sovrapposti (oggi si prende comunque min/max).
 - **Dalla rilettura finale:** una regola «stessa riga» scritta a mano con testo tra etichetta e
   valore (`Totale da pagare (IVA inclusa) 98,46`) dà `medium`: tenerne conto nei profili della
   Fase B. `registerProposal` legge il profilo prima dei controlli sui duplicati (un errore di I/O

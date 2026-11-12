@@ -361,6 +361,96 @@ class FieldsTest(ExtractTestCase):
         self.assertEqual(extract(doc, [light_profile()], AT), extract(doc, [light_profile()], AT))
 
 
+SPAN_RANGE = "(dal [0-9.]+ al [0-9.]+)"
+
+
+def water_profile(combine="span"):
+    span = {
+        "required": False,
+        "rules": [
+            rule("Consumo rilevato", SPAN_RANGE, "date-range"),
+            rule("Consumo stimato", SPAN_RANGE, "date-range"),
+            rule("relativi al periodo", SPAN_RANGE, "date-range"),
+        ],
+    }
+    if combine is not None:
+        span["combine"] = combine
+    return light_profile(fields={
+        "period": span,
+        "amount": {"required": True, "rules": [rule("Totale da pagare", EURO, "euro")]},
+    })
+
+
+def water_lines(*periods):
+    lines = [(72, 80, "Luce Inventata SpA")]
+    lines += [(72, 100 + 20 * i, text) for i, text in enumerate(periods)]
+    lines += [(72, 300, "Totale da pagare € 10,00"), (72, 400, FILLER)]
+    return lines
+
+
+class PeriodSpanTest(ExtractTestCase):
+    def read(self, *periods, combine="span"):
+        result = extract(self.doc(water_lines(*periods)), [water_profile(combine)], AT)
+        fields = result["fields"]
+        return fields["periodStart"], fields["periodEnd"], result
+
+    def test_measured_and_estimated_make_one_period(self) -> None:
+        start, end, result = self.read(
+            "Consumo rilevato dal 25.10.2023 al 14.02.2024",
+            "Consumo stimato dal 15.02.2024 al 12.03.2024",
+        )
+        self.assertEqual((start["value"], end["value"]), ("2023-10-25", "2024-03-12"))
+        self.assertEqual((start["confidence"], end["confidence"]), ("high", "high"))
+        self.assertEqual(result["status"], "riconosciuta")
+        self.assertValid(result)
+
+    def test_estimated_after_a_period_written_with_another_label(self) -> None:
+        start, end, _ = self.read(
+            "Consumo stimato dal 13.03.2025 al 10.07.2025",
+            "relativi al periodo dal 10.08.2024 al 12.03.2025",
+        )
+        self.assertEqual((start["value"], end["value"]), ("2024-08-10", "2025-07-10"))
+
+    def test_each_end_has_the_source_of_the_line_it_comes_from(self) -> None:
+        start, end, _ = self.read(
+            "Consumo rilevato dal 12.08.2025 al 18.02.2026",
+            "Consumo stimato dal 19.02.2026 al 11.03.2026",
+        )
+        self.assertEqual((start["value"], end["value"]), ("2025-08-12", "2026-03-11"))
+        self.assertEqual(start["source"]["text"], "dal 12.08.2025 al 18.02.2026")
+        self.assertEqual(end["source"]["text"], "dal 19.02.2026 al 11.03.2026")
+
+    def test_one_reading_is_the_period_and_a_repeated_one_changes_nothing(self) -> None:
+        start, end, _ = self.read("Consumo rilevato dal 01.01.2025 al 28.02.2025")
+        self.assertEqual((start["value"], end["value"]), ("2025-01-01", "2025-02-28"))
+        start, end, _ = self.read(
+            "Consumo rilevato dal 01.01.2025 al 28.02.2025",
+            "Consumo rilevato dal 01.01.2025 al 28.02.2025",
+        )
+        self.assertEqual((start["value"], end["value"]), ("2025-01-01", "2025-02-28"))
+        self.assertEqual(start["confidence"], "high")
+
+    def test_an_unreadable_interval_is_skipped(self) -> None:
+        start, end, _ = self.read(
+            "Consumo rilevato dal 01.01.2025 al 28.02.2025",
+            "Consumo stimato dal 31.02.2025 al 10.03.2025",
+        )
+        self.assertEqual((start["value"], end["value"]), ("2025-01-01", "2025-02-28"))
+
+    def test_no_reading_is_missing(self) -> None:
+        start, end, _ = self.read("Nessun consumo")
+        self.assertEqual((start["value"], start["confidence"]), (None, "missing"))
+        self.assertEqual(end["value"], None)
+
+    def test_without_combine_the_first_rule_wins(self) -> None:
+        start, end, _ = self.read(
+            "Consumo stimato dal 15.02.2024 al 12.03.2024",
+            "Consumo rilevato dal 25.10.2023 al 14.02.2024",
+            combine=None,
+        )
+        self.assertEqual((start["value"], end["value"]), ("2023-10-25", "2024-02-14"))
+
+
 class StatusTest(ExtractTestCase):
     def test_non_riconosciuta(self) -> None:
         doc = self.doc([(72, 80, "Gas Inventato"), (72, 400, FILLER)])

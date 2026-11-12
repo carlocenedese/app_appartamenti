@@ -49,6 +49,33 @@
         }
       ]
     },
+    "period": {
+      "required": false,
+      "combine": "span",
+      "rules": [
+        {
+          "anchor": "Consumo rilevato",
+          "position": "same-line",
+          "pattern": "^[\\s:]*(dal\\s+\\d{1,2}[/.]\\d{1,2}[/.]\\d{4}\\s+al\\s+\\d{1,2}[/.]\\d{1,2}[/.]\\d{4})(?!\\d|[.,]\\d)",
+          "valueType": "date-range",
+          "group": 1
+        },
+        {
+          "anchor": "Consumo stimato",
+          "position": "same-line",
+          "pattern": "^[\\s:]*(dal\\s+\\d{1,2}[/.]\\d{1,2}[/.]\\d{4}\\s+al\\s+\\d{1,2}[/.]\\d{1,2}[/.]\\d{4})(?!\\d|[.,]\\d)",
+          "valueType": "date-range",
+          "group": 1
+        },
+        {
+          "anchor": "relativi al periodo",
+          "position": "same-line",
+          "pattern": "^[\\s:]*(dal\\s+\\d{1,2}[/.]\\d{1,2}[/.]\\d{4}\\s+al\\s+\\d{1,2}[/.]\\d{1,2}[/.]\\d{4})(?!\\d|[.,]\\d)",
+          "valueType": "date-range",
+          "group": 1
+        }
+      ]
+    },
     "amount": {
       "required": true,
       "rules": [
