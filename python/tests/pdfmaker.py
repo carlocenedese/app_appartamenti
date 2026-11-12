@@ -91,6 +91,19 @@ def make_form_pdf(path: Path, items: list[tuple[float, float, str]]) -> None:
     _write(path, objects)
 
 
+def make_bad_font_pdf(path: Path, items: list[tuple[float, float, str]]) -> None:
+    """Writes a one-page PDF whose font points to a /FontDescriptor object that does not exist.
+
+    pdfminer still reads the text (with default metrics) but logs warnings about the font.
+    """
+    objects = _document_objects([items])
+    objects[2] = (
+        b"<< /Type /Font /Subtype /TrueType /BaseFont /FontInventato "
+        b"/Encoding /WinAnsiEncoding /FontDescriptor 99 0 R >>"
+    )
+    _write(path, objects)
+
+
 def make_blank_pdf(path: Path) -> None:
     """Writes a one-page PDF with no text."""
     make_pdf(path, [[]])

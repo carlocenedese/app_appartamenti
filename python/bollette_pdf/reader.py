@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 import statistics
 import unicodedata
 from collections.abc import Iterator
@@ -21,6 +22,14 @@ from typing import Any
 
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LAParams, LTAnno, LTChar, LTContainer, LTPage, LTTextLine
+
+# pdfminer logs warnings about odd fonts and objects, sometimes quoting values of the file;
+# without a handler they would reach stderr through logging's last resort. Nothing of it is
+# wanted («nessun dato personale nei log»): the reader reports problems through PdfReadError.
+_PDFMINER_LOG = logging.getLogger("pdfminer")
+_PDFMINER_LOG.addHandler(logging.NullHandler())
+_PDFMINER_LOG.propagate = False
+_PDFMINER_LOG.setLevel(logging.CRITICAL + 1)
 
 MIN_TEXT_CHARS = 80
 # Text lines whose baseline differs by less than this many points are on the same row. The

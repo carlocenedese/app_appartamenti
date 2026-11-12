@@ -124,6 +124,16 @@ class ExtractTest(CliTestCase):
         result = self.document(self.extract(pdf=blank))
         self.assertEqual(result["status"], "senza-testo")
 
+    def test_pdfminer_warnings_never_reach_stderr(self) -> None:
+        # A dangling /FontDescriptor makes pdfminer log «Could not get FontBBox …», which would
+        # otherwise go to stderr through logging's last-resort handler (and may quote the file).
+        self.write_profile()
+        bad = self.dir / "font-guasto.pdf"
+        pdfmaker.make_bad_font_pdf(bad, STANDARD)
+        completed = self.extract(pdf=bad)
+        self.assertEqual(completed.stderr, b"")
+        self.document(completed)
+
     def test_corrupt_pdf_is_illeggibile(self) -> None:
         corrupt = self.dir / "guasto.pdf"
         corrupt.write_bytes(b"%PDF-1.4 questo non e un pdf " + SECRET.encode())
