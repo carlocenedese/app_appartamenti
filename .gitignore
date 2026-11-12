@@ -36,3 +36,6 @@ Thumbs.db
 !fixtures/**/*.pdf
 !fixtures/**/*.jpg
 !fixtures/**/*.jpeg
+
+# Virtualenv of the Python tests (python/README.md)
+.venv-python/
