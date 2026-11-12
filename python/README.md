@@ -22,6 +22,19 @@ PYTHON=.venv-python/bin/python pnpm python:licenses   # controllo delle licenze 
 
 `PYTHON` è facoltativa: senza, si usa `python3` (`python` su Windows).
 
+### Prova di integrazione con il core
+
+`packages/core/test/extract-integration.test.ts` avvia `python -I -m bollette_pdf extract` su PDF
+sintetici scritti da `tests/make_sample.py`. Con `-I` il pacchetto va installato nell'interprete:
+`pnpm python:dev-install` (`tools/dev_install.py`) scrive in site-packages un file `.pth` che punta
+a questa cartella, senza setuptools (decisione R70), e rifiuta il Python di sistema (solo virtualenv
+o `CI=true`). Senza Python il test si salta; con `REQUIRE_PYTHON=1` (come in CI) fallisce.
+
+```bash
+PYTHON=.venv-python/bin/python pnpm python:dev-install
+PYTHON=.venv-python/bin/python REQUIRE_PYTHON=1 pnpm test
+```
+
 ## Dipendenze
 
 `requirements.in` elenca le dipendenze dirette con versione esatta; `requirements.txt` ha tutte le
