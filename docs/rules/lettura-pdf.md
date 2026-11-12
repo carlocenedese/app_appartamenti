@@ -101,7 +101,7 @@ controllati a mano che chiede il piano: resta da fare con Carlo.**
 
 - **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il
   costruttore non ricava una regola stabile per l'importo (l'importo sta sotto «TOTALE DA PAGARE»
-  ma il testo cambia). Non ha profilo (spiegazione data a Carlo il 12 novembre 2026; regola ancora da decidere).
+  ma il testo cambia). Non ha profilo (spiegazione data a Carlo il 12 novembre 2026; decisione di Carlo: restano in revisione a mano, sono bollette chiuse del passato).
 - **Scansioni:** 39 PDF senza testo (19 a Pulci, 20 a Berchet), tra cui le bollette Enel del 2020-21
   di Pulci con glifi rotti (`(cid:…)`). Fuori dal piano 2a (OCR nel 2b); i 3 PDF Enel 2020-21 di
   Pulci con testo parziale sono letti con importo da «Totale bolletta», non confrontato (da
