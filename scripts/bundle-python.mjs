@@ -39,7 +39,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { devNull, tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
@@ -153,20 +153,24 @@ export function removeTkinter(directory, platform) {
 
 /**
  * Leaves `bin/python3` (the name the app runs) as the only copy of the interpreter. In the
- * distribution `python` and `python3.13` are links to it, but Tauri copies a link as a whole file
- * when it bundles the resources: 18 MB each. The pydoc scripts name `python3.13` and are removed.
+ * distribution `python3` and `python` are links to `python3.13`, but Tauri copies a link as a whole
+ * file when it bundles the resources: 18 MB each. The `-config` and pydoc scripts name
+ * `python3.13` too and are removed with the other names; the app uses none of them.
  */
 export function keepOneLauncher(directory, platform) {
-  const launcher = join(directory, 'bin', 'python3');
+  const bin = join(directory, 'bin');
+  const launcher = join(bin, 'python3');
   if (platform === 'win32' || !existsSync(launcher)) return;
   if (lstatSync(launcher).isSymbolicLink()) {
     const real = realpathSync(launcher);
-    rmSync(launcher);
-    renameSync(real, launcher);
+    if (dirname(real) !== realpathSync(bin)) {
+      throw new Error('Il link bin/python3 punta fuori da bin/: la distribuzione è cambiata.');
+    }
+    renameSync(real, launcher); // replaces the link in one step
   }
-  for (const name of readdirSync(join(directory, 'bin'))) {
-    if (/^(python|python3\.\d+|pydoc3(\.\d+)?)$/.test(name)) {
-      rmSync(join(directory, 'bin', name), { force: true });
+  for (const name of readdirSync(bin)) {
+    if (/^(python|python3\.\d+|python3(\.\d+)?-config|pydoc3(\.\d+)?)$/.test(name)) {
+      rmSync(join(bin, name), { force: true });
     }
   }
 }

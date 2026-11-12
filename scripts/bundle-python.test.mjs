@@ -294,16 +294,22 @@ describe('keepOneLauncher', () => {
   const posix = process.platform === 'win32' ? it.skip : it;
 
   function distribution() {
-    makeTree(root, ['bin/python3.13', 'bin/pydoc3', 'bin/pydoc3.13', 'bin/python3-config']);
+    makeTree(root, [
+      'bin/python3.13',
+      'bin/pydoc3',
+      'bin/pydoc3.13',
+      'bin/python3-config',
+      'bin/python3.13-config',
+    ]);
     writeFileSync(join(root, 'bin', 'python3.13'), 'the interpreter');
     symlinkSync('python3.13', join(root, 'bin', 'python3'));
-    symlinkSync('python3.13', join(root, 'bin', 'python'));
+    symlinkSync('python3', join(root, 'bin', 'python')); // a chain: python -> python3 -> python3.13
   }
 
   posix('leaves bin/python3 as the one real file, without the other names', () => {
     distribution();
     keepOneLauncher(root, 'darwin');
-    expect(readdirSync(join(root, 'bin')).sort()).toEqual(['python3', 'python3-config']);
+    expect(readdirSync(join(root, 'bin')).sort()).toEqual(['python3']);
     expect(lstatSync(join(root, 'bin', 'python3')).isSymbolicLink()).toBe(false);
     expect(readFileSync(join(root, 'bin', 'python3'), 'utf8')).toBe('the interpreter');
   });
@@ -316,6 +322,13 @@ describe('keepOneLauncher', () => {
     keepOneLauncher(root, 'darwin');
     expect(readdirSync(join(root, 'bin'))).toEqual(['python3']);
     expect(readFileSync(join(root, 'bin', 'python3'), 'utf8')).toBe('the interpreter');
+  });
+
+  posix('refuses a link that leaves bin/, and moves nothing', () => {
+    makeTree(root, ['lib/python3.13', 'bin/']);
+    symlinkSync(join('..', 'lib', 'python3.13'), join(root, 'bin', 'python3'));
+    expect(() => keepOneLauncher(root, 'darwin')).toThrow(/fuori da bin/);
+    expect(existsSync(join(root, 'lib', 'python3.13'))).toBe(true);
   });
 
   it('does nothing on Windows or without bin/python3', () => {
