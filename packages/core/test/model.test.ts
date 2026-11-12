@@ -1011,8 +1011,9 @@ describe('SupplierProfile', () => {
   });
 
   it('accepts lookahead, non-capturing groups and an escaped question mark', () => {
+    // Group 0 (the whole match): the patterns without capture groups have no group 1.
     for (const pattern of ['(?:a|b)([0-9]+)(?=,)', '(?!x)[0-9]+', '\\(?<x', '[(?<=]']) {
-      expect(ok(withRule('amount', { pattern })), pattern).toBe(true);
+      expect(ok(withRule('amount', { pattern, group: 0 })), pattern).toBe(true);
     }
   });
 });

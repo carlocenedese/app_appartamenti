@@ -391,6 +391,26 @@ function patternProblem(pattern: string): string | undefined {
 }
 
 /**
+ * The number of capture groups of `pattern` (an alternative that matches the empty string makes
+ * `exec` succeed, and its result has one slot per group), or `undefined` when it does not compile
+ * (`PatternSchema` reports that).
+ */
+function captureGroups(pattern: string): number | undefined {
+  try {
+    const match = new RegExp(`${pattern}|`).exec('');
+    return match === null ? undefined : match.length - 1;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether `pattern` has at least `minimum` capture groups (true when it does not compile). */
+function hasGroups(pattern: string, minimum: number): boolean {
+  const groups = captureGroups(pattern);
+  return groups === undefined || groups >= minimum;
+}
+
+/**
  * A regular expression that compiles in JavaScript and stays in the subset shared with Python's
  * `re`: numbered groups only, no lookbehind, no inline flags. JSON Schema cannot express this.
  */
@@ -487,12 +507,32 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
       ),
     { message: 'A rule has a value type that its field cannot hold', path: ['fields'] },
   )
+  .refine(
+    (profile) =>
+      Object.values(profile.fields).every((spec) =>
+        spec.rules.every((rule) => hasGroups(rule.pattern, rule.group)),
+      ),
+    {
+      message: 'Una regola indica un gruppo che il suo pattern non ha tra i gruppi di cattura',
+      path: ['fields'],
+    },
+  )
+  .refine((profile) => profile.parts === undefined || hasGroups(profile.parts.pattern, 2), {
+    message: 'Il pattern delle parti deve avere almeno 2 gruppi di cattura (etichetta e importo)',
+    path: ['parts'],
+  })
+  .refine((profile) => profile.items === undefined || hasGroups(profile.items.pattern, 1), {
+    message: 'Il pattern delle voci deve avere almeno 1 gruppo di cattura (importo)',
+    path: ['items'],
+  })
   .meta({
     description:
       'kind "bill" needs a category and kind "tari" must not have one; parts only with kind ' +
       '"tari"; validFrom must not be after validTo; the valueType of every rule of a field is ' +
       'fixed: amount euro, issueDate and dueDate date, period date-range, consumption quantity, ' +
-      'number text.',
+      "number text; the group of every rule must be one of its pattern's capture groups (0 is " +
+      'the whole match), the parts pattern needs at least 2 capture groups and the items ' +
+      'pattern at least 1.',
   });
 export type SupplierProfile = z.infer<typeof SupplierProfileSchema>;
 
