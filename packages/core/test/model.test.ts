@@ -9,6 +9,7 @@ import {
   InstalmentSchema,
   NoteSchema,
   PaymentSchema,
+  SupplierProfileSchema,
   TenancySchema,
   WorkspaceSchema,
   recordSchemas,
@@ -23,6 +24,7 @@ import type {
   Note,
   Payment,
   RecordKind,
+  SupplierProfile,
   Tenancy,
   Workspace,
 } from '../src/model';
@@ -126,6 +128,45 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     confirmed: true,
     by: 'auto',
   },
+  supplierProfile: {
+    ...base,
+    supplier: 'Fornitore Luce',
+    kind: 'bill',
+    category: 'elettricita',
+    status: 'confermato',
+    autoRegister: false,
+    validFrom: '2025-01-01',
+    validTo: '2026-12-31',
+    recognise: { allOf: ['Fornitore Luce', 'Fattura'], noneOf: ['Avviso TARI'] },
+    fields: {
+      amount: {
+        required: true,
+        rules: [
+          {
+            anchor: 'Totale da pagare',
+            position: 'right',
+            pattern: '([0-9.]+,[0-9]{2})',
+            valueType: 'euro',
+            group: 1,
+          },
+        ],
+      },
+      dueDate: {
+        required: false,
+        rules: [
+          {
+            anchor: 'Scadenza',
+            position: 'same-line',
+            pattern: '([0-9]{2}/[0-9]{2}/[0-9]{4})',
+            valueType: 'date',
+            group: 1,
+          },
+        ],
+      },
+    },
+    identifiers: [{ kind: 'pod', pattern: '(IT[0-9A-Z]{12})' }],
+    items: { pattern: '([0-9.]+,[0-9]{2})' },
+  },
   note: {
     ...base,
     targetType: 'bill',
@@ -171,6 +212,7 @@ describe('recordSchemas', () => {
         'match',
         'note',
         'payment',
+        'supplierProfile',
         'tenancy',
         'transaction',
       ].sort(),
@@ -187,6 +229,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.instalment).toBe(InstalmentSchema);
     expect(recordSchemas.match).toBe(BillMatchSchema);
     expect(recordSchemas.note).toBe(NoteSchema);
+    expect(recordSchemas.supplierProfile).toBe(SupplierProfileSchema);
   });
 });
 
@@ -830,5 +873,147 @@ describe('inferred types', () => {
     expectTypeOf<Note['deleted']>().toEqualTypeOf<boolean | undefined>();
     expectTypeOf<Note['visibleToTenants']>().toEqualTypeOf<boolean>();
     expectTypeOf<Workspace>().not.toHaveProperty('rev');
+  });
+});
+
+describe('Bill consumption', () => {
+  it('accepts a consumption as decimal text and the old JSON without it', () => {
+    const consumption = { quantity: '123.4', unit: 'kWh' };
+    expect(BillSchema.parse(changed(validRecords.bill, { consumption })).consumption).toEqual(
+      consumption,
+    );
+    expect(BillSchema.parse(validRecords.bill)).not.toHaveProperty('consumption');
+  });
+
+  it.each(['123,4', 'abc', '', '1.', '.5'])('rejects the quantity %j', (quantity) => {
+    const consumption = { quantity, unit: 'kWh' };
+    expect(BillSchema.safeParse(changed(validRecords.bill, { consumption })).success).toBe(false);
+  });
+
+  it('rejects an empty unit', () => {
+    const consumption = { quantity: '1', unit: '' };
+    expect(BillSchema.safeParse(changed(validRecords.bill, { consumption })).success).toBe(false);
+  });
+});
+
+describe('SupplierProfile', () => {
+  const profile = validRecords.supplierProfile ?? {};
+  const rule = {
+    anchor: 'Totale',
+    position: 'right',
+    pattern: '([0-9]+)',
+    valueType: 'euro',
+    group: 1,
+  };
+  const ok = (value: Record<string, unknown>): boolean =>
+    SupplierProfileSchema.safeParse(value).success;
+  const tari = (changes: Record<string, unknown> = {}): Record<string, unknown> =>
+    changed(profile, {
+      kind: 'tari',
+      category: undefined,
+      parts: { pattern: '([A-Za-z]+) ([0-9.]+,[0-9]{2})' },
+      ...changes,
+    });
+  const withRule = (field: string, changes: Record<string, unknown>): Record<string, unknown> =>
+    changed(profile, {
+      fields: { [field]: { required: true, rules: [{ ...rule, ...changes }] } },
+    });
+
+  it('reads a bill profile and a TARI profile', () => {
+    expectTypeOf(SupplierProfileSchema.parse(profile)).toEqualTypeOf<SupplierProfile>();
+    expect(ok(profile)).toBe(true);
+    expect(ok(tari())).toBe(true);
+  });
+
+  it('needs only the required fields', () => {
+    const minimal = without(profile, 'validTo', 'items', 'parts');
+    expect(ok(changed(minimal, { fields: {}, identifiers: [] }))).toBe(true);
+  });
+
+  it('defaults the group of a rule to 1', () => {
+    const noGroup = { anchor: 'Totale', position: 'right', pattern: '([0-9]+)', valueType: 'euro' };
+    const parsed = SupplierProfileSchema.parse(
+      changed(profile, {
+        fields: { amount: { required: true, rules: [noGroup] } },
+      }),
+    );
+    expect(parsed.fields.amount?.rules[0]?.group).toBe(1);
+  });
+
+  it('requires a category for a bill and forbids it for a TARI notice', () => {
+    expect(ok(without(profile, 'category'))).toBe(false);
+    expect(ok(tari({ category: 'gas' }))).toBe(false);
+    expect(ok(changed(profile, { category: 'telefono' }))).toBe(false);
+  });
+
+  it('allows parts only for a TARI notice', () => {
+    expect(ok(changed(profile, { parts: { pattern: '([a-z]+) ([0-9]+)' } }))).toBe(false);
+  });
+
+  it('refuses a validTo before validFrom and accepts the same day', () => {
+    expect(ok(changed(profile, { validTo: '2024-12-31' }))).toBe(false);
+    expect(ok(changed(profile, { validTo: '2025-01-01' }))).toBe(true);
+  });
+
+  it('refuses an empty allOf but accepts an empty noneOf', () => {
+    expect(ok(changed(profile, { recognise: { allOf: [], noneOf: [] } }))).toBe(false);
+    expect(ok(changed(profile, { recognise: { allOf: ['x'], noneOf: [] } }))).toBe(true);
+    expect(ok(changed(profile, { recognise: { allOf: [''], noneOf: [] } }))).toBe(false);
+  });
+
+  it('refuses a field without rules and a field name it does not know', () => {
+    expect(ok(changed(profile, { fields: { amount: { required: true, rules: [] } } }))).toBe(false);
+    expect(ok(changed(profile, { fields: { unknown: { required: true, rules: [rule] } } }))).toBe(
+      false,
+    );
+  });
+
+  it('refuses unknown status, position and identifier kind', () => {
+    expect(ok(changed(profile, { status: 'finale' }))).toBe(false);
+    expect(ok(withRule('amount', { position: 'left' }))).toBe(false);
+    expect(ok(changed(profile, { identifiers: [{ kind: 'iban', pattern: 'x' }] }))).toBe(false);
+  });
+
+  it.each([-1, 1.5])('refuses the group %j', (group) => {
+    expect(ok(withRule('amount', { group }))).toBe(false);
+  });
+
+  it.each([
+    ['amount', 'euro', true],
+    ['amount', 'date', false],
+    ['issueDate', 'date', true],
+    ['dueDate', 'date', true],
+    ['dueDate', 'euro', false],
+    ['period', 'date-range', true],
+    ['period', 'date', false],
+    ['consumption', 'quantity', true],
+    ['consumption', 'text', false],
+    ['number', 'text', true],
+    ['number', 'euro', false],
+  ])('field %s with value type %s: accepted is %j', (field, valueType, accepted) => {
+    expect(ok(withRule(field, { valueType }))).toBe(accepted);
+  });
+
+  it.each([
+    ['unclosed group', '('],
+    ['unterminated class', '[a-'],
+    ['named group', '(?<total>[0-9]+)'],
+    ['Python named group', '(?P<total>[0-9]+)'],
+    ['positive lookbehind', '(?<=EUR )[0-9]+'],
+    ['negative lookbehind', '(?<!EUR )[0-9]+'],
+    ['inline flag', '(?i)totale'],
+    ['scoped inline flag', '(?i:totale)'],
+  ])('refuses a pattern with %s', (_name, pattern) => {
+    expect(ok(withRule('amount', { pattern }))).toBe(false);
+    expect(ok(changed(profile, { identifiers: [{ kind: 'pod', pattern }] }))).toBe(false);
+    expect(ok(changed(profile, { items: { pattern } }))).toBe(false);
+    expect(ok(tari({ parts: { pattern } }))).toBe(false);
+  });
+
+  it('accepts lookahead, non-capturing groups and an escaped question mark', () => {
+    // Group 0 (the whole match): the patterns without capture groups have no group 1.
+    for (const pattern of ['(?:a|b)([0-9]+)(?=,)', '(?!x)[0-9]+', '\\(?<x', '[(?<=]']) {
+      expect(ok(withRule('amount', { pattern, group: 0 })), pattern).toBe(true);
+    }
   });
 });

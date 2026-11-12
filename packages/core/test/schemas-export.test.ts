@@ -13,7 +13,12 @@ import { exportJsonSchemas, serializeJsonSchema } from '../src/schemas-json';
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));
 const REGENERATE = 'Run `pnpm schemas:export` and commit docs/schemas.';
 
-const expectedKinds = [...Object.keys(recordSchemas), 'workspace', 'operation'].sort();
+const expectedKinds = [
+  ...Object.keys(recordSchemas),
+  'workspace',
+  'operation',
+  'extractionResult',
+].sort();
 
 type JsonObject = Record<string, unknown>;
 
@@ -101,6 +106,20 @@ describe('exportJsonSchemas', () => {
     const change = (properties('operation')['changes']?.['items'] ?? {}) as JsonObject;
     expect(change['required']).toEqual(['path', 'after']);
     expect(change['description']).toMatch(/after.*rev/s);
+  });
+
+  it('describes the supplier profile and the extraction result', () => {
+    expect(schemaOf('supplierProfile')['required']).toEqual(
+      expect.arrayContaining(['supplier', 'kind', 'status', 'validFrom', 'recognise', 'fields']),
+    );
+    expect(schemaOf('supplierProfile')['description']).toMatch(/category/);
+    expect(properties('supplierProfile')['kind']).toMatchObject({ enum: ['bill', 'tari'] });
+    expect(properties('supplierProfile')['fields']).toBeDefined();
+    expect(properties('extractionResult')['v']).toMatchObject({ const: 1 });
+    expect(properties('extractionResult')['status']).toMatchObject({
+      enum: ['riconosciuta', 'da-confermare', 'non-riconosciuta', 'senza-testo', 'illeggibile'],
+    });
+    expect(properties('extractionResult')['fileHash']).toMatchObject({ type: 'string' });
   });
 
   it('lists the allowed values of the enumerations', () => {

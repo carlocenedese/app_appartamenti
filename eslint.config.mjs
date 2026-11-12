@@ -93,6 +93,7 @@ export default defineConfig(
     '**/dist/',
     'apps/desktop/src-tauri/target/',
     'apps/desktop/src-tauri/gen/',
+    'apps/desktop/src-tauri/resources/python/',
     '.superpowers/',
   ]),
   js.configs.recommended,

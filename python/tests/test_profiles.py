@@ -1,0 +1,136 @@
+"""Tests for bollette_pdf.profiles. Every text, amount and date here is invented."""
+
+from __future__ import annotations
+
+import copy
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+PYTHON_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PYTHON_DIR))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import pdfmaker  # noqa: E402
+from bollette_pdf.profiles import load_profiles, matching_profiles  # noqa: E402
+from bollette_pdf.reader import read_pdf  # noqa: E402
+
+FILLER = "Testo di riempimento della bolletta inventata, con abbastanza caratteri per la lettura."
+
+BASE = {
+    "id": "luce-2025",
+    "v": 1,
+    "rev": 1,
+    "supplier": "Luce Inventata",
+    "kind": "bill",
+    "category": "elettricita",
+    "status": "confermato",
+    "autoRegister": False,
+    "validFrom": "2025-01-01",
+    "recognise": {"allOf": ["Luce Inventata", "Fattura"], "noneOf": ["Nota di credito"]},
+    "fields": {
+        "amount": {
+            "required": True,
+            "rules": [
+                {
+                    "anchor": "Totale da pagare",
+                    "position": "same-line",
+                    "pattern": "([0-9.]*[0-9],[0-9]{2})",
+                    "valueType": "euro",
+                    "group": 1,
+                }
+            ],
+        }
+    },
+    "identifiers": [],
+}
+
+
+def profile(**changes):
+    result = copy.deepcopy(BASE)
+    result.update(changes)
+    return result
+
+
+class LoadProfilesTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = Path(self._tmp.name)
+
+    def write(self, name: str, content: str | bytes) -> None:
+        path = self.dir / name
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content, encoding="utf-8")
+
+    def test_skips_broken_invalid_and_deleted_files_without_stopping(self) -> None:
+        self.write("b-valido.json", json.dumps(profile(id="b")))
+        self.write("a-valido.json", json.dumps(profile(id="a")))
+        self.write("c-rotto.json", '{"id": "SEGRETO-ROTTO", ')
+        self.write("d-non-valido.json", json.dumps(profile(id="d", category="SEGRETO-CATEGORIA")))
+        self.write("e-cancellato.json", json.dumps(profile(id="e", deleted=True)))
+        self.write("f-binario.json", b"\xff\xfe SEGRETO-BINARIO")
+        self.write("g-lista.json", '["SEGRETO-LISTA"]')
+        self.write("note.txt", "non è un profilo")
+        profiles, warnings = load_profiles(self.dir)
+        self.assertEqual([p["id"] for p in profiles], ["a", "b"])
+        self.assertEqual(len(warnings), 4)
+        for name, warning in zip(
+            ["c-rotto.json", "d-non-valido.json", "f-binario.json", "g-lista.json"], warnings
+        ):
+            self.assertIn(name, warning)
+            self.assertNotIn("SEGRETO", warning)
+            self.assertNotIn("{", warning)
+
+    def test_deleted_invalid_record_is_skipped_silently(self) -> None:
+        self.write("x.json", json.dumps({"id": "x", "deleted": True}))
+        self.assertEqual(load_profiles(self.dir), ([], []))
+
+    def test_missing_directory_gives_a_warning(self) -> None:
+        profiles, warnings = load_profiles(self.dir / "assente")
+        self.assertEqual(profiles, [])
+        self.assertEqual(len(warnings), 1)
+
+
+class MatchingProfilesTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = Path(self._tmp.name)
+
+    def doc(self, *texts: str):
+        items = [(72, 100 + 20 * i, text) for i, text in enumerate(texts)]
+        items.append((72, 400, FILLER))
+        path = self.dir / "a.pdf"
+        pdfmaker.make_pdf(path, [items])
+        return read_pdf(path)
+
+    def test_all_of_is_case_and_space_insensitive(self) -> None:
+        doc = self.doc("LUCE INVENTATA SpA", "fattura numero 1")
+        spaced = profile(recognise={"allOf": ["luce   inventata", "FATTURA"], "noneOf": []})
+        self.assertEqual(matching_profiles(doc, [spaced]), [spaced])
+
+    def test_all_of_must_all_be_present(self) -> None:
+        doc = self.doc("Luce Inventata SpA")
+        self.assertEqual(matching_profiles(doc, [profile()]), [])
+
+    def test_none_of_excludes(self) -> None:
+        doc = self.doc("Luce Inventata SpA", "Fattura", "NOTA DI CREDITO")
+        self.assertEqual(matching_profiles(doc, [profile()]), [])
+
+    def test_newest_valid_from_first_ties_by_id(self) -> None:
+        doc = self.doc("Luce Inventata SpA", "Fattura")
+        old = profile(id="z-old", validFrom="2020-01-01")
+        new_b = profile(id="b-new", validFrom="2025-01-01")
+        new_a = profile(id="a-new", validFrom="2025-01-01")
+        other = profile(id="other", recognise={"allOf": ["Gas Inventato"], "noneOf": []})
+        result = matching_profiles(doc, [old, new_b, other, new_a])
+        self.assertEqual([p["id"] for p in result], ["a-new", "b-new", "z-old"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bollette_pdf"
+version = "0.1.0"
+description = "Reads Italian utility bills (text PDFs) for App Bollette"
+readme = "README.md"
+requires-python = ">=3.13"
+# Exact versions with hashes are in requirements.txt (generated from requirements.in).
+dependencies = [
+  "pdfminer.six==20260107",
+  "jsonschema==4.26.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["bollette_pdf*"]

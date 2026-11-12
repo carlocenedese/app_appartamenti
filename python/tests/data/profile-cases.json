@@ -1,0 +1,1238 @@
+{
+  "description": "Profiles shared by python/tests/test_schemas.py and packages/core/test/profile-cases.test.ts: the JSON Schema plus check_profile_rules (Python) and SupplierProfileSchema (Zod) must give the same verdict on every case. Each case changes the top-level keys of base: 'set' replaces, 'unset' removes.",
+  "base": {
+    "id": "profile-1",
+    "v": 1,
+    "rev": 1,
+    "supplier": "Fornitore Luce",
+    "kind": "bill",
+    "category": "elettricita",
+    "status": "confermato",
+    "autoRegister": false,
+    "validFrom": "2025-01-01",
+    "validTo": "2026-12-31",
+    "recognise": {
+      "allOf": ["Fornitore Luce", "Fattura"],
+      "noneOf": ["Avviso TARI"]
+    },
+    "fields": {
+      "amount": {
+        "required": true,
+        "rules": [
+          {
+            "anchor": "Totale da pagare",
+            "position": "right",
+            "pattern": "([0-9.]+,[0-9]{2})",
+            "valueType": "euro",
+            "group": 1
+          }
+        ]
+      },
+      "dueDate": {
+        "required": false,
+        "rules": [
+          {
+            "anchor": "Scadenza",
+            "position": "same-line",
+            "pattern": "([0-9]{2}/[0-9]{2}/[0-9]{4})",
+            "valueType": "date",
+            "group": 1
+          }
+        ]
+      }
+    },
+    "identifiers": [
+      {
+        "kind": "pod",
+        "pattern": "(IT[0-9A-Z]{12})"
+      }
+    ],
+    "items": {
+      "pattern": "([0-9.]+,[0-9]{2})"
+    }
+  },
+  "cases": [
+    {
+      "name": "bill profile",
+      "valid": true
+    },
+    {
+      "name": "TARI profile",
+      "valid": true,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "([A-Za-z]+) ([0-9.]+,[0-9]{2})"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "minimal profile",
+      "valid": true,
+      "set": {
+        "fields": {},
+        "identifiers": []
+      },
+      "unset": ["validTo", "items"]
+    },
+    {
+      "name": "bill without category",
+      "valid": false,
+      "unset": ["category"]
+    },
+    {
+      "name": "bill with unknown category",
+      "valid": false,
+      "set": {
+        "category": "telefono"
+      }
+    },
+    {
+      "name": "TARI with category",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "([A-Za-z]+) ([0-9.]+,[0-9]{2})"
+        },
+        "category": "gas"
+      }
+    },
+    {
+      "name": "parts on a bill",
+      "valid": false,
+      "set": {
+        "parts": {
+          "pattern": "([a-z]+) ([0-9]+)"
+        }
+      }
+    },
+    {
+      "name": "validTo before validFrom",
+      "valid": false,
+      "set": {
+        "validTo": "2024-12-31"
+      }
+    },
+    {
+      "name": "validTo equal to validFrom",
+      "valid": true,
+      "set": {
+        "validTo": "2025-01-01"
+      }
+    },
+    {
+      "name": "validFrom not a calendar date",
+      "valid": false,
+      "set": {
+        "validFrom": "2025-02-30"
+      }
+    },
+    {
+      "name": "empty allOf",
+      "valid": false,
+      "set": {
+        "recognise": {
+          "allOf": [],
+          "noneOf": []
+        }
+      }
+    },
+    {
+      "name": "empty noneOf",
+      "valid": true,
+      "set": {
+        "recognise": {
+          "allOf": ["x"],
+          "noneOf": []
+        }
+      }
+    },
+    {
+      "name": "empty allOf text",
+      "valid": false,
+      "set": {
+        "recognise": {
+          "allOf": [""],
+          "noneOf": []
+        }
+      }
+    },
+    {
+      "name": "missing supplier",
+      "valid": false,
+      "unset": ["supplier"]
+    },
+    {
+      "name": "unknown status",
+      "valid": false,
+      "set": {
+        "status": "finale"
+      }
+    },
+    {
+      "name": "field without rules",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": []
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown field name",
+      "valid": false,
+      "set": {
+        "fields": {
+          "unknown": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "([0-9.]+,[0-9]{2})",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown position",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "left",
+                "pattern": "([0-9.]+,[0-9]{2})",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown identifier kind",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "iban",
+            "pattern": "(x)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "group -1",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "([0-9.]+,[0-9]{2})",
+                "valueType": "euro",
+                "group": -1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "group 1.5",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "([0-9.]+,[0-9]{2})",
+                "valueType": "euro",
+                "group": 1.5
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field amount with value type euro",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field amount with value type date",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "date",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field issueDate with value type date",
+      "valid": true,
+      "set": {
+        "fields": {
+          "issueDate": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "date",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field dueDate with value type date",
+      "valid": true,
+      "set": {
+        "fields": {
+          "dueDate": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "date",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field dueDate with value type euro",
+      "valid": false,
+      "set": {
+        "fields": {
+          "dueDate": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field period with value type date-range",
+      "valid": true,
+      "set": {
+        "fields": {
+          "period": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "date-range",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field period with value type date",
+      "valid": false,
+      "set": {
+        "fields": {
+          "period": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "date",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field consumption with value type quantity",
+      "valid": true,
+      "set": {
+        "fields": {
+          "consumption": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "quantity",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field consumption with value type text",
+      "valid": false,
+      "set": {
+        "fields": {
+          "consumption": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "text",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field number with value type text",
+      "valid": true,
+      "set": {
+        "fields": {
+          "number": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "text",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "field number with value type euro",
+      "valid": false,
+      "set": {
+        "fields": {
+          "number": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "unclosed group in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "unclosed group in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "("
+          }
+        ]
+      }
+    },
+    {
+      "name": "unclosed group in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "("
+        }
+      }
+    },
+    {
+      "name": "unclosed group in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "("
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "unterminated class in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "[a-",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "unterminated class in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "[a-"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unterminated class in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "[a-"
+        }
+      }
+    },
+    {
+      "name": "unterminated class in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "[a-"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "named group in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?<total>[0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "named group in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "(?<total>[0-9]+)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "named group in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "(?<total>[0-9]+)"
+        }
+      }
+    },
+    {
+      "name": "named group in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "(?<total>[0-9]+)"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "Python named group in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?P<total>[0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "Python named group in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "(?P<total>[0-9]+)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Python named group in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "(?P<total>[0-9]+)"
+        }
+      }
+    },
+    {
+      "name": "Python named group in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "(?P<total>[0-9]+)"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "positive lookbehind in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?<=EUR )([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "positive lookbehind in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "(?<=EUR )([0-9]+)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "positive lookbehind in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "(?<=EUR )([0-9]+)"
+        }
+      }
+    },
+    {
+      "name": "positive lookbehind in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "(?<=EUR )([0-9]+)"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "negative lookbehind in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?<!EUR )([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "negative lookbehind in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "(?<!EUR )([0-9]+)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative lookbehind in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "(?<!EUR )([0-9]+)"
+        }
+      }
+    },
+    {
+      "name": "negative lookbehind in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "(?<!EUR )([0-9]+)"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "inline flag in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?i)(totale)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "inline flag in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "(?i)(totale)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inline flag in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "(?i)(totale)"
+        }
+      }
+    },
+    {
+      "name": "inline flag in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "(?i)(totale)"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "scoped inline flag in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?i:totale)([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "scoped inline flag in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "(?i:totale)([0-9]+)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "scoped inline flag in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "(?i:totale)([0-9]+)"
+        }
+      }
+    },
+    {
+      "name": "scoped inline flag in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "(?i:totale)([0-9]+)"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "scoped flag removal in a rule",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?-i:totale)([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "scoped flag removal in an identifier",
+      "valid": false,
+      "set": {
+        "identifiers": [
+          {
+            "kind": "pod",
+            "pattern": "(?-i:totale)([0-9]+)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "scoped flag removal in items",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "(?-i:totale)([0-9]+)"
+        }
+      }
+    },
+    {
+      "name": "scoped flag removal in parts",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "(?-i:totale)([0-9]+)"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "lookahead and non-capturing group in a rule",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?:a|b)([0-9]+)(?=,)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "negative lookahead in a rule",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "(?!x)([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "escaped lookbehind in a rule",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "\\(?<x([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "lookbehind inside a class in a rule",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale",
+                "position": "right",
+                "pattern": "[(?<=]([0-9]+)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "group 2 of a pattern with one capture group",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "([0-9.]+,[0-9]{2})",
+                "valueType": "euro",
+                "group": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "group 2 of a pattern with two capture groups",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "(EUR|€) ([0-9.]+,[0-9]{2})",
+                "valueType": "euro",
+                "group": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "group 1 of a pattern with no capture group",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "[0-9.]+,[0-9]{2}",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "group 0 of a pattern with no capture group",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "[0-9.]+,[0-9]{2}",
+                "valueType": "euro",
+                "group": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "group 1 of a non-capturing group only",
+      "valid": false,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "(?:[0-9.]+,[0-9]{2})",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "group 1 after escaped parentheses",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "\\(([0-9.]+,[0-9]{2})\\)",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "group 1 after a parenthesis in a class",
+      "valid": true,
+      "set": {
+        "fields": {
+          "amount": {
+            "required": true,
+            "rules": [
+              {
+                "anchor": "Totale da pagare",
+                "position": "right",
+                "pattern": "[(]([0-9.]+,[0-9]{2})",
+                "valueType": "euro",
+                "group": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "parts with one capture group",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "[A-Za-z]+ ([0-9.]+,[0-9]{2})"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "parts with a non-capturing second group",
+      "valid": false,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "([A-Za-z]+) (?:[0-9.]+,[0-9]{2})"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "parts with three capture groups",
+      "valid": true,
+      "set": {
+        "kind": "tari",
+        "parts": {
+          "pattern": "([A-Za-z]+) ([0-9.]+,[0-9]{2})( €)?"
+        }
+      },
+      "unset": ["category"]
+    },
+    {
+      "name": "items without a capture group",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "[0-9.]+,[0-9]{2}"
+        }
+      }
+    },
+    {
+      "name": "items with a non-capturing group only",
+      "valid": false,
+      "set": {
+        "items": {
+          "pattern": "(?:[0-9.]+,[0-9]{2})"
+        }
+      }
+    }
+  ]
+}

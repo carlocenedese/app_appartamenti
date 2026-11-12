@@ -12,11 +12,11 @@
  *
  * SHA-256 comes from Web Crypto, which exists in Node, in the Tauri webview and on the phone.
  */
-import type { ZodType } from 'zod';
 import { commitChange } from './journal';
 import { BankTransactionSchema, BillSchema } from './model';
 import type { BankTransaction, Bill } from './model';
 import type { Cents } from './money';
+import { parseOrThrow } from './parse';
 import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -33,20 +33,11 @@ export async function hashBytes(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/** `schema.parse` with an error that names the fields at fault and leaves their values out. */
-function parseOrThrow<T>(schema: ZodType<T>, value: unknown, what: string): T {
-  const parsed = schema.safeParse(value);
-  if (parsed.success) return parsed.data;
-  const issues = parsed.error.issues
-    .map((issue) => `${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`)
-    .join('; ');
-  throw new Error(`Not a valid ${what} (${issues})`, { cause: parsed.error });
-}
-
 // --- Bills -----------------------------------------------------------------------------------
 
 export type RegisterBillResult =
-  | { status: 'registered'; bill: Bill }
+  /** Written: the record and the operation `operationId` of the journal. */
+  | { status: 'registered'; bill: Bill; operationId: string }
   /** The same file is already registered, as the bill `existingId`. Nothing was written. */
   | { status: 'duplicate'; existingId: string }
   /** Another file says the same as the bill `existingId`. Nothing was written. */
@@ -65,8 +56,30 @@ function sameBill(a: Bill, b: Bill): boolean {
 }
 
 /**
+ * The registered bill (not deleted) that `bill` repeats, as `registerBill` looks for it: the same
+ * `fileHash` is a `duplicate`, the same apartment, supplier, number, period and amount in other
+ * bytes a `possible-duplicate`; `undefined` when there is none. With several matches, the
+ * smallest `id`. Writes nothing.
+ */
+export async function findBillDuplicate(
+  store: Store,
+  bill: Bill,
+): Promise<{ status: 'duplicate' | 'possible-duplicate'; existingId: string } | undefined> {
+  // `loadAll` sorts by id, so `find` gives the smallest id among the matches.
+  const { records } = await loadAll(store, 'bill', BillSchema);
+  const sameFile = records.find((existing) => existing.fileHash === bill.fileHash);
+  if (sameFile !== undefined) return { status: 'duplicate', existingId: sameFile.id };
+  const sameDetails = records.find((existing) => sameBill(existing, bill));
+  if (sameDetails !== undefined) {
+    return { status: 'possible-duplicate', existingId: sameDetails.id };
+  }
+  return undefined;
+}
+
+/**
  * Registers a bill and the file it comes from: the record in `_app/dati/bill/` and one operation
- * (`register-bill`) in the journal, written with `commitChange`. `bill` is everything but what the
+ * in the journal, written with `commitChange`. The operation's `kind` is `opts.kind`, by default
+ * `register-bill` (the kind plan 1 has always written; `registerProposal` passes its own). `bill` is everything but what the
  * function fills in: `fileHash` is the hash of `bytes`, and the record starts at `v` 1 and `rev` 1.
  * `bill.id` is the id of the new record; `newId` makes the id of the operation, and `clock` its time.
  *
@@ -90,25 +103,20 @@ export async function registerBill(
   profileId: string,
   clock: () => string,
   newId: () => string,
+  opts: { kind?: string } = {},
 ): Promise<RegisterBillResult> {
   const fileHash = await hashBytes(bytes);
   const record = parseOrThrow(BillSchema, { ...bill, v: 1, rev: 1, fileHash }, 'bill');
   const path = recordPath('bill', record.id);
 
-  // `loadAll` sorts by id, so `find` gives the smallest id among the matches.
-  const { records } = await loadAll(store, 'bill', BillSchema);
-  const sameFile = records.find((existing) => existing.fileHash === fileHash);
-  if (sameFile !== undefined) return { status: 'duplicate', existingId: sameFile.id };
-  const sameDetails = records.find((existing) => sameBill(existing, record));
-  if (sameDetails !== undefined) {
-    return { status: 'possible-duplicate', existingId: sameDetails.id };
-  }
+  const known = await findBillDuplicate(store, record);
+  if (known !== undefined) return known;
 
-  await commitChange(
+  const operation = await commitChange(
     store,
     {
       profileId,
-      kind: 'register-bill',
+      kind: opts.kind ?? 'register-bill',
       apartmentId: record.apartmentId,
       summary: `Registrata bolletta ${record.supplier} ${record.periodStart}–${record.periodEnd}`,
       changes: [{ path, before: undefined, after: record }],
@@ -116,7 +124,7 @@ export async function registerBill(
     clock,
     newId,
   );
-  return { status: 'registered', bill: record };
+  return { status: 'registered', bill: record, operationId: operation.id };
 }
 
 // --- Bank debits -----------------------------------------------------------------------------

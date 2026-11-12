@@ -7,7 +7,8 @@ import type { BankTransaction } from './model';
 import type { Cents } from './money';
 import type { ISODate, YearMonth } from './period';
 
-const MONTH_NAMES = [
+/** Italian month names, January first, as the notes and messages write them. */
+export const MONTH_NAMES = [
   'gennaio',
   'febbraio',
   'marzo',
