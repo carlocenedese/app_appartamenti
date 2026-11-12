@@ -54,7 +54,7 @@ generiche che non riportano mai testo del PDF, dei profili o dei percorsi; i mes
 ```bash
 python3 -m venv .venv-python && .venv-python/bin/pip install --require-hashes -r python/requirements.txt
 PYTHON=.venv-python/bin/python pnpm python:test       # test (unittest della libreria standard)
-PYTHON=.venv-python/bin/python pnpm python:licenses   # controllo delle licenze installate
+PYTHON=.venv-python/bin/python pnpm python:licenses   # licenze dei pacchetti di requirements.txt
 ```
 
 `PYTHON` è facoltativa: senza, si usa `python3` (`python` su Windows).

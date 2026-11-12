@@ -6,6 +6,11 @@ SPDX expression is allowed: `A OR B` needs one allowed alternative, `A AND B` ev
 `A WITH X` and `A+` are judged by `A`. GPL, LGPL, AGPL, an unknown licence and a missing licence
 fail. The output holds distribution names, versions and licence identifiers, never licence texts.
 
+Only the distributions the app ships are judged: those pinned in python/requirements.txt. The
+interpreter used to run the check may carry its own tooling (pip; on macOS the python.org build
+that setup-python installs also has certifi, MPL-2.0), which is not shipped: such distributions
+are listed by name as not checked. A pinned distribution that is not installed fails.
+
 Usage: python3 -I python/tools/check_licenses.py   (exit code 1 on any failure)
 """
 
@@ -15,6 +20,7 @@ import re
 import sys
 from dataclasses import dataclass
 from importlib import metadata
+from pathlib import Path
 
 # Keep in step with ALLOWED_LICENSES in scripts/check-licenses.mjs (the npm check) and with
 # deny.toml (the Rust check): one list for the whole project. test_check_licenses.py reads the
@@ -185,6 +191,29 @@ def installed_distributions():
     return metadata.distributions()
 
 
+REQUIREMENTS = Path(__file__).resolve().parents[1] / "requirements.txt"
+_PINNED = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==")
+
+
+def canonical(name: str) -> str:
+    """The normalised name of a distribution (PEP 503): lower case, runs of `-_.` as `-`."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def shipped_names(requirements_text: str) -> set[str]:
+    """The canonical names pinned (`name==version`) in a requirements file."""
+    names = set()
+    for line in requirements_text.splitlines():
+        match = _PINNED.match(line)
+        if match:
+            names.add(canonical(match.group(1)))
+    return names
+
+
+def _distribution_name(distribution) -> str:
+    return distribution.metadata.get("Name") or ""
+
+
 def _printable(licence: str | None) -> str:
     if licence is None:
         return "licenza mancante"
@@ -192,16 +221,40 @@ def _printable(licence: str | None) -> str:
     return licence if len(licence) <= _MAX_LICENSE_FIELD else licence[:_MAX_LICENSE_FIELD] + "…"
 
 
-def main(distributions=None) -> int:
+def main(distributions=None, shipped=None) -> int:
+    """Checks `distributions` (the installed ones by default). Only those named in `shipped`
+    (canonical names; by default the ones pinned in requirements.txt) are judged; with
+    `distributions` given and `shipped` None, every distribution is judged."""
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    results = check(installed_distributions() if distributions is None else distributions)
+    if distributions is None:
+        distributions = list(installed_distributions())
+        if shipped is None:
+            shipped = shipped_names(REQUIREMENTS.read_text("utf-8"))
+    distributions = list(distributions)
+    ignored: list[str] = []
+    missing: list[str] = []
+    if shipped is not None:
+        present = {canonical(_distribution_name(d)) for d in distributions}
+        missing = sorted(shipped - present)
+        kept = [d for d in distributions if canonical(_distribution_name(d)) in shipped]
+        ignored = sorted(
+            {_distribution_name(d) or "(senza nome)" for d in distributions if d not in kept},
+            key=str.lower,
+        )
+        distributions = kept
+    results = check(distributions)
     for result in results:
         mark = "ok " if result.allowed else "NO "
         print(f"{mark} {result.name} {result.version}: {_printable(result.licence)}")
+    if ignored:
+        print(f"Non distribuiti, non controllati: {', '.join(ignored)}")
     failed = [r for r in results if not r.allowed]
     if failed:
         print(f"Licenze non ammesse: {', '.join(r.name for r in failed)}")
+    if missing:
+        print(f"Pacchetti non installati: {', '.join(missing)}")
+    if failed or missing:
         return 1
     print(f"Tutte le licenze sono ammesse ({len(results)} pacchetti).")
     return 0

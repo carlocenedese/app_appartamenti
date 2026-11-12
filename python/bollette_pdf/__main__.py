@@ -5,11 +5,12 @@
     python -I -m bollette_pdf --version
 
 `extract` prints ONE JSON document (a validated ExtractionResult) and a newline on stdout, in
-UTF-8 with `\\n` line endings. Exit code 0 for every valid result (also non-riconosciuta,
-senza-testo and illeggibile), 2 for wrong arguments, an unreadable path or a result that does not
-validate. `build-profile` prints, the same way, the supplierProfile built from the selections of
-the spec file (see `_read_spec`); a malformed spec, an unreadable PDF or a selection that cannot
-be turned into a profile give code 2 and a constant message.
+UTF-8 with `\\n` line endings (stderr is UTF-8 too, on every system). Exit code 0 for every
+valid result (also non-riconosciuta, senza-testo and illeggibile), 2 for wrong arguments, an
+unreadable path or a result that does not validate. `build-profile` prints, the same way, the
+supplierProfile built from the selections of the spec file (see `_read_spec`); a malformed spec,
+an unreadable PDF or a selection that cannot be turned into a profile give code 2 and a constant
+message.
 Messages on stderr are generic Italian sentences: they never contain text read from a PDF, a
 profile or a path.
 
@@ -152,6 +153,38 @@ def _unreadable(file_hash: str, file_name: str, message: str) -> dict[str, Any]:
     }
 
 
+class _Utf8Writer:
+    """Writes text as UTF-8 to the byte buffer of a stream that cannot be reconfigured."""
+
+    def __init__(self, stream: Any) -> None:
+        self._stream = stream
+
+    def write(self, text: str) -> int:
+        self._stream.flush()
+        self._stream.buffer.write(text.encode("utf-8", "backslashreplace"))
+        self._stream.buffer.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+
+def _utf8_errors(stream: TextIO) -> TextIO:
+    """`stream` writing UTF-8, like stdout. On Windows a piped stderr is in the ANSI code page,
+    where the caller (which reads UTF-8) would get «è» as an invalid byte."""
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, OSError, ValueError):
+            pass
+        else:
+            return stream
+    if getattr(stream, "buffer", None) is not None:
+        return _Utf8Writer(stream)  # type: ignore[return-value]
+    return stream
+
+
 def _print_json(document: dict[str, Any], stdout: TextIO) -> None:
     text = json.dumps(document, ensure_ascii=False, separators=(",", ":")) + "\n"
     try:
@@ -270,7 +303,7 @@ def _run_build(pdf: str, spec_path: str, at: str, stdout: TextIO) -> None:
 
 def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:
     out = sys.stdout if stdout is None else stdout
-    err = sys.stderr if stderr is None else stderr
+    err = _utf8_errors(sys.stderr if stderr is None else stderr)
     parser = _build_parser(out, err)
     try:
         args = parser.parse_args(argv)

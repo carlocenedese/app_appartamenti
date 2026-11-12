@@ -173,6 +173,55 @@ class MainTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertNotIn("SECRET", out)
 
+    def test_only_the_shipped_packages_are_checked(self):
+        # Tooling of the CI Python (pip, certifi on macOS) is not shipped: it is not judged.
+        out = io.StringIO()
+        dists = [
+            FakeDistribution("Alpha_Pkg", expression="MIT"),
+            FakeDistribution("certifi", expression="MPL-2.0"),
+            FakeDistribution("pip", expression="MIT"),
+        ]
+        with redirect_stdout(out):
+            code = cl.main(distributions=dists, shipped={"alpha-pkg"})
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("Alpha_Pkg", out.getvalue())
+        self.assertIn("Non distribuiti, non controllati: certifi, pip", out.getvalue())
+
+    def test_a_shipped_package_stays_strict(self):
+        out = io.StringIO()
+        dists = [FakeDistribution("certifi", expression="MPL-2.0")]
+        with redirect_stdout(out):
+            code = cl.main(distributions=dists, shipped={"certifi"})
+        self.assertEqual(code, 1)
+        self.assertIn("Licenze non ammesse: certifi", out.getvalue())
+
+    def test_a_shipped_package_that_is_not_installed_fails(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = cl.main(distributions=[FakeDistribution("alpha", expression="MIT")], shipped={"alpha", "beta"})
+        self.assertEqual(code, 1)
+        self.assertIn("Pacchetti non installati: beta", out.getvalue())
+
+    def test_shipped_names_from_requirements(self):
+        text = (
+            "# comment\n"
+            "attrs==26.1.0 \\\n    --hash=sha256:00\n    # via\n    #   jsonschema\n"
+            "pdfminer-six==20260107 \\\n"
+            "Charset_Normalizer==3.5.2\n"
+            "rpds.py==1\n"
+        )
+        self.assertEqual(
+            cl.shipped_names(text), {"attrs", "pdfminer-six", "charset-normalizer", "rpds-py"}
+        )
+        self.assertEqual(cl.canonical("pdfminer.six"), "pdfminer-six")
+
+    def test_the_real_requirements_are_read(self):
+        names = cl.shipped_names(cl.REQUIREMENTS.read_text("utf-8"))
+        self.assertIn("pdfminer-six", names)
+        self.assertIn("jsonschema", names)
+        self.assertNotIn("pip", names)
+        self.assertNotIn("certifi", names)
+
     def test_real_environment(self):
         # The installed environment of whoever runs the tests: the check itself must not crash.
         results = cl.check(cl.installed_distributions())

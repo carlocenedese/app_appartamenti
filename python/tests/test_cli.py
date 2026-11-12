@@ -257,6 +257,30 @@ class ErrorsTest(CliTestCase):
     def test_missing_pdf_file(self) -> None:
         self.assertRejected(self.extract(pdf=self.dir / "non-esiste.pdf"))
 
+    def test_stderr_is_utf8_in_a_real_process(self) -> None:
+        # On Windows a piped stderr defaults to the ANSI code page: «è» became byte 0xE8.
+        completed = self.extract(pdf=self.dir / "non-esiste.pdf")
+        self.assertEqual(
+            completed.stderr.decode("utf-8").splitlines(),
+            ["Il file indicato con --pdf non esiste o non è un file."],
+        )
+
+    def test_stderr_is_utf8_when_the_stream_is_not(self) -> None:
+        missing = ["extract", "--pdf", str(self.dir / "non-esiste.pdf")]
+        missing += ["--profiles", str(self.profiles), "--at", AT]
+        expected = "Il file indicato con --pdf non esiste o non è un file."
+        # A stream that can be reconfigured (sys.stderr on Windows) ...
+        buffer = io.BytesIO()
+        stream = io.TextIOWrapper(buffer, encoding="cp1252")
+        self.assertEqual(main(missing, io.StringIO(), stream), 2)
+        stream.flush()
+        self.assertEqual(buffer.getvalue().decode("utf-8").strip(), expected)
+        # ... and one that cannot.
+        fake = FakeStdout("cp1252")
+        self.assertEqual(main(missing, io.StringIO(), fake), 2)
+        fake.flush()
+        self.assertEqual(fake.buffer.getvalue().decode("utf-8").strip(), expected)
+
     def test_directory_as_pdf(self) -> None:
         self.assertRejected(self.extract(pdf=self.dir))
 
