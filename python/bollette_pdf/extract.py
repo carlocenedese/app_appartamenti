@@ -136,17 +136,24 @@ def _read_span(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, list[dic
     estimated consumption, or «relativi al periodo»). `high` when every interval fills its cell.
     """
     readings = []
+    doubtful = False
     for rule in spec.get("rules", []):
+        found = []
         for anchor in layout.anchors(rule.get("anchor", "")):
             candidate = layout.candidate(anchor, rule.get("position", ""))
             reading = _read_at(candidate, anchor.page, rule) if candidate is not None else None
             if reading is not None:
-                readings.append(reading)
+                found.append(reading)
+            elif candidate is not None and re.search(r"\d", candidate.text):
+                doubtful = True  # an interval is written there but cannot be read
+        # the same label with different dates: a history table, say, would widen the period
+        doubtful = doubtful or any(other[0] != found[0][0] for other in found[1:])
+        readings += found
     if not readings:
         return None, "missing", []
     first = min(readings, key=lambda r: r[0][0])
     last = max(readings, key=lambda r: r[0][1])
-    confidence = "high" if all(whole for _, _, whole in readings) else "medium"
+    confidence = "medium" if doubtful or not all(w for _, _, w in readings) else "high"
     return (first[0][0], last[0][1]), confidence, [first[1], last[1]]
 
 

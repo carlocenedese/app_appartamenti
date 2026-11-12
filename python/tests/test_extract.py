@@ -436,6 +436,22 @@ class PeriodSpanTest(ExtractTestCase):
             "Consumo stimato dal 31.02.2025 al 10.03.2025",
         )
         self.assertEqual((start["value"], end["value"]), ("2025-01-01", "2025-02-28"))
+        self.assertEqual((start["confidence"], end["confidence"]), ("medium", "medium"))
+
+    def test_an_interval_that_wraps_to_the_next_line_makes_it_medium(self) -> None:
+        start, _, _ = self.read(
+            "Consumo rilevato dal 01.01.2025",
+            "Consumo stimato dal 01.03.2025 al 10.03.2025",
+        )
+        self.assertEqual((start["value"], start["confidence"]), ("2025-03-01", "medium"))
+
+    def test_the_same_label_with_different_dates_makes_it_medium(self) -> None:
+        start, end, _ = self.read(
+            "Consumo rilevato dal 01.01.2025 al 28.02.2025",
+            "Consumo rilevato dal 01.01.2024 al 28.02.2024",
+        )
+        self.assertEqual((start["value"], end["value"]), ("2024-01-01", "2025-02-28"))
+        self.assertEqual(start["confidence"], "medium")
 
     def test_no_reading_is_missing(self) -> None:
         start, end, _ = self.read("Nessun consumo")
