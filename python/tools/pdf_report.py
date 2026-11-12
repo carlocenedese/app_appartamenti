@@ -5,8 +5,10 @@
 Walks the folders recursively (sorted), reads every `*.pdf` in place (read only: nothing is
 copied or written) and runs `extract` with the profiles of `--profiles`. Prints ONLY counts: per
 supplier (`profileId`, or «(nessun profilo)»), per status, how many fields of the recognised
-documents have confidence `high` (the `supplier` field, always high, is not counted), and a total. It never prints a file name, a path, an amount, a
-text read from a PDF or an exception message: any of them can quote the PDFs, which are real.
+documents have confidence `high` (the `supplier` field, always high, is not counted), and a
+total. It never prints a file name, a path, an amount, a text read from a PDF or an exception
+message: any of them can quote the PDFs, which are real. File names starting with `.` are skipped
+and a `profileId` that is not a plain slug is shown as «(altro)».
 A PDF that cannot be read counts as `illeggibile`. No network, no clock (`--at` is an argument).
 """
 
