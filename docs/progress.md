@@ -151,7 +151,7 @@ supplementare non filtra i contratti di altri appartamenti.
 
 ## Da decidere con Carlo
 
-Nessuna decisione aperta.
+Nessuna decisione aperta del piano 1; per il piano 2a vedi «Da confermare da Carlo» nella sezione del piano 2a, Fase A.
 
 ## Rilievi minori rimandati
 
@@ -173,3 +173,185 @@ Per fase in cui vanno affrontati.
   ritardo); file `.tmp-*` lasciati da scritture interrotte.
 - Il resto (doppioni di piccole funzioni, lunghezza di `journal.ts`, avvisi di Rollup, `devCsp`)
   può aspettare.
+
+## Piano 2a, Fase A (lettura dei PDF di testo, nessun dato reale)
+
+Stato: **Fase A completata** (Task 1-11 di `docs/plans/2026-11-11-piano-2a-lettura-pdf.md`, ramo
+`feat/piano-2a-fase-a`), con revisione finale dell'intero ramo e un'ondata di correzioni (R73). La
+Fase B (Task 12: profili dei fornitori reali e fixture, con Carlo e PDF veri) comincia dopo il merge.
+Il registro completo resta in `.superpowers/sdd/2026-11-11-piano-2a-lettura-pdf/`, escluso da git;
+qui ne resta la sintesi.
+
+| Task | Titolo                                               | Commit           | Decisioni          |
+| ---- | ---------------------------------------------------- | ---------------- | ------------------ |
+| 1    | Schemi del profilo e del risultato                   | bc612d4..ff1fd02 | R41, R44, R46      |
+| 2    | Pacchetto Python, dipendenze, CI e controllo licenze | ff1fd02..ec7ea81 | R43, R45, R47, R48 |
+| 3    | Importi, date e quantità all'italiana                | 3fd1337..ba04ef2 | R49, R50           |
+| 4    | Lettura del PDF con coordinate                       | ba04ef2..4a2f614 | R51, R52           |
+| 5    | Profili e estrazione dei campi                       | 4a2f614..717fb12 | R53-R58            |
+| 6    | Risultato completo e riga di comando                 | 717fb12..652abaa | R59                |
+| 7    | Costruzione di un profilo da una selezione           | 652abaa..9716f5b | R60-R62            |
+| 8    | Proposta e controlli automatici (core)               | 9716f5b..aa21ea9 | R63-R65            |
+| 9    | Politica di conferma e registrazione (core)          | aa21ea9..117eb70 | R66-R68            |
+| 10   | Interprete Python incorporato nell'installer         | 117eb70..64d197d | R69-R71            |
+| 11   | Prova di integrazione tra core e programma Python    | 64d197d..52753f0 | R72                |
+| —    | Revisione finale e correzioni                        | 52753f0..        | R73                |
+
+### Decisioni (Ruling) R41-R73
+
+Ognuna: che cosa, perché, costo se è sbagliata.
+
+- **R41** `valueType: 'quantity'` passa a `parse_quantity` il testo del gruppo scelto (`123,4 kWh`):
+  un gruppo basta per numero e unità. Costo: i profili che mettono l'unità in un secondo gruppo
+  vanno cambiati. (L'unità vuota è superata da R53.)
+- **R42** Rata TARI dal mese della scadenza (1-5 → rata 1, 6-9 → rata 2, 10-12 → rata 3), esercizio
+  = anno della scadenza; un periodo dichiarato diverso da quei 4 mesi dà l'avviso `tari-months`, così
+  gli avvisi cumulativi vanno sempre in revisione. Costo: un terzo avviso in ritardo con scadenza a
+  gennaio prende l'etichetta sbagliata, ma è segnalato e rivisto.
+- **R43** Libreria PDF `pdfminer.six`, non `pdfplumber`, che porta Pillow (MIT-CMU, fuori elenco); la
+  specifica dice solo «per esempio pdfplumber». Costo: nessuno.
+- **R44** `ExtractionResult.status` ha anche `illeggibile` (PDF guasto o protetto): ogni PDF ha una
+  risposta. Costo: uno stato in più per l'interfaccia.
+- **R45** L'interprete Python (PSF-2.0) è accettato con la scelta di Python della specifica (sezione 8) ed elencato in `python/THIRD_PARTY.md`. Costo: una decisione di licenza che Carlo può rivedere.
+- **R46** Le regole incrociate del profilo che JSON Schema non esprime (categoria e tipo, parti solo
+  TARI, `validTo` ≥ `validFrom`, tipo di valore per campo, gruppi di cattura, niente gruppi con nome,
+  lookbehind, flag in linea) stanno in `check_profile_rules` (Python), applicata da
+  `validate('supplierProfile', …)`, e in Zod; i casi comuni sono in
+  `python/tests/data/profile-cases.json`. Costo: regole doppie in due lingue, tenute allineate dai
+  casi comuni.
+- **R47** Python 3.13 invece di 3.12: con 3.12 `referencing` porta `typing-extensions` (PSF-2.0, fuori
+  elenco). Costo: l'interprete incorporato deve essere una build 3.13.
+- **R48** `cffi` resta a 2.0.0 perché 2.1.x dichiara MIT-0 (fuori elenco). Costo: un `cffi` più
+  vecchio, senza problemi noti; da rivedere se Carlo ammette MIT-0.
+- **R49** Date sempre giorno-mese-anno, mai indovinate; importi ambigui rifiutati (`1.234` senza due
+  decimali, `1,5`, `1.234,5`): nel dubbio si rifiuta. Costo: un fornitore con importi a un decimale
+  richiede un pattern che li normalizzi.
+- **R50** `parse_euro` rifiuta un intero senza decimali (`100`): un intero preso per errore (consumo,
+  pagina, codice) non deve diventare un importo. Costo: un `€ 100` senza decimali va in revisione
+  (`missing`), mai con un valore sbagliato.
+- **R51** (centro sostituito da R52) `all_texts=True` (il testo dentro i Form XObject non si perde);
+  eccezioni concatenate con `from None` (nessun testo del documento nei log); il file si legge una
+  volta sola, così l'impronta corrisponde ai byte letti. Costo: nessuno.
+- **R52** Le righe si raggruppano sulla LINEA DI BASE (mediana di `page_height - matrix[5]` dei
+  caratteri), tolleranza 2 pt, ordine pagina, base, x0; `top`/`bottom` restano il riquadro dei
+  glifi. Costo: testi con matrici strane (ruotati) si raggruppano diversamente; le pagine ruotate
+  sono rimandate.
+- **R53** Un consumo letto senza unità non è un valore (`missing`): core e schema chiedono un'unità
+  e senza unità non si confronta con l'anno prima; supera «unità vuota» di R41. Costo: una bolletta
+  che stampa il consumo senza unità non ha il campo consumo (mai obbligatorio).
+- **R54** ReDoS: i pattern vengono dal costruttore dell'app e dai profili rivisti; `re` non ha
+  limite di tempo, quindi oltre al taglio a 400 caratteri del testo candidato chi chiama deve
+  avviare `python -I -m bollette_pdf` con un limite di tempo e fermarlo (`runExtract` del Task 11 lo
+  ha; il piano 4 lo usa). Costo: un profilo patologico blocca un'estrazione fino al limite; l'app
+  resta reattiva.
+- **R55** Se nessun profilo valido alla data legge tutti i campi obbligatori, il risultato è SEMPRE
+  `da-confermare` (il ripiego non conta mai come riconosciuto). Costo: più revisioni.
+- **R56** Profilo TARI con `parts`: nessuna parte trovata dà `parts-found` fallito, una coppia
+  (etichetta, importo) ripetuta e fusa dà `parts-unique` fallito; entrambi portano a
+  `da-confermare`. Costo: un avviso che ripete un'utenza su due pagine va sempre rivisto.
+- **R57** `right` guarda solo la PRIMA riga a destra dell'etichetta (un valore mancante non si
+  riempie con la colonna dopo); per `right` e `below` la confidenza è `high` solo se il valore
+  occupa tutta la cella, a parte `€`, `EUR`, `euro`, parentesi, due punti e spazi. Costo: più
+  revisioni per profili che catturano solo parte della cella.
+- **R58** L'etichetta ignora la punteggiatura `: ; , .` ai bordi di ogni parola (`Totale da pagare`
+  trova `Totale da pagare:`), sempre a parole intere. Costo: nessuno noto.
+- **R59** (superata da R70 e R72) `python -I -m bollette_pdf` trova il pacchetto solo se installato
+  nell'interprete. Costo: un passo d'installazione in più.
+- **R60** `build_profile` tiene il parametro `now` (validato, non usato) e si verifica da solo:
+  `extract` sullo stesso documento deve restituire i valori scelti con `high`, altrimenti
+  `ValueError`. Costo: una selezione che non si rilegge è rifiutata invece di dare un profilo che va
+  sempre in revisione.
+- **R61** I pattern `same-line` del costruttore sono ancorati all'inizio del testo candidato
+  (`^[\s:€]*(valore)`), con confine destro `(?![\d.,])` per numeri e date; il testo cattura
+  esattamente le parole scelte. Un `1 234,56` con lo spazio come separatore diventa `missing`.
+  Costo: qualche revisione in più.
+- **R62** Le finestre d'etichetta con una parola che contiene cifre o si legge come importo, data o
+  quantità sono scartate (cambiano da bolletta a bolletta); senza etichetta stabile, `ValueError`.
+  I nomi di persona usati come etichetta non si riconoscono: il Task 12 rivede ogni etichetta prima
+  del commit. Costo: un profilo nella cartella dati dell'utente può tenere un nome come etichetta.
+- **R63** Un campo obbligatorio mancante dà una proposta `none` con un `fail` `missing-field` per
+  campo, senza valori inventati (specifica §22). Costo: allargare la proposta nel Task 9 o nell'UI.
+- **R64** Ratificati i controlli in più (rata duplicata `fail`, nome del file `warn`), l'esportazione
+  di `MONTH_NAMES`, il `groupId` TARI da `newId()`, `includedInConguaglio`/`sharedWithTenants` veri
+  per difetto, l'anomalia di consumo confrontata con l'id più piccolo tra i pari dell'anno prima.
+  Costo: ritocchi locali.
+- **R65** TARI condivisa (`ctx.tariParts` non vuoto) senza parti lette dà `fail` `missing-parts`
+  (non tutto l'importo a un appartamento); lo stesso appartamento due volte in un avviso dà `fail`
+  `duplicate-apartment`. Costo: più avvisi da confermare.
+- **R66** `registerBill` tiene il tipo di operazione `register-bill` per difetto (test esistente);
+  `registerProposal` passa i propri tipi. Costo: una riga e un test.
+- **R67** Ratificati: id delle operazioni derivati (`op-<primo id>`, `profile-confirm-…`,
+  `profile-auto-…`), controlli dei doppioni prima della politica automatica (`findBillDuplicate`
+  pubblica), modo automatico più severo di «fail ⇒ rifiutato», `profileRev` diverso dal profilo ⇒
+  revisione, tipo `instalment.register-auto`. Costo: ritocchi locali.
+- **R68** Gli id delle operazioni derivati contengono l'istante del tentativo: un nuovo tentativo
+  dopo una scrittura fallita non crea due file del registro con lo stesso id (che `readJournal`
+  scarterebbe entrambi). Costo: id più lunghi.
+- **R69** Tolti Tcl/Tk e tkinter dall'interprete incorporato (inutili, licenza TCL fuori elenco).
+  bzip2 1.0.6 (stile BSD), SQLite (pubblico dominio) e `vcruntime140*.dll` (Microsoft Distributable
+  Code) accettati come redistribuibili pur fuori elenco, elencati in `THIRD_PARTY.md` — da
+  confermare da Carlo (vedi sotto). Costo: cambiare build dell'interprete o togliere moduli.
+- **R70** Nel pacchetto dell'app `bollette_pdf` è copiato in site-packages invece di
+  `pip install ./python` (pip vorrebbe setuptools non fissato; pip è tolto perché `certifi` è
+  MPL-2.0); `python -I -m bollette_pdf` verificato. Costo: cambiare il passo di copia.
+- **R71** Build «install only» non ridotta, come da piano (la ridotta pesa 22 MB contro 48 MB
+  compressi); solo macOS aarch64 (niente Intel) — da confermare da Carlo. Costo: installer più
+  grande; nessun Mac Intel.
+- **R72** Sviluppo e CI usano `python/tools/dev_install.py` (file `.pth` verso `python/` del
+  repository) invece di `pip install --no-deps ./python` (setuptools non fissato; `schemas.py`
+  trova `docs/schemas` risalendo), solo in un virtualenv o con `CI=true`; il pacchetto dell'app
+  (R70) copia pacchetto e schemi. Supera R59 per sviluppo e CI. Costo: cambiare il passo
+  d'installazione.
+- **R73** Un'unica ondata di correzioni dopo la revisione finale: `same-line` è `high` solo se prima
+  del valore c'è solo rumore di cella e dopo non continua un numero; controllo `profile-unique`
+  quando un altro profilo completo di fornitore, tipo o categoria diversi legge il documento;
+  `registerProposal` in automatico legge il profilo dal negozio e applica `decideRegistration`;
+  messaggi di `pdfminer` spenti; capture group controllati anche in Zod; il costruttore scarta
+  etichette di solo rumore o con meno di 3 lettere. Costo: qualche revisione in più.
+
+### Da confermare da Carlo
+
+- Licenze fuori elenco accettate da R69: bzip2 1.0.6 (stile BSD), SQLite (pubblico dominio),
+  `vcruntime140*.dll` (Microsoft Distributable Code, redistribuibile con l'app Windows).
+- PSF-2.0 dell'interprete Python (R45).
+- Nessun interprete per Mac Intel: l'app macOS gira solo su Apple Silicon (R71).
+- Archivio Windows dell'interprete non ridotto («install only», R71): installer più grande.
+
+### Non verificato finché non gira `build.yml`
+
+- Cartella d'installazione NSIS predefinita `%LOCALAPPDATA%\App Bollette`.
+- I collegamenti simbolici `bin/` dell'interprete dentro l'app macOS universale di Tauri.
+- MSI con circa 3000 file.
+- Aumento di dimensione degli installer.
+
+### Seguiti rimandati
+
+- **Fase B / piano 4:** il costruttore scrive `identifiers: []`, quindi il controllo dei codici
+  dell'appartamento (`knownCodes` vuoti) manca o blocca sempre: decidere come il profilo impara gli
+  identificativi (I6 della revisione finale).
+- **Piano 4:** il limite di tempo dell'estrazione (R54) c'è solo nell'helper dei test
+  (`runExtract`), non ancora in un esecutore di produzione; la riga di comando non dice quale campo
+  ha impedito di costruire il profilo; Task 9 M1 (registrare di nuovo dopo un annullamento dà
+  `StaleWriteError`), M3 (una scrittura TARI parziale risulta doppione al nuovo tentativo: prima
+  `repairDiverged`/`checkConsistency`), M4 (`checkConsistency` non segnala lo stato di R68).
+- **Task 12:** rivedere che nessuna etichetta dei profili sia un nome di persona (R62).
+- **Lettura degli importi e delle date (`parse.py`):** `\d` → `[0-9]` e sequenze di cifre limitate
+  (`{1,12}`); espressione dell'unità delle quantità troppo larga (`12 gennaio`); zeri iniziali delle
+  quantità non normalizzati; test mancanti del Task 3 (`€ -63,00`, `€98,46`, NBSP, `29/02/24`,
+  anno a 5 cifre, `00/00/2025`, separatori misti).
+- **Lettore (`reader.py`):** `char_margin` 2.0 fonde etichetta e valore vicini; pagine ruotate;
+  MediaBox invece di CropBox; `(cid:N)` e legature contano come testo; `except Exception` presenta
+  errori del modulo come «file corrotto»; raggruppamento delle righe di `Layout` diverso da quello
+  del lettore; un `€` da solo nella sua cella a sinistra del valore dà `missing`.
+- **Riga di comando:** il file è letto due volte (impronta per `illeggibile`, poi `read_pdf`);
+  `--help` ignora lo stdout passato; il risultato `illeggibile` perde gli avvisi dei profili.
+- **Schemi:** gruppi atomici e quantificatori possessivi accettati da Python 3.11+ ma non da
+  JavaScript; l'accoppiata `profileId`/`profileRev` non è imposta in Zod; `decideRegistration`
+  ignora `profile.deleted` (`registerProposal` tratta un profilo cancellato come assente).
+- **Pacchetto dell'interprete (`bundle-python.mjs`):** collegamenti simbolici che escono dalla
+  cartella; un redirect https→http seguito (l'hash protegge); `include/` e `share/man` inutili
+  inclusi; variabili `PIP_*` ereditate; `BOLLETTE_SCHEMAS_DIR` può cambiare gli schemi anche
+  nell'app installata.
+- **Proposta:** il controllo del numero doppione ignora spazi interni e varianti del nome del
+  fornitore; `safeWord` perde le lettere non scomponibili.
+- **Sviluppo:** il `.pth` di R72 mette tutta `python/` (anche test e strumenti) in `sys.path`.
