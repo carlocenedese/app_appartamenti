@@ -1,0 +1,90 @@
+{
+  "id": "hera-gas-2025",
+  "v": 1,
+  "rev": 1,
+  "supplier": "Hera Comm",
+  "kind": "bill",
+  "category": "gas",
+  "status": "bozza",
+  "autoRegister": true,
+  "validFrom": "2025-11-01",
+  "recognise": {
+    "allOf": ["società emittente:", "smc"],
+    "noneOf": []
+  },
+  "fields": {
+    "number": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "fattura",
+          "position": "below",
+          "pattern": "^[\\s:€]*(\\S+(?: \\S+)*)",
+          "valueType": "text",
+          "group": 1
+        }
+      ]
+    },
+    "issueDate": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "Data",
+          "position": "below",
+          "pattern": "^[\\s:€]*(\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4})(?![\\d.,])",
+          "valueType": "date",
+          "group": 1
+        }
+      ]
+    },
+    "dueDate": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "Scadenza",
+          "position": "right",
+          "pattern": "^[\\s:€]*(\\d{1,2}[°º]?\\s+[A-Za-z]+\\.?\\s+\\d{2,4})(?![\\d.,])",
+          "valueType": "date",
+          "group": 1
+        }
+      ]
+    },
+    "period": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "oggetto",
+          "position": "below",
+          "pattern": "^[\\s:€]*((?:[Dd][Aa][Ll]\\s+)?\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4}\\s+[Aa][Ll]\\s+\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4})(?![\\d.,])",
+          "valueType": "date-range",
+          "group": 1
+        }
+      ]
+    },
+    "amount": {
+      "required": true,
+      "rules": [
+        {
+          "anchor": "pagare",
+          "position": "right",
+          "pattern": "^[\\s:€]*((?:[-−–]\\s?)?(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2})(?![\\d.,])",
+          "valueType": "euro",
+          "group": 1
+        }
+      ]
+    },
+    "consumption": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "Consumo",
+          "position": "below",
+          "pattern": "^[\\s:€]*(\\d[\\d.]*(?:,\\d+)?\\s*[A-Za-zµ]+[²³]?)(?![\\d.,])",
+          "valueType": "quantity",
+          "group": 1
+        }
+      ]
+    }
+  },
+  "identifiers": []
+}

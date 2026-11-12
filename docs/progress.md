@@ -197,7 +197,7 @@ qui ne resta la sintesi.
 | 11   | Prova di integrazione tra core e programma Python    | 64d197d..52753f0 | R72                |
 | —    | Revisione finale e correzioni                        | 52753f0..        | R73                |
 
-### Decisioni (Ruling) R41-R73
+### Decisioni (Ruling) R41-R75
 
 Ognuna: che cosa, perché, costo se è sbagliata.
 
@@ -308,6 +308,15 @@ Ognuna: che cosa, perché, costo se è sbagliata.
   `registerProposal` in automatico legge il profilo dal negozio e applica `decideRegistration`;
   messaggi di `pdfminer` spenti; capture group controllati anche in Zod; il costruttore scarta
   etichette di solo rumore o con meno di 3 lettere. Costo: qualche revisione in più.
+- **R75** (12 novembre 2026, Fase B, Task 12 parziale) Profili dei fornitori reali costruiti con Carlo presente, in
+  sola lettura sulle cartelle di Dropbox (nessuna copia dei PDF; il rapporto stampa solo
+  conteggi, le fixture contengono solo righe anonimizzate): Hera Comm (luce e gas),
+  AcegasApsAmga (acqua e TARI Padova), Fastweb ed Enel Energia, in `python/seed-profiles/`, tutti
+  `bozza`. Importo = «Totale da pagare» (decisione di Carlo, anche con «Altri servizi»;
+  da confermare per il canone TV di Enel). Il riconoscimento non usa link (le fixture li cancellano)
+  e `validFrom` è `2020-01-01` per i layout vecchi. Maggior tutela di Berchet, scansioni, `parts`
+  della TARI condivisa e il campione di dieci PDF controllati a mano restano da fare. Costo:
+  nessun profilo è approvato finché Carlo non rilegge `docs/rules/lettura-pdf.md`.
 
 ### Da confermare da Carlo
 

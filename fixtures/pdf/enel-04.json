@@ -1,0 +1,265 @@
+{
+  "layout": "Luce Enel Energia, totale da pagare a pagina 2 (2026)",
+  "profileId": "enel-luce-2020",
+  "expected": {
+    "status": "riconosciuta",
+    "number": "8082258428",
+    "issueDate": "2026-09-10",
+    "dueDate": "2026-09-25",
+    "amount": 9403,
+    "consumption": null,
+    "confidence": {
+      "number": "high",
+      "issueDate": "high",
+      "dueDate": "medium",
+      "amount": "medium",
+      "consumption": "missing"
+    }
+  },
+  "dump": {
+    "fileHash": "d6f6fadca5d05a917d62112415d9bb9021df23105e1cfce5c6da33559dc1147e",
+    "pages": 8,
+    "hasText": true,
+    "lines": [
+      {
+        "page": 1,
+        "x0": 35.0,
+        "top": 81.4,
+        "x1": 164.24,
+        "bottom": 88.4,
+        "baseline": 88.4,
+        "words": [
+          {
+            "text": "Enel",
+            "x0": 35.0,
+            "top": 81.4,
+            "x1": 48.25,
+            "bottom": 88.4
+          },
+          {
+            "text": "Energia",
+            "x0": 49.96,
+            "top": 81.4,
+            "x1": 73.81,
+            "bottom": 88.4
+          },
+          {
+            "text": "-",
+            "x0": 75.53,
+            "top": 81.4,
+            "x1": 78.77,
+            "bottom": 88.4
+          },
+          {
+            "text": "Mercato",
+            "x0": 80.49,
+            "top": 81.4,
+            "x1": 106.82,
+            "bottom": 88.4
+          },
+          {
+            "text": "libero",
+            "x0": 108.54,
+            "top": 81.4,
+            "x1": 126.32,
+            "bottom": 88.4
+          },
+          {
+            "text": "dell'energia",
+            "x0": 128.03,
+            "top": 81.4,
+            "x1": 164.24,
+            "bottom": 88.4
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 47.17,
+        "top": 282.81,
+        "x1": 448.16,
+        "bottom": 291.81,
+        "baseline": 291.81,
+        "words": [
+          {
+            "text": "Bolletta",
+            "x0": 47.17,
+            "top": 282.81,
+            "x1": 77.94,
+            "bottom": 291.81
+          },
+          {
+            "text": "sintetica",
+            "x0": 80.14,
+            "top": 282.81,
+            "x1": 114.78,
+            "bottom": 291.81
+          },
+          {
+            "text": "riferita",
+            "x0": 116.98,
+            "top": 282.81,
+            "x1": 144.02,
+            "bottom": 291.81
+          },
+          {
+            "text": "alla",
+            "x0": 146.22,
+            "top": 282.81,
+            "x1": 159.44,
+            "bottom": 291.81
+          },
+          {
+            "text": "fattura",
+            "x0": 161.64,
+            "top": 282.81,
+            "x1": 189.49,
+            "bottom": 291.81
+          },
+          {
+            "text": "elettronica",
+            "x0": 191.69,
+            "top": 282.81,
+            "x1": 235.53,
+            "bottom": 291.81
+          },
+          {
+            "text": "n.",
+            "x0": 237.74,
+            "top": 282.81,
+            "x1": 244.81,
+            "bottom": 291.81
+          },
+          {
+            "text": "8082258428",
+            "x0": 247.01,
+            "top": 282.81,
+            "x1": 302.42,
+            "bottom": 291.81
+          },
+          {
+            "text": "del",
+            "x0": 304.62,
+            "top": 282.81,
+            "x1": 316.84,
+            "bottom": 291.81
+          },
+          {
+            "text": "10/09/2026",
+            "x0": 319.04,
+            "top": 282.81,
+            "x1": 371.77,
+            "bottom": 291.81
+          },
+          {
+            "text": "valida",
+            "x0": 373.98,
+            "top": 282.81,
+            "x1": 396.95,
+            "bottom": 291.81
+          },
+          {
+            "text": "ai",
+            "x0": 399.15,
+            "top": 282.81,
+            "x1": 405.92,
+            "bottom": 291.81
+          },
+          {
+            "text": "fini",
+            "x0": 408.12,
+            "top": 282.81,
+            "x1": 420.62,
+            "bottom": 291.81
+          },
+          {
+            "text": "fiscali.",
+            "x0": 422.82,
+            "top": 282.81,
+            "x1": 448.16,
+            "bottom": 291.81
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 39.68,
+        "top": 369.76,
+        "x1": 164.38,
+        "bottom": 379.76,
+        "baseline": 379.76,
+        "words": [
+          {
+            "text": "Quando",
+            "x0": 39.68,
+            "top": 370.76,
+            "x1": 73.0,
+            "bottom": 379.76
+          },
+          {
+            "text": "Scade?",
+            "x0": 74.9,
+            "top": 370.76,
+            "x1": 105.46,
+            "bottom": 379.76
+          },
+          {
+            "text": "25/09/2026",
+            "x0": 107.76,
+            "top": 369.76,
+            "x1": 164.38,
+            "bottom": 379.76
+          }
+        ]
+      },
+      {
+        "page": 2,
+        "x0": 36.85,
+        "top": 281.38,
+        "x1": 108.07,
+        "bottom": 289.38,
+        "baseline": 289.38,
+        "words": [
+          {
+            "text": "TOTALE",
+            "x0": 36.85,
+            "top": 281.38,
+            "x1": 66.91,
+            "bottom": 289.38
+          },
+          {
+            "text": "BOLLETTA",
+            "x0": 68.6,
+            "top": 281.38,
+            "x1": 108.07,
+            "bottom": 289.38
+          }
+        ]
+      },
+      {
+        "page": 2,
+        "x0": 520.52,
+        "top": 280.08,
+        "x1": 558.42,
+        "bottom": 290.08,
+        "baseline": 290.08,
+        "words": [
+          {
+            "text": "94,03",
+            "x0": 520.52,
+            "top": 280.08,
+            "x1": 548.99,
+            "bottom": 290.08
+          },
+          {
+            "text": "€",
+            "x0": 551.1,
+            "top": 280.08,
+            "x1": 558.42,
+            "bottom": 290.08
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,188 @@
+{
+  "layout": "Luce Enel Energia, scadenza dopo Entro il (2022-23)",
+  "profileId": "enel-luce-2020",
+  "expected": {
+    "status": "riconosciuta",
+    "number": null,
+    "issueDate": "2022-10-11",
+    "dueDate": "2022-10-26",
+    "amount": 7746,
+    "consumption": null,
+    "confidence": {
+      "number": "missing",
+      "issueDate": "high",
+      "dueDate": "medium",
+      "amount": "high",
+      "consumption": "missing"
+    }
+  },
+  "dump": {
+    "fileHash": "c87b4333db14e22e8aa746fe2f53d0b63f8b833fd8018b7b7c18e1a355274bff",
+    "pages": 6,
+    "hasText": true,
+    "lines": [
+      {
+        "page": 1,
+        "x0": 35.0,
+        "top": 86.04,
+        "x1": 191.83,
+        "bottom": 95.04,
+        "baseline": 95.04,
+        "words": [
+          {
+            "text": "Enel",
+            "x0": 35.0,
+            "top": 86.04,
+            "x1": 52.31,
+            "bottom": 95.04
+          },
+          {
+            "text": "Energia",
+            "x0": 54.18,
+            "top": 86.04,
+            "x1": 84.6,
+            "bottom": 95.04
+          },
+          {
+            "text": "-",
+            "x0": 86.22,
+            "top": 86.04,
+            "x1": 89.02,
+            "bottom": 95.04
+          },
+          {
+            "text": "Mercato",
+            "x0": 90.84,
+            "top": 86.04,
+            "x1": 121.6,
+            "bottom": 95.04
+          },
+          {
+            "text": "libero",
+            "x0": 123.42,
+            "top": 86.04,
+            "x1": 145.39,
+            "bottom": 95.04
+          },
+          {
+            "text": "dell'energia",
+            "x0": 147.2,
+            "top": 86.04,
+            "x1": 191.83,
+            "bottom": 95.04
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 369.16,
+        "top": 339.93,
+        "x1": 432.52,
+        "bottom": 347.93,
+        "baseline": 347.93,
+        "words": [
+          {
+            "text": "Entro",
+            "x0": 369.16,
+            "top": 339.93,
+            "x1": 387.57,
+            "bottom": 347.93
+          },
+          {
+            "text": "il",
+            "x0": 389.19,
+            "top": 339.93,
+            "x1": 393.19,
+            "bottom": 347.93
+          },
+          {
+            "text": "26/10/2022",
+            "x0": 395.11,
+            "top": 339.93,
+            "x1": 432.52,
+            "bottom": 347.93
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 168.9,
+        "top": 342.96,
+        "x1": 219.43,
+        "bottom": 350.96,
+        "baseline": 350.96,
+        "words": [
+          {
+            "text": "Del",
+            "x0": 168.9,
+            "top": 342.96,
+            "x1": 180.41,
+            "bottom": 350.96
+          },
+          {
+            "text": "11/10/2022",
+            "x0": 182.03,
+            "top": 342.96,
+            "x1": 219.43,
+            "bottom": 350.96
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 36.67,
+        "top": 669.55,
+        "x1": 96.24,
+        "bottom": 677.55,
+        "baseline": 677.55,
+        "words": [
+          {
+            "text": "Totale",
+            "x0": 36.67,
+            "top": 669.55,
+            "x1": 59.32,
+            "bottom": 677.55
+          },
+          {
+            "text": "da",
+            "x0": 60.99,
+            "top": 669.55,
+            "x1": 69.84,
+            "bottom": 677.55
+          },
+          {
+            "text": "pagare",
+            "x0": 71.51,
+            "top": 669.55,
+            "x1": 96.24,
+            "bottom": 677.55
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 405.22,
+        "top": 669.55,
+        "x1": 430.4,
+        "bottom": 677.55,
+        "baseline": 677.55,
+        "words": [
+          {
+            "text": "77,46",
+            "x0": 405.22,
+            "top": 669.55,
+            "x1": 424.51,
+            "bottom": 677.55
+          },
+          {
+            "text": "€",
+            "x0": 426.18,
+            "top": 669.55,
+            "x1": 430.4,
+            "bottom": 677.55
+          }
+        ]
+      }
+    ]
+  }
+}

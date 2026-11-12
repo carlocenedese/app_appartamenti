@@ -1,0 +1,272 @@
+{
+  "layout": "Luce Enel Energia, Quando Scade? sulla stessa riga (2025-26)",
+  "profileId": "enel-luce-2020",
+  "expected": {
+    "status": "riconosciuta",
+    "number": "0902204015",
+    "issueDate": "2026-02-10",
+    "dueDate": "2026-02-25",
+    "amount": 15187,
+    "consumption": null,
+    "confidence": {
+      "number": "high",
+      "issueDate": "high",
+      "dueDate": "medium",
+      "amount": "high",
+      "consumption": "missing"
+    }
+  },
+  "dump": {
+    "fileHash": "541006ec774d19ecfdb82ed2e39be8c0c6ce73bd0ea7d668ac28b2a76511a630",
+    "pages": 6,
+    "hasText": true,
+    "lines": [
+      {
+        "page": 1,
+        "x0": 35.0,
+        "top": 81.4,
+        "x1": 164.24,
+        "bottom": 88.4,
+        "baseline": 88.4,
+        "words": [
+          {
+            "text": "Enel",
+            "x0": 35.0,
+            "top": 81.4,
+            "x1": 48.25,
+            "bottom": 88.4
+          },
+          {
+            "text": "Energia",
+            "x0": 49.96,
+            "top": 81.4,
+            "x1": 73.81,
+            "bottom": 88.4
+          },
+          {
+            "text": "-",
+            "x0": 75.53,
+            "top": 81.4,
+            "x1": 78.77,
+            "bottom": 88.4
+          },
+          {
+            "text": "Mercato",
+            "x0": 80.49,
+            "top": 81.4,
+            "x1": 106.82,
+            "bottom": 88.4
+          },
+          {
+            "text": "libero",
+            "x0": 108.54,
+            "top": 81.4,
+            "x1": 126.32,
+            "bottom": 88.4
+          },
+          {
+            "text": "dell'energia",
+            "x0": 128.03,
+            "top": 81.4,
+            "x1": 164.24,
+            "bottom": 88.4
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 47.17,
+        "top": 282.81,
+        "x1": 448.84,
+        "bottom": 291.81,
+        "baseline": 291.81,
+        "words": [
+          {
+            "text": "Bolletta",
+            "x0": 47.17,
+            "top": 282.81,
+            "x1": 77.94,
+            "bottom": 291.81
+          },
+          {
+            "text": "sintetica",
+            "x0": 80.14,
+            "top": 282.81,
+            "x1": 114.78,
+            "bottom": 291.81
+          },
+          {
+            "text": "riferita",
+            "x0": 116.98,
+            "top": 282.81,
+            "x1": 144.02,
+            "bottom": 291.81
+          },
+          {
+            "text": "alla",
+            "x0": 146.22,
+            "top": 282.81,
+            "x1": 159.44,
+            "bottom": 291.81
+          },
+          {
+            "text": "fattura",
+            "x0": 161.64,
+            "top": 282.81,
+            "x1": 189.49,
+            "bottom": 291.81
+          },
+          {
+            "text": "elettronica",
+            "x0": 191.69,
+            "top": 282.81,
+            "x1": 235.53,
+            "bottom": 291.81
+          },
+          {
+            "text": "n.",
+            "x0": 237.74,
+            "top": 282.81,
+            "x1": 244.81,
+            "bottom": 291.81
+          },
+          {
+            "text": "0902204015",
+            "x0": 247.01,
+            "top": 282.81,
+            "x1": 303.71,
+            "bottom": 291.81
+          },
+          {
+            "text": "del",
+            "x0": 305.91,
+            "top": 282.81,
+            "x1": 318.12,
+            "bottom": 291.81
+          },
+          {
+            "text": "10/02/2026",
+            "x0": 320.33,
+            "top": 282.81,
+            "x1": 372.46,
+            "bottom": 291.81
+          },
+          {
+            "text": "valida",
+            "x0": 374.66,
+            "top": 282.81,
+            "x1": 397.63,
+            "bottom": 291.81
+          },
+          {
+            "text": "ai",
+            "x0": 399.84,
+            "top": 282.81,
+            "x1": 406.6,
+            "bottom": 291.81
+          },
+          {
+            "text": "fini",
+            "x0": 408.81,
+            "top": 282.81,
+            "x1": 421.3,
+            "bottom": 291.81
+          },
+          {
+            "text": "fiscali.",
+            "x0": 423.51,
+            "top": 282.81,
+            "x1": 448.84,
+            "bottom": 291.81
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 39.68,
+        "top": 447.85,
+        "x1": 163.71,
+        "bottom": 457.85,
+        "baseline": 457.85,
+        "words": [
+          {
+            "text": "Quando",
+            "x0": 39.68,
+            "top": 448.85,
+            "x1": 73.0,
+            "bottom": 457.85
+          },
+          {
+            "text": "Scade?",
+            "x0": 74.9,
+            "top": 448.85,
+            "x1": 105.46,
+            "bottom": 457.85
+          },
+          {
+            "text": "25/02/2026",
+            "x0": 107.76,
+            "top": 447.85,
+            "x1": 163.71,
+            "bottom": 457.85
+          }
+        ]
+      },
+      {
+        "page": 4,
+        "x0": 36.85,
+        "top": 338.55,
+        "x1": 97.8,
+        "bottom": 346.55,
+        "baseline": 346.55,
+        "words": [
+          {
+            "text": "Totale",
+            "x0": 36.85,
+            "top": 338.55,
+            "x1": 59.99,
+            "bottom": 346.55
+          },
+          {
+            "text": "da",
+            "x0": 61.67,
+            "top": 338.55,
+            "x1": 70.6,
+            "bottom": 346.55
+          },
+          {
+            "text": "pagare",
+            "x0": 72.29,
+            "top": 338.55,
+            "x1": 97.8,
+            "bottom": 346.55
+          }
+        ]
+      },
+      {
+        "page": 4,
+        "x0": 255.7,
+        "top": 338.55,
+        "x1": 288.85,
+        "bottom": 346.55,
+        "baseline": 346.55,
+        "words": [
+          {
+            "text": "151,87",
+            "x0": 255.7,
+            "top": 338.55,
+            "x1": 281.3,
+            "bottom": 346.55
+          },
+          {
+            "text": "€",
+            "x0": 282.99,
+            "top": 338.55,
+            "x1": 288.85,
+            "bottom": 346.55
+          }
+        ]
+      }
+    ]
+  }
+}
