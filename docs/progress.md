@@ -326,6 +326,12 @@ Ognuna: che cosa, perché, costo se è sbagliata.
 
 ### Seguiti rimandati
 
+- **Dalla rilettura finale:** una regola «stessa riga» scritta a mano con testo tra etichetta e
+  valore (`Totale da pagare (IVA inclusa) 98,46`) dà `medium`: tenerne conto nei profili della
+  Fase B. `registerProposal` legge il profilo prima dei controlli sui duplicati (un errore di I/O
+  su quel file lancia invece di segnalare il duplicato). Mancano test su `readSupplierProfile` con
+  JSON malformato, id non sicuri e id non corrispondente (verificati a mano, tutti rifiutati).
+
 - **Fase B / piano 4:** il costruttore scrive `identifiers: []`, quindi il controllo dei codici
   dell'appartamento (`knownCodes` vuoti) manca o blocca sempre: decidere come il profilo impara gli
   identificativi (I6 della revisione finale).
