@@ -164,6 +164,10 @@ def check_profile_rules(profile: dict[str, Any]) -> list[str]:
     fields = profile.get("fields")
     if isinstance(fields, dict):
         for name, spec in fields.items():
+            if isinstance(spec, dict) and spec.get("combine") is not None and name != "period":
+                errors.append(
+                    f"fields.{name}.combine: solo il periodo può unire le sue letture"
+                )
             rules = spec.get("rules") if isinstance(spec, dict) else None
             if not isinstance(rules, list):
                 continue

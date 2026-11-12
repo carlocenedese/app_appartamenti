@@ -151,6 +151,12 @@
                 "valueType"
               ]
             }
+          },
+          "combine": {
+            "type": "string",
+            "enum": [
+              "span"
+            ]
           }
         },
         "required": [
@@ -224,5 +230,5 @@
     "fields",
     "identifiers"
   ],
-  "description": "kind \"bill\" needs a category and kind \"tari\" must not have one; parts only with kind \"tari\"; validFrom must not be after validTo; the valueType of every rule of a field is fixed: amount euro, issueDate and dueDate date, period date-range, consumption quantity, number text; the group of every rule must be one of its pattern's capture groups (0 is the whole match), the parts pattern needs at least 2 capture groups and the items pattern at least 1."
+  "description": "kind \"bill\" needs a category and kind \"tari\" must not have one; parts only with kind \"tari\"; validFrom must not be after validTo; the valueType of every rule of a field is fixed: amount euro, issueDate and dueDate date, period date-range, consumption quantity, number text; the group of every rule must be one of its pattern's capture groups (0 is the whole match), the parts pattern needs at least 2 capture groups and the items pattern at least 1; combine \"span\" only on the period."
 }
