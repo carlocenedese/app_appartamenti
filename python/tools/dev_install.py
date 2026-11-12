@@ -2,7 +2,7 @@
 
 Under -I neither the current folder nor PYTHONPATH is on sys.path, so the package must be in
 site-packages. `pip install ./python` would need setuptools, which is not among the hashed
-requirements (ruling R70); instead this script writes a `.pth` file into the site-packages of the
+requirements (ruling R72); instead this script writes a `.pth` file into the site-packages of the
 interpreter that runs it, naming the folder `python/` of the repository. The package then always
 runs from the working tree, and finds the schemas in `docs/schemas/` by walking up from it.
 

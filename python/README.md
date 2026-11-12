@@ -1,8 +1,45 @@
 # bollette_pdf
 
 Pacchetto Python che legge le bollette in PDF di testo e produce un `ExtractionResult` secondo gli
-schemi esportati dal core TypeScript (`docs/schemas/`). Fa parte del piano 2a; questo è lo
-scheletro: versione, validazione degli schemi e controllo delle licenze.
+schemi esportati dal core TypeScript (`docs/schemas/`), e costruisce i profili dei fornitori dalle
+selezioni fatte sul PDF. Fa parte del piano 2a. L'app lo avvia come programma a riga di comando
+(`python -I -m bollette_pdf`), con un limite di tempo (decisione R54).
+
+## Riga di comando
+
+```bash
+python -I -m bollette_pdf extract --pdf <file.pdf> --profiles <cartella> --at <data ISO>
+python -I -m bollette_pdf build-profile --pdf <file.pdf> --spec <file.json> --at <data ISO>
+python -I -m bollette_pdf --version
+```
+
+- `extract` legge il PDF con i profili `*.json` della cartella `--profiles` (quelli rotti o non
+  validi diventano avvisi con il solo nome del file) e scrive un `ExtractionResult` validato.
+- `build-profile` legge il PDF e il file `--spec` (formato qui sotto; `box` è
+  `[x0, top, x1, bottom]` in punti dall'angolo in alto a sinistra della pagina) e scrive il
+  `supplierProfile` costruito (in `bozza`), solo se rilegge i valori scelti con confidenza `high` (decisione R60).
+- `--at` è la data o data-ora ISO di riferimento: il programma non legge l'orologio.
+
+Il file `--spec`:
+
+```json
+{
+  "profileId": "…",
+  "supplier": "…",
+  "kind": "bill",
+  "category": "elettricita",
+  "validFrom": "2026-01-01",
+  "recognise": [{ "page": 1, "box": [72, 50, 200, 62] }],
+  "fields": { "amount": { "page": 1, "box": [300, 110, 360, 122] } }
+}
+```
+
+Stdout contiene SOLO un documento JSON e un a capo, in UTF-8 con `\n`. Codici d'uscita: `0` per
+ogni risultato valido (anche `non-riconosciuta`, `senza-testo` e `illeggibile`); `2` per argomenti
+sbagliati, un percorso illeggibile, una specifica o una selezione non valida, un risultato che non
+supera lo schema o un errore interno, con stdout vuoto. I messaggi su stderr sono frasi italiane
+generiche che non riportano mai testo del PDF, dei profili o dei percorsi; i messaggi di
+`pdfminer` sono spenti.
 
 ## Regole del pacchetto
 
@@ -27,7 +64,7 @@ PYTHON=.venv-python/bin/python pnpm python:licenses   # controllo delle licenze 
 `packages/core/test/extract-integration.test.ts` avvia `python -I -m bollette_pdf extract` su PDF
 sintetici scritti da `tests/make_sample.py`. Con `-I` il pacchetto va installato nell'interprete:
 `pnpm python:dev-install` (`tools/dev_install.py`) scrive in site-packages un file `.pth` che punta
-a questa cartella, senza setuptools (decisione R70), e rifiuta il Python di sistema (solo virtualenv
+a questa cartella, senza setuptools (decisione R72), e rifiuta il Python di sistema (solo virtualenv
 o `CI=true`). Senza Python il test si salta; con `REQUIRE_PYTHON=1` (come in CI) fallisce.
 
 ```bash

@@ -58,7 +58,7 @@ jobs:
         run: python -m pip install --require-hashes -r python/requirements.txt
 
       # Makes `python -I -m bollette_pdf` find the package of the working tree (a .pth file, no
-      # setuptools: ruling R70), for the integration test of the core.
+      # setuptools: ruling R72), for the integration test of the core.
       - name: Install the Python package for the core tests
         run: pnpm python:dev-install
 

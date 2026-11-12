@@ -16,7 +16,10 @@ import {
 
 const NonEmptyString = z.string().min(1);
 
-/** Where a value was read: page (1-based), box `[x0, y0, x1, y1]` in PDF points, text read. */
+/**
+ * Where a value was read: page (1-based), box `[x0, top, x1, bottom]` in points from the TOP-LEFT
+ * corner of the page (as the Python reader gives it, not PDF user space), text read.
+ */
 const SourceSchema = z.object({
   page: z.int().min(1),
   box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
