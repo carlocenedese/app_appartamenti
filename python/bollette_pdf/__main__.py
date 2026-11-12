@@ -4,10 +4,10 @@
     python -I -m bollette_pdf build-profile --pdf <file> --spec <file.json> --at <ISO date(-time)>
     python -I -m bollette_pdf --version
 
-`extract` prints ONE JSON document (a validated ExtractionResult) and a newline on stdout, in
-UTF-8 with `\\n` line endings (stderr is UTF-8 too, on every system). Exit code 0 for every
-valid result (also non-riconosciuta, senza-testo and illeggibile), 2 for wrong arguments, an
-unreadable path or a result that does not validate. `build-profile` prints, the same way, the
+`extract` prints ONE JSON document (a validated ExtractionResult) and a newline on stdout. Every
+output, stdout and stderr, is UTF-8 with `\\n` line endings on every system. Exit code 0 for
+every valid result (also non-riconosciuta, senza-testo and illeggibile), 2 for wrong arguments,
+an unreadable path or a result that does not validate. `build-profile` prints, the same way, the
 supplierProfile built from the selections of the spec file (see `_read_spec`); a malformed spec,
 an unreadable PDF or a selection that cannot be turned into a profile give code 2 and a constant
 message.
@@ -65,8 +65,9 @@ class _Parser(argparse.ArgumentParser):
         raise SystemExit(EXIT_ERROR)
 
     def _print_message(self, message: str, file: TextIO | None = None) -> None:
+        # argparse passes sys.stdout or sys.stderr itself (print_help): use the streams of main.
         if message:
-            (file or self._stdout).write(message)
+            (self._stderr if file is sys.stderr else self._stdout).write(message)
 
 
 def _build_parser(stdout: TextIO, stderr: TextIO) -> argparse.ArgumentParser:
@@ -169,13 +170,14 @@ class _Utf8Writer:
         self._stream.flush()
 
 
-def _utf8_errors(stream: TextIO) -> TextIO:
-    """`stream` writing UTF-8, like stdout. On Windows a piped stderr is in the ANSI code page,
-    where the caller (which reads UTF-8) would get «è» as an invalid byte."""
+def _utf8_lf(stream: TextIO) -> TextIO:
+    """`stream` writing UTF-8 with `\\n` line endings, the same on every system. On Windows a piped
+    stream is in the ANSI code page (the caller, reading UTF-8, would get «è» as an invalid byte)
+    and text mode turns `\\n` into `\\r\\n`."""
     reconfigure = getattr(stream, "reconfigure", None)
     if reconfigure is not None:
         try:
-            reconfigure(encoding="utf-8", errors="backslashreplace")
+            reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")
         except (AttributeError, OSError, ValueError):
             pass
         else:
@@ -302,8 +304,8 @@ def _run_build(pdf: str, spec_path: str, at: str, stdout: TextIO) -> None:
 
 
 def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:
-    out = sys.stdout if stdout is None else stdout
-    err = _utf8_errors(sys.stderr if stderr is None else stderr)
+    out = _utf8_lf(sys.stdout if stdout is None else stdout)
+    err = _utf8_lf(sys.stderr if stderr is None else stderr)
     parser = _build_parser(out, err)
     try:
         args = parser.parse_args(argv)

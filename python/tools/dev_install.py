@@ -31,7 +31,7 @@ def allowed(prefix: str, base_prefix: str, environ: dict[str, str]) -> bool:
 def write_pth(site_packages: Path, python_dir: Path = PYTHON_DIR) -> Path:
     """Writes the `.pth` file into `site_packages` and returns its path."""
     path = site_packages / PTH_NAME
-    path.write_text(f"{python_dir}\n", encoding="utf-8")
+    path.write_text(f"{python_dir}\n", encoding="utf-8", newline="\n")
     return path
 
 

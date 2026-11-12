@@ -70,9 +70,12 @@ class DevInstallTest(unittest.TestCase):
 
     def test_writes_one_line_naming_the_python_folder(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = dev_install.write_pth(Path(tmp), Path("/repo con spazi/python"))
+            folder = Path(tmp) / "repo con spazi è" / "python"
+            path = dev_install.write_pth(Path(tmp), folder)
             self.assertEqual(path.name, "bollette_pdf-dev.pth")
-            self.assertEqual(path.read_text(encoding="utf-8"), "/repo con spazi/python\n")
+            # The folder in the native form of the system (backslashes on Windows), one line
+            # ending in \n on every system.
+            self.assertEqual(path.read_bytes(), f"{folder}\n".encode("utf-8"))
 
 
 if __name__ == "__main__":

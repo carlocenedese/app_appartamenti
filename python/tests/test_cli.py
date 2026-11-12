@@ -269,17 +269,17 @@ class ErrorsTest(CliTestCase):
         missing = ["extract", "--pdf", str(self.dir / "non-esiste.pdf")]
         missing += ["--profiles", str(self.profiles), "--at", AT]
         expected = "Il file indicato con --pdf non esiste o non è un file."
-        # A stream that can be reconfigured (sys.stderr on Windows) ...
+        # A stream that can be reconfigured (sys.stderr on Windows: code page, \r\n) ...
         buffer = io.BytesIO()
-        stream = io.TextIOWrapper(buffer, encoding="cp1252")
+        stream = io.TextIOWrapper(buffer, encoding="cp1252", newline="\r\n")
         self.assertEqual(main(missing, io.StringIO(), stream), 2)
         stream.flush()
-        self.assertEqual(buffer.getvalue().decode("utf-8").strip(), expected)
+        self.assertEqual(buffer.getvalue(), f"{expected}\n".encode())
         # ... and one that cannot.
         fake = FakeStdout("cp1252")
         self.assertEqual(main(missing, io.StringIO(), fake), 2)
         fake.flush()
-        self.assertEqual(fake.buffer.getvalue().decode("utf-8").strip(), expected)
+        self.assertEqual(fake.buffer.getvalue(), f"{expected}\n".encode())
 
     def test_directory_as_pdf(self) -> None:
         self.assertRejected(self.extract(pdf=self.dir))
@@ -324,6 +324,26 @@ class VersionTest(CliTestCase):
         self.assertEqual(completed.returncode, 0)
         self.assertEqual(completed.stdout, f"{__version__}\n".encode())
         self.assertEqual(completed.stderr, b"")
+
+    def test_version_ends_with_lf_on_a_windows_like_stream(self) -> None:
+        # Every output of the program ends lines with \n on every system (no \r\n on Windows).
+        for stream in (
+            io.TextIOWrapper(io.BytesIO(), encoding="cp1252", newline="\r\n"),
+            FakeStdout("cp1252"),
+        ):
+            with self.subTest(stream=type(stream).__name__):
+                self.assertEqual(main(["--version"], stream, io.StringIO()), 0)
+                stream.flush()
+                self.assertEqual(stream.buffer.getvalue(), f"{__version__}\n".encode())
+
+    def test_help_is_utf8_with_lf(self) -> None:
+        stream = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", newline="\r\n")
+        self.assertEqual(main(["--help"], stream, io.StringIO()), 0)
+        stream.flush()
+        data = stream.buffer.getvalue()
+        self.assertNotIn(b"\r", data)
+        self.assertIn(b"bollette_pdf", data)
+        data.decode("utf-8")
 
 
 if __name__ == "__main__":
