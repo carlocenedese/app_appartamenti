@@ -41,7 +41,10 @@ INVENTED_NUMBERS = {
     "acegas-acqua-02": "493622410726",
     "acegas-tari-01": "5570/2/65484",
     "acegas-tari-02": "9732/15/83030",
+    "acegas-tari-03": "82777942925",
+    "acegas-tari-04": "5114/21/62591",
     "enel-01": "7185744691",
+    "enel-02": "2213731725",
     "enel-03": "0902204015",
     "enel-04": "8082258428",
     "fastweb-01": "M212465544",
@@ -51,8 +54,8 @@ INVENTED_NUMBERS = {
     "hera-luce-01": "106914348247",
     "hera-luce-02": "514309923781"
 }
-# Layouts whose amount is read through a less specific label, hence with medium confidence.
-MEDIUM_AMOUNT = {"enel-04"}
+# Layouts whose amount is read through a less specific label («Totale bolletta», «Totale fattura»): medium.
+MEDIUM_AMOUNT = {"enel-04", "hera-gas-03"}
 
 
 def _fixture(path: Path) -> dict:

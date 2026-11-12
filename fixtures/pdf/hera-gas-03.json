@@ -1,21 +1,21 @@
 {
-  "layout": "Gas Hera, importo e scadenza non letti",
+  "layout": "Gas Hera, nota di credito (importo negativo)",
   "profileId": "hera-gas-2024",
   "expected": {
-    "status": "da-confermare",
+    "status": "riconosciuta",
     "number": "243074872614",
     "issueDate": "2024-06-12",
-    "dueDate": null,
+    "dueDate": "2024-06-27",
     "periodStart": "2024-03-01",
     "periodEnd": "2024-05-31",
-    "amount": null,
+    "amount": -6892,
     "confidence": {
       "number": "high",
       "issueDate": "high",
-      "dueDate": "missing",
+      "dueDate": "medium",
       "periodStart": "high",
       "periodEnd": "high",
-      "amount": "missing"
+      "amount": "medium"
     }
   },
   "dump": {
@@ -168,6 +168,30 @@
       {
         "page": 3,
         "x0": 28.34,
+        "top": 184.61,
+        "x1": 106.16,
+        "bottom": 192.61,
+        "baseline": 190.93,
+        "words": [
+          {
+            "text": "Scadenza",
+            "x0": 28.34,
+            "top": 184.61,
+            "x1": 63.92,
+            "bottom": 192.61
+          },
+          {
+            "text": "27.06.2024",
+            "x0": 66.15,
+            "top": 184.61,
+            "x1": 106.16,
+            "bottom": 192.61
+          }
+        ]
+      },
+      {
+        "page": 3,
+        "x0": 28.34,
         "top": 196.64,
         "x1": 163.92,
         "bottom": 204.64,
@@ -224,6 +248,44 @@
             "top": 261.42,
             "x1": 605.16,
             "bottom": 268.42
+          }
+        ]
+      },
+      {
+        "page": 4,
+        "x0": 665.91,
+        "top": 342.01,
+        "x1": 813.49,
+        "bottom": 357.01,
+        "baseline": 353.86,
+        "words": [
+          {
+            "text": "Totale",
+            "x0": 665.91,
+            "top": 342.01,
+            "x1": 707.56,
+            "bottom": 357.01
+          },
+          {
+            "text": "fattura",
+            "x0": 711.72,
+            "top": 342.01,
+            "x1": 754.2,
+            "bottom": 357.01
+          },
+          {
+            "text": "-68,92",
+            "x0": 758.46,
+            "top": 342.01,
+            "x1": 800.97,
+            "bottom": 357.01
+          },
+          {
+            "text": "€",
+            "x0": 805.15,
+            "top": 342.01,
+            "x1": 813.49,
+            "bottom": 357.01
           }
         ]
       }

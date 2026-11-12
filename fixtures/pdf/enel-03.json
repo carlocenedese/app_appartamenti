@@ -6,12 +6,16 @@
     "number": "0902204015",
     "issueDate": "2026-02-10",
     "dueDate": "2026-02-25",
+    "periodStart": "2025-12-01",
+    "periodEnd": "2026-01-31",
     "amount": 15187,
     "consumption": null,
     "confidence": {
       "number": "high",
       "issueDate": "high",
       "dueDate": "medium",
+      "periodStart": "high",
+      "periodEnd": "high",
       "amount": "high",
       "consumption": "missing"
     }
@@ -70,6 +74,93 @@
             "top": 81.4,
             "x1": 164.24,
             "bottom": 88.4
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 47.17,
+        "top": 265.76,
+        "x1": 465.09,
+        "bottom": 279.76,
+        "baseline": 279.76,
+        "words": [
+          {
+            "text": "Periodo",
+            "x0": 47.17,
+            "top": 265.76,
+            "x1": 96.85,
+            "bottom": 279.76
+          },
+          {
+            "text": "DIC.",
+            "x0": 99.81,
+            "top": 265.76,
+            "x1": 127.26,
+            "bottom": 279.76
+          },
+          {
+            "text": "2025",
+            "x0": 130.22,
+            "top": 265.76,
+            "x1": 163.93,
+            "bottom": 279.76
+          },
+          {
+            "text": "-",
+            "x0": 166.88,
+            "top": 265.76,
+            "x1": 173.7,
+            "bottom": 279.76
+          },
+          {
+            "text": "GEN.",
+            "x0": 176.65,
+            "top": 265.76,
+            "x1": 208.73,
+            "bottom": 279.76
+          },
+          {
+            "text": "2026",
+            "x0": 211.68,
+            "top": 265.76,
+            "x1": 245.92,
+            "bottom": 279.76
+          },
+          {
+            "text": "-",
+            "x0": 248.88,
+            "top": 265.76,
+            "x1": 255.7,
+            "bottom": 279.76
+          },
+          {
+            "text": "spesa",
+            "x0": 258.65,
+            "top": 265.76,
+            "x1": 294.81,
+            "bottom": 279.76
+          },
+          {
+            "text": "per",
+            "x0": 297.77,
+            "top": 265.76,
+            "x1": 319.24,
+            "bottom": 279.76
+          },
+          {
+            "text": "l'ENERGIA",
+            "x0": 322.2,
+            "top": 265.76,
+            "x1": 388.79,
+            "bottom": 279.76
+          },
+          {
+            "text": "ELETTRICA",
+            "x0": 391.75,
+            "top": 265.76,
+            "x1": 465.09,
+            "bottom": 279.76
           }
         ]
       },

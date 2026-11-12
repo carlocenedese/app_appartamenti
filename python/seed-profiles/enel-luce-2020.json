@@ -22,6 +22,20 @@
           "pattern": "^[\\s:€]*(\\S+)",
           "valueType": "text",
           "group": 1
+        },
+        {
+          "anchor": "fiscali",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*([0-9]{10})(?![0-9.,])",
+          "valueType": "text",
+          "group": 1
+        },
+        {
+          "anchor": "N. Fattura",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*([0-9]{10})(?![0-9.,])",
+          "valueType": "text",
+          "group": 1
         }
       ]
     },
@@ -90,6 +104,25 @@
           "position": "below",
           "pattern": "^[\\s:€]*(\\d[\\d.]*(?:,\\d+)?\\s*[A-Za-zµ]+[²³]?)(?![\\d.,])",
           "valueType": "quantity",
+          "group": 1
+        }
+      ]
+    },
+    "period": {
+      "required": false,
+      "rules": [
+        {
+          "anchor": "Periodo",
+          "position": "same-line",
+          "pattern": "^[\\s:€]*([A-Za-z]+\\.?(?:\\s+\\d{2,4})?\\s*-\\s*[A-Za-z]+\\.?\\s+\\d{2,4})(?![\\d.,])",
+          "valueType": "date-range",
+          "group": 1
+        },
+        {
+          "anchor": "PERIODO",
+          "position": "below",
+          "pattern": "^[\\s:€]*([A-Za-z]+\\.?(?:\\s+\\d{2,4})?\\s*-\\s*[A-Za-z]+\\.?\\s+\\d{2,4})(?![\\d.,])",
+          "valueType": "date-range",
           "group": 1
         }
       ]

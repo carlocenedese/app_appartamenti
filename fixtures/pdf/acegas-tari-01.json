@@ -1,16 +1,20 @@
 {
-  "layout": "TARI Padova, totale da pagare (rata di aprile)",
+  "layout": "TARI Padova, totale da pagare (rata di aprile 2024)",
   "profileId": "acegas-tari-2024",
   "expected": {
     "status": "riconosciuta",
     "number": "5570/2/65484",
     "issueDate": "2024-02-03",
     "dueDate": "2024-03-15",
+    "periodStart": "2024-01-01",
+    "periodEnd": "2024-04-30",
     "amount": 17200,
     "confidence": {
       "number": "high",
       "issueDate": "high",
       "dueDate": "high",
+      "periodStart": "high",
+      "periodEnd": "high",
       "amount": "high"
     }
   },
@@ -204,6 +208,23 @@
       },
       {
         "page": 1,
+        "x0": 20.0,
+        "top": 437.98,
+        "x1": 48.52,
+        "bottom": 446.98,
+        "baseline": 444.73,
+        "words": [
+          {
+            "text": "Periodo",
+            "x0": 20.0,
+            "top": 437.98,
+            "x1": 48.52,
+            "bottom": 446.98
+          }
+        ]
+      },
+      {
+        "page": 1,
         "x0": 446.29,
         "top": 439.63,
         "x1": 571.0,
@@ -223,6 +244,44 @@
             "top": 439.63,
             "x1": 571.0,
             "bottom": 453.63
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 20.0,
+        "top": 456.97,
+        "x1": 152.39,
+        "bottom": 471.97,
+        "baseline": 468.22,
+        "words": [
+          {
+            "text": "Gennaio",
+            "x0": 20.0,
+            "top": 456.97,
+            "x1": 71.18,
+            "bottom": 471.97
+          },
+          {
+            "text": "-",
+            "x0": 74.57,
+            "top": 456.97,
+            "x1": 79.16,
+            "bottom": 471.97
+          },
+          {
+            "text": "Aprile",
+            "x0": 82.55,
+            "top": 456.97,
+            "x1": 118.64,
+            "bottom": 471.97
+          },
+          {
+            "text": "2024",
+            "x0": 122.03,
+            "top": 456.97,
+            "x1": 152.39,
+            "bottom": 471.97
           }
         ]
       },
