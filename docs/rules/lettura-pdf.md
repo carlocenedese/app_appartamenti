@@ -109,6 +109,6 @@ fattura e l'impronta del file sono invece inventati da uno script di preparazion
 repository, con cifre prese dal nome della fixture e non dal numero vero (la stessa stringa nella
 fixture e nei valori attesi). Il test fissa l'elenco dei numeri inventati. La mappa di sostituzione
 sta fuori dal repository; `pnpm data:check` controlla i file tracciati.
-**Politica da confermare:** `fixtures/README.md` ora ammette qui testo di bollette reali
+**Politica confermata da Carlo (12 novembre 2026):** `fixtures/README.md` ora ammette qui testo di bollette reali
 anonimizzato, come dice `CLAUDE.md` (solo fixture anonimizzate) e il piano 2a, mentre prima
 diceva solo PDF sintetici.
