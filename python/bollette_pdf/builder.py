@@ -25,6 +25,7 @@ No network, no clock: `now` is an argument (validated, not stored: the record ha
 from __future__ import annotations
 
 import math
+import re
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -166,6 +167,10 @@ def _anchor_options(layout: Layout, line_index: int, word_index: int) -> list[_O
     return []
 
 
+MIN_ANCHOR_LETTERS = 3
+_NOISE_ANCHOR = re.compile(r"(?:€|eur|euro|[\s:;,.()])+", re.IGNORECASE)
+
+
 def _anchor_text(layout: Layout, option: _Option) -> str | None:
     words = layout.lines[option.line].words[option.first : option.last + 1]
     if not any(word_key(word.text) for word in words):
@@ -173,7 +178,12 @@ def _anchor_text(layout: Layout, option: _Option) -> str | None:
     # Ruling R62: a value (date, amount, number...) changes from bill to bill: never an anchor.
     if any(value_shaped(word.text) for word in words):
         return None
-    return unicodedata.normalize("NFC", " ".join(word.text for word in words))
+    text = unicodedata.normalize("NFC", " ".join(word.text for word in words))
+    # Ruling R73: cell noise alone (`€`, `EUR`, `euro`) or fewer than 3 letters («n.», «di») is
+    # no stable label: return None so that a longer window («Fattura n.») is tried.
+    if _NOISE_ANCHOR.fullmatch(text) or sum(char.isalpha() for char in text) < MIN_ANCHOR_LETTERS:
+        return None
+    return text
 
 
 def _leads_to(layout: Layout, option: _Option, anchor: str, first_word: Word) -> bool:

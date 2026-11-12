@@ -193,6 +193,25 @@ class BuildTest(BuilderTestCase):
         )
         self.assertEqual(profile["recognise"]["allOf"], ["acqua inventata s.p.a.", "fattura"])
 
+    def test_short_or_noise_anchors_grow(self) -> None:
+        # «n.» has one letter and «EUR» is cell noise: neither is a stable label (R73).
+        doc = self.doc(
+            [
+                (72, 60, "Acqua Inventata S.p.A.", 14),
+                (72, 100, "Fattura n. AI-2026-0042"),
+                (72, 120, "Totale EUR 98,46"),
+                (72, 400, FILLER),
+            ]
+        )
+        profile = self.build(
+            doc, {"number": select(doc, "AI-2026-0042"), "amount": select(doc, "98,46")}
+        )
+        anchors = {name: spec["rules"][0]["anchor"] for name, spec in profile["fields"].items()}
+        self.assertEqual(anchors, {"number": "Fattura n.", "amount": "Totale EUR"})
+        result = extract(doc, [profile], AT)
+        self.assertEqual(result["fields"]["number"]["confidence"], "high")
+        self.assertEqual(result["fields"]["amount"]["confidence"], "high")
+
     def test_right_far_column(self) -> None:
         doc = self.doc(
             [
