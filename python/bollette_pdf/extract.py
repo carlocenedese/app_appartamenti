@@ -14,7 +14,8 @@
   is always `da-confermare` (ruling R55);
 - a TARI profile with `parts` adds the checks `parts-found` and `parts-unique` (ruling R56);
 - for `right` and `below`, a value is `high` only when it fills its cell, apart from `€`, `EUR`,
-  `euro`, parentheses, colons and spaces (ruling R57).
+  `euro`, parentheses, colons and spaces (ruling R57); for `same-line`, only when nothing but
+  that noise precedes it and no digit (or `.`/`,` and a digit) follows it (ruling R73).
 
 Warnings and check messages are generic Italian sentences that never quote the document.
 No network, no clock: `at` is an argument.
@@ -80,12 +81,24 @@ def _whole_cell(candidate: Text, start: int, end: int) -> bool:
     return _CELL_NOISE.sub("", rest) == ""
 
 
+# A match cut out of a longer number: a digit, or `.`/`,` and a digit, right after it.
+_NUMBER_GOES_ON = re.compile(r"[0-9]|[.,][0-9]")
+
+
+def _starts_the_line(candidate: Text, start: int, end: int) -> bool:
+    """For `same-line`: only cell noise before the match and no number cut after it (R73)."""
+    return _CELL_NOISE.sub("", candidate.text[:start]) == "" and not _NUMBER_GOES_ON.match(
+        candidate.text, end
+    )
+
+
 def _read_at(
     candidate: Text, page: int, rule: dict[str, Any]
 ) -> tuple[Any, dict[str, Any], bool] | None:
     """(value, source, whole) read with `rule` from one candidate text, or None.
 
-    `whole` is False when a `right` or `below` match leaves other text in its cell.
+    `whole` is False when a `right` or `below` match leaves other text in its cell, or when a
+    `same-line` match follows other text or is cut out of a longer number.
     """
     compiled = _compile(rule.get("pattern"))
     if compiled is None:
@@ -104,7 +117,10 @@ def _read_at(
     words = candidate.words_in(start, end)
     if value is None or not words:
         return None
-    whole = rule.get("position") == "same-line" or _whole_cell(candidate, start, end)
+    if rule.get("position") == "same-line":
+        whole = _starts_the_line(candidate, start, end)
+    else:
+        whole = _whole_cell(candidate, start, end)
     return value, _source(page, words, text), whole
 
 

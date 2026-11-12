@@ -437,6 +437,48 @@ class StatusTest(ExtractTestCase):
         self.assertValid(result)
 
 
+class SameLineWholeTest(ExtractTestCase):
+    """Ruling R73 item 1: `same-line` is high only when the value starts its cell."""
+
+    def amount(self, text, pattern=EURO):
+        profile = light_profile()
+        profile["fields"]["amount"]["rules"] = [rule("Totale da pagare", pattern, "euro")]
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 200, text), (72, 400, FILLER)])
+        amount = extract(doc, [profile], AT)["fields"]["amount"]
+        return amount["value"], amount["confidence"]
+
+    def due(self, text):
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 140, text), (72, 400, FILLER)])
+        due = extract(doc, [light_profile()], AT)["fields"]["dueDate"]
+        return due["value"], due["confidence"]
+
+    def test_space_thousands_with_an_unanchored_pattern_is_not_high(self) -> None:
+        self.assertNotEqual(self.amount("Totale da pagare € 1 234,56")[1], "high")
+
+    def test_minus_outside_the_pattern_is_not_high(self) -> None:
+        self.assertNotEqual(self.amount("Totale da pagare € -12,50")[1], "high")
+
+    def test_value_followed_by_more_digits_is_not_high(self) -> None:
+        profile = light_profile()
+        profile["fields"]["number"]["rules"] = [rule("Fattura n.", "([A-Z]+)", "text")]
+        for text in ("Fattura n. FX2025", "Fattura n. FX.2025", "Fattura n. FX,7"):
+            doc = self.doc([(72, 80, "Luce Inventata"), (72, 100, text), (72, 400, FILLER)])
+            number = extract(doc, [profile], AT)["fields"]["number"]
+            self.assertEqual((number["value"], number["confidence"]), ("FX", "medium"), text)
+        doc = self.doc([(72, 80, "Luce Inventata"), (72, 100, "Fattura n. FX-2025"),
+                        (72, 400, FILLER)])
+        self.assertEqual(extract(doc, [profile], AT)["fields"]["number"]["confidence"], "high")
+
+    def test_date_after_other_words_is_not_high(self) -> None:
+        value, confidence = self.due("Scadenza prorogata dal 31/03/2026 al 30/04/2026")
+        self.assertEqual(value, "2026-03-31")
+        self.assertNotEqual(confidence, "high")
+
+    def test_ordinary_values_stay_high(self) -> None:
+        self.assertEqual(self.amount("Totale da pagare: 98,46 €"), (9846, "high"))
+        self.assertEqual(self.due("Scadenza: 15/03/2026"), ("2026-03-15", "high"))
+
+
 class ProfileChoiceTest(ExtractTestCase):
     def profiles(self):
         old = light_profile(id="luce-2020", validFrom="2020-01-01", validTo="2024-12-31")
