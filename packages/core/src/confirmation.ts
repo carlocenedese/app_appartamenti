@@ -25,6 +25,7 @@ import type { Proposal } from './proposal';
 import { loadAll } from './store/load';
 import { compactTimestamp } from './time';
 import { recordPath } from './store/records';
+import { MalformedJsonError } from './store/store';
 import type { Store } from './store/store';
 
 /**
@@ -183,6 +184,31 @@ async function writeInstalments(
 }
 
 /**
+ * The supplier profile the reading was made with, as stored (`result.profileId`), or `undefined`
+ * when the reading names none, there is no such record, it is deleted, or its file is not a valid
+ * profile: `decideRegistration` then sends the reading to a person.
+ */
+async function readSupplierProfile(
+  store: Store,
+  result: ExtractionResult,
+): Promise<SupplierProfile | undefined> {
+  if (result.profileId === null) return undefined;
+  let raw: unknown;
+  try {
+    raw = await store.readJson(recordPath('supplierProfile', result.profileId));
+  } catch (error) {
+    // An id that is not a safe file name, or a file that is not JSON: no usable profile.
+    if (error instanceof RangeError || error instanceof MalformedJsonError) return undefined;
+    throw error;
+  }
+  const parsed = SupplierProfileSchema.safeParse(raw);
+  if (!parsed.success || parsed.data.deleted === true || parsed.data.id !== result.profileId) {
+    return undefined;
+  }
+  return parsed.data;
+}
+
+/**
  * Registers what `proposal` proposes for the PDF `bytes`, read as `result`, with one operation of
  * the journal (undone with `undoOperation`, which leaves the records `deleted`).
  *
@@ -197,14 +223,17 @@ async function writeInstalments(
  * `possible-duplicate` (and the same file as `duplicate`) in both modes, never written twice.
  * `rejected`, writing nothing: a proposal `none` in either mode (there is nothing to write), or a
  * TARI proposal without instalments; bytes that are not the file that was read; with
- * `mode: 'auto'`, a proposal that a person must see (a reading that is not `riconosciuta`, a field that is not `high`, a check `warn` or
- * `fail`). The profile side of the policy is `decideRegistration`'s: the caller asks it first. In
- * `mode: 'manual'` a person has confirmed the proposal, so the checks do not stop it, but the
+ * `mode: 'auto'`, anything `decideRegistration` does not call `auto-register`, with its reasons
+ * joined: the supplier profile `result.profileId` is loaded from the store and must exist (not
+ * deleted), be `confermato`, have `autoRegister` and the `rev` of the reading; the reading must
+ * be `riconosciuta`, every field `high`, no check `warn` or `fail`. The policy is enforced here
+ * (ruling R73), so the caller need not ask `decideRegistration` first. In `mode: 'manual'` a
+ * person has confirmed the proposal, so neither the profile nor the checks stop it, but the
  * duplicate checks still do.
  *
- * `mode: 'auto'` does not look at the supplier profile (confirmed, `autoRegister`, the profile
- * the reading was made with): the caller must call `decideRegistration` first and use `auto`
- * only when it says `auto-register`.
+ * In a batch, build the `ProposalContext` again after each registration: a proposal made from a
+ * context that does not know the bills just registered misses its duplicate and anomaly checks
+ * (the store's duplicate check still catches the same bill).
  *
  * The operation id is `op-<id of the first record>-<time of the attempt>` (see `operationId`), so
  * a retry after a failed write is a new operation. A proposal registered and then undone cannot
@@ -228,7 +257,11 @@ export async function registerProposal(
     return { status: 'rejected', reason: 'Il file non è quello letto: va letto di nuovo.' };
   }
   const suffix = mode === 'auto' ? '-auto' : '';
-  const autoReasons = mode === 'auto' ? proposalReasons(proposal, result) : [];
+  const autoReasons =
+    mode === 'auto'
+      ? decideRegistration({ proposal, result, profile: await readSupplierProfile(store, result) })
+          .reasons
+      : [];
 
   if (proposal.kind === 'tari') {
     const records = proposal.instalments.map((instalment) =>

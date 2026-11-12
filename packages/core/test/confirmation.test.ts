@@ -141,6 +141,34 @@ function profile(extra: Partial<SupplierProfile> = {}): SupplierProfile {
   });
 }
 
+function tariProfile(extra: Partial<SupplierProfile> = {}): SupplierProfile {
+  return SupplierProfileSchema.parse({
+    id: 'prof-tari',
+    v: 1,
+    rev: 1,
+    supplier: 'Comune di Esempio',
+    kind: 'tari',
+    status: 'confermato',
+    autoRegister: true,
+    validFrom: '2025-01-01',
+    recognise: { allOf: ['Avviso TARI'], noneOf: [] },
+    fields: {},
+    identifiers: [],
+    ...extra,
+  });
+}
+
+/** `store` with the supplier profiles written as records (default: the confirmed luce one). */
+async function withProfiles<S extends MemoryStore>(
+  store: S,
+  ...profiles: SupplierProfile[]
+): Promise<S> {
+  for (const p of profiles.length > 0 ? profiles : [profile()]) {
+    await store.writeJsonAtomic(recordPath('supplierProfile', p.id), p);
+  }
+  return store;
+}
+
 async function billCase(bytes: Uint8Array = PDF, overrides: Record<string, unknown> = {}) {
   const result = billResult(await hashBytes(bytes), overrides);
   const proposal = proposalFromExtraction(result, context(), ids('bill'));
@@ -246,7 +274,7 @@ describe('decideRegistration', () => {
 
 describe('registerProposal: bills', () => {
   it('registers an automatic bill with one bill.register-auto operation, and can undo it', async () => {
-    const store = new MemoryStore();
+    const store = await withProfiles(new MemoryStore());
     const clock = tickingClock();
     const { result, proposal } = await billCase();
     const outcome = await registerProposal(
@@ -282,7 +310,7 @@ describe('registerProposal: bills', () => {
   });
 
   it('reports the same PDF twice as duplicate, with one record', async () => {
-    const store = new MemoryStore();
+    const store = await withProfiles(new MemoryStore());
     const clock = tickingClock();
     const first = await billCase();
     await registerProposal(
@@ -303,7 +331,7 @@ describe('registerProposal: bills', () => {
   });
 
   it('reports the PDF downloaded again as possible-duplicate, even in auto mode (RF 5)', async () => {
-    const store = new MemoryStore();
+    const store = await withProfiles(new MemoryStore());
     const clock = tickingClock();
     const first = await billCase();
     await registerProposal(
@@ -323,10 +351,22 @@ describe('registerProposal: bills', () => {
     expect(outcome).toEqual({ status: 'possible-duplicate', existingId: 'bill-1' });
     expect((await loadAll(store, 'bill', BillSchema)).records).toHaveLength(1);
     expect((await readJournal(store)).operations).toHaveLength(1);
+
+    // The duplicate checks come before the profile policy: still a duplicate with a draft profile.
+    await store.writeJsonAtomic(
+      recordPath('supplierProfile', 'prof-luce'),
+      profile({ status: 'bozza' }),
+    );
+    const later = await registerProposal(
+      store,
+      { proposal, result, bytes: PDF_AGAIN, profileId: 'carlo', mode: 'auto' },
+      clock,
+    );
+    expect(later).toEqual({ status: 'possible-duplicate', existingId: 'bill-1' });
   });
 
   it('rejects in auto mode a proposal none, a fail, a warn or a field that is not high', async () => {
-    const store = new MemoryStore();
+    const store = await withProfiles(new MemoryStore());
     const clock = tickingClock();
     const base = await billCase();
     const missing = await billCase(PDF, { fields: { amount: field(null, 'missing') } });
@@ -347,6 +387,66 @@ describe('registerProposal: bills', () => {
     }
     expect(await store.list('_app/journal')).toEqual([]);
     expect(await store.list('_app/dati/bill')).toEqual([]);
+  });
+
+  it('applies the profile policy in auto mode: rejected unless decideRegistration says auto-register', async () => {
+    const clock = tickingClock();
+    const { result, proposal } = await billCase();
+    const cases: [string, MemoryStore, ExtractionResult, RegExp][] = [
+      [
+        'draft',
+        await withProfiles(new MemoryStore(), profile({ status: 'bozza' })),
+        result,
+        /bozza/,
+      ],
+      [
+        'autoRegister false',
+        await withProfiles(new MemoryStore(), profile({ autoRegister: false })),
+        result,
+        /conferma sempre/,
+      ],
+      [
+        'rev mismatch',
+        await withProfiles(new MemoryStore(), profile({ rev: 2 })),
+        result,
+        /cambiato dopo la lettura/,
+      ],
+      ['no profile record', new MemoryStore(), result, /Nessun profilo/],
+      [
+        'profileId null',
+        await withProfiles(new MemoryStore()),
+        { ...result, profileId: null, profileRev: null },
+        /Nessun profilo/,
+      ],
+      [
+        'deleted profile',
+        await withProfiles(new MemoryStore(), profile({ deleted: true })),
+        result,
+        /Nessun profilo/,
+      ],
+    ];
+    for (const [name, store, read, reason] of cases) {
+      const outcome = await registerProposal(
+        store,
+        { proposal, result: read, bytes: PDF, profileId: 'carlo', mode: 'auto' },
+        clock,
+      );
+      expect(outcome.status, name).toBe('rejected');
+      if (outcome.status === 'rejected') expect(outcome.reason, name).toMatch(reason);
+      expect(await store.list('_app/journal'), name).toEqual([]);
+      expect(await store.list('_app/dati/bill'), name).toEqual([]);
+    }
+  });
+
+  it('uses the profile only in auto mode: manual mode registers with a draft profile', async () => {
+    const store = await withProfiles(new MemoryStore(), profile({ status: 'bozza' }));
+    const { result, proposal } = await billCase();
+    const outcome = await registerProposal(
+      store,
+      { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      tickingClock(),
+    );
+    expect(outcome.status).toBe('registered');
   });
 
   it('rejects a proposal none in manual mode too: there is nothing to write', async () => {
@@ -397,6 +497,9 @@ describe('registerProposal: bills', () => {
 describe('registerProposal: retry after a failed write (R68)', () => {
   it('gives the retry its own operation, listed in the journal and undoable', async () => {
     const store = new FailingRecordStore();
+    store.failNext = false;
+    await withProfiles(store);
+    store.failNext = true;
     const clock = tickingClock();
     const { result, proposal } = await billCase();
     const input = { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'auto' as const };
@@ -497,7 +600,7 @@ describe('registerProposal: TARI', () => {
   });
 
   it('reports the notice downloaded again as possible-duplicate, and auto writes instalment.register-auto', async () => {
-    const store = new MemoryStore();
+    const store = await withProfiles(new MemoryStore(), tariProfile());
     const clock = tickingClock();
     const first = await tariCase();
     const auto = await registerProposal(
@@ -518,6 +621,18 @@ describe('registerProposal: TARI', () => {
     );
     expect(outcome.status).toBe('possible-duplicate');
     expect((await loadAll(store, 'instalment', InstalmentSchema)).records).toHaveLength(2);
+  });
+
+  it('rejects an automatic TARI notice when its profile asks to confirm', async () => {
+    const store = await withProfiles(new MemoryStore(), tariProfile({ autoRegister: false }));
+    const { result, proposal } = await tariCase();
+    const outcome = await registerProposal(
+      store,
+      { proposal, result, bytes: TARI_PDF, profileId: 'carlo', mode: 'auto' },
+      tickingClock(),
+    );
+    expect(outcome.status).toBe('rejected');
+    expect(await store.list('_app/dati/instalment')).toEqual([]);
   });
 
   it('rejects a TARI proposal without instalments', async () => {
