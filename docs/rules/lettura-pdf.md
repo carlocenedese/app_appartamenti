@@ -1,7 +1,8 @@
 # Lettura dei PDF: profili dei fornitori
 
-Stato: **bozza, in attesa dell'approvazione di Carlo** (Task 12 del piano 2a, Fase B). Nessun
-profilo è `confermato`: tutti hanno `status: 'bozza'`.
+Stato: **approvato da Carlo il 12 novembre 2026** (documento e fixture; Task 12 del piano 2a,
+Fase B). Il campione a mano dopo le correzioni resta da rifare. Nessun profilo è `confermato`:
+tutti hanno `status: 'bozza'`.
 
 I profili stanno in `python/seed-profiles/<profilo>.json`, le fixture in `fixtures/pdf/<fornitore>-<NN>.json`
 (ognuna con i valori attesi), il test in `python/tests/test_real_layouts.py`. I profili non
@@ -13,7 +14,7 @@ bolletta va sempre in revisione, decisione di Carlo del 12 novembre 2026).
 - **Importo = «Totale da pagare» del documento** (12 novembre 2026), anche quando comprende altri
   servizi: nel riepilogo Hera il totale può includere «Altri servizi» (es. gas più altro servizio).
   Stessa regola applicata alle bollette Enel Energia, il cui totale comprende il canone TV:
-  **da confermare da Carlo** che valga anche lì.
+  **confermato da Carlo (12 novembre 2026)**: il canone TV resta nel totale.
 
 ## Regole prese dal piano per leggere i PDF
 
@@ -100,15 +101,16 @@ controllati a mano che chiede il piano: resta da fare con Carlo.**
 
 - **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il
   costruttore non ricava una regola stabile per l'importo (l'importo sta sotto «TOTALE DA PAGARE»
-  ma il testo cambia). Non ha profilo.
+  ma il testo cambia). Non ha profilo (spiegazione data a Carlo il 12 novembre 2026; regola ancora da decidere).
 - **Scansioni:** 39 PDF senza testo (19 a Pulci, 20 a Berchet), tra cui le bollette Enel del 2020-21
   di Pulci con glifi rotti (`(cid:…)`). Fuori dal piano 2a (OCR nel 2b); i 3 PDF Enel 2020-21 di
   Pulci con testo parziale sono letti con importo da «Totale bolletta», non confrontato (da
   rivedere).
-- **Periodo dell'acqua:** non è letto. Decisione di Carlo (12 novembre 2026): è l'**unione dei
-  periodi di consumo** della bolletta, «rilevato» e «stimato» insieme, dal primo inizio all'ultima
-  fine (esempi: 25.10.2023-12.03.2024; 10.08.2024-10.07.2025; 12.08.2025-11.03.2026). Il motore
-  legge un solo intervallo per campo: serve una funzione nuova, da fare a parte.
+- **Periodo dell'acqua:** letto come **unione dei periodi di consumo** (decisione di Carlo, 12
+  novembre 2026, R76-R77): «rilevato» e «stimato» insieme, dal primo inizio all'ultima fine
+  (esempi: 25.10.2023-12.03.2024; 10.08.2024-10.07.2025; 12.08.2025-11.03.2026). Con buchi o
+  sovrapposizioni vale lo stesso; se un intervallo non si legge o le date discordano la confidenza
+  è `medium`.
 - **Consumo e emissione:** nel layout Hera del 2024 il consumo sta in una tabella a colonne e non
   si legge; Fastweb non ha la data di emissione leggibile con certezza.
 - **Nota di credito (gas):** una bolletta a credito scrive «Importo a credito» invece di «Totale da
@@ -117,9 +119,10 @@ controllati a mano che chiede il piano: resta da fare con Carlo.**
   gli «Altri servizi».
 - **Ancore ambigue:** per Enel 2020-23 «PERIODO» compare in più punti, e le regole sono perciò
   `medium`.
-- **TARI condivisa tra Berchet e Lovarini (`[B+L]`):** il profilo non legge ancora le utenze con
-  `parts`, che il piano prevede. Va fatto con Carlo (la ripartizione tra gli appartamenti è una
-  regola di calcolo).
+- **TARI condivisa tra Berchet e Lovarini (`[B+L]`):** regola decisa da Carlo (12 novembre 2026):
+  la ripartizione segue la tabella in fondo alla bolletta, che divide l'importo per m². Il
+  profilo non legge ancora le utenze con `parts`, che il piano prevede: resta da fare, leggendo
+  quella tabella (nessuna percentuale scritta nel codice).
 - **TARI 2020 e acqua di altri appartamenti:** una bolletta TARI del 2020 non è riconosciuta; non
   c'è un profilo dell'acqua di Berchet e Pulci.
 - **Non profilati:** Vodafone (Pulci 2020-21), caldaia, Bacchiglione, spese condominiali, acqua di
