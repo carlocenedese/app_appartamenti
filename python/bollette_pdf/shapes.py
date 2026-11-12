@@ -45,6 +45,10 @@ _RANGE_SHAPE = re.compile(
     rf"(?:dal\s+)?({_NUMERIC_DATE}|{_TEXT_DATE})(\s+al\s+|\s*[-–—/]\s*)({_NUMERIC_DATE}|{_TEXT_DATE})",
     re.IGNORECASE,
 )
+_MONTH_WORD = r"[A-Za-z]+\.?"
+_MONTH_RANGE_SHAPE = re.compile(
+    r"[A-Za-z]+\.?(?:\s+\d{2,4})?(\s*[-–—]\s*)[A-Za-z]+\.?\s+\d{2,4}",
+)
 POSITIONS = ("same-line", "right", "below")
 UNREADABLE = "Il testo selezionato non è leggibile con il tipo del campo."
 
@@ -94,6 +98,10 @@ def _core(text: str, value_type: str, position: str) -> str:
     if value_type == "date":
         return f"({_date_shape(text)}){_END}"
     if value_type == "date-range":
+        month_range = _MONTH_RANGE_SHAPE.fullmatch(text)
+        if month_range is not None:  # one pattern for the year once at the end or after each month
+            separator = _RANGE_SEPARATORS[month_range.group(1).strip()]
+            return rf"({_MONTH_WORD}(?:\s+\d{{2,4}})?{separator}{_MONTH_WORD}\s+\d{{2,4}}){_END}"
         match = _RANGE_SHAPE.fullmatch(text)
         if match is None:
             raise ValueError(UNREADABLE)

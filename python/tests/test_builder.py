@@ -449,6 +449,26 @@ class SafetyTest(BuilderTestCase):
         self.assertEqual(fields["periodStart"]["value"], "2026-10-01")
         self.assertEqual(fields["periodEnd"]["confidence"], "high")
 
+    def test_month_range_selection_reads_back_with_high(self) -> None:
+        doc = self.doc(
+            [
+                (72, 60, "Gas Inventato"),
+                (72, 100, "Competenza: OTT. 2021 - NOV. 2021 - spesa per l'ENERGIA ELETTRICA"),
+                (72, 400, FILLER),
+            ]
+        )
+        profile = self.build(
+            doc,
+            {"period": select(doc, "OTT. 2021 - NOV. 2021")},
+            recognise=[select(doc, "Gas Inventato")],
+        )
+        fields = self.read(
+            profile, (72, 100, "Competenza: DIC. 2024 - GEN. 2025 - spesa per l'ENERGIA ELETTRICA")
+        )
+        self.assertEqual(fields["periodStart"]["value"], "2024-12-01")
+        self.assertEqual(fields["periodEnd"]["value"], "2025-01-31")
+        self.assertEqual(fields["periodEnd"]["confidence"], "high")
+
     def assertNoStableAnchor(self, items, value: str) -> None:
         texts = ["Gas Inventato", *(item[2] for item in items)]
         doc = self.doc([(72, 60, texts[0]), *items, (72, 400, FILLER)])
@@ -531,6 +551,19 @@ class ShapePatternTest(unittest.TestCase):
         self.assertAllowed(dash, "date-range", "period")
         self.assertReads(dash, "01/10/2026 - 30/11/2026", "01/10/2026 - 30/11/2026")
         self.assertReads(dash, "01/10/2026 al 30/11/2026", None)
+
+    def test_month_range(self) -> None:
+        pattern = shape_pattern("Gennaio - Aprile 2024", "date-range")
+        self.assertAllowed(pattern, "date-range", "period")
+        self.assertNotIn("(?<", pattern)
+        self.assertEqual(pattern.count("(") - pattern.count("(?"), 1)
+        self.assertReads(pattern, "OTTOBRE - DICEMBRE 2023", "OTTOBRE - DICEMBRE 2023")
+        self.assertReads(pattern, "OTT. 2021 - NOV. 2021", "OTT. 2021 - NOV. 2021")
+        self.assertReads(
+            pattern, "FEB. 2025 - MAR. 2025 - spesa per l'ENERGIA", "FEB. 2025 - MAR. 2025"
+        )
+        self.assertReads(pattern, "Periodo FEB. 2025 - MAR. 2025", None)
+        self.assertEqual(shape_pattern("OTT. 2021 - NOV. 2021", "date-range"), pattern)
 
     def test_quantity(self) -> None:
         pattern = shape_pattern("1.234 Smc", "quantity")

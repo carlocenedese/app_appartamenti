@@ -152,6 +152,49 @@ class ParseDateRangeTest(unittest.TestCase):
                     parse_date_range(text)
 
 
+MONTH_RANGE_OK = [
+    ("Gennaio - Aprile 2024", ("2024-01-01", "2024-04-30")),
+    ("gennaio - dicembre 2023", ("2023-01-01", "2023-12-31")),
+    ("settembre - dicembre 2021", ("2021-09-01", "2021-12-31")),
+    ("Gen - Ago 2024", ("2024-01-01", "2024-08-31")),
+    ("OTT. 2021 - NOV. 2021", ("2021-10-01", "2021-11-30")),
+    ("FEB. 2025 - MAR. 2025", ("2025-02-01", "2025-03-31")),
+    ("OTTOBRE 2020 - NOVEMBRE 2020", ("2020-10-01", "2020-11-30")),
+    ("APRILE 2025 - MAGGIO 2025", ("2025-04-01", "2025-05-31")),
+    ("Gennaio - Febbraio 2024", ("2024-01-01", "2024-02-29")),
+    ("Gennaio - Febbraio 2023", ("2023-01-01", "2023-02-28")),
+    ("Novembre - Febbraio 2025", ("2024-11-01", "2025-02-28")),
+    ("DIC. 2024 - GEN. 2025", ("2024-12-01", "2025-01-31")),
+    ("Dic. 24 - Gen. 25", ("2024-12-01", "2025-01-31")),
+    ("Marzo - Marzo 2025", ("2025-03-01", "2025-03-31")),
+    ("  Giu - Lug 2025 ", ("2025-06-01", "2025-07-31")),
+]
+MONTH_RANGE_BAD = [
+    "OTT. 2021 - SET. 2021",
+    "Foo - Aprile 2024",
+    "Gennaio - Bar 2024",
+    "Gennaio - Aprile",
+    "Gennaio 2024 - Aprile",
+    "Periodo FEB. 2025 - MAR. 2025 - spesa",
+]
+
+
+class ParseMonthRangeTest(unittest.TestCase):
+    def test_accepted(self):
+        for text, expected in MONTH_RANGE_OK:
+            with self.subTest(text=text):
+                self.assertEqual(parse_date_range(text), expected)
+
+    def test_rejected_without_quoting_unknown_months(self):
+        for text in MONTH_RANGE_BAD:
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    parse_date_range(text)
+        with self.assertRaises(ValueError) as caught:
+            parse_date_range("Foo - Aprile 2024")
+        self.assertNotIn("Foo", str(caught.exception))
+
+
 class ParseQuantityTest(unittest.TestCase):
     def test_accepted(self):
         for text, expected in QUANTITY_OK:
