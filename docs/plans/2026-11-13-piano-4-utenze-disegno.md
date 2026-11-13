@@ -1,6 +1,6 @@
 # Piano 4: utenze condivise e appartamento nuovo (disegno)
 
-Stato: **bozza in attesa dell'approvazione di Carlo** (13 novembre 2026). Specifica di riferimento: `docs/spec.md` (sezioni 22, 29, 30, 42 R3). Dipende da R80 (record `supply`) e dai controlli di `proposalFromExtraction`.
+Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 22, 29, 30, 42 R3). Dipende da R80 (record `supply`) e dai controlli di `proposalFromExtraction`.
 
 ## Perché
 
@@ -88,4 +88,4 @@ Dopo la lettura di un revisore indipendente, queste le decido io; Carlo può cor
 
 ## Aperto con Carlo
 
-Nessuna domanda aperta al momento.
+Nessuna domanda aperta.
