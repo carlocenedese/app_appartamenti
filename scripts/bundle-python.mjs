@@ -21,6 +21,8 @@
 // Right after the extraction, Tcl/Tk, tkinter, IDLE and turtle are removed (TKINTER_PATHS): the
 // app does not use them and the TCL licence is not in the allowed list. On macOS `bin/python3` is
 // then made the only copy of the interpreter (keepOneLauncher).
+// Run as a script it first checks python/seed-profiles/ and copies it into
+// resources/seed-profiles/ (scripts/seed-profiles.mjs).
 // Only Node built-ins: no npm dependencies.
 
 import { spawnSync } from 'node:child_process';
@@ -42,6 +44,7 @@ import { devNull, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
+import { bundleSeedProfiles } from './seed-profiles.mjs';
 
 /** Destination, relative to the root of the repository. */
 export const RUNTIME_DIR = join('apps', 'desktop', 'src-tauri', 'resources', 'python');
@@ -355,8 +358,14 @@ const isEntryPoint =
   process.argv[1] !== undefined &&
   realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
 if (isEntryPoint) {
-  main().catch((error) => {
-    console.error(error.message);
-    process.exitCode = 1;
-  });
+  // Before the download: a missing or broken profile folder stops the build early.
+  Promise.resolve()
+    .then(() => {
+      bundleSeedProfiles(fileURLToPath(new URL('..', import.meta.url)));
+    })
+    .then(() => main())
+    .catch((error) => {
+      console.error(error.message);
+      process.exitCode = 1;
+    });
 }
