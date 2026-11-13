@@ -95,9 +95,7 @@ In `src/lib.rs` i plugin sono solo registrati, nell'ordine fs, dialog, persisted
   R9): non sono state provate né la scelta della cartella, né la scrittura, né il riavvio. Va
   provato a mano su una build di CI (Windows e macOS): scegliere una cartella, creare un file,
   chiudere e riaprire l'app, rileggere il file senza riscegliere la cartella.
-- **`Cargo.lock` non è aggiornato.** Senza `cargo` non si può rigenerare; la build di
-  `build.yml` usa `--locked` e quindi si ferma finché il file non comprende i tre plugin. Come dice
-  il README: una build senza `--locked`, poi si scarica l'artifact `cargo-lock` e lo si committa.
+- **`Cargo.lock` aggiornato il 13 novembre 2026** da una build di `build.yml` senza `--locked` (artifact `cargo-lock`, 418 pacchetti, con i tre plugin). La prima build ha mostrato un errore che in locale non si vedeva: `tauri::generate_context!` legge la sezione `plugins` di `tauri.conf.json` con `serde_json`, ora tra le dipendenze (`=1.0.140`).
 - **Licenze dell'albero Rust completo**: le controlla `cargo deny` solo in CI (dopo il punto sopra).
 - persisted-scope salva i modelli già «escapati» e li rimette con `allow_directory`, che li escapa di
   nuovo; il plugin corregge i casi noti (`fix_pattern`), ma una cartella con `[`, `]`, `*` o `?` nel
