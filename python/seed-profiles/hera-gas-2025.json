@@ -11,7 +11,7 @@
   "recognise": {
     "allOf": ["società emittente:", "smc"],
     "noneOf": [],
-    "ocrAnyOf": ["smc"]
+    "ocrAnyOf": ["hera"]
   },
   "fields": {
     "number": {

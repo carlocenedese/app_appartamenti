@@ -11,7 +11,7 @@
   "recognise": {
     "allOf": ["servizi intestati a", "smc"],
     "noneOf": [],
-    "ocrAnyOf": ["smc"]
+    "ocrAnyOf": ["hera"]
   },
   "fields": {
     "number": {

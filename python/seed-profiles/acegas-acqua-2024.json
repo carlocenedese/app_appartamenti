@@ -11,7 +11,7 @@
   "recognise": {
     "allOf": ["servizio idrico"],
     "noneOf": ["gestore della tassa sui rifiuti"],
-    "ocrAnyOf": ["idrico"]
+    "ocrAnyOf": ["acegas"]
   },
   "fields": {
     "number": {

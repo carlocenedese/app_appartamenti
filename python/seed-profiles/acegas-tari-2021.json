@@ -10,7 +10,7 @@
   "recognise": {
     "allOf": ["gestore della tassa sui rifiuti (tari)", "bolletta nr."],
     "noneOf": ["pagare:*"],
-    "ocrAnyOf": ["tari"]
+    "ocrAnyOf": ["acegas"]
   },
   "fields": {
     "number": {

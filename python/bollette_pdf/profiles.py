@@ -58,9 +58,12 @@ def normalize_ocr(text: str) -> str:
     return " ".join("".join(c if c.isalnum() else " " for c in folded.casefold()).split())
 
 
-def recognises(profile: dict[str, Any], pdf_text: str, ocr_text: str = "") -> bool:
+def recognises(
+    profile: dict[str, Any], pdf_text: str, ocr_text: str = "", scanned: bool = False
+) -> bool:
     """Every `allOf` text is in the PDF text (`normalize`) or in the OCR text (`normalize_ocr`),
-    or (R90) a word of `ocrAnyOf` is in the OCR text; none of `noneOf` is."""
+    or (R90, only when `scanned`: the whole document is OCR) a word of `ocrAnyOf` is in the OCR
+    text; none of `noneOf` is."""
 
     def found(condition: str) -> bool:
         folded = normalize_ocr(condition)
@@ -72,7 +75,7 @@ def recognises(profile: dict[str, Any], pdf_text: str, ocr_text: str = "") -> bo
     padded = f" {ocr_text} "
     anchored = any(
         folded != "" and f" {folded} " in padded
-        for folded in map(normalize_ocr, recognise.get("ocrAnyOf", []))
+        for folded in map(normalize_ocr, recognise.get("ocrAnyOf", []) if scanned else [])
     )
     return anchored or all(found(text) for text in recognise["allOf"])
 
@@ -86,7 +89,7 @@ def matching_profiles(doc: Document, profiles: list[dict[str, Any]]) -> list[dic
     ocr_lines = [line.text for line in doc.lines if line.page in doc.ocr_pages]
     pdf_text = normalize("\n".join(pdf_lines))
     ocr_text = normalize_ocr("\n".join(ocr_lines))
-    found = [profile for profile in profiles if recognises(profile, pdf_text, ocr_text)]
+    found = [profile for profile in profiles if recognises(profile, pdf_text, ocr_text, doc.text_source == "ocr")]
     found.sort(key=lambda profile: profile["id"])
     found.sort(key=lambda profile: profile["validFrom"], reverse=True)
     return found

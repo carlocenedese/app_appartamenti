@@ -214,31 +214,46 @@ class OcrAnyOfTest(unittest.TestCase):
         doc = fake_doc({1: ["Luce Inventata Spa"]}, "pdf", ())
         self.assertEqual(matching_profiles(doc, [profile(recognise=self.ANCHOR)]), [])
 
-    def test_mixed_uses_it_only_for_the_ocr_pages(self) -> None:
+    def test_mixed_never_uses_it(self) -> None:
         anchored = profile(recognise=self.ANCHOR)
         on_pdf_page = fake_doc({1: ["Luce Inventata"], 2: ["altro"]}, "mixed", (2,))
         self.assertEqual(matching_profiles(on_pdf_page, [anchored]), [])
         on_ocr_page = fake_doc({1: ["altro"], 2: ["Luce Inventata"]}, "mixed", (2,))
-        self.assertEqual(matching_profiles(on_ocr_page, [anchored]), [anchored])
+        self.assertEqual(matching_profiles(on_ocr_page, [anchored]), [])
 
     def test_profile_without_it_is_unchanged(self) -> None:
         doc = fake_doc({1: ["Luce Inventata"]}, "ocr", (1,))
         self.assertEqual(matching_profiles(doc, [profile(recognise={
             "allOf": ["frase lunga"], "noneOf": []})]), [])
 
-    def test_seed_profiles_have_one_word_and_no_word_spans_two_kinds_of_bill(self) -> None:
+    def test_seed_profiles_have_one_supplier_word_never_shared_between_suppliers(self) -> None:
         profiles, warnings = load_profiles(SEED_DIR)
         self.assertEqual(warnings, [])
-        owners: dict[str, set[tuple[str, str, str | None]]] = {}
+        owners: dict[str, set[str]] = {}
         for item in profiles:
             words = item["recognise"].get("ocrAnyOf", [])
             self.assertEqual(len(words), 1, item["id"])
             word = normalize_ocr(words[0])
             self.assertEqual(word, words[0], item["id"])
-            owners.setdefault(word, set()).add(
-                (item["supplier"], item["kind"], item.get("category"))
-            )
-        self.assertTrue(all(len(kinds) == 1 for kinds in owners.values()), owners)
+            owners.setdefault(word, set()).add(item["supplier"])
+        self.assertTrue(all(len(suppliers) == 1 for suppliers in owners.values()), owners)
+        self.assertFalse({"kwh", "smc", "idrico", "tari"} & set(owners), owners)
+
+    def test_scan_of_another_supplier_with_a_service_word_matches_no_seed_profile(self) -> None:
+        profiles, _ = load_profiles(SEED_DIR)
+        doc = fake_doc({1: ["Consumi Energia", "1200 kWh", "10 Smc", "Consumo idrico", "TARI"]},
+                       "ocr", (1,))
+        self.assertEqual(matching_profiles(doc, profiles), [])
+
+    def test_text_pdf_with_a_scanned_page_is_not_made_ambiguous(self) -> None:
+        profiles, _ = load_profiles(SEED_DIR)
+        doc = fake_doc({1: ["Enel Energia", "luce"], 2: ["Allegato", "HERA 120 kWh"]}, "mixed", (2,))
+        self.assertEqual([p["id"] for p in matching_profiles(doc, profiles)], ["enel-luce-2020"])
+
+    def test_scan_with_a_supplier_word_is_recognised_by_that_supplier_only(self) -> None:
+        profiles, _ = load_profiles(SEED_DIR)
+        doc = fake_doc({1: ["HERA Comm", "1200 kWh"]}, "ocr", (1,))
+        self.assertEqual({p["supplier"] for p in matching_profiles(doc, profiles)}, {"Hera Comm"})
 
 
 if __name__ == "__main__":
