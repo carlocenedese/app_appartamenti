@@ -1,6 +1,6 @@
 # Piano 6 (parte «profili»): i profili dei fornitori arrivano con l'app (disegno)
 
-Stato: **bozza in attesa dell'approvazione di Carlo** (13 novembre 2026). Specifica di riferimento: `docs/spec.md` (sezioni 7 e 34); è la parte «profili» del piano 6 della tabella del piano 1 (il resto del piano 6, cioè primo avvio guidato, sincronizzazione, aggiornamenti firmati, Scadenze, Tasse e stime, resta fuori).
+Stato: **approvato da Carlo il 13 novembre 2026**. Specifica di riferimento: `docs/spec.md` (sezioni 7 e 34); è la parte «profili» del piano 6 della tabella del piano 1 (il resto del piano 6, cioè primo avvio guidato, sincronizzazione, aggiornamenti firmati, Scadenze, Tasse e stime, resta fuori).
 
 ## Perché
 
