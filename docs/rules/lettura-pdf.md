@@ -107,24 +107,30 @@ mano con Carlo, un campione di dieci scansioni, prima di fidarsi dell'OCR.**
 
 | Appartamento | PDF | Senza testo prima | Letti con OCR (`ocr`) | Con qualche pagina OCR (`mixed`) | Solo testo (`pdf`) | Riconosciute | Da confermare | Non riconosciute | Senza testo | Illeggibili | Avviso «OCR non disponibile» |
 | ------------ | --- | ----------------- | --------------------- | -------------------------------- | ------------------ | ------------ | ------------- | ---------------- | ----------- | ----------- | ---------------------------- |
-| Berchet 3    | 150 | 20                | 20                    | 77                               | 53                 | 28           | 75            | 47               | 0           | 0           | 0                            |
-| Pulci 2a     | 224 | 19                | 19                    | 83                               | 122                | 61           | 79            | 84               | 0           | 0           | 0                            |
+| Berchet 3    | 150 | 20                | 20                    | 77                               | 53                 | 103          | 0             | 47               | 0           | 0           | 0                            |
+| Pulci 2a     | 224 | 19                | 19                    | 83                               | 122                | 139          | 1             | 84               | 0           | 0           | 0                            |
+
+Stato per origine del testo (riconosciute / da confermare / non riconosciute):
+
+| Appartamento | `pdf`       | `ocr`      | `mixed`    |
+| ------------ | ----------- | ---------- | ---------- |
+| Berchet 3    | 28 / 0 / 25 | 0 / 0 / 20 | 75 / 0 / 2 |
+| Pulci 2a     | 61 / 0 / 61 | 0 / 0 / 19 | 78 / 1 / 4 |
 
 Prima (solo testo del PDF, stesse cartelle): Berchet 103 riconosciute, 0 da confermare, 27 non
-riconosciute; Pulci 139, 1 e 65. Durata: circa 5 minuti per Berchet e 1,5 per Pulci.
+riconosciute; Pulci 139, 1 e 65. Durata: circa 5 minuti per Berchet e 1,5 per Pulci. Con la
+regola per campo (R87, task 7) le riconosciute tornano ai valori di prima; la prima corsa di questa
+sezione, con il tetto su tutto il documento, dava 28 e 61.
 
 - Tutte le scansioni senza testo (39) ora hanno testo. Nessuna è `senza-testo` e nessuna è
-  `illeggibile`. Un PDF letto con OCR non è mai `riconosciuta` (regola R87): quelli che un profilo
-  riconosce vanno `da-confermare`, gli altri restano `non-riconosciuta` (non c'è un profilo
-  dell'acqua di Berchet e Pulci). I conteggi non separano gli stati per origine del testo.
-- **Da decidere con Carlo:** 160 PDF che hanno testo (77 di Berchet, 83 di Pulci) hanno anche
-  qualche pagina senza testo (pagine solo immagine, per esempio di un'altra scansione dentro il
-  PDF) che ora passa dall'OCR, quindi sono `mixed` e, per R87, tutti i campi sono `medium` e lo
-  stato è `da-confermare`: bollette che prima erano `riconosciuta` con importo `high` (Berchet da
-  103 a 28, Pulci da 139 a 61). La regola `mixed` (un solo tetto per tutto il documento) va
-  riconsiderata: per esempio lasciare ai campi letti dal testo del PDF la loro confidenza.
-- Il motore scrive sull'errore standard messaggi di Leptonica (`box outside rectangle`) per
-  alcune pagine; senza testo né dati dei documenti, ma da zittire.
+  `illeggibile`. Un PDF letto per intero con OCR (`ocr`) non è mai `riconosciuta` (R87), ma nessun
+  profilo ne riconosce uno: le 39 scansioni restano `non-riconosciuta` (non c'è un profilo
+  dell'acqua di Berchet e Pulci, e le Enel con glifi rotti non corrispondono ai profili).
+- 160 PDF hanno testo e qualche pagina solo immagine (77 di Berchet, 83 di Pulci): sono `mixed`, e
+  con la regola per campo restano `riconosciuta` quando nessun campo con valore viene da una pagina
+  OCR (153 su 160); solo uno (Pulci) è `da-confermare` per questo motivo.
+- I messaggi di Leptonica (`box outside rectangle`) non arrivano più sull'errore standard: nella
+  corsa il descrittore 2 è rimasto vuoto.
 
 ## Casi dubbi
 
