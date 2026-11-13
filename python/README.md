@@ -41,13 +41,39 @@ supera lo schema o un errore interno, con stdout vuoto. I messaggi su stderr son
 generiche che non riportano mai testo del PDF, dei profili o dei percorsi; i messaggi di
 `pdfminer` sono spenti.
 
+## OCR (solo macOS)
+
+Le pagine senza testo utile si leggono con l'OCR quando si passa `--ocr-data <cartella>` (a
+`extract` e `build-profile`; in Python `read_pdf(percorso, ocr_data=cartella)`), la cartella che
+contiene `ita.traineddata` (nell'app `resources/ocr-data/`, preparata da `scripts/ocr-data.mjs`).
+Il percorso è sempre un argomento, mai una variabile d'ambiente.
+
+- `bollette_pdf/ocr.py`: pypdfium2 disegna la pagina (MediaBox, scala di grigi, 300 punti per
+  pollice) e tesserocr ne legge le parole con riquadro e confidenza (0-100), con un solo thread;
+  le coordinate sono quelle del lettore di testo (punti dall'angolo in alto a sinistra).
+- Una pagina passa dall'OCR se non ha testo o se più del 30% dei glifi sono `(cid:N)`; al massimo
+  20 pagine per documento (`MAX_OCR_PAGES`), le altre restano come sono, con un avviso in
+  `Document.warnings`. `Document.text_source` vale `pdf`, `ocr` o `mixed` (regola R86).
+- tesserocr e pypdfium2 si installano solo su macOS (`sys_platform == 'darwin'`). Senza le due
+  librerie o senza i dati della lingua nessun errore: le pagine restano senza testo e
+  `text_source` è `pdf` (stato `senza-testo`). Il testo letto non finisce mai in messaggi o log.
+- Test: `tests/test_ocr.py` usa un finto motore (`ocr.ENGINE_FACTORY`); le prove con il motore
+  vero partono se `BOLLETTE_OCR_TEST_DATA` indica la cartella di `ita.traineddata` (o se i dati
+  sono in `apps/desktop/src-tauri/resources/ocr-data/`), e con `REQUIRE_OCR=1` falliscono se il
+  motore manca. Le pagine scansionate sintetiche le scrive `tests/make_scan.py`.
+
+```bash
+BOLLETTE_OCR_TEST_DATA=<cartella> REQUIRE_OCR=1 PYTHON=<venv>/bin/python pnpm python:test
+```
+
 ## Regole del pacchetto
 
 - Nessuna rete e nessun orologio: la data e l'ora arrivano come argomenti.
 - Importi solo con `Decimal`, mai `float`.
 - Stdout in UTF-8; i messaggi per l'utente sono in italiano, nomi e commenti in inglese.
 - Unica libreria PDF: `pdfminer.six` (non `pdfplumber`, che porta Pillow, con licenza non ammessa).
-- Unica altra dipendenza: `jsonschema`. Solo licenze dell'elenco del progetto (`CLAUDE.md`).
+- Unica altra dipendenza: `jsonschema`, più tesserocr e pypdfium2 solo su macOS (OCR). Solo
+  licenze dell'elenco del progetto (`CLAUDE.md`).
 
 ## Comandi (dalla radice del repository)
 
