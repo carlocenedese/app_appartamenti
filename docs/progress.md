@@ -1,8 +1,17 @@
 # Registro di avanzamento
 
-Stato: **Fase A completata** (piano 1, Task 1-6, 8, 10 e 11; nessun dato reale), in attesa di
-revisione nella pull request verso `main`. Le Fasi B (Task 7, con Carlo presente) e C (Task 9, dopo
-l'approvazione di regole e fixture) non sono iniziate.
+Stato generale (13 novembre 2026), tutto in `main`:
+
+- **Piano 1** (fondamenta del motore): Fase A completata (Task 1-6, 8, 10 e 11; tabella sotto); le
+  decisioni delle fasi successive sono nelle sezioni «Fase C» e «Rilievi minori rimandati».
+- **Piano 2a** (lettura dei PDF di testo): Fase A (Task 1-11) e Fase B (Task 12, PR #12-#17: profili
+  dei fornitori, fixture, campione a mano 57 su 57, periodo dell'acqua, utenze della TARI) completate.
+  Restano fuori le scansioni (OCR) e il condominio, nel piano 2b.
+- **Piano 4** (utenze condivise e appartamento nuovo): disegno e piano approvati, sei task eseguiti
+  (PR #18-#19, R80-R82). Restano il flusso «Documento n di N» e il collegamento reale di
+  «Modifica», «Aggiungi nota» e «Rimuovi».
+- **Prossimi:** piano 6 (primo avvio che copia i profili di `python/seed-profiles/` tra i dati
+  dell'utente), poi il disegno del piano 2b.
 
 Lo tiene l'orchestratore: il registro completo (stato, giri di revisione, rilievi, decisioni) stava
 in `.superpowers/sdd/`, escluso da git; qui ne resta la sintesi. Ogni task ha avuto un esecutore
@@ -178,7 +187,7 @@ Per fase in cui vanno affrontati.
 
 Stato: **Fase A completata** (Task 1-11 di `docs/plans/2026-11-11-piano-2a-lettura-pdf.md`, ramo
 `feat/piano-2a-fase-a`), con revisione finale dell'intero ramo e un'ondata di correzioni (R73). La
-Fase B (Task 12: profili dei fornitori reali e fixture, con Carlo e PDF veri) comincia dopo il merge.
+Fase B (Task 12: profili dei fornitori reali e fixture, con Carlo e PDF veri) è completata (R74-R81).
 Il registro completo resta in `.superpowers/sdd/2026-11-11-piano-2a-lettura-pdf/`, escluso da git;
 qui ne resta la sintesi.
 
