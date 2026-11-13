@@ -44,13 +44,28 @@ export type ExtractedField<T> = {
   source: ExtractionSource | null;
 };
 
-/** Whether `field` has a value read from a page that was read with OCR. */
+/** Whether `item` (a field or a part) has a value read from a page that was read with OCR. */
 function readWithOcr(
   result: { ocrPages: number[] },
-  field: { value: unknown; source: { page: number } | null },
+  item: { value?: unknown; source: { page: number } | null } | undefined,
 ): boolean {
   return (
-    field.value !== null && field.source !== null && result.ocrPages.includes(field.source.page)
+    item !== undefined &&
+    item.value !== null &&
+    item.source !== null &&
+    result.ocrPages.includes(item.source.page)
+  );
+}
+
+/** Whether a field, or a part of a TARI notice, was read from a page read with OCR. */
+export function hasOcrReading(result: {
+  ocrPages: number[];
+  fields: Record<string, { value: unknown; source: { page: number } | null } | undefined>;
+  parts: { source: { page: number } }[];
+}): boolean {
+  return (
+    Object.values(result.fields).some((field) => readWithOcr(result, field)) ||
+    result.parts.some((part) => readWithOcr(result, part))
   );
 }
 
@@ -117,7 +132,9 @@ export const ExtractionResultSchema = z
     (result) =>
       result.textSource !== 'ocr' ||
       (result.status !== 'riconosciuta' &&
-        Object.values(result.fields).every((field) => field.confidence !== 'high')),
+        Object.values(result.fields).every(
+          (field) => field === undefined || field.confidence !== 'high',
+        )),
     { message: 'A scanned result is never riconosciuta and has no field with confidence high.' },
   )
   .refine(
@@ -126,13 +143,10 @@ export const ExtractionResultSchema = z
         (field) =>
           field === undefined || field.confidence !== 'high' || !readWithOcr(result, field),
       ) &&
-      (result.status !== 'riconosciuta' ||
-        !Object.values(result.fields).some(
-          (field) => field !== undefined && readWithOcr(result, field),
-        )),
+      (result.status !== 'riconosciuta' || !hasOcrReading(result)),
     {
       message:
-        'A field read from a page with OCR is never high, and a result with such a field is never riconosciuta.',
+        'A field read from a page with OCR is never high, and a result with a field or a part read so is never riconosciuta.',
     },
   )
   .meta({

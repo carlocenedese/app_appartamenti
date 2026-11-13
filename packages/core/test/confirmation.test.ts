@@ -271,6 +271,22 @@ describe('decideRegistration', () => {
     );
   });
 
+  it('sends a mixed TARI result to review when the parts were read from an OCR page', async () => {
+    const base = tariResult(await hashBytes(TARI_PDF));
+    // fields from the text page 1; the parts of the notice from the scanned page 2
+    const parts = base.parts.map((part) => ({ ...part, source: { ...part.source, page: 2 } }));
+    const proposal = proposalFromExtraction({ ...base, parts }, tariContext(), ids('parts'));
+    const confirmed = tariProfile({ status: 'confermato', autoRegister: true });
+    const scanned = { ...base, parts, textSource: 'mixed', ocrPages: [2] } as ExtractionResult;
+    const decision = decideRegistration({ proposal, result: scanned, profile: confirmed });
+    expect(decision.action).toBe('review');
+    expect(decision.reasons.join(' ')).toMatch(/OCR|scansion/i);
+    const onText = { ...scanned, ocrPages: [3] } as ExtractionResult;
+    expect(
+      decideRegistration({ proposal, result: onText, profile: confirmed }).reasons.join(' '),
+    ).not.toMatch(/OCR|scansion/i);
+  });
+
   it('always asks with a draft profile, or a confirmed one with autoRegister false (RF 7)', async () => {
     const { result, proposal } = await billCase();
     const draft = decideRegistration({ proposal, result, profile: profile({ status: 'bozza' }) });

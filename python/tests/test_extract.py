@@ -192,6 +192,56 @@ class OcrTextTest(ExtractTestCase):
         self.assertEqual(result["fields"]["dueDate"]["value"], None)  # not required, no value
         self.assertEqual(result["status"], "riconosciuta")
 
+    def tari_doc(self, confidence=95.0):
+        """Total on a text page, the parts on page 2 read with OCR."""
+        return as_ocr(
+            self.doc(
+                [(72, 80, "Comune Inventato - Avviso TARI"), (72, 200, "Totale avviso 150,50"),
+                 (72, 400, FILLER)],
+                [(72, 120, "Utenza abitazione 120,00"), (72, 140, "Utenza box 30,50"),
+                 (72, 400, FILLER)],
+            ),
+            confidence,
+            source="mixed",
+            only=lambda line: line.page == 2,
+        )
+
+    def test_parts_read_from_an_ocr_page_make_the_result_da_confermare(self) -> None:
+        result = extract(self.tari_doc(), [TariTest.tari_profile(None)], AT)
+        self.assertEqual(len(result["parts"]), 2)
+        self.assertEqual(result["fields"]["amount"]["confidence"], "high")
+        self.assertEqual(result["status"], "da-confermare")
+        self.assertEqual(result["ocrPages"], [2])
+        self.assertValid(result)
+
+    def test_parts_too_uncertain_are_left_out_with_a_warning(self) -> None:
+        result = extract(self.tari_doc(60.0), [TariTest.tari_profile(None)], AT)
+        self.assertEqual(result["parts"], [])
+        self.assertIn("Avviso TARI: parte non leggibile, esclusa.", result["warnings"])
+        self.assertEqual(result["status"], "da-confermare")
+
+    def items_doc(self, confidence=95.0):
+        return as_ocr(
+            self.doc(STANDARD, [(72, 100, "Voce 50,00"), (72, 120, "Voce 37,65"), (72, 400, FILLER)]),
+            confidence,
+            source="mixed",
+            only=lambda line: line.page == 2,
+        )
+
+    def test_items_read_from_an_ocr_page_make_the_result_da_confermare(self) -> None:
+        profile = light_profile(items={"pattern": r"Voce ([0-9.,]+)"})
+        result = extract(self.items_doc(), [profile], AT)
+        self.assertEqual([(c["code"], c["ok"]) for c in result["checks"]][-1], ("items-sum", True))
+        self.assertEqual(result["status"], "da-confermare")
+        self.assertValid(result)
+
+    def test_items_too_uncertain_are_left_out_of_the_sum(self) -> None:
+        profile = light_profile(items={"pattern": r"Voce ([0-9.,]+)"})
+        result = extract(self.items_doc(60.0), [profile], AT)
+        self.assertNotIn("items-sum", [c["code"] for c in result["checks"]])
+        self.assertIn("Voce non leggibile, esclusa dalla somma delle voci.", result["warnings"])
+        self.assertEqual(result["status"], "riconosciuta")  # nothing was read from the OCR page
+
     def test_low_confidence_line_leaves_its_field_empty(self) -> None:
         doc = as_ocr(self.doc(STANDARD), 60.0, only=lambda line: "Totale" in line.text)
         doc = as_ocr(doc, 95.0, source="ocr", only=lambda line: "Totale" not in line.text)

@@ -113,6 +113,21 @@ describe('ExtractionResultSchema', () => {
     expect(ok(changed(full, { ...mixed, ocrPages: [2], fields: { dueDate: none } }))).toBe(true);
   });
 
+  it('judges the parts by the page they were read from too', () => {
+    const mixed = { textSource: 'mixed', ocrPages: [2] };
+    const parts = (page: number) => [{ label: 'Quota', amount: 1200, source: { ...source, page } }];
+    expect(ok(changed(full, { ...mixed, parts: parts(1) }))).toBe(true);
+    expect(ok(changed(full, { ...mixed, parts: parts(2) }))).toBe(false);
+    expect(ok(changed(full, { ...mixed, parts: parts(2), status: 'da-confermare' }))).toBe(true);
+  });
+
+  it('does not throw on a scanned result with an optional field set to undefined', () => {
+    const scan = { textSource: 'ocr', ocrPages: [1], status: 'da-confermare' };
+    const fields = { supplier: undefined, amount: field(9846, 'medium') };
+    expect(() => ok(changed(full, { ...scan, fields }))).not.toThrow();
+    expect(ok(changed(full, { ...scan, fields }))).toBe(true);
+  });
+
   it('reads a result without text and no fields', () => {
     expect(ExtractionResultSchema.parse(empty)).toEqual(empty);
   });
