@@ -141,6 +141,8 @@ function makeRepository(repository) {
   writeFileSync(join(pkg, 'stale.pyc'), 'x');
   writeFileSync(join(pkg, '__pycache__', 'x.cpython-313.pyc'), 'x');
   writeFileSync(join(repository, 'python', 'requirements.txt'), '# empty\n');
+  mkdirSync(join(repository, 'python', 'licenses'));
+  writeFileSync(join(repository, 'python', 'licenses', 'ocr-native-libraries.txt'), 'testi\n');
   const schemas = join(repository, 'docs', 'schemas');
   mkdirSync(schemas, { recursive: true });
   for (const kind of ['supplierProfile', 'extractionResult', 'bill']) {
@@ -155,7 +157,15 @@ describe('copyPackage', () => {
     mkdirSync(sitePackages);
     copyPackage(root, sitePackages);
     const target = join(sitePackages, 'bollette_pdf');
-    expect(readdirSync(target).sort()).toEqual(['__init__.py', '__main__.py', 'schemas']);
+    expect(readdirSync(target).sort()).toEqual([
+      '__init__.py',
+      '__main__.py',
+      'licenses',
+      'schemas',
+    ]);
+    expect(readFileSync(join(target, 'licenses', 'ocr-native-libraries.txt'), 'utf8')).toBe(
+      'testi\n',
+    );
     expect(readdirSync(join(target, 'schemas')).sort()).toEqual([
       'extractionResult.json',
       'supplierProfile.json',
@@ -163,6 +173,28 @@ describe('copyPackage', () => {
     expect(readFileSync(join(target, 'schemas', 'supplierProfile.json'), 'utf8')).toBe(
       '{"title":"supplierProfile"}\n',
     );
+  });
+
+  it('ships the licence texts of the native OCR libraries, one section per library', () => {
+    const text = readFileSync(
+      new URL('../python/licenses/ocr-native-libraries.txt', import.meta.url),
+      'utf8',
+    );
+    // the ten libraries of tesserocr/.dylibs on macOS, grouped by project (docs/rules/ocr-licenze.md)
+    for (const name of [
+      'Tesseract',
+      'Leptonica',
+      'libpng',
+      'libjpeg-turbo',
+      'libtiff',
+      'libwebp',
+      'liblzma',
+      'Zstandard',
+    ]) {
+      expect(text, name).toContain(`## ${name}`);
+    }
+    expect(text).toContain('Redistributions in binary form must reproduce');
+    expect(text).not.toMatch(/GNU (Lesser )?General Public License/i);
   });
 
   it('replaces an older copy', () => {

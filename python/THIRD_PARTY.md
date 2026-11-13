@@ -24,8 +24,9 @@ serve a Python 3.12, per questo si usa Python 3.13.
 L'OCR esce solo su macOS (decisione di Carlo del 13 novembre 2026); Windows è rimandato perché la
 ruota Windows di tesserocr contiene libiconv e libcharset sotto LGPL-2.1. Inventario completo e
 verifiche in `docs/rules/ocr-licenze.md`. Le ruote macOS (arm64 e x86_64) non portano i testi delle
-licenze delle librerie in `tesserocr/.dylibs/`: licenza e indirizzo a monte sono quelli sotto, **non
-verificati dentro la ruota**.
+licenze delle librerie in `tesserocr/.dylibs/`: i testi sono in `python/licenses/ocr-native-libraries.txt`
+(uno per progetto, alla versione della ruota), che `scripts/bundle-python.mjs` mette nel bundle in
+`bollette_pdf/licenses/` e che `build.yml` controlla nell'app costruita (revisione finale, I4).
 
 In `requirements.txt` le due ruote sono fissate con il marcatore `sys_platform == "darwin"`
 (`tesserocr==2.12.0`, `pypdfium2==5.14.0`): pip non le installa su Windows e Linux, e

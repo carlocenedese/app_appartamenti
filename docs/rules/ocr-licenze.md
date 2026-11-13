@@ -150,8 +150,13 @@ tesserocr macOS, 1 file di dati); 28 righe Windows rimandate (23 permissive, 5 d
 **Accettato (macOS):** tesserocr 2.12.0 (MIT), pypdfium2 5.14.0 con PDFium e le librerie collegate
 (tabella sopra, licenze lette dalla ruota), `ita.traineddata` (tessdata_fast 4.1.0, Apache-2.0).
 Le dieci librerie in `tesserocr/.dylibs/` sono accettate come «permissiva accettata, testo a monte»:
-la ruota non porta i testi delle licenze, quindi la licenza è quella del progetto a monte e il testo
-va preso da lì; **non verificato dentro la ruota**.
+la ruota non porta i testi delle licenze (verificato nella ruota installata: nel `.dist-info` c'è
+solo la `LICENSE` MIT di tesserocr). I testi, alla stessa versione di ogni libreria, sono in
+`python/licenses/ocr-native-libraries.txt`, copiati dai pacchetti locali di quelle versioni (libpng
+1.6.58, libjpeg-turbo 3.2.0, libtiff 4.7.2, libwebp 1.6.0, xz 5.8.3, zstd 1.5.7; Tesseract dalla 5.5.2,
+stessa Apache-2.0; Leptonica dalla nota nelle intestazioni della 1.87.0) e vanno nel bundle
+(`bollette_pdf/licenses/`); `build.yml` li controlla nell'app costruita. Un testo preso da una ruota
+con un'altra versione va riletto a ogni aggiornamento delle ruote.
 
 | Libreria                | Licenza a monte                   | Dove si trova il testo                         |
 | ----------------------- | --------------------------------- | ---------------------------------------------- |
