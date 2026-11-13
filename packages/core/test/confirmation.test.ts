@@ -120,7 +120,10 @@ const tariContext = () =>
   context({
     apartment: { id: 'apt-b', knownCodes: [] },
     tenancies: [tenancy('b', 'apt-b'), tenancy('l', 'apt-l')] as ProposalContext['tenancies'],
-    tariParts: { Berchet: { apartmentId: 'apt-b' }, Lovarini: { apartmentId: 'apt-l' } },
+    supplies: [
+      { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
+      { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+    ],
   });
 
 function profile(extra: Partial<SupplierProfile> = {}): SupplierProfile {

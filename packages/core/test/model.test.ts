@@ -10,6 +10,7 @@ import {
   NoteSchema,
   PaymentSchema,
   SupplierProfileSchema,
+  SupplySchema,
   TenancySchema,
   WorkspaceSchema,
   recordSchemas,
@@ -50,6 +51,14 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     start: '2025-10',
     end: '2026-09',
     settlement: 'annuale',
+  },
+  supply: {
+    ...base,
+    label: 'Utenza 1111',
+    apartments: [
+      { apartmentId: 'apt-1', weight: 1 },
+      { apartmentId: 'apt-2', weight: 3 },
+    ],
   },
   tenancy: {
     ...base,
@@ -213,6 +222,7 @@ describe('recordSchemas', () => {
         'note',
         'payment',
         'supplierProfile',
+        'supply',
         'tenancy',
         'transaction',
       ].sort(),
@@ -223,6 +233,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.apartment).toBe(ApartmentSchema);
     expect(recordSchemas.contract).toBe(ContractSchema);
     expect(recordSchemas.tenancy).toBe(TenancySchema);
+    expect(recordSchemas.supply).toBe(SupplySchema);
     expect(recordSchemas.bill).toBe(BillSchema);
     expect(recordSchemas.payment).toBe(PaymentSchema);
     expect(recordSchemas.transaction).toBe(BankTransactionSchema);
@@ -439,6 +450,22 @@ describe('Tenancy', () => {
     const parsed = TenancySchema.parse(without(validRecords.tenancy, 'room', 'to'));
     expect(parsed).not.toHaveProperty('room');
     expect(parsed).not.toHaveProperty('to');
+  });
+
+  it('accepts a supply of several apartments and rejects a bad one', () => {
+    expect(SupplySchema.safeParse(validRecords.supply).success).toBe(true);
+    const one = { apartmentId: 'apt-1', weight: 1 };
+    for (const apartments of [
+      [],
+      [{ apartmentId: 'apt-1', weight: 0 }],
+      [{ apartmentId: 'apt-1', weight: 1.5 }],
+      [one, one],
+    ]) {
+      expect(SupplySchema.safeParse(changed(validRecords.supply, { apartments })).success).toBe(
+        false,
+      );
+    }
+    expect(SupplySchema.safeParse(changed(validRecords.supply, { label: '' })).success).toBe(false);
   });
 
   it('rejects a tenancy that ends before it starts', () => {
