@@ -26,3 +26,4 @@ export * from './users';
 export * from './seed-profiles';
 export * from './workspace';
 export * from './assess';
+export * from './presence';
