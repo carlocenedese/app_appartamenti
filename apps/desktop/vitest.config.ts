@@ -4,5 +4,6 @@ export default defineProject({
   test: {
     name: 'desktop',
     include: ['test/**/*.test.ts'],
+    environment: 'happy-dom',
   },
 });
