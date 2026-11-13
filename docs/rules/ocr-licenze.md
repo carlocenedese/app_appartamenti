@@ -1,8 +1,8 @@
 # OCR: librerie native e licenze delle ruote
 
 Stato: **inventario del 13 novembre 2026** (Task 1 del piano 2b-1, `docs/plans/2026-11-13-piano-2b-ocr.md`).
-Esito: **da chiedere a Carlo** (vedi «Conclusione»); `python/THIRD_PARTY.md` e `CLAUDE.md` non sono
-stati toccati.
+Esito: **macOS accettato; Windows rimandato per decisione di Carlo del 13 novembre 2026**
+(vedi «Conclusione»); `python/THIRD_PARTY.md` e `CLAUDE.md` aggiornati di conseguenza.
 
 ## Metodo
 
@@ -83,18 +83,18 @@ La ruota macOS non contiene **nessun** file di licenza delle librerie in `.dylib
 `LICENSE` MIT di tesserocr). La licenza indicata è quella del progetto a monte, nota ma **non letta
 dalla ruota**.
 
-| Libreria (file)                         | Versione                      | Licenza a monte (non nella ruota)               | Dove | Verdetto                                       |
-| --------------------------------------- | ----------------------------- | ----------------------------------------------- | ---- | ---------------------------------------------- |
-| Tesseract (`libtesseract.5.5.3.dylib`)  | 5.5.3                         | Apache-2.0                                      | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| Leptonica (`libleptonica.6.0.0.dylib`)  | non verificato (soname 6.0.0) | BSD-2-Clause                                    | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| libpng (`libpng16.16.dylib`)            | 1.6.58                        | libpng License v2                               | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| libjpeg-turbo (`libjpeg.8.3.2.dylib`)   | 3.2.0                         | IJG + BSD-3-Clause + Zlib                       | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| libtiff (`libtiff.6.dylib`)             | 4.7.2                         | libtiff                                         | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| libwebp (`libwebp.7.2.0.dylib`)         | non verificato (soname 7.2.0) | BSD-3-Clause                                    | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| libwebpmux (`libwebpmux.3.1.2.dylib`)   | non verificato (soname 3.1.2) | BSD-3-Clause                                    | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| libsharpyuv (`libsharpyuv.0.1.2.dylib`) | non verificato (soname 0.1.2) | BSD-3-Clause                                    | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| liblzma (`liblzma.5.dylib`)             | 5.8.3                         | 0BSD                                            | Ma   | da chiedere a Carlo (file di licenza mancante) |
-| Zstandard (`libzstd.1.5.7.dylib`)       | 1.5.7                         | BSD-3-Clause o GPL-2.0 (doppia, si sceglie BSD) | Ma   | da chiedere a Carlo (file di licenza mancante) |
+| Libreria (file)                         | Versione                      | Licenza a monte (non nella ruota)               | Dove | Verdetto                                                  |
+| --------------------------------------- | ----------------------------- | ----------------------------------------------- | ---- | --------------------------------------------------------- |
+| Tesseract (`libtesseract.5.5.3.dylib`)  | 5.5.3                         | Apache-2.0                                      | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| Leptonica (`libleptonica.6.0.0.dylib`)  | non verificato (soname 6.0.0) | BSD-2-Clause                                    | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| libpng (`libpng16.16.dylib`)            | 1.6.58                        | libpng License v2                               | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| libjpeg-turbo (`libjpeg.8.3.2.dylib`)   | 3.2.0                         | IJG + BSD-3-Clause + Zlib                       | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| libtiff (`libtiff.6.dylib`)             | 4.7.2                         | libtiff                                         | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| libwebp (`libwebp.7.2.0.dylib`)         | non verificato (soname 7.2.0) | BSD-3-Clause                                    | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| libwebpmux (`libwebpmux.3.1.2.dylib`)   | non verificato (soname 3.1.2) | BSD-3-Clause                                    | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| libsharpyuv (`libsharpyuv.0.1.2.dylib`) | non verificato (soname 0.1.2) | BSD-3-Clause                                    | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| liblzma (`liblzma.5.dylib`)             | 5.8.3                         | 0BSD                                            | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
+| Zstandard (`libzstd.1.5.7.dylib`)       | 1.5.7                         | BSD-3-Clause o GPL-2.0 (doppia, si sceglie BSD) | Ma   | accettata, testo a monte (non verificato dentro la ruota) |
 
 ### Dentro tesserocr Windows x64
 
@@ -102,36 +102,36 @@ Licenze lette da `.dist-info/licenses/.wheel-licenses/<pacchetto>/`. Dipendenze 
 DLL dentro ciascuna DLL: `tesseract55` → `leptonica`, `archive`, `libcurl`; `archive` → `iconv`,
 `charset`, `libxml2`, `libbz2`, `liblzma`, `lz4`, `zstd`, `zlib`; `libxml2` → `iconv`, `icuuc78`.
 
-| Libreria (DLL)                                | Versione                  | Licenza (file nella ruota)                                                                            | Dove | Verdetto                |
-| --------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------- | ---- | ----------------------- |
-| Tesseract (`tesseract55`)                     | 5.5.3                     | Apache-2.0 (`tesseract/tesseract/LICENSE`)                                                            | Wi   | permissiva accettata    |
-| Leptonica (`leptonica-1.87.0`)                | 1.87.0                    | BSD-2-Clause (`leptonica/leptonica-license.txt`)                                                      | Wi   | permissiva accettata    |
-| libpng (`libpng16`)                           | 1.6.59                    | libpng License v2 (`libpng/LICENSE`)                                                                  | Wi   | permissiva accettata    |
-| libjpeg-turbo (`jpeg8`)                       | 3.2.0                     | IJG + BSD-3-Clause + Zlib (`libjpeg-turbo/LICENSE.md`)                                                | Wi   | permissiva accettata    |
-| libtiff (`tiff`)                              | 4.7.2                     | libtiff (`libtiff/LICENSE.md`)                                                                        | Wi   | permissiva accettata    |
-| libwebp, libwebpmux, libsharpyuv              | non verificato            | BSD-3-Clause (`libwebp-base/COPYING`)                                                                 | Wi   | permissiva accettata    |
-| giflib (`gif-7`)                              | non verificato (soname 7) | MIT (`giflib/COPYING`); `getopt` di mingw-w64: ISC (`getopt_LICENSE.txt`)                             | Wi   | permissiva accettata    |
-| OpenJPEG (`openjp2`)                          | 2.5.4                     | BSD-2-Clause (`openjpeg/LICENSE`)                                                                     | Wi   | permissiva accettata    |
-| LERC (`Lerc`)                                 | non verificato            | Apache-2.0 (`lerc/LICENSE`)                                                                           | Wi   | permissiva accettata    |
-| libdeflate (`deflate`)                        | non verificato            | MIT (`libdeflate/COPYING`)                                                                            | Wi   | permissiva accettata    |
-| zlib (`zlib`)                                 | 1.3.2                     | Zlib (`libzlib/LICENSE`)                                                                              | Wi   | permissiva accettata    |
-| Zstandard (`zstd`)                            | 1.5.7                     | BSD-3-Clause (`zstd/LICENSE`)                                                                         | Wi   | permissiva accettata    |
-| liblzma (`liblzma`)                           | non verificato            | 0BSD (`liblzma/COPYING`, `COPYING.0BSD`; GPL/LGPL solo per strumenti non inclusi)                     | Wi   | permissiva accettata    |
-| bzip2 (`libbz2`)                              | 1.0.8                     | bzip2-1.0.6, stile BSD (`bzip2/LICENSE`; come R69)                                                    | Wi   | permissiva accettata    |
-| LZ4 (`lz4`)                                   | 1.10.0                    | BSD-2-Clause (`lz4-c/lib/LICENSE`)                                                                    | Wi   | permissiva accettata    |
-| libarchive (`archive`)                        | 3.8.9                     | BSD-2-Clause (`libarchive/COPYING`)                                                                   | Wi   | permissiva accettata    |
-| libxml2 (`libxml2`)                           | non verificato            | MIT (`libxml2/Copyright`, `libxml2-16/Copyright`)                                                     | Wi   | permissiva accettata    |
-| ICU (`icuuc78`, `icudt78`)                    | 78.3                      | Unicode-3.0 (`icu/LICENSE`)                                                                           | Wi   | permissiva accettata    |
-| libcurl (`libcurl`)                           | 8.23.0                    | curl, stile MIT (`libcurl/COPYING`)                                                                   | Wi   | permissiva accettata    |
-| libssh2 (`libssh2`)                           | non verificato            | BSD-3-Clause (`libssh2/COPYING`)                                                                      | Wi   | permissiva accettata    |
-| libpsl (`psl-5`)                              | 0.23.1                    | MIT (`libpsl/LICENSE`)                                                                                | Wi   | permissiva accettata    |
-| OpenSSL (`libcrypto-3-x64`)                   | 3.6.5                     | Apache-2.0 (`openssl/LICENSE.txt`)                                                                    | Wi   | permissiva accettata    |
-| Kerberos (krb5)                               | —                         | stile BSD/MIT (`krb5/doc/notice.rst`); nessuna DLL krb5 nella ruota                                   | Wi   | permissiva accettata    |
-| **GNU libiconv (`iconv`)**                    | non verificato            | **LGPL-2.1** (`libiconv/COPYING.LIB`)                                                                 | Wi   | **da chiedere a Carlo** |
-| **libcharset (`charset`)**, parte di libiconv | non verificato            | **LGPL-2.1** (stesso file di libiconv)                                                                | Wi   | **da chiedere a Carlo** |
-| **ca-certificates**                           | —                         | **MPL-2.0** (`ca-certificates/LICENSE`); nessun file di certificati trovato nella ruota               | Wi   | **da chiedere a Carlo** |
-| **Runtime Microsoft C++ (`msvcp140`)**        | non verificato            | licenza Microsoft (`vc14_runtime/LICENSE.TXT`)                                                        | Wi   | **da chiedere a Carlo** |
-| **UCRT, vcomp14**                             | —                         | licenze Microsoft (`ucrt/LICENSE.txt`, `vcomp14/LICENSE.TXT`); nessuna DLL corrispondente nella ruota | Wi   | **da chiedere a Carlo** |
+| Libreria (DLL)                                | Versione                  | Licenza (file nella ruota)                                                                            | Dove | Verdetto             |
+| --------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------- | ---- | -------------------- |
+| Tesseract (`tesseract55`)                     | 5.5.3                     | Apache-2.0 (`tesseract/tesseract/LICENSE`)                                                            | Wi   | permissiva accettata |
+| Leptonica (`leptonica-1.87.0`)                | 1.87.0                    | BSD-2-Clause (`leptonica/leptonica-license.txt`)                                                      | Wi   | permissiva accettata |
+| libpng (`libpng16`)                           | 1.6.59                    | libpng License v2 (`libpng/LICENSE`)                                                                  | Wi   | permissiva accettata |
+| libjpeg-turbo (`jpeg8`)                       | 3.2.0                     | IJG + BSD-3-Clause + Zlib (`libjpeg-turbo/LICENSE.md`)                                                | Wi   | permissiva accettata |
+| libtiff (`tiff`)                              | 4.7.2                     | libtiff (`libtiff/LICENSE.md`)                                                                        | Wi   | permissiva accettata |
+| libwebp, libwebpmux, libsharpyuv              | non verificato            | BSD-3-Clause (`libwebp-base/COPYING`)                                                                 | Wi   | permissiva accettata |
+| giflib (`gif-7`)                              | non verificato (soname 7) | MIT (`giflib/COPYING`); `getopt` di mingw-w64: ISC (`getopt_LICENSE.txt`)                             | Wi   | permissiva accettata |
+| OpenJPEG (`openjp2`)                          | 2.5.4                     | BSD-2-Clause (`openjpeg/LICENSE`)                                                                     | Wi   | permissiva accettata |
+| LERC (`Lerc`)                                 | non verificato            | Apache-2.0 (`lerc/LICENSE`)                                                                           | Wi   | permissiva accettata |
+| libdeflate (`deflate`)                        | non verificato            | MIT (`libdeflate/COPYING`)                                                                            | Wi   | permissiva accettata |
+| zlib (`zlib`)                                 | 1.3.2                     | Zlib (`libzlib/LICENSE`)                                                                              | Wi   | permissiva accettata |
+| Zstandard (`zstd`)                            | 1.5.7                     | BSD-3-Clause (`zstd/LICENSE`)                                                                         | Wi   | permissiva accettata |
+| liblzma (`liblzma`)                           | non verificato            | 0BSD (`liblzma/COPYING`, `COPYING.0BSD`; GPL/LGPL solo per strumenti non inclusi)                     | Wi   | permissiva accettata |
+| bzip2 (`libbz2`)                              | 1.0.8                     | bzip2-1.0.6, stile BSD (`bzip2/LICENSE`; come R69)                                                    | Wi   | permissiva accettata |
+| LZ4 (`lz4`)                                   | 1.10.0                    | BSD-2-Clause (`lz4-c/lib/LICENSE`)                                                                    | Wi   | permissiva accettata |
+| libarchive (`archive`)                        | 3.8.9                     | BSD-2-Clause (`libarchive/COPYING`)                                                                   | Wi   | permissiva accettata |
+| libxml2 (`libxml2`)                           | non verificato            | MIT (`libxml2/Copyright`, `libxml2-16/Copyright`)                                                     | Wi   | permissiva accettata |
+| ICU (`icuuc78`, `icudt78`)                    | 78.3                      | Unicode-3.0 (`icu/LICENSE`)                                                                           | Wi   | permissiva accettata |
+| libcurl (`libcurl`)                           | 8.23.0                    | curl, stile MIT (`libcurl/COPYING`)                                                                   | Wi   | permissiva accettata |
+| libssh2 (`libssh2`)                           | non verificato            | BSD-3-Clause (`libssh2/COPYING`)                                                                      | Wi   | permissiva accettata |
+| libpsl (`psl-5`)                              | 0.23.1                    | MIT (`libpsl/LICENSE`)                                                                                | Wi   | permissiva accettata |
+| OpenSSL (`libcrypto-3-x64`)                   | 3.6.5                     | Apache-2.0 (`openssl/LICENSE.txt`)                                                                    | Wi   | permissiva accettata |
+| Kerberos (krb5)                               | —                         | stile BSD/MIT (`krb5/doc/notice.rst`); nessuna DLL krb5 nella ruota                                   | Wi   | permissiva accettata |
+| **GNU libiconv (`iconv`)**                    | non verificato            | **LGPL-2.1** (`libiconv/COPYING.LIB`)                                                                 | Wi   | **rimandato**        |
+| **libcharset (`charset`)**, parte di libiconv | non verificato            | **LGPL-2.1** (stesso file di libiconv)                                                                | Wi   | **rimandato**        |
+| **ca-certificates**                           | —                         | **MPL-2.0** (`ca-certificates/LICENSE`); nessun file di certificati trovato nella ruota               | Wi   | **rimandato**        |
+| **Runtime Microsoft C++ (`msvcp140`)**        | non verificato            | licenza Microsoft (`vc14_runtime/LICENSE.TXT`)                                                        | Wi   | **rimandato**        |
+| **UCRT, vcomp14**                             | —                         | licenze Microsoft (`ucrt/LICENSE.txt`, `vcomp14/LICENSE.TXT`); nessuna DLL corrispondente nella ruota | Wi   | **rimandato**        |
 
 ### Dati
 
@@ -141,21 +141,36 @@ DLL dentro ciascuna DLL: `tesseract55` → `leptonica`, `archive`, `libcurl`; `a
 
 ## Conclusione
 
-Conteggio: 40 righe permissive accettate, 15 da chiedere a Carlo (10 su macOS per file di licenza mancante, 5 su Windows).
+Decisione di Carlo del 13 novembre 2026: l'OCR esce per ora **solo su macOS**; Windows resta senza
+OCR perché la ruota Windows di tesserocr contiene GNU libiconv e libcharset sotto LGPL-2.1.
 
-Il lavoro si ferma (decisione 2 del disegno): **la ruota Windows di tesserocr contiene GNU libiconv
-e libcharset sotto LGPL-2.1**, collegate dinamicamente come DLL separate da libarchive e libxml2 (a loro volta caricate da
-Tesseract). Inoltre:
+Conteggio: 27 righe macOS e dati accettate (2 pacchetti, 14 componenti di pypdfium2, 10 librerie di
+tesserocr macOS, 1 file di dati); 28 righe Windows rimandate (23 permissive, 5 da non ammettere).
 
-1. **macOS:** le dieci librerie in `tesserocr/.dylibs/` hanno licenze a monte permissive (Apache-2.0,
-   BSD, libpng, libtiff, IJG, 0BSD, Zstandard scegliendo BSD), ma la ruota non porta i testi delle
-   licenze; bisognerebbe aggiungerli noi in `THIRD_PARTY.md` e nell'installer.
-2. **Windows:** oltre a libiconv, un file di licenza MPL-2.0 (ca-certificates, senza file di
-   certificati nella ruota) e il runtime Microsoft `msvcp140.dll` (licenza Microsoft, come
-   `vcruntime140*.dll` già accettati in attesa di conferma con R69).
-3. **Minimo macOS:** il modulo di tesserocr dichiara `minos 15.7`, non 15.0 come l'etichetta.
+**Accettato (macOS):** tesserocr 2.12.0 (MIT), pypdfium2 5.14.0 con PDFium e le librerie collegate
+(tabella sopra, licenze lette dalla ruota), `ita.traineddata` (tessdata_fast 4.1.0, Apache-2.0).
+Le dieci librerie in `tesserocr/.dylibs/` sono accettate come «permissiva accettata, testo a monte»:
+la ruota non porta i testi delle licenze, quindi la licenza è quella del progetto a monte e il testo
+va preso da lì; **non verificato dentro la ruota**.
 
-Possibili strade, da decidere da Carlo: accettare LGPL-2.1 per due DLL separate e sostituibili su
-Windows; compilare noi tesserocr/Tesseract per Windows senza libarchive e libcurl (sparirebbero,
-da verificare, libiconv, libcharset, libxml2, ICU, libcurl, libssh2, libpsl, OpenSSL e ca-certificates); oppure
-usare un'altra fonte delle librerie per Windows. pypdfium2 e `ita.traineddata` sono a posto.
+| Libreria                | Licenza a monte                   | Dove si trova il testo                         |
+| ----------------------- | --------------------------------- | ---------------------------------------------- |
+| Tesseract 5.5.3         | Apache-2.0                        | https://github.com/tesseract-ocr/tesseract     |
+| Leptonica               | BSD-2-Clause                      | https://github.com/DanBloomberg/leptonica      |
+| libpng 1.6.58           | libpng License v2                 | https://github.com/pnggroup/libpng             |
+| libjpeg-turbo 3.2.0     | IJG + BSD-3-Clause + Zlib         | https://github.com/libjpeg-turbo/libjpeg-turbo |
+| libtiff 4.7.2           | libtiff                           | https://gitlab.com/libtiff/libtiff             |
+| libwebp                 | BSD-3-Clause                      | https://chromium.googlesource.com/webm/libwebp |
+| libwebpmux, libsharpyuv | BSD-3-Clause (stesso progetto)    | https://chromium.googlesource.com/webm/libwebp |
+| liblzma 5.8.3           | 0BSD                              | https://github.com/tukaani-project/xz          |
+| Zstandard 1.5.7         | BSD-3-Clause (doppia con GPL-2.0) | https://github.com/facebook/zstd               |
+
+**Rimandato, nessuna eccezione a CLAUDE.md (Windows):** libiconv e libcharset (LGPL-2.1), il file
+ca-certificates (MPL-2.0), i runtime Microsoft (`msvcp140`, UCRT, vcomp14). Anche le righe permissive
+della tabella Windows restano senza effetto finché Windows è rimandato. Strade possibili quando si
+riprenderà: compilare tesserocr/Tesseract senza libarchive e libcurl (da verificare che spariscano
+libiconv, libcharset, libxml2, ICU, libcurl, libssh2, libpsl, OpenSSL e ca-certificates), o un'altra
+fonte delle librerie per Windows.
+
+**Verifica aperta (macOS):** l'etichetta della ruota dice 15.0 ma il modulo di tesserocr dichiara
+`minos 15.7`; se si carichi su macOS 15.0-15.6 è da provare. Fino ad allora il minimo sicuro è 15.7.
