@@ -1,6 +1,6 @@
 # Piano 6 (parte «primo avvio e sincronizzazione»): disegno
 
-Stato: **bozza in attesa dell'approvazione di Carlo** (13 novembre 2026). Specifica di riferimento: `docs/spec.md` (sezioni 2, 9, 20, 28, 36, 40 e 41). Prima parte già fatta: `docs/plans/2026-11-13-piano-6-profili-disegno.md` (i profili dei fornitori arrivano con l'app). Fuori da questo disegno: aggiornamenti firmati, Scadenze e pagamenti, Tasse e stime.
+Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 2, 9, 20, 28, 36, 40 e 41). Prima parte già fatta: `docs/plans/2026-11-13-piano-6-profili-disegno.md` (i profili dei fornitori arrivano con l'app). Fuori da questo disegno: aggiornamenti firmati, Scadenze e pagamenti, Tasse e stime.
 
 ## Perché
 

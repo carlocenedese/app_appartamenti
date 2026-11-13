@@ -1,6 +1,6 @@
 # Piano 2b-1: OCR per le scansioni e le foto (disegno)
 
-Stato: **bozza in attesa dell'approvazione di Carlo** (13 novembre 2026). Specifica di riferimento: `docs/spec.md` (sezioni 7, 8, 16, 22, 28, 40); piano 2a (`docs/plans/2026-11-11-piano-2a-lettura-pdf.md`) per la pipeline di lettura. Il piano 2b si divide in tre piani indipendenti: **2b-1 OCR e foto** (questo), **2b-2 PDF con più documenti**, **2b-3 condominio** (due tempi: prima il piano rate, poi preventivo e rendiconto con un campione dei tre amministratori). I disegni di 2b-2 e 2b-3 vengono dopo.
+Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 7, 8, 16, 22, 28, 40); piano 2a (`docs/plans/2026-11-11-piano-2a-lettura-pdf.md`) per la pipeline di lettura. Il piano 2b si divide in tre piani indipendenti: **2b-1 OCR e foto** (questo), **2b-2 PDF con più documenti**, **2b-3 condominio** (due tempi: prima il piano rate, poi preventivo e rendiconto con un campione dei tre amministratori). I disegni di 2b-2 e 2b-3 vengono dopo.
 
 ## Perché
 
