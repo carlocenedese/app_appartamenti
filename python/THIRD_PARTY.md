@@ -19,6 +19,36 @@ Dipendenze fissate in `requirements.txt` (con hash). Licenze lette dai metadati 
 `cffi` è fissata a 2.0.0 perché dalla 2.1 usa MIT-0, non nell'elenco; `typing-extensions` (PSF-2.0)
 serve a Python 3.12, per questo si usa Python 3.13.
 
+## OCR (solo macOS)
+
+L'OCR esce solo su macOS (decisione di Carlo del 13 novembre 2026); Windows è rimandato perché la
+ruota Windows di tesserocr contiene libiconv e libcharset sotto LGPL-2.1. Inventario completo e
+verifiche in `docs/rules/ocr-licenze.md`. Le ruote macOS (arm64 e x86_64) non portano i testi delle
+licenze delle librerie in `tesserocr/.dylibs/`: i testi sono in `python/licenses/ocr-native-libraries.txt`
+(uno per progetto, alla versione della ruota), che `scripts/bundle-python.mjs` mette nel bundle in
+`bollette_pdf/licenses/` e che `build.yml` controlla nell'app costruita (revisione finale, I4).
+
+In `requirements.txt` le due ruote sono fissate con il marcatore `sys_platform == "darwin"`
+(`tesserocr==2.12.0`, `pypdfium2==5.14.0`): pip non le installa su Windows e Linux, e
+`check_licenses.py` le controlla solo su macOS. Il campo `License` di pypdfium2 è testo libero
+(«BSD-3-Clause, Apache-2.0, dependency licenses»): `check_licenses.py` lo accetta solo per la
+versione 5.14.0 e solo con quel testo esatto. `ita.traineddata` è scaricato con controllo SHA-256
+da `scripts/ocr-data.mjs` in `resources/ocr-data/` (su Windows c'è solo una nota).
+
+| Componente                        | Versione | Licenza                          | Origine del testo                              |
+| --------------------------------- | -------- | -------------------------------- | ---------------------------------------------- |
+| tesserocr                         | 2.12.0   | MIT                              | `.dist-info/licenses/LICENSE` nella ruota      |
+| pypdfium2 (con PDFium)            | 5.14.0   | BSD-3-Clause, Apache-2.0         | `LICENSES/` e `BUILD_LICENSES/` nella ruota    |
+| `ita.traineddata` (tessdata_fast) | 4.1.0    | Apache-2.0                       | https://github.com/tesseract-ocr/tessdata_fast |
+| Tesseract                         | 5.5.3    | Apache-2.0                       | https://github.com/tesseract-ocr/tesseract     |
+| Leptonica                         | —        | BSD-2-Clause                     | https://github.com/DanBloomberg/leptonica      |
+| libpng                            | 1.6.58   | libpng License v2                | https://github.com/pnggroup/libpng             |
+| libjpeg-turbo                     | 3.2.0    | IJG + BSD-3-Clause + Zlib        | https://github.com/libjpeg-turbo/libjpeg-turbo |
+| libtiff                           | 4.7.2    | libtiff                          | https://gitlab.com/libtiff/libtiff             |
+| libwebp, libwebpmux, libsharpyuv  | —        | BSD-3-Clause                     | https://chromium.googlesource.com/webm/libwebp |
+| liblzma                           | 5.8.3    | 0BSD                             | https://github.com/tukaani-project/xz          |
+| Zstandard                         | 1.5.7    | BSD-3-Clause (scelta tra le due) | https://github.com/facebook/zstd               |
+
 ## Interprete incorporato nell'installer
 
 L'app desktop porta con sé un interprete Python (`scripts/bundle-python.mjs`, vedi

@@ -51,17 +51,45 @@ def load_profiles(directory: Path) -> tuple[list[dict[str, Any]], list[str]]:
     return profiles, warnings
 
 
-def recognises(profile: dict[str, Any], normalized_text: str) -> bool:
+def normalize_ocr(text: str) -> str:
+    """For OCR text (rule R89): NFKD without accents, case-folded, every run of characters that
+    are not letters or digits (punctuation, line breaks, spaces) is one space, trimmed."""
+    folded = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+    return " ".join("".join(c if c.isalnum() else " " for c in folded.casefold()).split())
+
+
+def recognises(
+    profile: dict[str, Any], pdf_text: str, ocr_text: str = "", scanned: bool = False
+) -> bool:
+    """Every `allOf` text is in the PDF text (`normalize`) or in the OCR text (`normalize_ocr`),
+    or (R90, only when `scanned`: the whole document is OCR) a word of `ocrAnyOf` is in the OCR
+    text; none of `noneOf` is."""
+
+    def found(condition: str) -> bool:
+        folded = normalize_ocr(condition)
+        return normalize(condition) in pdf_text or (folded != "" and folded in ocr_text)
+
     recognise = profile["recognise"]
-    return all(normalize(text) in normalized_text for text in recognise["allOf"]) and not any(
-        normalize(text) in normalized_text for text in recognise["noneOf"]
+    if any(found(text) for text in recognise["noneOf"]):
+        return False
+    padded = f" {ocr_text} "
+    anchored = any(
+        folded != "" and f" {folded} " in padded
+        for folded in map(normalize_ocr, recognise.get("ocrAnyOf", []) if scanned else [])
     )
+    return anchored or all(found(text) for text in recognise["allOf"])
 
 
 def matching_profiles(doc: Document, profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Profiles that recognise `doc`, newest `validFrom` first (ties by `id`)."""
-    text = normalize(doc.text)
-    found = [profile for profile in profiles if recognises(profile, text)]
+    """Profiles that recognise `doc`, newest `validFrom` first (ties by `id`).
+
+    The lines read with OCR (`doc.ocr_pages`) are compared folded (R89); the others as they are.
+    """
+    pdf_lines = [line.text for line in doc.lines if line.page not in doc.ocr_pages]
+    ocr_lines = [line.text for line in doc.lines if line.page in doc.ocr_pages]
+    pdf_text = normalize("\n".join(pdf_lines))
+    ocr_text = normalize_ocr("\n".join(ocr_lines))
+    found = [profile for profile in profiles if recognises(profile, pdf_text, ocr_text, doc.text_source == "ocr")]
     found.sort(key=lambda profile: profile["id"])
     found.sort(key=lambda profile: profile["validFrom"], reverse=True)
     return found

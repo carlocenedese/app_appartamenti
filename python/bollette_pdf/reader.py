@@ -4,6 +4,8 @@ Coordinates are in points from the TOP-LEFT corner of the page (pdfminer uses th
 rounded to two decimals, and pages are numbered from 1. `read_pdf` raises `PdfReadError` (Italian
 message, never containing text from the file) for a file that is not a PDF, is damaged or needs a
 password. `dump_document` / `load_dump` give a JSON form of a read document without the file name.
+Given the folder of the language data (`ocr_data`), pages without useful text are read with OCR
+(`ocr.py`, macOS only): `Document.text_source` says where the text comes from.
 
 No network, no clock, no randomness.
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import re
 import statistics
 import unicodedata
 from collections.abc import Iterator
@@ -22,6 +25,8 @@ from typing import Any
 
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LAParams, LTAnno, LTChar, LTContainer, LTPage, LTTextLine
+
+from . import images
 
 # pdfminer logs warnings about odd fonts and objects, sometimes quoting values of the file;
 # without a handler they would reach stderr through logging's last resort. Nothing of it is
@@ -36,6 +41,21 @@ MIN_TEXT_CHARS = 80
 # baseline (glyph origin) is used, not the glyph box, because the box grows with the font size.
 ROW_TOLERANCE = 2.0
 DECIMALS = 2
+
+# OCR (rule R86). A page goes through OCR when it has no text, or when more than CID_GLYPH_LIMIT
+# of its glyphs are `(cid:N)` escapes (glyphs without a Unicode mapping: the text is unusable).
+# At most MAX_OCR_PAGES pages of a document are read with OCR; the rest stay as they are.
+CID_GLYPH_LIMIT = 0.3
+MAX_OCR_PAGES = 20
+_CID = re.compile(r"\(cid:[0-9]+\)")
+OCR_UNAVAILABLE_WARNING = "OCR non disponibile: le pagine scansionate non sono state lette."
+OCR_PAGE_WARNING = (
+    "Alcune pagine non sono state lette con l'OCR (troppo grandi o non leggibili): "
+    "vanno controllate a mano."
+)
+OCR_LIMIT_WARNING = (
+    "Lette con l'OCR solo le prime {limit} pagine senza testo: le altre vanno controllate a mano."
+)
 
 # Layout choice. boxes_flow=None turns off the grouping of lines into text boxes by position, so
 # the reading order is decided here (page, row, x0) and not by pdfminer. char_margin is the
@@ -59,6 +79,8 @@ class Word:
     top: float
     x1: float
     bottom: float
+    # Confidence of the OCR engine, 0-100; None for text read from the PDF.
+    confidence: float | None = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +103,11 @@ class Document:
     pages: int
     lines: tuple[Line, ...]
     has_text: bool
+    # 'pdf' (no page read with OCR), 'ocr' (every page with text read with OCR) or 'mixed'.
+    text_source: str = "pdf"
+    # Pages (from 1, sorted) whose lines were read with OCR; empty when `text_source` is 'pdf'.
+    ocr_pages: tuple[int, ...] = ()
+    warnings: tuple[str, ...] = ()
 
     @property
     def text(self) -> str:
@@ -152,6 +179,10 @@ def _page_lines(layout: LTPage, page: int) -> list[Line]:
                 _r(layout.height - c.matrix[5]) for c in text_line if isinstance(c, LTChar)
             )
             lines.append(_make_line(page, words, _r(baseline)))
+    return _reading_order(lines)
+
+
+def _reading_order(lines: list[Line]) -> list[Line]:
     # Reading order: rows from the top, a row being lines whose baseline is within ROW_TOLERANCE of
     # the first line of the row; inside a row from left to right.
     lines.sort(key=lambda line: (line.baseline, line.x0))
@@ -169,23 +200,35 @@ def _page_lines(layout: LTPage, page: int) -> list[Line]:
     return ordered
 
 
-def read_pdf(path: Path) -> Document:
-    """Reads the PDF at `path`; raises PdfReadError if it cannot be read."""
+def _needs_ocr(lines: list[Line]) -> bool:
+    text = "".join(line.text for line in lines)
+    escapes = len(_CID.findall(text))
+    glyphs = escapes + sum(1 for ch in _CID.sub("", text) if not ch.isspace())
+    return glyphs == 0 or escapes > CID_GLYPH_LIMIT * glyphs
+
+
+def read_pdf(
+    path: Path, *, ocr_data: str | Path | None = None, max_ocr_pages: int = MAX_OCR_PAGES
+) -> Document:
+    """Reads the PDF at `path`; raises PdfReadError if it cannot be read.
+
+    With `ocr_data` (folder of ita.traineddata), pages without useful text are read with OCR,
+    at most `max_ocr_pages`; without the engine or the data they stay as they are."""
     path = Path(path)
     try:
         data = path.read_bytes()
     except OSError as error:
         raise PdfReadError("Impossibile aprire il file.") from error
     file_hash = hashlib.sha256(data).hexdigest()
-    lines: list[Line] = []
-    pages = 0
+    if images.sniff(data) is not None:  # by the first bytes, whatever the extension
+        return _read_image(path, data, file_hash, ocr_data)
+    by_page: list[list[Line]] = []
     try:
         # The bytes read once are both hashed and parsed, so the hash always matches the content.
         for number, layout in enumerate(
             extract_pages(io.BytesIO(data), laparams=LA_PARAMS), start=1
         ):
-            pages = number
-            lines.extend(_page_lines(layout, number))
+            by_page.append(_page_lines(layout, number))
     except (KeyboardInterrupt, MemoryError):
         raise
     except Exception:
@@ -193,11 +236,16 @@ def read_pdf(path: Path) -> Document:
         # PDFEncryptionError, ...) and bad data can also surface as plain TypeError, ValueError,
         # RecursionError, so any ordinary failure of the parser is wrapped. The original error is
         # dropped (`from None`): it may carry text from the PDF, which must never reach a log.
+        if path.suffix.lower() in images.EXTENSIONS:
+            raise PdfReadError(images.UNREADABLE) from None
         raise PdfReadError(
             "Il file non è un PDF leggibile: potrebbe essere danneggiato o protetto da password."
         ) from None
+    pages = len(by_page)
     if pages == 0:
         raise PdfReadError("Il file non contiene pagine leggibili.")
+    text_source, ocr_pages, warnings = _read_with_ocr(data, by_page, ocr_data, max_ocr_pages)
+    lines = [line for page_lines in by_page for line in page_lines]
     non_blank = sum(1 for line in lines for ch in line.text if not ch.isspace())
     return Document(
         file_hash=file_hash,
@@ -205,7 +253,77 @@ def read_pdf(path: Path) -> Document:
         pages=pages,
         lines=tuple(lines),
         has_text=non_blank >= MIN_TEXT_CHARS,
+        text_source=text_source,
+        ocr_pages=ocr_pages,
+        warnings=warnings,
     )
+
+
+def _read_image(
+    path: Path, data: bytes, file_hash: str, ocr_data: str | Path | None
+) -> Document:
+    """A JPEG or PNG read as one page, through the OCR path of a scanned PDF (rule R88)."""
+    try:
+        info = images.parse_image(data)
+        wrapped = images.image_pdf(data, info)
+    except images.ImageError as error:
+        raise PdfReadError(str(error)) from None
+    by_page: list[list[Line]] = [[]]
+    text_source, ocr_pages, warnings = _read_with_ocr(
+        wrapped, by_page, ocr_data, MAX_OCR_PAGES, info.dpi
+    )
+    non_blank = sum(1 for line in by_page[0] for ch in line.text if not ch.isspace())
+    return Document(
+        file_hash=file_hash,
+        file_name=_nfc(path.name),
+        pages=1,
+        lines=tuple(by_page[0]),
+        has_text=non_blank >= MIN_TEXT_CHARS,
+        text_source=text_source,
+        ocr_pages=ocr_pages,
+        warnings=warnings,
+    )
+
+
+def _read_with_ocr(
+    data: bytes,
+    by_page: list[list[Line]],
+    data_dir: str | Path | None,
+    limit: int,
+    dpi: int | None = None,
+) -> tuple[str, tuple[int, ...], tuple[str, ...]]:
+    """Replaces in `by_page` the lines of the pages read with OCR; gives text_source, the pages
+    read with OCR and the warnings."""
+    wanted = [number for number, lines in enumerate(by_page, start=1) if _needs_ocr(lines)]
+    if not wanted:
+        return "pdf", (), ()
+    read = None
+    if data_dir is not None:
+        from .ocr import ocr_pages
+
+        read = (
+            ocr_pages(data, wanted[:limit], str(data_dir))
+            if dpi is None
+            else ocr_pages(data, wanted[:limit], str(data_dir), dpi)
+        )
+    if read is None:
+        return "pdf", (), (OCR_UNAVAILABLE_WARNING,)
+    done = set()
+    skipped = False
+    for number, lines in zip(wanted, read):
+        if lines is None:  # skipped by the engine: the page stays as it is
+            skipped = True
+            continue
+        # A page with broken text where OCR finds nothing keeps the text it had.
+        if lines or not by_page[number - 1]:
+            by_page[number - 1] = lines
+            done.add(number)
+    pdf_text = any(lines for number, lines in enumerate(by_page, start=1) if number not in done)
+    warnings = (OCR_PAGE_WARNING,) if skipped else ()
+    warnings += (OCR_LIMIT_WARNING.format(limit=limit),) if len(wanted) > limit else ()
+    if not done:
+        return "pdf", (), warnings
+    return ("mixed" if pdf_text else "ocr"), tuple(sorted(done)), warnings
 
 
 def dump_document(doc: Document) -> dict[str, Any]:
@@ -217,6 +335,9 @@ def dump_document(doc: Document) -> dict[str, Any]:
         "fileHash": doc.file_hash,
         "pages": doc.pages,
         "hasText": doc.has_text,
+        "textSource": doc.text_source,
+        "ocrPages": list(doc.ocr_pages),
+        "warnings": list(doc.warnings),
         "lines": [
             {
                 "page": line.page,
@@ -225,14 +346,20 @@ def dump_document(doc: Document) -> dict[str, Any]:
                 "x1": line.x1,
                 "bottom": line.bottom,
                 "baseline": line.baseline,
-                "words": [
-                    {"text": w.text, "x0": w.x0, "top": w.top, "x1": w.x1, "bottom": w.bottom}
-                    for w in line.words
-                ],
+                "words": [_dump_word(w) for w in line.words],
             }
             for line in doc.lines
         ],
     }
+
+
+def _dump_word(word: Word) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "text": word.text, "x0": word.x0, "top": word.top, "x1": word.x1, "bottom": word.bottom
+    }
+    if word.confidence is not None:
+        out["confidence"] = word.confidence
+    return out
 
 
 def _int(data: Any, key: str) -> int:
@@ -261,6 +388,18 @@ def load_dump(data: dict[str, Any]) -> Document:
     if not isinstance(raw_lines, list):
         raise ValueError("Dump non valido: «lines».")
     pages = _int(data, "pages")
+    # textSource, ocrPages and warnings are optional: dumps written before the OCR have none.
+    text_source = data.get("textSource", "pdf")
+    ocr_pages = data.get("ocrPages", [])
+    warnings = data.get("warnings", [])
+    if text_source not in ("pdf", "ocr", "mixed"):
+        raise ValueError("Dump non valido: «textSource».")
+    if not isinstance(ocr_pages, list) or not all(
+        isinstance(n, int) and not isinstance(n, bool) and n >= 1 for n in ocr_pages
+    ):
+        raise ValueError("Dump non valido: «ocrPages».")
+    if not isinstance(warnings, list) or not all(isinstance(w, str) for w in warnings):
+        raise ValueError("Dump non valido: «warnings».")
     lines = []
     for raw in raw_lines:
         page = _int(raw, "page")
@@ -280,6 +419,7 @@ def load_dump(data: dict[str, Any]) -> Document:
                     top=_num(item, "top"),
                     x1=_num(item, "x1"),
                     bottom=_num(item, "bottom"),
+                    confidence=_num(item, "confidence") if "confidence" in item else None,
                 )
             )
         lines.append(
@@ -295,5 +435,12 @@ def load_dump(data: dict[str, Any]) -> Document:
             )
         )
     return Document(
-        file_hash=file_hash, file_name="", pages=pages, lines=tuple(lines), has_text=has_text
+        file_hash=file_hash,
+        file_name="",
+        pages=pages,
+        lines=tuple(lines),
+        has_text=has_text,
+        text_source=text_source,
+        ocr_pages=tuple(sorted(set(ocr_pages))),
+        warnings=tuple(warnings),
     )

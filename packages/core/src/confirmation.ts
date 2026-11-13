@@ -15,6 +15,7 @@
  * so the functions take no `newId`.
  */
 import { findBillDuplicate, hashBytes, registerBill } from './dedupe';
+import { hasOcrReading } from './extraction';
 import type { ExtractedField, ExtractionResult } from './extraction';
 import { commitChange } from './journal';
 import { BillSchema, InstalmentSchema, SupplierProfileSchema } from './model';
@@ -56,6 +57,10 @@ function noneReason(proposal: Proposal): string {
 function proposalReasons(proposal: Proposal, result: ExtractionResult): string[] {
   if (proposal.kind === 'none') return [noneReason(proposal)];
   const reasons: string[] = [];
+  // A text PDF with a scanned page is decided by the fields read from that page, not by the page.
+  if (result.textSource === 'ocr' || (result.textSource === 'mixed' && hasOcrReading(result))) {
+    reasons.push('Il testo è stato letto con la scansione (OCR): va controllato a mano.');
+  }
   if (result.status !== 'riconosciuta') {
     reasons.push(`La lettura è «${result.status}», non «riconosciuta».`);
   }

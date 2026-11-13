@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PYTHON_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PYTHON_DIR))
@@ -125,6 +126,27 @@ class PdfReportTest(unittest.TestCase):
         self.assertIn("Campi con confidenza high nelle riconosciute (senza supplier): 14 su 14", lines)
         self.assertNotIn("\r", out)
 
+    def test_counts_by_text_source_and_the_ocr_unavailable_warning(self) -> None:
+        # No engine asked for: the text-less page is not read and carries the warning.
+        lines = [line.strip() for line in self.report().splitlines()]
+        for expected in ("pdf: 5", "ocr: 0", "mixed: 0", "Con avviso OCR non disponibile: 1"):
+            self.assertIn(expected, lines)
+        self.assertIn("pdf senza-testo: 1", lines)
+        self.assertIn("ocr riconosciuta: 0", lines)
+
+    def test_ocr_data_option_reads_the_scans_with_the_engine(self) -> None:
+        from bollette_pdf import ocr
+        from test_ocr import FakeEngine
+
+        data = self.root / "dati-ocr"
+        data.mkdir()
+        with mock.patch.object(ocr, "ENGINE_FACTORY", lambda _dir: FakeEngine()):
+            out = self.run_ok(self.pdfs, extra=["--ocr-data", str(data)])
+        lines = [line.strip() for line in out.splitlines()]
+        for expected in ("pdf: 4", "ocr: 1", "mixed: 0", "Con avviso OCR non disponibile: 0"):
+            self.assertIn(expected, lines)
+        self.assertNotIn("dati-ocr", out)
+
     def test_output_never_leaks_names_paths_or_text(self) -> None:
         out = self.report()
         for secret in (
@@ -146,10 +168,10 @@ class PdfReportTest(unittest.TestCase):
             self.assertNotIn("segret", err)
             self.assertNotIn(str(self.root), err)
 
-    def run_ok(self, *folders: Path, profiles: Path | None = None) -> str:
+    def run_ok(self, *folders: Path, profiles: Path | None = None, extra: list[str] = ()) -> str:
         code, out, err = run(
             pdf_report,
-            ["--profiles", str(profiles or self.profiles), "--at", AT, *map(str, folders)],
+            ["--profiles", str(profiles or self.profiles), "--at", AT, *extra, *map(str, folders)],
         )
         self.assertEqual((code, err), (0, ""))
         return out

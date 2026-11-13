@@ -16,13 +16,16 @@
 //      itself (and the copy kept by ensurepip): the app does not need it;
 //   5. copy python/bollette_pdf/ there too, with schemas/supplierProfile.json and
 //      schemas/extractionResult.json from docs/schemas/ inside it (bollette_pdf/schemas.py looks
-//      there), so that `python -I -m bollette_pdf` works without PYTHONPATH;
+//      there), so that `python -I -m bollette_pdf` works without PYTHONPATH, and python/licenses/
+//      (the licence texts of the native OCR libraries) as bollette_pdf/licenses/;
 //   6. run `python -I -m bollette_pdf --version` and print the final size.
 // Right after the extraction, Tcl/Tk, tkinter, IDLE and turtle are removed (TKINTER_PATHS): the
 // app does not use them and the TCL licence is not in the allowed list. On macOS `bin/python3` is
 // then made the only copy of the interpreter (keepOneLauncher).
 // Run as a script it first checks python/seed-profiles/ and copies it into
 // resources/seed-profiles/ (scripts/seed-profiles.mjs).
+// Then it puts the OCR language data into resources/ocr-data/ (scripts/ocr-data.mjs): downloaded
+// and checked on macOS, only a note on Windows, where OCR is not shipped yet.
 // Only Node built-ins: no npm dependencies.
 
 import { spawnSync } from 'node:child_process';
@@ -44,6 +47,7 @@ import { devNull, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
+import { bundleOcrData } from './ocr-data.mjs';
 import { bundleSeedProfiles } from './seed-profiles.mjs';
 
 /** Destination, relative to the root of the repository. */
@@ -178,7 +182,11 @@ export function keepOneLauncher(directory, platform) {
   }
 }
 
-/** Copies python/bollette_pdf/ (without bytecode) and the two schemas it needs into sitePackages. */
+/**
+ * Copies python/bollette_pdf/ (without bytecode), the two schemas it needs and the licence texts
+ * of the native OCR libraries (python/licenses/, to be shipped with the binaries) into
+ * sitePackages.
+ */
 export function copyPackage(root, sitePackages) {
   const target = join(sitePackages, 'bollette_pdf');
   rmSync(target, { recursive: true, force: true });
@@ -190,6 +198,7 @@ export function copyPackage(root, sitePackages) {
   for (const kind of ['supplierProfile', 'extractionResult']) {
     cpSync(join(root, 'docs', 'schemas', `${kind}.json`), join(target, 'schemas', `${kind}.json`));
   }
+  cpSync(join(root, 'python', 'licenses'), join(target, 'licenses'), { recursive: true });
 }
 
 /** Total size in bytes of the files under `directory` (symbolic links are not followed). */
@@ -363,6 +372,7 @@ if (isEntryPoint) {
     .then(() => {
       bundleSeedProfiles(fileURLToPath(new URL('..', import.meta.url)));
     })
+    .then(() => bundleOcrData(fileURLToPath(new URL('..', import.meta.url))))
     .then(() => main())
     .catch((error) => {
       console.error(error.message);

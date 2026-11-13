@@ -19,6 +19,12 @@
   `euro`, parentheses, colons and spaces (ruling R57); for `same-line`, only when nothing but
   that noise precedes it and no digit (or `.`/`,` and a digit) follows it (ruling R73).
 
+- OCR (ruling R87), per field: a field whose `source.page` is in `ocrPages` is never `high`, and
+  one whose text line or cell averages under `OCR_MIN_WORD_CONFIDENCE` is empty; a scan
+  (`textSource` `ocr`) is never `riconosciuta` and has no `high` field; a `mixed` document is
+  `da-confermare` only when a field with a value was read from an OCR page;
+  the warnings of the reader follow those of the profile.
+
 Warnings and check messages are generic Italian sentences that never quote the document.
 No network, no clock: `at` is an argument.
 """
@@ -26,6 +32,7 @@ No network, no clock: `at` is an argument.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 from .checks import parts_checks, run_checks
@@ -37,6 +44,9 @@ from .reader import Document
 WARNING_REPEATED_PART = "Avviso TARI: parte ripetuta su più pagine, contata una volta."
 WARNING_UNREADABLE_PART = "Avviso TARI: parte non leggibile, esclusa."
 WARNING_UNREADABLE_ITEM = "Voce non leggibile, esclusa dalla somma delle voci."
+
+# Words read with OCR (confidence 0-100): a field whose text line or cell averages less is empty.
+OCR_MIN_WORD_CONFIDENCE = 70
 
 MESSAGE_PROFILE_UNIQUE = "Più profili di fornitori diversi riconoscono il documento."
 
@@ -70,6 +80,12 @@ def _parse(value_type: str, text: str) -> Any:
     except ValueError:
         return None
     return None
+
+
+def _too_uncertain(words: list[Any]) -> bool:
+    """Whether the OCR words average under `OCR_MIN_WORD_CONFIDENCE` (text-layer words never do)."""
+    scores = [w.confidence for w in words if w.confidence is not None]
+    return bool(scores) and sum(scores) / len(scores) < OCR_MIN_WORD_CONFIDENCE
 
 
 def _source(page: int, words: list[Any], text: str) -> dict[str, Any]:
@@ -120,6 +136,9 @@ def _read_at(
     value = _parse(rule.get("valueType", ""), text)
     words = candidate.words_in(start, end)
     if value is None or not words:
+        return None
+    # OCR words only: a text-layer word has no confidence and is never filtered (ruling R87).
+    if _too_uncertain([w for _, _, w in candidate.spans]):
         return None
     if rule.get("position") == "same-line":
         whole = _starts_the_line(candidate, start, end)
@@ -263,6 +282,9 @@ def _parts(
             words = page_text.words_in(*match.span()) or [w for _, _, w in page_text.spans]
             if not words:
                 continue
+            if _too_uncertain(words):  # same filter as a field (R87)
+                warnings.append(WARNING_UNREADABLE_PART)
+                continue
             parts.append(
                 {"label": key[0], "amount": amount, "source": _source(page, words, match.group(0))}
             )
@@ -297,18 +319,30 @@ def _parts(
     return parts, repeated
 
 
-def _items_sum(doc: Document, profile: dict[str, Any], warnings: list[str]) -> int | None:
+def _items_sum(doc: Document, profile: dict[str, Any], warnings: list[str]) -> tuple[int | None, bool]:
+    """(sum of the items, whether one was read from an OCR page). An item of an OCR page whose
+    words average under `OCR_MIN_WORD_CONFIDENCE` is unreadable (R87)."""
     compiled = _compile((profile.get("items") or {}).get("pattern"))
     if compiled is None or compiled.groups < 1:
-        return None
+        return None, False
     amounts = []
-    for match in compiled.finditer(doc.text):
-        amount = _parse("euro", match.group(1)) if match.group(1) is not None else None
-        if amount is None:
-            warnings.append(WARNING_UNREADABLE_ITEM)
-        else:
-            amounts.append(amount)
-    return sum(amounts) if amounts else None
+    from_ocr = False
+    layout = Layout(doc)
+    texts = [(False, unicodedata.normalize(
+        "NFC", "\n".join(line.text for line in doc.lines if line.page not in doc.ocr_pages)
+    ), None)]
+    texts += [(True, layout.page_text(page).text, layout.page_text(page)) for page in doc.ocr_pages]
+    for scanned, content, page_text in texts:
+        for match in compiled.finditer(content):
+            amount = _parse("euro", match.group(1)) if match.group(1) is not None else None
+            if scanned and _too_uncertain(page_text.words_in(*match.span())):
+                amount = None
+            if amount is None:
+                warnings.append(WARNING_UNREADABLE_ITEM)
+            else:
+                amounts.append(amount)
+                from_ocr = from_ocr or scanned
+    return (sum(amounts) if amounts else None), from_ocr
 
 
 def _result(doc: Document, status: str) -> dict[str, Any]:
@@ -325,7 +359,9 @@ def _result(doc: Document, status: str) -> dict[str, Any]:
         "parts": [],
         "identifiers": [],
         "checks": [],
-        "warnings": [],
+        "warnings": list(dict.fromkeys(doc.warnings)),
+        "textSource": doc.text_source,
+        "ocrPages": list(doc.ocr_pages),
     }
 
 
@@ -356,7 +392,8 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
     profile, fields = matching[chosen], readings[chosen]
 
     warnings: list[str] = []
-    checks = run_checks(fields, _items_sum(doc, profile, warnings))
+    items_sum, items_from_ocr = _items_sum(doc, profile, warnings)
+    checks = run_checks(fields, items_sum)
     parts: list[dict[str, Any]] = []
     if profile["kind"] == "tari" and profile.get("parts") is not None:
         parts, repeated = _parts(layout, profile, warnings)
@@ -370,6 +407,18 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
         or _missing_required(profile, fields)
         or not all(c["ok"] for c in checks)
     )
+    # Ruling R87: a field read from a page read with OCR is never `high`; a scan (`ocr`) is
+    # never `riconosciuta` and caps also the supplier of the profile (no source). A `mixed`
+    # document is doubtful only when a field with a value was read from an OCR page.
+    for field in fields.values():
+        from_ocr = field["source"] is not None and field["source"]["page"] in doc.ocr_pages
+        if field["confidence"] == "high" and (from_ocr or doc.text_source == "ocr"):
+            field["confidence"] = "medium"
+        if from_ocr and field["value"] is not None:
+            doubtful = doubtful or doc.text_source == "mixed"
+    doubtful = doubtful or doc.text_source == "ocr" or items_from_ocr
+    # Parts and items read from an OCR page have the same effect as such a field (R87).
+    doubtful = doubtful or any(part["source"]["page"] in doc.ocr_pages for part in parts)
     result = _result(doc, "da-confermare" if doubtful else "riconosciuta")
     result.update(
         profileId=profile["id"],
@@ -380,6 +429,6 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
         parts=parts,
         identifiers=_identifiers(layout, profile),
         checks=checks,
-        warnings=list(dict.fromkeys(warnings)),
+        warnings=list(dict.fromkeys([*warnings, *doc.warnings])),
     )
     return result

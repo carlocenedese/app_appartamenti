@@ -834,6 +834,22 @@
       "items": {
         "type": "string"
       }
+    },
+    "textSource": {
+      "type": "string",
+      "enum": [
+        "pdf",
+        "ocr",
+        "mixed"
+      ]
+    },
+    "ocrPages": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      }
     }
   },
   "required": [
@@ -851,7 +867,9 @@
     "parts",
     "identifiers",
     "checks",
-    "warnings"
+    "warnings",
+    "textSource",
+    "ocrPages"
   ],
   "description": "What the extractor prints for one PDF. fileHash is lowercase hexadecimal; a PDF without text has status \"senza-testo\" and no fields."
 }

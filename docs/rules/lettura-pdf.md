@@ -96,6 +96,72 @@ conservato nel repository, ha confrontato l'importo letto con il valore scritto 
 pagare» nello stesso documento: nessuna differenza. **Non è il campione di dieci PDF per fornitore
 controllati a mano che chiede il piano: resta da fare con Carlo.**
 
+## Scansioni lette con OCR (13 novembre 2026)
+
+Con `python/tools/pdf_report.py --ocr-data` (motore Tesseract 5.5.3, dati `ita.traineddata` di
+`tessdata_fast` 4.1.0, profili `python/seed-profiles/`, data `2026-11-13`), in sola lettura sulle
+cartelle in Dropbox di Berchet 3 e Pulci 2a (Lovarini non ha scansioni). Il rapporto stampa solo
+conteggi e non è conservato nel repository: nessun PDF, nome, importo o testo letto è stato
+copiato o scritto. **Questi conteggi NON sono il campione controllato a mano: da controllare a
+mano con Carlo, un campione di dieci scansioni, prima di fidarsi dell'OCR.**
+
+| Appartamento | PDF | Senza testo prima | Letti con OCR (`ocr`) | Con qualche pagina OCR (`mixed`) | Solo testo (`pdf`) | Riconosciute | Da confermare | Non riconosciute | Senza testo | Illeggibili | Avviso «OCR non disponibile» |
+| ------------ | --- | ----------------- | --------------------- | -------------------------------- | ------------------ | ------------ | ------------- | ---------------- | ----------- | ----------- | ---------------------------- |
+| Berchet 3    | 150 | 20                | 20                    | 77                               | 53                 | 103          | 0             | 47               | 0           | 0           | 0                            |
+| Pulci 2a     | 224 | 19                | 19                    | 83                               | 122                | 139          | 1             | 84               | 0           | 0           | 0                            |
+
+Stato per origine del testo (riconosciute / da confermare / non riconosciute):
+
+| Appartamento | `pdf`       | `ocr`      | `mixed`    |
+| ------------ | ----------- | ---------- | ---------- |
+| Berchet 3    | 28 / 0 / 25 | 0 / 0 / 20 | 75 / 0 / 2 |
+| Pulci 2a     | 61 / 0 / 61 | 0 / 0 / 19 | 78 / 1 / 4 |
+
+Prima (solo testo del PDF, stesse cartelle): Berchet 103 riconosciute, 0 da confermare, 27 non
+riconosciute; Pulci 139, 1 e 65. Durata: circa 5 minuti per Berchet e 1,5 per Pulci. Con la
+regola per campo (R87, task 7) le riconosciute tornano ai valori di prima; la prima corsa di questa
+sezione, con il tetto su tutto il documento, dava 28 e 61.
+
+- Tutte le scansioni senza testo (39) ora hanno testo. Nessuna è `senza-testo` e nessuna è
+  `illeggibile`. Un PDF letto per intero con OCR (`ocr`) non è mai `riconosciuta` (R87), ma nessun
+  profilo ne riconosce uno: le 39 scansioni restano `non-riconosciuta` (non c'è un profilo
+  dell'acqua di Berchet e Pulci, e le Enel con glifi rotti non corrispondono ai profili).
+- 160 PDF hanno testo e qualche pagina solo immagine (77 di Berchet, 83 di Pulci): sono `mixed`, e
+  con la regola per campo restano `riconosciuta` quando nessun campo con valore viene da una pagina
+  OCR (153 su 160); solo uno (Pulci) è `da-confermare` per questo motivo.
+- I messaggi di Leptonica (`box outside rectangle`) non arrivano più sull'errore standard: nella
+  corsa il descrittore 2 è rimasto vuoto.
+
+### Secondo giro (R89, normalizzazione del testo OCR)
+
+Il confronto di `recognise` sul testo OCR ora ignora accenti, punteggiatura e a capo (R89); il testo
+dei PDF di testo si confronta come prima. Sulle stesse cartelle (solo conteggi): le 39 scansioni
+restano 39 `non-riconosciuta`, nessun profilo scelto; le altre origini non cambiano (`pdf`: 89
+riconosciute e 86 non; `mixed`: 153 riconosciute, 1 da confermare, 6 non). Le frasi lunghe dei
+profili (`allOf[0]`) non compaiono nelle scansioni nemmeno normalizzate (0 su 39); servono ancore
+alternative a parola singola per fornitore, che richiedono un cambio dello schema (in attesa di
+decisione di Carlo, R89).
+
+### Terzo giro (R90, `recognise.ocrAnyOf`)
+
+`recognise` può avere `ocrAnyOf` (R90, approvato da Carlo il 13 novembre 2026): un documento letto
+con l'OCR per intero (`textSource` `ocr`) è riconosciuto dal profilo se soddisfa `allOf`
+**oppure** contiene, come parola intera nel testo normalizzato come in R89, almeno uno dei testi di
+`ocrAnyOf`; `noneOf` esclude comunque. Un PDF di testo (e le pagine di testo di un `mixed`) ignora
+`ocrAnyOf` del tutto, e così le pagine OCR di un `mixed` (correzione della revisione finale, approvata da Carlo: una pagina scansionata con «kWh» rendeva ambiguo un PDF Enel di testo); un profilo senza `ocrAnyOf` non cambia. Ogni testo deve avere una lettera o una
+cifra una volta normalizzato e non ripetersi (JSON Schema, Zod e `check_profile_rules`, casi in
+`profile-cases.json`). I profili seed ne hanno una parola ciascuno, **del fornitore** e non del servizio (Acegas, acqua e
+TARI, «acegas»; Enel «enel»; Fastweb «fastweb»; Hera, luce e gas, «hera»), mai la stessa per fornitori
+diversi (test). Le parole di servizio («kwh», «smc», «idrico», «tari») attribuivano la scansione di un
+altro fornitore a Hera o ad Acegas. Parola condivisa fra profili dello stesso fornitore: vale l'ordine
+di R55; tipi diversi restano segnalati da R73 (comunque `da-confermare`). Tentativo unico: se le scansioni restano
+poco riconosciute, si ripiega su «da rivedere» e inserimento a mano (decisione di Carlo, R90).
+
+Esito sulle stesse cartelle (solo conteggi): delle 39 scansioni 9 sono riconosciute (tutte `da-confermare`:
+4 Enel, 3 acqua, 1 TARI, 1 gas Hera) e 30 no; ambigue 0; dei campi delle 9 riconosciute non se ne legge quasi nessuno
+(importo, scadenza e numero mancano in 9 su 9). Le altre origini non cambiano (`pdf` 89 e 86, `mixed` 153, 1 e 6).
+Il resto resta a mano: «da rivedere» e inserimento a mano.
+
 ## Casi dubbi
 
 - **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il

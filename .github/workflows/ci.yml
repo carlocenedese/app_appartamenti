@@ -87,6 +87,23 @@ jobs:
         run: pnpm licenses:check
 
       - name: Test the Python package
+        if: runner.os != 'macOS'
+        run: pnpm python:test
+
+      # OCR runs on macOS only (R85): the language data is fetched with the project's own script,
+      # checked against its SHA-256, and the tests of the real engine fail instead of being skipped.
+      - name: Fetch the OCR language data (macOS)
+        if: runner.os == 'macOS'
+        run: >
+          node --input-type=module -e
+          "import { fetchOcrData, OCR_DATA } from './scripts/ocr-data.mjs';
+          await fetchOcrData(process.env.RUNNER_TEMP + '/ocr-data', OCR_DATA.url, OCR_DATA.sha256);"
+
+      - name: Test the Python package with the real OCR engine (macOS)
+        if: runner.os == 'macOS'
+        env:
+          REQUIRE_OCR: '1'
+          BOLLETTE_OCR_TEST_DATA: ${{ runner.temp }}/ocr-data
         run: pnpm python:test
 
       - name: Check Python dependency licences

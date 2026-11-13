@@ -227,6 +227,8 @@ describe('removeSupply and liveSupplies', () => {
       identifiers: [],
       checks: [{ code: 'total-matches-items', ok: true, message: 'ok' }],
       warnings: [],
+      textSource: 'pdf',
+      ocrPages: [],
     });
     const tenancies = [
       TenancySchema.parse({

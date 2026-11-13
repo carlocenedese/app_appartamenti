@@ -56,7 +56,7 @@ Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». S
 
 Un revisore indipendente ha trovato questi punti; li decido io, Carlo può correggerli.
 
-1. **Piattaforme.** macOS (arm64 e x64) e Windows x64; Linux non è un obiettivo di distribuzione (resta nella CI solo per i test). Se per un obiettivo non esiste una ruota con hash, quel sistema non ha OCR: stato esplicito `senza-testo` con avviso, mai una compilazione da sorgente e mai uno stop dell'installer.
+1. **Piattaforme.** **Aggiornato il 13 novembre 2026 dopo l'inventario del Task 1:** solo macOS (arm64 e x64); **Windows senza OCR per ora**, perché la ruota Windows di tesserocr contiene due DLL LGPL-2.1 (decisione di Carlo: prima macOS, Windows dopo). Linux non è un obiettivo di distribuzione (resta nella CI solo per i test). Dove manca la ruota o l'OCR, quel sistema dà lo stato esplicito `senza-testo` con avviso, mai una compilazione da sorgente e mai uno stop dell'installer.
 2. **Licenze delle librerie native.** Si accettano e si registrano in `THIRD_PARTY.md` e `CLAUDE.md` solo licenze permissive in stile BSD, FTL (scegliendo l'opzione FTL della doppia licenza di FreeType), IJG, libpng, libtiff, Zlib. MPL, GPL, AGPL, LGPL o una licenza che non si riesce a identificare fermano il lavoro e si chiede a Carlo.
 3. **Testo misto.** L'OCR gira pagina per pagina solo sulle pagine senza testo (o con glifi rotti oltre la soglia). `textSource` è per documento: `'pdf'`, `'ocr'` o `'mixed'`; se il 2b-2 avrà bisogno della fonte per pagina si aggiunge allora.
 4. **Confidenza.** Con `textSource` diverso da `'pdf'` ogni campo letto da pagine OCR ha confidenza al massimo `medium`, anche se perfetto. Un campo resta vuoto quando il valore non passa il suo riconoscitore (`parse_euro`, date, ecc.) oppure quando la confidenza media delle parole del testo che lo contiene è sotto una soglia; la soglia è del costruttore (parte da 70 su 100) e si scrive come regola in `docs/progress.md`.
@@ -77,3 +77,7 @@ Elenco e licenze delle librerie native dentro le ruote (FreeType, libjpeg, libpn
 ## Aperto con Carlo
 
 Nessuna domanda aperta; la decisione sulla licenza dipende dall'esito dell'inventario (task 1).
+
+## Seguito: parola da chiedere nell'app
+
+Non si implementa ora (futuro piano dell'interfaccia). Quando una scansione non è riconosciuta da nessun profilo, l'app chiederà all'utente una parola distintiva del fornitore (o gli lascerà scegliere il fornitore tra quelli noti) e la aggiungerà come ancora al profilo, così le scansioni nuove dello stesso fornitore vengono riconosciute. Il campo c'è già (R90): `recognise.ocrAnyOf`, elenco opzionale di parole o frasi **del fornitore**, valido solo per i documenti letti per intero con l'OCR (`textSource` `ocr`), che il confronto normalizza come in R89; l'app dovrà solo aggiungervi la parola (stringa non vuota, con almeno una lettera o cifra una volta normalizzata, senza ripetizioni). Nei profili seed ce n'è una per profilo (acqua «idrico», TARI «tari», Enel «enel», Fastweb «fastweb», gas Hera «smc», luce Hera «kwh»).

@@ -44,6 +44,31 @@ export type ExtractedField<T> = {
   source: ExtractionSource | null;
 };
 
+/** Whether `item` (a field or a part) has a value read from a page that was read with OCR. */
+function readWithOcr(
+  result: { ocrPages: number[] },
+  item: { value?: unknown; source: { page: number } | null } | undefined,
+): boolean {
+  return (
+    item !== undefined &&
+    item.value !== null &&
+    item.source !== null &&
+    result.ocrPages.includes(item.source.page)
+  );
+}
+
+/** Whether a field, or a part of a TARI notice, was read from a page read with OCR. */
+export function hasOcrReading(result: {
+  ocrPages: number[];
+  fields: Record<string, { value: unknown; source: { page: number } | null } | undefined>;
+  parts: { source: { page: number } }[];
+}): boolean {
+  return (
+    Object.values(result.fields).some((field) => readWithOcr(result, field)) ||
+    result.parts.some((part) => readWithOcr(result, part))
+  );
+}
+
 export const ExtractionResultSchema = z
   .object({
     v: z.literal(1),
@@ -95,7 +120,35 @@ export const ExtractionResultSchema = z
     checks: z.array(z.object({ code: NonEmptyString, ok: z.boolean(), message: z.string() })),
     /** Notes that do not change the status. */
     warnings: z.array(z.string()),
+    /** Where the text comes from: the PDF's own text layer, OCR of scanned pages, or both. */
+    textSource: z.enum(['pdf', 'ocr', 'mixed']),
+    /** Pages (from 1, as `source.page`) read with OCR; none when `textSource` is `pdf`. */
+    ocrPages: z.array(z.int().min(1)),
   })
+  .refine((result) => result.textSource !== 'pdf' || result.ocrPages.length === 0, {
+    message: 'A result whose text is all from the PDF has no page read with OCR.',
+  })
+  .refine(
+    (result) =>
+      result.textSource !== 'ocr' ||
+      (result.status !== 'riconosciuta' &&
+        Object.values(result.fields).every(
+          (field) => field === undefined || field.confidence !== 'high',
+        )),
+    { message: 'A scanned result is never riconosciuta and has no field with confidence high.' },
+  )
+  .refine(
+    (result) =>
+      Object.values(result.fields).every(
+        (field) =>
+          field === undefined || field.confidence !== 'high' || !readWithOcr(result, field),
+      ) &&
+      (result.status !== 'riconosciuta' || !hasOcrReading(result)),
+    {
+      message:
+        'A field read from a page with OCR is never high, and a result with a field or a part read so is never riconosciuta.',
+    },
+  )
   .meta({
     description:
       'What the extractor prints for one PDF. fileHash is lowercase hexadecimal; a PDF without ' +

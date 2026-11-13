@@ -4,6 +4,9 @@
     python -I -m bollette_pdf build-profile --pdf <file> --spec <file.json> --at <ISO date(-time)>
     python -I -m bollette_pdf --version
 
+Both commands take `--ocr-data <folder>` (folder of ita.traineddata): pages without useful text
+are then read with OCR where the engine is installed (macOS); without it they stay without text.
+
 `extract` prints ONE JSON document (a validated ExtractionResult) and a newline on stdout. Every
 output, stdout and stderr, is UTF-8 with `\\n` line endings on every system. Exit code 0 for
 every valid result (also non-riconosciuta, senza-testo and illeggibile), 2 for wrong arguments,
@@ -86,6 +89,7 @@ def _build_parser(stdout: TextIO, stderr: TextIO) -> argparse.ArgumentParser:
     command.add_argument("--pdf", required=True, help="file PDF da leggere")
     command.add_argument("--profiles", required=True, help="cartella dei profili dei fornitori")
     command.add_argument("--at", required=True, help="data o data-ora ISO di riferimento")
+    command.add_argument("--ocr-data", help="cartella dei dati della lingua per l'OCR (facoltativa)")
     build = sub.add_parser(
         "build-profile", help="costruisce un profilo da selezioni di testo", add_help=False
     )
@@ -93,6 +97,7 @@ def _build_parser(stdout: TextIO, stderr: TextIO) -> argparse.ArgumentParser:
     build.add_argument("--pdf", required=True, help="file PDF da leggere")
     build.add_argument("--spec", required=True, help="file JSON con il profilo e le selezioni")
     build.add_argument("--at", required=True, help="data o data-ora ISO di riferimento")
+    build.add_argument("--ocr-data", help="cartella dei dati della lingua per l'OCR (facoltativa)")
     return parser
 
 
@@ -151,6 +156,8 @@ def _unreadable(file_hash: str, file_name: str, message: str) -> dict[str, Any]:
         "identifiers": [],
         "checks": [],
         "warnings": [message],
+        "textSource": "pdf",
+        "ocrPages": [],
     }
 
 
@@ -209,7 +216,9 @@ def _print_json(document: dict[str, Any], stdout: TextIO) -> None:
     stdout.flush()
 
 
-def _run_extract(pdf: str, profiles: str, at: str, stdout: TextIO) -> None:
+def _run_extract(
+    pdf: str, profiles: str, at: str, ocr_data: str | None, stdout: TextIO
+) -> None:
     if not _is_file(pdf):
         raise _Rejected("Il file indicato con --pdf non esiste o non è un file.")
     if not _is_dir(profiles):
@@ -224,7 +233,7 @@ def _run_extract(pdf: str, profiles: str, at: str, stdout: TextIO) -> None:
         raise _Rejected("Impossibile leggere il file indicato con --pdf.") from None
     loaded, warnings = load_profiles(Path(profiles))
     try:
-        doc = read_pdf(path)
+        doc = read_pdf(path, ocr_data=ocr_data)
     except PdfReadError as error:
         result = _unreadable(hashlib.sha256(data).hexdigest(), file_name, str(error))
         warnings = []
@@ -281,7 +290,9 @@ def _read_spec(path: Path) -> dict[str, Any]:
     }
 
 
-def _run_build(pdf: str, spec_path: str, at: str, stdout: TextIO) -> None:
+def _run_build(
+    pdf: str, spec_path: str, at: str, ocr_data: str | None, stdout: TextIO
+) -> None:
     if not _is_file(pdf):
         raise _Rejected("Il file indicato con --pdf non esiste o non è un file.")
     if not _is_file(spec_path):
@@ -290,7 +301,7 @@ def _run_build(pdf: str, spec_path: str, at: str, stdout: TextIO) -> None:
         raise _Rejected("Il valore di --at non è una data o data-ora ISO valida.")
     arguments = _read_spec(Path(spec_path))
     try:
-        doc = read_pdf(Path(pdf))
+        doc = read_pdf(Path(pdf), ocr_data=ocr_data)
     except PdfReadError as error:
         raise _Rejected(str(error)) from None
     try:
@@ -320,9 +331,9 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
         return EXIT_ERROR
     try:
         if args.command == "extract":
-            _run_extract(args.pdf, args.profiles, args.at, out)
+            _run_extract(args.pdf, args.profiles, args.at, args.ocr_data, out)
         else:
-            _run_build(args.pdf, args.spec, args.at, out)
+            _run_build(args.pdf, args.spec, args.at, args.ocr_data, out)
     except _Rejected as rejected:
         err.write(f"{rejected}\n")
         return EXIT_ERROR
