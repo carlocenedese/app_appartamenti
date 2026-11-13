@@ -54,6 +54,7 @@ function result(overrides: Record<string, unknown> = {}): ExtractionResult {
     identifiers: [{ kind: 'pod', value: POD }],
     checks: [{ code: 'total-matches-items', ok: true, message: 'Il totale torna.' }],
     warnings: [],
+    textSource: 'pdf',
     ...rest,
   });
 }

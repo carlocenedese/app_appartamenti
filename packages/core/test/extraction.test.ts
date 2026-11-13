@@ -31,6 +31,7 @@ const full: Record<string, unknown> = {
   identifiers: [{ kind: 'pod', value: 'IT001E12345678' }],
   checks: [{ code: 'total-matches-items', ok: true, message: 'Il totale torna.' }],
   warnings: ['Due corrispondenze per la scadenza.'],
+  textSource: 'pdf',
 };
 
 const empty: Record<string, unknown> = {
@@ -49,6 +50,7 @@ const empty: Record<string, unknown> = {
   identifiers: [],
   checks: [],
   warnings: [],
+  textSource: 'pdf',
 };
 
 const changed = (base: Record<string, unknown>, changes: Record<string, unknown>) => ({
@@ -63,6 +65,25 @@ describe('ExtractionResultSchema', () => {
     expect(parsed.fields.amount?.value).toBe(9846);
     expectTypeOf(parsed).toEqualTypeOf<ExtractionResult>();
     expectTypeOf(parsed.fields.amount).toEqualTypeOf<ExtractedField<Cents> | undefined>();
+  });
+
+  it('accepts the three text sources and refuses another one, or none', () => {
+    for (const textSource of ['pdf', 'ocr', 'mixed']) {
+      const fields = textSource === 'pdf' ? full.fields : { amount: field(9846, 'medium') };
+      const status = textSource === 'pdf' ? 'riconosciuta' : 'da-confermare';
+      expect(ok(changed(full, { textSource, status, fields })), textSource).toBe(true);
+    }
+    expect(ok(changed(full, { textSource: 'scan' }))).toBe(false);
+    expect(ok(changed(full, { textSource: undefined }))).toBe(false);
+  });
+
+  it('refuses a high field or the status riconosciuta when the text is not from the PDF', () => {
+    for (const textSource of ['ocr', 'mixed']) {
+      const medium = { amount: field(9846, 'medium') };
+      expect(ok(changed(full, { textSource, status: 'da-confermare', fields: medium }))).toBe(true);
+      expect(ok(changed(full, { textSource, status: 'da-confermare' })), textSource).toBe(false);
+      expect(ok(changed(full, { textSource, status: 'riconosciuta', fields: medium }))).toBe(false);
+    }
   });
 
   it('reads a result without text and no fields', () => {

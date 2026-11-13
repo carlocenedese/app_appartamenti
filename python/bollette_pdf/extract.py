@@ -19,6 +19,10 @@
   `euro`, parentheses, colons and spaces (ruling R57); for `same-line`, only when nothing but
   that noise precedes it and no digit (or `.`/`,` and a digit) follows it (ruling R73).
 
+- a document read with OCR (`textSource` not `pdf`): never `riconosciuta`, no `high` field, and a
+  field whose text line or cell averages under `OCR_MIN_WORD_CONFIDENCE` is empty (ruling R87);
+  the warnings of the reader follow those of the profile.
+
 Warnings and check messages are generic Italian sentences that never quote the document.
 No network, no clock: `at` is an argument.
 """
@@ -37,6 +41,9 @@ from .reader import Document
 WARNING_REPEATED_PART = "Avviso TARI: parte ripetuta su più pagine, contata una volta."
 WARNING_UNREADABLE_PART = "Avviso TARI: parte non leggibile, esclusa."
 WARNING_UNREADABLE_ITEM = "Voce non leggibile, esclusa dalla somma delle voci."
+
+# Words read with OCR (confidence 0-100): a field whose text line or cell averages less is empty.
+OCR_MIN_WORD_CONFIDENCE = 70
 
 MESSAGE_PROFILE_UNIQUE = "Più profili di fornitori diversi riconoscono il documento."
 
@@ -120,6 +127,10 @@ def _read_at(
     value = _parse(rule.get("valueType", ""), text)
     words = candidate.words_in(start, end)
     if value is None or not words:
+        return None
+    # OCR words only: a text-layer word has no confidence and is never filtered (ruling R87).
+    scores = [w.confidence for _, _, w in candidate.spans if w.confidence is not None]
+    if scores and sum(scores) / len(scores) < OCR_MIN_WORD_CONFIDENCE:
         return None
     if rule.get("position") == "same-line":
         whole = _starts_the_line(candidate, start, end)
@@ -325,7 +336,8 @@ def _result(doc: Document, status: str) -> dict[str, Any]:
         "parts": [],
         "identifiers": [],
         "checks": [],
-        "warnings": [],
+        "warnings": list(dict.fromkeys(doc.warnings)),
+        "textSource": doc.text_source,
     }
 
 
@@ -370,6 +382,13 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
         or _missing_required(profile, fields)
         or not all(c["ok"] for c in checks)
     )
+    if doc.text_source != "pdf":
+        # Text read with OCR is never sure: no `high` field, never `riconosciuta`. Every field is
+        # capped, also with `mixed`, because the schema refuses a `high` field with any OCR.
+        doubtful = True
+        for field in fields.values():
+            if field["confidence"] == "high":
+                field["confidence"] = "medium"
     result = _result(doc, "da-confermare" if doubtful else "riconosciuta")
     result.update(
         profileId=profile["id"],
@@ -380,6 +399,6 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
         parts=parts,
         identifiers=_identifiers(layout, profile),
         checks=checks,
-        warnings=list(dict.fromkeys(warnings)),
+        warnings=list(dict.fromkeys([*warnings, *doc.warnings])),
     )
     return result

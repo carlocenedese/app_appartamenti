@@ -67,6 +67,7 @@ function billResult(fileHash: string, overrides: Record<string, unknown> = {}): 
     identifiers: [{ kind: 'pod', value: POD }],
     checks: [{ code: 'total-matches-items', ok: true, message: 'Il totale torna.' }],
     warnings: [],
+    textSource: 'pdf',
     ...rest,
   });
 }
@@ -213,6 +214,31 @@ describe('decideRegistration', () => {
       reasons: [],
     });
   });
+
+  it.each(['ocr', 'mixed'])(
+    'never registers by itself a result read from %s text',
+    async (textSource) => {
+      const { result, proposal } = await billCase();
+      // Forged on purpose: the schema refuses it, the decision must not depend on that.
+      const forged = { ...result, textSource } as ExtractionResult;
+      const decision = decideRegistration({ proposal, result: forged, profile: profile() });
+      expect(decision.action).toBe('review');
+      expect(decision.reasons.join(' ')).toMatch(/OCR|scansion/i);
+      const parsed = billResult(result.fileHash, {
+        textSource,
+        status: 'da-confermare',
+        fields: Object.fromEntries(
+          Object.entries(result.fields).map(([name, f]) => [name, { ...f, confidence: 'medium' }]),
+        ),
+      });
+      expect(parsed.textSource).toBe(textSource);
+      const built = proposalFromExtraction(parsed, context(), ids('ocr'));
+      expect(built.kind).not.toBe('none');
+      expect(
+        decideRegistration({ proposal: built, result: parsed, profile: profile() }).action,
+      ).toBe('review');
+    },
+  );
 
   it('always asks with a draft profile, or a confirmed one with autoRegister false (RF 7)', async () => {
     const { result, proposal } = await billCase();

@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pdfmaker  # noqa: E402
 from bollette_pdf import __version__, ocr  # noqa: E402
 from bollette_pdf.__main__ import main  # noqa: E402
+from bollette_pdf.reader import OCR_UNAVAILABLE_WARNING  # noqa: E402
 from bollette_pdf.schemas import validate  # noqa: E402
 from test_extract import AT, FILLER, STANDARD, light_profile  # noqa: E402
 
@@ -211,6 +212,19 @@ class ExtractTest(CliTestCase):
             )
         self.assertEqual(code, 0, stderr.getvalue())
         self.assertEqual(json.loads(stdout.getvalue())["status"], "riconosciuta")
+
+    def test_scanned_pdf_without_ocr_data_says_why_it_was_not_read(self) -> None:
+        scan = self.dir / "scansione.pdf"
+        pdfmaker.make_pdf(scan, [[]])
+        self.write_profile()
+        (self.profiles / "rotto.json").write_text("{ non json", encoding="utf-8")
+        stdout, stderr = io.StringIO(), io.StringIO()
+        args = ["extract", "--pdf", str(scan), "--profiles", str(self.profiles), "--at", AT]
+        self.assertEqual(main(args, stdout, stderr), 0, stderr.getvalue())
+        result = json.loads(stdout.getvalue())
+        self.assertEqual((result["status"], result["textSource"]), ("senza-testo", "pdf"))
+        self.assertEqual(result["warnings"][-1], OCR_UNAVAILABLE_WARNING)
+        self.assertIn("rotto.json", result["warnings"][0])
 
     def test_no_socket_is_ever_created_with_ocr(self) -> None:
         scan = self.dir / "scansione.pdf"

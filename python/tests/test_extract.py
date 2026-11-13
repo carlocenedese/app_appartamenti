@@ -6,6 +6,7 @@ Every PDF is built with pdfmaker; every text, amount and date here is invented.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import sys
 import tempfile
 import time
@@ -18,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pdfmaker  # noqa: E402
 from bollette_pdf.checks import run_checks  # noqa: E402
-from bollette_pdf.extract import extract  # noqa: E402
+from bollette_pdf.extract import OCR_MIN_WORD_CONFIDENCE, extract  # noqa: E402
 from bollette_pdf.reader import read_pdf  # noqa: E402
 from bollette_pdf.schemas import validate  # noqa: E402
 
@@ -115,6 +116,93 @@ class ExtractTestCase(unittest.TestCase):
         self.assertEqual(validate("extractionResult", full), [])
 
 
+def as_ocr(doc, confidence=95.0, source="ocr", only=lambda line: True, warnings=()):
+    """`doc` as if its words had been read with OCR (those of the lines `only` accepts)."""
+    lines = tuple(
+        dataclasses.replace(
+            line, words=tuple(dataclasses.replace(w, confidence=confidence) for w in line.words)
+        )
+        if only(line)
+        else line
+        for line in doc.lines
+    )
+    return dataclasses.replace(doc, lines=lines, text_source=source, warnings=tuple(warnings))
+
+
+class OcrTextTest(ExtractTestCase):
+    def test_threshold_is_seventy_out_of_a_hundred(self) -> None:
+        self.assertEqual(OCR_MIN_WORD_CONFIDENCE, 70)
+
+    def test_ocr_document_is_never_riconosciuta_and_has_no_high_field(self) -> None:
+        for source in ("ocr", "mixed"):
+            doc = as_ocr(self.doc(STANDARD), source=source)
+            result = extract(doc, [light_profile()], AT)
+            self.assertEqual(result["textSource"], source)
+            self.assertEqual(result["status"], "da-confermare")
+            fields = result["fields"]
+            self.assertEqual(fields["amount"]["value"], 8765)
+            self.assertEqual(fields["issueDate"]["value"], "2025-03-15")
+            self.assertEqual(fields["supplier"]["confidence"], "medium")
+            self.assertNotIn("high", {f["confidence"] for f in fields.values()})
+            self.assertEqual(fields["amount"]["confidence"], "medium")
+            self.assertValid(result)
+
+    def test_low_confidence_line_leaves_its_field_empty(self) -> None:
+        doc = as_ocr(self.doc(STANDARD), 60.0, only=lambda line: "Totale" in line.text)
+        doc = as_ocr(doc, 95.0, source="ocr", only=lambda line: "Totale" not in line.text)
+        result = extract(doc, [light_profile()], AT)
+        self.assertEqual(
+            result["fields"]["amount"], {"value": None, "confidence": "missing", "source": None}
+        )
+        self.assertEqual(result["fields"]["dueDate"]["value"], "2025-04-05")
+        self.assertEqual(result["status"], "da-confermare")  # the required amount is missing
+        self.assertValid(result)
+
+    def test_average_of_the_cell_decides_not_a_single_word(self) -> None:
+        def with_value_confidence(value):
+            doc = self.doc(STANDARD)
+            lines = tuple(
+                dataclasses.replace(
+                    line,
+                    words=tuple(
+                        dataclasses.replace(w, confidence=value if w.text == "87,65" else 99.0)
+                        for w in line.words
+                    ),
+                )
+                for line in doc.lines
+            )
+            return dataclasses.replace(doc, lines=lines, text_source="ocr")
+
+        # the cell is «€ 87,65»: the word «€» has 99, so 41 averages exactly 70 and 40 does not
+        kept = extract(with_value_confidence(41.0), [light_profile()], AT)["fields"]["amount"]
+        self.assertEqual(kept["value"], 8765)
+        dropped = extract(with_value_confidence(40.0), [light_profile()], AT)["fields"]["amount"]
+        self.assertEqual(dropped["value"], None)
+
+    def test_text_layer_words_are_never_filtered(self) -> None:
+        doc = self.doc(STANDARD)
+        self.assertTrue(all(w.confidence is None for line in doc.lines for w in line.words))
+        result = extract(doc, [light_profile()], AT)
+        self.assertEqual(result["fields"]["amount"]["confidence"], "high")
+        self.assertEqual(result["status"], "riconosciuta")
+
+    def test_document_warnings_follow_the_profile_warnings_without_repeats(self) -> None:
+        profile = light_profile(items={"pattern": "Voce (\\S+)"})
+        doc = self.doc([*STANDARD, (72, 300, "Voce abc")])
+        doc = dataclasses.replace(doc, warnings=("Avviso del lettore.", "Avviso del lettore."))
+        warnings = extract(doc, [profile], AT)["warnings"]
+        self.assertEqual(len(warnings), len(set(warnings)))
+        self.assertEqual(warnings[-1], "Avviso del lettore.")
+        self.assertGreater(len(warnings), 1)
+
+    def test_no_text_result_keeps_the_reader_warnings(self) -> None:
+        doc = dataclasses.replace(self.doc([]), warnings=("Avviso del lettore.",))
+        result = extract(doc, [light_profile()], AT)
+        self.assertEqual((result["status"], result["textSource"]), ("senza-testo", "pdf"))
+        self.assertEqual(result["warnings"], ["Avviso del lettore."])
+        self.assertValid(result)
+
+
 class FieldsTest(ExtractTestCase):
     def test_standard_bill_all_fields_high_with_source(self) -> None:
         doc = self.doc(STANDARD)
@@ -124,6 +212,7 @@ class FieldsTest(ExtractTestCase):
         self.assertEqual((result["profileId"], result["profileRev"]), ("luce-2025", 3))
         self.assertEqual((result["kind"], result["category"]), ("bill", "elettricita"))
         self.assertEqual(result["v"], 1)
+        self.assertEqual(result["textSource"], "pdf")
         self.assertEqual(result["fileHash"], doc.file_hash)
         self.assertEqual(result["pages"], 1)
         self.assertEqual(

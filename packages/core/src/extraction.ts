@@ -95,7 +95,19 @@ export const ExtractionResultSchema = z
     checks: z.array(z.object({ code: NonEmptyString, ok: z.boolean(), message: z.string() })),
     /** Notes that do not change the status. */
     warnings: z.array(z.string()),
+    /** Where the text comes from: the PDF's own text layer, OCR of scanned pages, or both. */
+    textSource: z.enum(['pdf', 'ocr', 'mixed']),
   })
+  .refine(
+    (result) =>
+      result.textSource === 'pdf' ||
+      (result.status !== 'riconosciuta' &&
+        Object.values(result.fields).every((field) => field.confidence !== 'high')),
+    {
+      message:
+        'A result read with OCR is never riconosciuta and has no field with confidence high.',
+    },
+  )
   .meta({
     description:
       'What the extractor prints for one PDF. fileHash is lowercase hexadecimal; a PDF without ' +

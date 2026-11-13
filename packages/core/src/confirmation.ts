@@ -56,6 +56,9 @@ function noneReason(proposal: Proposal): string {
 function proposalReasons(proposal: Proposal, result: ExtractionResult): string[] {
   if (proposal.kind === 'none') return [noneReason(proposal)];
   const reasons: string[] = [];
+  if (result.textSource !== 'pdf') {
+    reasons.push('Il testo è stato letto con la scansione (OCR): va controllato a mano.');
+  }
   if (result.status !== 'riconosciuta') {
     reasons.push(`La lettura è «${result.status}», non «riconosciuta».`);
   }
