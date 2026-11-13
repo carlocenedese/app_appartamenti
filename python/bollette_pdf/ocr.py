@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
+from .images import MAX_PIXELS
 from .reader import Line, Word, _make_line, _nfc, _r, _reading_order
 
 LANGUAGE = "ita"
@@ -33,7 +34,9 @@ RawLine = tuple[float | None, list[RawWord]]
 
 
 class Engine(Protocol):
-    def read(self, data: bytes, pages: list[int], dpi: int) -> list[list[RawLine]]: ...
+    def read(self, data: bytes, pages: list[int], dpi: int) -> list[list[RawLine] | None]:
+        """The lines of each page, or None for a page that was skipped (too big, or it failed)."""
+        ...
 
 
 class _Tesseract:
@@ -42,22 +45,34 @@ class _Tesseract:
         self._pdfium = pdfium
         self._data_dir = data_dir
 
-    def read(self, data: bytes, pages: list[int], dpi: int) -> list[list[RawLine]]:
+    def read(self, data: bytes, pages: list[int], dpi: int) -> list[list[RawLine] | None]:
         pdf = self._pdfium.PdfDocument(data)
         try:
             with self._tesserocr.PyTessBaseAPI(path=self._data_dir, lang=LANGUAGE) as api:
                 # Tesseract's own messages go nowhere: none may reach stderr.
                 api.SetVariable("debug_file", os.devnull)
-                return [self._page(pdf, api, number, dpi) for number in pages]
+                return [self._safe_page(pdf, api, number, dpi) for number in pages]
         finally:
             pdf.close()
 
-    def _page(self, pdf: Any, api: Any, number: int, dpi: int) -> list[RawLine]:
+    def _safe_page(self, pdf: Any, api: Any, number: int, dpi: int) -> list[RawLine] | None:
+        # A page that fails (its message may quote the page) is skipped alone; so is a huge one.
+        try:
+            return self._page(pdf, api, number, dpi)
+        except Exception:  # MemoryError too
+            return None
+
+    def _page(self, pdf: Any, api: Any, number: int, dpi: int) -> list[RawLine] | None:
         page = pdf[number - 1]
         try:
             # pdfminer's coordinates are those of the MediaBox; pdfium draws the CropBox.
-            page.set_cropbox(*page.get_mediabox())
-            bitmap = page.render(scale=dpi / POINTS_PER_INCH, grayscale=True)
+            box = page.get_mediabox()
+            page.set_cropbox(*box)
+            # Same limit as an image (R88): a page over it never reaches the engine.
+            scale = dpi / POINTS_PER_INCH
+            if round((box[2] - box[0]) * scale) * round((box[3] - box[1]) * scale) > MAX_PIXELS:
+                return None
+            bitmap = page.render(scale=scale, grayscale=True)
             try:
                 if bitmap.n_channels != 1:
                     raise ValueError("bitmap")
@@ -163,8 +178,9 @@ def _silent_stderr() -> Iterator[None]:
 
 def ocr_pages(
     source: bytes | str | Path, pages: list[int], data_dir: str, dpi: int = OCR_DPI
-) -> list[list[Line]] | None:
-    """Lines of each page in `pages` (numbered from 1), or None when OCR is not available."""
+) -> list[list[Line] | None] | None:
+    """Lines of each page in `pages` (numbered from 1), None for a page that was skipped, or
+    None when OCR is not available."""
     if not pages:
         return []
     try:
@@ -179,4 +195,6 @@ def ocr_pages(
     except Exception:
         # The message of an engine error may quote what was read: it is dropped.
         return None
-    return [_lines(number, raw, dpi) for number, raw in zip(pages, raw_pages)]
+    return [
+        None if raw is None else _lines(number, raw, dpi) for number, raw in zip(pages, raw_pages)
+    ]

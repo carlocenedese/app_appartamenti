@@ -251,6 +251,149 @@ class FakeEngineTest(unittest.TestCase):
                 load_dump(bad)
 
 
+class FakeBitmap:
+    n_channels, width, height, stride, buffer = 1, 1, 1, 1, b"\0"
+
+    def close(self) -> None:
+        pass
+
+
+class FakePage:
+    """A pdfium page of `size` points: drawing it is a failure when `fail`, and counted."""
+
+    def __init__(self, size, fail=False) -> None:
+        self.size, self.fail, self.drawn = size, fail, 0
+
+    def get_mediabox(self):
+        return (0, 0, *self.size)
+
+    def set_cropbox(self, *box) -> None:
+        pass
+
+    def render(self, scale, grayscale):
+        self.drawn += 1
+        if self.fail:
+            raise ValueError("secret text of the page")
+        return FakeBitmap()
+
+    def close(self) -> None:
+        pass
+
+
+class FakePdfium:
+    def __init__(self, pages) -> None:
+        self.pages = pages
+
+    def PdfDocument(self, data):  # noqa: N802
+        return self
+
+    def __getitem__(self, index):
+        return self.pages[index]
+
+    def close(self) -> None:
+        pass
+
+
+class FakeApi:
+    def __init__(self, **kwargs) -> None:
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        pass
+
+    def SetVariable(self, *args) -> None:  # noqa: N802
+        pass
+
+    def SetImageBytes(self, *args) -> None:  # noqa: N802
+        pass
+
+    def SetSourceResolution(self, *args) -> None:  # noqa: N802
+        pass
+
+    def Recognize(self) -> None:  # noqa: N802
+        pass
+
+    def GetIterator(self):  # noqa: N802
+        return None
+
+
+class FakeTesserocr:
+    PyTessBaseAPI = FakeApi
+    RIL = mock.Mock(WORD=0, TEXTLINE=1)
+
+    @staticmethod
+    def iterate_level(iterator, level):
+        return []
+
+
+class PageGuardsTest(unittest.TestCase):
+    """A page too big for the engine, or that fails, is skipped alone (R86, review fixes)."""
+
+    def read(self, sizes, fail=()):
+        pages = [FakePage(size, index in fail) for index, size in enumerate(sizes)]
+        engine = ocr._Tesseract(FakeTesserocr, FakePdfium(pages), "dati")
+        return pages, engine.read(b"", list(range(1, len(pages) + 1)), 300)
+
+    def test_page_over_thirty_megapixels_is_not_drawn(self) -> None:
+        a4 = (595, 842)
+        huge = (14400, 14400)  # 60000 x 60000 pixels at 300 dpi
+        pages, read = self.read([a4, huge, (2480, 3508)])
+        self.assertEqual([page.drawn for page in pages], [1, 0, 0])
+        self.assertEqual([item is None for item in read], [False, True, True])
+
+    def test_the_limit_is_the_one_of_the_images(self) -> None:
+        from bollette_pdf import images
+
+        self.assertEqual(ocr.MAX_PIXELS, images.MAX_PIXELS)
+        side = 72 * (images.MAX_PIXELS**0.5) / DPI
+        pages, read = self.read([(side, side), (side * 1.01, side * 1.01)])
+        self.assertEqual([item is None for item in read], [False, True])
+
+    def test_one_failing_page_does_not_discard_the_others(self) -> None:
+        pages, read = self.read([(595, 842), (595, 842), (595, 842)], fail={1})
+        self.assertEqual([item is None for item in read], [False, True, False])
+
+    def test_memory_error_of_a_page_is_a_skipped_page(self) -> None:
+        pages = [FakePage((595, 842)), FakePage((595, 842))]
+        pages[0].render = mock.Mock(side_effect=MemoryError)
+        engine = ocr._Tesseract(FakeTesserocr, FakePdfium(pages), "dati")
+        self.assertEqual([item is None for item in engine.read(b"", [1, 2], 300)], [True, False])
+
+    def test_reader_keeps_the_other_pages_and_warns_without_content(self) -> None:
+        class Skipping(FakeEngine):
+            def read(self, data, pages, dpi):
+                out = super().read(data, pages, dpi)
+                return [None if number == 2 else raw for number, raw in zip(pages, out)]
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "a.pdf"
+        pdfmaker.make_pdf(path, [[], [], []])
+        with mock.patch.object(ocr, "ENGINE_FACTORY", lambda data_dir: Skipping()):
+            doc = read_pdf(path, ocr_data=tmp.name)
+        self.assertEqual((doc.text_source, doc.ocr_pages), ("ocr", (1, 3)))
+        self.assertEqual({line.page for line in doc.lines}, {1, 3})
+        self.assertEqual(doc.warnings, (reader.OCR_PAGE_WARNING,))
+        self.assertNotIn("secret", " ".join(doc.warnings))
+
+    def test_every_page_skipped_gives_a_text_less_document_with_the_warning(self) -> None:
+        class Skipping(FakeEngine):
+            def read(self, data, pages, dpi):
+                return [None for _ in pages]
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "a.pdf"
+        pdfmaker.make_pdf(path, [[]])
+        with mock.patch.object(ocr, "ENGINE_FACTORY", lambda data_dir: Skipping()):
+            doc = read_pdf(path, ocr_data=tmp.name)
+        self.assertEqual((doc.text_source, doc.lines, doc.has_text), ("pdf", (), False))
+        self.assertEqual(doc.warnings, (reader.OCR_PAGE_WARNING,))
+
+
 def _write_to_stderr_fd(text: bytes) -> None:
     os.write(2, text)
 

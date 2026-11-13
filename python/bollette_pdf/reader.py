@@ -49,6 +49,10 @@ CID_GLYPH_LIMIT = 0.3
 MAX_OCR_PAGES = 20
 _CID = re.compile(r"\(cid:[0-9]+\)")
 OCR_UNAVAILABLE_WARNING = "OCR non disponibile: le pagine scansionate non sono state lette."
+OCR_PAGE_WARNING = (
+    "Alcune pagine non sono state lette con l'OCR (troppo grandi o non leggibili): "
+    "vanno controllate a mano."
+)
 OCR_LIMIT_WARNING = (
     "Lette con l'OCR solo le prime {limit} pagine senza testo: le altre vanno controllate a mano."
 )
@@ -305,13 +309,18 @@ def _read_with_ocr(
     if read is None:
         return "pdf", (), (OCR_UNAVAILABLE_WARNING,)
     done = set()
+    skipped = False
     for number, lines in zip(wanted, read):
+        if lines is None:  # skipped by the engine: the page stays as it is
+            skipped = True
+            continue
         # A page with broken text where OCR finds nothing keeps the text it had.
         if lines or not by_page[number - 1]:
             by_page[number - 1] = lines
             done.add(number)
     pdf_text = any(lines for number, lines in enumerate(by_page, start=1) if number not in done)
-    warnings = (OCR_LIMIT_WARNING.format(limit=limit),) if len(wanted) > limit else ()
+    warnings = (OCR_PAGE_WARNING,) if skipped else ()
+    warnings += (OCR_LIMIT_WARNING.format(limit=limit),) if len(wanted) > limit else ()
     if not done:
         return "pdf", (), warnings
     return ("mixed" if pdf_text else "ocr"), tuple(sorted(done)), warnings
