@@ -44,9 +44,9 @@ export type ProposalContext = {
   thresholds: { consumptionAnomalyPercent: number };
   /**
    * TARI: the supplies of shared notices (deleted ones are ignored), each with the apartments it is split
-   * between by weight.
+   * between by weight (basis points).
    */
-  supplies?: Pick<Supply, 'label' | 'apartments' | 'deleted'>[];
+  supplies?: Pick<Supply, 'id' | 'label' | 'apartments' | 'deleted'>[];
 };
 
 type Fields = ExtractionResult['fields'];
@@ -420,7 +420,7 @@ function tariProposal(
         byLabel.set(key, supply);
       }
     }
-    const known: { apartmentId: string; amount: Cents }[] = [];
+    const known: { apartmentId: string; amount: Cents; supplyId: string }[] = [];
     for (const part of result.parts) {
       const target = byLabel.get(foldText(part.label));
       if (target === undefined || target.apartments.length === 0) {
@@ -442,7 +442,7 @@ function tariProposal(
           );
         } else {
           target.apartments.forEach(({ apartmentId }, index) => {
-            known.push({ apartmentId, amount: shares[index] as Cents });
+            known.push({ apartmentId, amount: shares[index] as Cents, supplyId: target.id });
           });
         }
       }
@@ -458,10 +458,11 @@ function tariProposal(
       seen.add(apartmentId);
     }
     const groupId = newId();
-    for (const { apartmentId, amount } of known) {
+    for (const { apartmentId, amount, supplyId } of known) {
       instalments.push({
         id: newId(),
         apartmentId,
+        supplyId,
         ...base,
         rata: amount,
         shared: { groupId, groupTotal: total, weight: amount },

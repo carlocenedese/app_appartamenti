@@ -56,8 +56,8 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     ...base,
     label: 'Utenza 1111',
     apartments: [
-      { apartmentId: 'apt-1', weight: 1 },
-      { apartmentId: 'apt-2', weight: 3 },
+      { apartmentId: 'apt-1', weight: 2500 },
+      { apartmentId: 'apt-2', weight: 7500 },
     ],
   },
   tenancy: {
@@ -454,18 +454,53 @@ describe('Tenancy', () => {
 
   it('accepts a supply of several apartments and rejects a bad one', () => {
     expect(SupplySchema.safeParse(validRecords.supply).success).toBe(true);
-    const one = { apartmentId: 'apt-1', weight: 1 };
+    const w = (...weights: number[]) =>
+      weights.map((weight, i) => ({ apartmentId: `apt-${i + 1}`, weight }));
+    const one = { apartmentId: 'apt-1', weight: 5000 };
     for (const apartments of [
       [],
-      [{ apartmentId: 'apt-1', weight: 0 }],
-      [{ apartmentId: 'apt-1', weight: 1.5 }],
+      w(5000, 4999),
+      w(10001),
+      w(0, 10000),
+      w(5000.5, 4999.5),
       [one, one],
     ]) {
       expect(SupplySchema.safeParse(changed(validRecords.supply, { apartments })).success).toBe(
         false,
       );
     }
+    for (const apartments of [w(10000), w(2500, 7500)]) {
+      expect(SupplySchema.safeParse(changed(validRecords.supply, { apartments })).success).toBe(
+        true,
+      );
+    }
     expect(SupplySchema.safeParse(changed(validRecords.supply, { label: '' })).success).toBe(false);
+  });
+
+  it('accepts address and cadastre on an apartment and rejects empty ones', () => {
+    const cadastre = [{ sheet: '1', parcel: '2', sub: '3' }];
+    const ok = changed(validRecords.apartment, { address: 'Via Roma 1', cadastre });
+    expect(ApartmentSchema.safeParse(ok).success).toBe(true);
+    for (const bad of [
+      { address: '' },
+      { cadastre: [{ sheet: '', parcel: '2', sub: '3' }] },
+      { cadastre: [{ sheet: '1', parcel: '', sub: '3' }] },
+      { cadastre: [{ sheet: '1', parcel: '2', sub: '' }] },
+    ]) {
+      expect(ApartmentSchema.safeParse(changed(validRecords.apartment, bad)).success).toBe(false);
+    }
+  });
+
+  it('accepts supplyId on an instalment and supply as a note target', () => {
+    expect(
+      InstalmentSchema.safeParse(changed(validRecords.instalment, { supplyId: 'sup-1' })).success,
+    ).toBe(true);
+    expect(
+      InstalmentSchema.safeParse(changed(validRecords.instalment, { supplyId: '' })).success,
+    ).toBe(false);
+    expect(NoteSchema.safeParse(changed(validRecords.note, { targetType: 'supply' })).success).toBe(
+      true,
+    );
   });
 
   it('rejects a tenancy that ends before it starts', () => {

@@ -82,6 +82,35 @@
         "day"
       ],
       "description": "A month and day that exist every year; day must exist in that month."
+    },
+    "address": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cadastre": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sheet": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parcel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sub": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "sheet",
+          "parcel",
+          "sub"
+        ]
+      }
     }
   },
   "required": [
