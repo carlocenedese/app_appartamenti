@@ -212,11 +212,20 @@ def _parse_png(data: bytes) -> ImageInfo:
 
 
 def _check_inflates(data: bytes, expected: int) -> None:
-    """The IDAT data must inflate to exactly the number of bytes the header promises."""
+    """The IDAT data must inflate to exactly the number of bytes the header promises.
+
+    Stops as soon as the output exceeds `expected` (a decompression bomb is never inflated), and
+    keeps asking with no input while output is pending: zlib can consume all the input and still
+    hold output, with an empty `unconsumed_tail`."""
     inflater, total, chunk = zlib.decompressobj(), 0, data
-    while chunk and not inflater.eof:
-        total += len(inflater.decompress(chunk, 1 << 16))
+    while not inflater.eof:
+        out = inflater.decompress(chunk, 1 << 16)
+        total += len(out)
+        if total > expected:
+            raise ValueError
         chunk = inflater.unconsumed_tail
+        if not out and not chunk:  # no progress: the data is cut short
+            break
     if not inflater.eof or inflater.unused_data or total != expected:
         raise ValueError
 

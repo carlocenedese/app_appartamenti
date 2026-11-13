@@ -96,6 +96,82 @@ class PngTest(unittest.TestCase):
                 parse_image(data)
             self.assertIn("non è supportata", str(caught.exception))
 
+    def test_a_decompression_bomb_is_refused_without_inflating_it(self) -> None:
+        # A 24 x 16 header whose IDAT inflates to 64 MB: the check stops at the first block.
+        import zlib
+
+        bomb = _with_idat(PNG, zlib.compress(bytes(64 << 20), 1))
+        calls = []
+        real = zlib.decompressobj
+
+        class Counting:
+            def __init__(self) -> None:
+                self.inner = real()
+
+            def __getattr__(self, name):
+                return getattr(self.inner, name)
+
+            def decompress(self, *args):
+                calls.append(1)
+                return self.inner.decompress(*args)
+
+        original = images.zlib.decompressobj
+        images.zlib.decompressobj = Counting
+        try:
+            with self.assertRaises(ImageError):
+                parse_image(bomb)
+        finally:
+            images.zlib.decompressobj = original
+        self.assertLessEqual(len(calls), 2)
+
+    def test_a_large_flat_png_is_valid(self) -> None:
+        # 16 MB of zeros compress to a few KB: all the input is consumed before the output ends.
+        flat = make_image.make_png(4000, 4000, bytes(4000 * 4000))
+        info = parse_image(flat)
+        self.assertEqual((info.width, info.height), (4000, 4000))
+
+    def test_output_still_pending_when_all_the_input_is_consumed(self) -> None:
+        # zlib may take in the whole input and still hold output (unconsumed_tail is then empty):
+        # the check keeps asking with no input until the stream ends.
+        import zlib
+
+        real = zlib.decompressobj
+
+        class Lazy:
+            def __init__(self) -> None:
+                self.inner, self.pending, self.unconsumed_tail = real(), b"", b""
+
+            def decompress(self, chunk, limit):
+                self.pending += self.inner.decompress(chunk)
+                out, self.pending = self.pending[:limit], self.pending[limit:]
+                return out
+
+            @property
+            def eof(self):
+                return self.inner.eof and not self.pending
+
+            @property
+            def unused_data(self):
+                return self.inner.unused_data
+
+        original = images.zlib.decompressobj
+        images.zlib.decompressobj = Lazy
+        try:
+            info = parse_image(make_image.make_png(300, 300, bytes(300 * 300)))
+        finally:
+            images.zlib.decompressobj = original
+        self.assertEqual((info.width, info.height), (300, 300))
+
+
+def _with_idat(png: bytes, idat: bytes) -> bytes:
+    import struct
+    import zlib
+
+    chunk = struct.pack(">I", len(idat)) + b"IDAT" + idat + struct.pack(">I", zlib.crc32(b"IDAT" + idat))
+    start = png.index(b"IDAT") - 4
+    end = png.index(b"IEND") - 4
+    return png[:start] + chunk + png[end:]
+
 
 def _rewrite_header(png: bytes, width: int, height: int) -> bytes:
     import struct
