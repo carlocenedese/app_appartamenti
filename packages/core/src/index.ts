@@ -19,3 +19,4 @@ export * from './extraction';
 export * from './suggest';
 export * from './proposal';
 export * from './confirmation';
+export * from './supply-link';
