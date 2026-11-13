@@ -447,12 +447,6 @@ function tariProposal(
         }
       }
     }
-    const sum = result.parts.reduce((acc, part) => acc + part.amount, 0);
-    if (sum !== total) {
-      checks.push(
-        warn('parts-total', "La somma delle utenze non coincide con il totale dell'avviso."),
-      );
-    }
     const seen = new Set<string>();
     for (const { apartmentId } of known) {
       if (seen.has(apartmentId)) {

@@ -197,6 +197,11 @@
           "type": "string",
           "minLength": 1,
           "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+        },
+        "add": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
         }
       },
       "required": [

@@ -640,15 +640,13 @@ describe('proposalFromExtraction: TARI', () => {
     expect(proposal.checks.filter((c) => c.code === 'unknown-part')).toHaveLength(2);
   });
 
-  it('warns parts-total when the parts do not add up to the total', () => {
+  it('has no parts-total check: the parts need not add up to the amount to pay', () => {
     const proposal = proposalFromExtraction(
-      tariResult({
-        fields: { ...tariResult().fields, amount: field(18600) },
-      }),
+      tariResult({ fields: { ...tariResult().fields, amount: field(18600) } }),
       tariContext(),
       ids(),
     );
-    expect(check(proposal, 'parts-total')?.severity).toBe('warn');
+    expect(check(proposal, 'parts-total')).toBeUndefined();
   });
 
   it('fails part-amount for a supply that is not a positive amount', () => {

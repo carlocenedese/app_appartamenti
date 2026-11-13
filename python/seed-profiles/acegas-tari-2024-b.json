@@ -82,6 +82,7 @@
   },
   "identifiers": [],
   "parts": {
-    "pattern": "(Utenza N\\.\\s*\\d+)(?:(?!Utenza N\\.)[\\s\\S])*?Parte fissa\\n(?:[^\\n]*\\n){7}€\\s*([\\d.]*\\d,\\d{2})(?![\\d.,])"
+    "pattern": "(Utenza N\\.\\s*\\d+)(?:(?!Utenza N\\.)[\\s\\S])*?Parte fissa\\n(?:[^\\n]*\\n){7}€\\s*([\\d.]*\\d,\\d{2})(?![\\d.,])",
+    "add": "(Utenza N\\.\\s*\\d+)\\n(?:(?!€)[^\\n]*\\n){3}(?:€[^\\n]*\\n){3}€\\s*([\\d.]*\\d,\\d{2})(?![\\d.,])"
   }
 }
