@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pdfmaker  # noqa: E402
 from bollette_pdf.profiles import load_profiles, matching_profiles  # noqa: E402
-from bollette_pdf.reader import read_pdf  # noqa: E402
+from bollette_pdf.reader import Document, Line, Word, read_pdf  # noqa: E402
 
 FILLER = "Testo di riempimento della bolletta inventata, con abbastanza caratteri per la lettura."
 
@@ -130,6 +130,59 @@ class MatchingProfilesTest(unittest.TestCase):
         other = profile(id="other", recognise={"allOf": ["Gas Inventato"], "noneOf": []})
         result = matching_profiles(doc, [old, new_b, other, new_a])
         self.assertEqual([p["id"] for p in result], ["a-new", "b-new", "z-old"])
+
+
+def fake_doc(pages: dict[int, list[str]], text_source: str, ocr_pages: tuple[int, ...]) -> Document:
+    """A document built from invented lines: {page: [line text, ...]}, no PDF involved."""
+    lines = []
+    for page, texts in pages.items():
+        for i, text in enumerate(texts):
+            word = Word(text=text, page=page, x0=0, top=i, x1=1, bottom=i + 1)
+            lines.append(Line(page, text, (word,), 0, i, 1, i + 1, float(i)))
+    return Document("h", "f", len(pages), tuple(lines), True, text_source, ocr_pages)
+
+
+class OcrMatchingTest(unittest.TestCase):
+    """Rule R89: the recognition of a scan compares normalised text (no accents, no punctuation)."""
+
+    def test_scan_matches_across_accents_punctuation_and_line_breaks(self) -> None:
+        doc = fake_doc({1: ["SOCIETA' EMITTENTE;", "Luce, Inventata  Spa"]}, "ocr", (1,))
+        phrase = profile(recognise={"allOf": ["società emittente:", "luce inventata"], "noneOf": []})
+        self.assertEqual(matching_profiles(doc, [phrase]), [phrase])
+
+    def test_scan_matches_a_phrase_broken_over_two_lines(self) -> None:
+        doc = fake_doc({1: ["Gestore della tassa", "sui rifiuti (TARI)"]}, "ocr", (1,))
+        phrase = profile(recognise={"allOf": ["gestore della tassa sui rifiuti (tari)"], "noneOf": []})
+        self.assertEqual(matching_profiles(doc, [phrase]), [phrase])
+
+    def test_scan_none_of_is_normalised_too(self) -> None:
+        doc = fake_doc({1: ["Luce Inventata", "Nota-di-credito"]}, "ocr", (1,))
+        self.assertEqual(matching_profiles(doc, [profile(recognise={
+            "allOf": ["luce inventata"], "noneOf": ["nota di credito"]})]), [])
+
+    def test_pdf_text_keeps_the_strict_comparison(self) -> None:
+        # The same lines from a text PDF do not match: no accent folding, no punctuation folding.
+        doc = fake_doc({1: ["SOCIETA' EMITTENTE;"]}, "pdf", ())
+        phrase = profile(recognise={"allOf": ["società emittente:"], "noneOf": []})
+        self.assertEqual(matching_profiles(doc, [phrase]), [])
+
+    def test_mixed_document_folds_only_the_ocr_pages(self) -> None:
+        both = profile(recognise={"allOf": ["società emittente:", "fattura n.1"], "noneOf": []})
+        # OCR on page 2 gives the phrase of page 2; the PDF page 1 keeps its strict text.
+        doc = fake_doc({1: ["Fattura n.1"], 2: ["Societa emittente"]}, "mixed", (2,))
+        self.assertEqual(matching_profiles(doc, [both]), [both])
+        # The phrase from the PDF page is not folded: "Fattura n 1" does not match "fattura n.1".
+        strict = fake_doc({1: ["Fattura n 1"], 2: ["Societa emittente"]}, "mixed", (2,))
+        self.assertEqual(matching_profiles(strict, [both]), [])
+
+    def test_punctuation_only_condition_matches_nothing_in_a_scan(self) -> None:
+        doc = fake_doc({1: ["Luce Inventata"]}, "ocr", (1,))
+        weird = profile(recognise={"allOf": ["luce inventata", "***"], "noneOf": []})
+        self.assertEqual(matching_profiles(doc, [weird]), [])
+
+    def test_accents_are_not_folded_for_a_text_pdf_profile_on_another_supplier(self) -> None:
+        doc = fake_doc({1: ["Gas Inventato Spa"]}, "ocr", (1,))
+        self.assertEqual(matching_profiles(doc, [profile()]), [])
 
 
 if __name__ == "__main__":

@@ -132,6 +132,16 @@ sezione, con il tetto su tutto il documento, dava 28 e 61.
 - I messaggi di Leptonica (`box outside rectangle`) non arrivano più sull'errore standard: nella
   corsa il descrittore 2 è rimasto vuoto.
 
+### Secondo giro (R89, normalizzazione del testo OCR)
+
+Il confronto di `recognise` sul testo OCR ora ignora accenti, punteggiatura e a capo (R89); il testo
+dei PDF di testo si confronta come prima. Sulle stesse cartelle (solo conteggi): le 39 scansioni
+restano 39 `non-riconosciuta`, nessun profilo scelto; le altre origini non cambiano (`pdf`: 89
+riconosciute e 86 non; `mixed`: 153 riconosciute, 1 da confermare, 6 non). Le frasi lunghe dei
+profili (`allOf[0]`) non compaiono nelle scansioni nemmeno normalizzate (0 su 39); servono ancore
+alternative a parola singola per fornitore, che richiedono un cambio dello schema (in attesa di
+decisione di Carlo, R89).
+
 ## Casi dubbi
 
 - **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il

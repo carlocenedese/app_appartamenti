@@ -77,3 +77,7 @@ Elenco e licenze delle librerie native dentro le ruote (FreeType, libjpeg, libpn
 ## Aperto con Carlo
 
 Nessuna domanda aperta; la decisione sulla licenza dipende dall'esito dell'inventario (task 1).
+
+## Seguito: parola da chiedere nell'app
+
+Non si implementa ora (futuro piano dell'interfaccia). Quando una scansione non è riconosciuta da nessun profilo, l'app chiederà all'utente una parola distintiva del fornitore (o gli lascerà scegliere il fornitore tra quelli noti) e la aggiungerà come ancora al profilo, così le scansioni nuove dello stesso fornitore vengono riconosciute. Richiede che il profilo possa avere ancore alternative (oggi `recognise` ha solo `allOf` e `noneOf`: un `anyOf` valido solo per il testo letto con l'OCR, schema da cambiare insieme in JSON Schema, Zod e Python) e la normalizzazione di R89 per il confronto.
