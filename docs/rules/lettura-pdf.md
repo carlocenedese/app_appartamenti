@@ -1,7 +1,7 @@
 # Lettura dei PDF: profili dei fornitori
 
 Stato: **approvato da Carlo il 12 novembre 2026** (documento e fixture; Task 12 del piano 2a,
-Fase B). Il campione a mano dopo le correzioni resta da rifare. Nessun profilo è `confermato`:
+Fase B). Il campione a mano dopo le correzioni è stato rifatto: 57 su 57 giusti. Nessun profilo è `confermato`:
 tutti hanno `status: 'bozza'`.
 
 I profili stanno in `python/seed-profiles/<profilo>.json`, le fixture in `fixtures/pdf/<fornitore>-<NN>.json`
@@ -76,9 +76,8 @@ Carlo ha confrontato i valori letti con i PDF; le righe che non ha citato valgon
   il profilo `acegas-tari-2021` copre il 2021-22.
 - Enel (10): periodo non letto in nessuna e numero mancante nelle bollette 2020-23; dopo le
   correzioni sono letti, con confidenza `medium` nei layout 2020-23.
-- **Il controllo a mano non è stato rifatto dopo le correzioni**: i valori nuovi di periodo e
-  numero coincidono con quelli scritti da Carlo (verificati sugli esempi che ha citato), ma il
-  campione non è stato riletto.
+- **Controllo rifatto dopo le correzioni (13 novembre 2026):** gli stessi 57 PDF, letti col codice
+  corretto (periodo dell'acqua compreso): 57 su 57 giusti. Carlo l'ha eseguito a mano.
 
 ## Esito sui PDF reali (solo conteggi, 12 novembre 2026)
 
