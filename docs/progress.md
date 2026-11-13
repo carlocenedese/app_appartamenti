@@ -383,7 +383,11 @@ Ognuna: che cosa, perché, costo se è sbagliata.
   - **Ruling:** i file di presenza non sono record.
   - **Ruling:** lo spike è NON PROVATO nell'app vera finché una build in CI senza `--locked` non rigenera `Cargo.lock` (procedura nel README) e non si fa una prova a mano di scelta cartella, scrittura e riavvio, anche con nomi di cartella con `[ ] * ?` e accenti.
   - **Ruling:** l'app passa `CORE_SCHEMA_VERSION` a `checkCompat`/`assessWorkspace`.
-  - **Da fare:** schermata «Documento n di N», aggiornamenti firmati, iCloud (regola dei nomi dei conflitti), la prova nell'app vera; i profili iniziali sono ancora una lista vuota in `main.ts` (R83: leggere `resources/seed-profiles/`).
+  - **Da fare:** schermata «Documento n di N», aggiornamenti firmati, iCloud (regola dei nomi dei conflitti), la prova nell'app vera. I profili iniziali di `main.ts` ora si leggono con `import.meta.glob` da `python/seed-profiles/` a tempo di build (stessi file dell'installer, senza rete); da rivedere quando l'app vera leggerà `resources/seed-profiles/`.
+  - **Ruling:** «Crea gruppo» rifiuta (decisione di Carlo, 13 novembre 2026) una cartella con `workspace.json` oppure con file in `_app/journal` o `_app/dati`, tranne la ripresa di una creazione interrotta dello stesso gruppo (tutte le operazioni del registro sono dello stesso `user.id`, nessun altro utente). Messaggio in italiano nella procedura.
+  - **Ruling:** dopo un rifiuto `pendingWorkspace` si cancella: non è una creazione interrotta e la stessa cartella verrebbe rifiutata di nuovo.
+  - **Ruling:** con `behind` dovuto solo a un file del registro troncato o più nuovo, la procedura non offre «Ripara» (non c'è niente da riparare) ma «Ricontrolla»; «Continua» in «Chi sei?» si disattiva durante l'operazione; una copia in conflitto di `workspace.json` compare tra i `problems` di `assessWorkspace`.
+  - **Da fare PRIMA di rendere raggiungibile il wizard** (oltre a `Cargo.lock`): «sola lettura» non offre ancora l'apertura in sola lettura dei dati; i nomi della presenza si fissano all'apertura di «Gruppo pronto».
 - **Dalla rilettura finale:** una regola «stessa riga» scritta a mano con testo tra etichetta e
   valore (`Totale da pagare (IVA inclusa) 98,46`) dà `medium`: tenerne conto nei profili della
   Fase B. `registerProposal` legge il profilo prima dei controlli sui duplicati (un errore di I/O

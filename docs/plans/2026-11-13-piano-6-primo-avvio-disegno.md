@@ -44,7 +44,7 @@ L'app installata non può ancora né creare né aprire una cartella di lavoro: i
 ## Disegno
 
 - `User` (record `user`): `name`, id sicuro come nome di file; funzione `createUser`, operazione `users.create`.
-- `createWorkspace(store, {name, user}, seeds, app, clock, newId)`: rifiuta se esiste `workspace.json`; scrive utente, `seedProfiles`, poi `workspace.json` (con `schemaVersion`, `minAppVersion` dell'app, `createdAt`).
+- `createWorkspace(store, {workspaceId, name, user: {id, name}}, seeds, clock, newId)`: rifiuta se esiste `workspace.json` o se `_app/journal` e `_app/dati` contengono file che non sono di una creazione interrotta dello stesso gruppo (stesso `user.id`; decisione di Carlo, 13 novembre 2026); scrive utente, `seedProfiles`, poi `workspace.json` (con `schemaVersion`, `minAppVersion` dell'app, `createdAt`).
 - `assessWorkspace(store, app, conflictRules)`: `{compat, sync: 'ok' | 'behind', writable, problems}`.
 - `TauriStore implements Store` con scrittura atomica (file temporaneo e rinomina), le impostazioni per macchina nella cartella di configurazione dell'app, il selettore di cartelle.
 - `othersActive(now, entries, windowMinutes)` e scrittura periodica del file di presenza.
