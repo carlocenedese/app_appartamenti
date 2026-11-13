@@ -351,6 +351,16 @@ Ognuna: che cosa, perché, costo se è sbagliata.
 
 ### Seguiti rimandati
 
+- **R77** (12 novembre 2026, Fase B) Periodo dell'acqua come unione (decisione di Carlo, R76): un campo
+  `period` può avere `combine: "span"`; allora tutte le regole si applicano a tutte le occorrenze
+  delle loro àncore e il periodo va dal primo inizio all'ultima fine (`high` se ogni intervallo
+  riempie la sua cella, altrimenti `medium`; ogni estremo ha la fonte della propria riga). Un
+  intervallo non leggibile è saltato; senza `combine` vale ancora la prima regola. Schema, Zod e
+  Python concordano (solo `period` accetta `combine`). Profili `acegas-acqua-2024` e `-2025`:
+  «Consumo rilevato», «Consumo stimato», «relativi al periodo». Confermato da Carlo: con buchi o
+  sovrapposizioni si prende comunque il minimo degli inizi e il massimo delle fini. Confidenza
+  `medium` se un intervallo scritto non si legge o la stessa etichetta ha date diverse.
+- **R78** (12 novembre 2026, Fase B) Carlo approva `docs/rules/lettura-pdf.md` e le fixture; il canone TV resta nel totale Enel; la TARI condivisa si ripartisce secondo la tabella in m² in fondo alla bolletta (da implementare con `parts`); maggior tutela senza profilo, in revisione a mano (decisione di Carlo). Campione a mano rifatto il 13 novembre 2026: 57 su 57 giusti.
 - **Dalla rilettura finale:** una regola «stessa riga» scritta a mano con testo tra etichetta e
   valore (`Totale da pagare (IVA inclusa) 98,46`) dà `medium`: tenerne conto nei profili della
   Fase B. `registerProposal` legge il profilo prima dei controlli sui duplicati (un errore di I/O

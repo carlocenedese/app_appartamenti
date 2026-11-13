@@ -439,8 +439,14 @@ export type Rule = z.infer<typeof RuleSchema>;
 
 const FieldRulesSchema = z.object({
   required: z.boolean(),
-  /** Tried in order; the first that matches wins. */
+  /** Tried in order; the first that matches wins, unless `combine` says otherwise. */
   rules: z.array(RuleSchema).min(1),
+  /**
+   * `span` (period only): every rule is applied to every occurrence of its anchor and the period
+   * runs from the earliest start to the latest end of all the intervals read, e.g. a water bill
+   * with a measured and an estimated interval.
+   */
+  combine: z.enum(['span']).optional(),
 });
 
 /** The fields a profile can read, and the only value type each one accepts. */
@@ -509,6 +515,13 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
   )
   .refine(
     (profile) =>
+      Object.entries(profile.fields).every(
+        ([name, spec]) => spec.combine === undefined || name === 'period',
+      ),
+    { message: 'Only the period can combine its readings', path: ['fields'] },
+  )
+  .refine(
+    (profile) =>
       Object.values(profile.fields).every((spec) =>
         spec.rules.every((rule) => hasGroups(rule.pattern, rule.group)),
       ),
@@ -532,7 +545,7 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
       'fixed: amount euro, issueDate and dueDate date, period date-range, consumption quantity, ' +
       "number text; the group of every rule must be one of its pattern's capture groups (0 is " +
       'the whole match), the parts pattern needs at least 2 capture groups and the items ' +
-      'pattern at least 1.',
+      'pattern at least 1; combine "span" only on the period.',
   });
 export type SupplierProfile = z.infer<typeof SupplierProfileSchema>;
 

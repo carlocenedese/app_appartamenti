@@ -128,6 +128,35 @@ def _read_at(
     return value, _source(page, words, text), whole
 
 
+def _read_span(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, list[dict[str, Any]]]:
+    """(period, confidence, [start source, end source]) of a `combine: span` period.
+
+    Every rule is applied to every occurrence of its anchor; the period runs from the earliest
+    start to the latest end of the intervals read (the rule of the water bills: measured and
+    estimated consumption, or «relativi al periodo»). `high` when every interval fills its cell.
+    """
+    readings = []
+    doubtful = False
+    for rule in spec.get("rules", []):
+        found = []
+        for anchor in layout.anchors(rule.get("anchor", "")):
+            candidate = layout.candidate(anchor, rule.get("position", ""))
+            reading = _read_at(candidate, anchor.page, rule) if candidate is not None else None
+            if reading is not None:
+                found.append(reading)
+            elif candidate is not None and re.search(r"\d", candidate.text):
+                doubtful = True  # an interval is written there but cannot be read
+        # the same label with different dates: a history table, say, would widen the period
+        doubtful = doubtful or any(other[0] != found[0][0] for other in found[1:])
+        readings += found
+    if not readings:
+        return None, "missing", []
+    first = min(readings, key=lambda r: r[0][0])
+    last = max(readings, key=lambda r: r[0][1])
+    confidence = "medium" if doubtful or not all(w for _, _, w in readings) else "high"
+    return (first[0][0], last[0][1]), confidence, [first[1], last[1]]
+
+
 def _read_field(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, dict | None]:
     """(value, confidence, source) of one field of a profile."""
     for index, rule in enumerate(spec.get("rules", [])):
@@ -153,13 +182,18 @@ def _read_fields(layout: Layout, profile: dict[str, Any]) -> dict[str, dict[str,
         spec = profile.get("fields", {}).get(name)
         if spec is None:
             continue
-        value, confidence, source = _read_field(layout, spec)
+        if spec.get("combine") == "span" and name == "period":
+            value, confidence, sources = _read_span(layout, spec)
+            source = None
+        else:
+            value, confidence, source = _read_field(layout, spec)
+            sources = [source, source]
         if value is None:
             entries = {"periodStart": None, "periodEnd": None} if name == "period" else {name: None}
             fields.update({key: dict(_MISSING) for key in entries})
         elif name == "period":
-            for key, item in zip(("periodStart", "periodEnd"), value):
-                fields[key] = {"value": item, "confidence": confidence, "source": dict(source)}
+            for key, item, src in zip(("periodStart", "periodEnd"), value, sources):
+                fields[key] = {"value": item, "confidence": confidence, "source": dict(src)}
         else:
             fields[name] = {"value": value, "confidence": confidence, "source": source}
     return fields
