@@ -12,8 +12,9 @@ No network, no clock, no randomness: one thread, so the same page always gives t
 
 from __future__ import annotations
 
+import contextlib
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -142,6 +143,24 @@ def _lines(number: int, raw_lines: list[RawLine], dpi: int) -> list[Line]:
     return _reading_order(lines)
 
 
+@contextlib.contextmanager
+def _silent_stderr() -> Iterator[None]:
+    """File descriptor 2 goes to the null device meanwhile: Leptonica prints its messages
+    («box outside rectangle») straight there, beyond reach of Python's `sys.stderr`."""
+    try:
+        saved = os.dup(2)
+    except OSError:  # no standard error to protect
+        yield
+        return
+    try:
+        with open(os.devnull, "wb") as null:
+            os.dup2(null.fileno(), 2)
+            yield
+    finally:
+        os.dup2(saved, 2)
+        os.close(saved)
+
+
 def ocr_pages(
     source: bytes | str | Path, pages: list[int], data_dir: str, dpi: int = OCR_DPI
 ) -> list[list[Line]] | None:
@@ -149,11 +168,12 @@ def ocr_pages(
     if not pages:
         return []
     try:
-        engine = ENGINE_FACTORY(data_dir)
-        if engine is None:
-            return None
-        data = source if isinstance(source, bytes) else Path(source).read_bytes()
-        raw_pages = engine.read(data, pages, dpi)
+        with _silent_stderr():
+            engine = ENGINE_FACTORY(data_dir)
+            if engine is None:
+                return None
+            data = source if isinstance(source, bytes) else Path(source).read_bytes()
+            raw_pages = engine.read(data, pages, dpi)
     except MemoryError:
         raise
     except Exception:

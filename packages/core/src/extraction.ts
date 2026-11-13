@@ -44,6 +44,16 @@ export type ExtractedField<T> = {
   source: ExtractionSource | null;
 };
 
+/** Whether `field` has a value read from a page that was read with OCR. */
+function readWithOcr(
+  result: { ocrPages: number[] },
+  field: { value: unknown; source: { page: number } | null },
+): boolean {
+  return (
+    field.value !== null && field.source !== null && result.ocrPages.includes(field.source.page)
+  );
+}
+
 export const ExtractionResultSchema = z
   .object({
     v: z.literal(1),
@@ -97,15 +107,32 @@ export const ExtractionResultSchema = z
     warnings: z.array(z.string()),
     /** Where the text comes from: the PDF's own text layer, OCR of scanned pages, or both. */
     textSource: z.enum(['pdf', 'ocr', 'mixed']),
+    /** Pages (from 1, as `source.page`) read with OCR; none when `textSource` is `pdf`. */
+    ocrPages: z.array(z.int().min(1)),
+  })
+  .refine((result) => result.textSource !== 'pdf' || result.ocrPages.length === 0, {
+    message: 'A result whose text is all from the PDF has no page read with OCR.',
   })
   .refine(
     (result) =>
-      result.textSource === 'pdf' ||
+      result.textSource !== 'ocr' ||
       (result.status !== 'riconosciuta' &&
         Object.values(result.fields).every((field) => field.confidence !== 'high')),
+    { message: 'A scanned result is never riconosciuta and has no field with confidence high.' },
+  )
+  .refine(
+    (result) =>
+      Object.values(result.fields).every(
+        (field) =>
+          field === undefined || field.confidence !== 'high' || !readWithOcr(result, field),
+      ) &&
+      (result.status !== 'riconosciuta' ||
+        !Object.values(result.fields).some(
+          (field) => field !== undefined && readWithOcr(result, field),
+        )),
     {
       message:
-        'A result read with OCR is never riconosciuta and has no field with confidence high.',
+        'A field read from a page with OCR is never high, and a result with such a field is never riconosciuta.',
     },
   )
   .meta({

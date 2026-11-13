@@ -87,6 +87,7 @@ def report(
 ) -> str:
     statuses: Counter[str] = Counter()
     sources: Counter[str] = Counter()
+    by_source: Counter[tuple[str, str]] = Counter()
     unavailable = 0
     suppliers: Counter[str] = Counter()
     high = total_fields = 0
@@ -103,6 +104,7 @@ def report(
             statuses[status] += 1
             source = (result or {}).get("textSource")
             sources[source if source in SOURCES else "pdf"] += 1
+            by_source[(source if source in SOURCES else "pdf", status)] += 1
             unavailable += OCR_UNAVAILABLE_WARNING in (result or {}).get("warnings", [])
             profile_id = (result or {}).get("profileId")
             if profile_id is None:
@@ -121,6 +123,12 @@ def report(
     lines += [f"  {status}: {statuses[status]}" for status in STATUSES]
     lines.append("Per origine del testo:")
     lines += [f"  {source}: {sources[source]}" for source in SOURCES]
+    lines.append("Stato per origine del testo:")
+    lines += [
+        f"  {source} {status}: {by_source[(source, status)]}"
+        for source in SOURCES
+        for status in STATUSES
+    ]
     lines.append(f"Con avviso OCR non disponibile: {unavailable}")
     lines.append("Per fornitore:")
     lines += [f"  {name}: {suppliers[name]}" for name in sorted(suppliers)]

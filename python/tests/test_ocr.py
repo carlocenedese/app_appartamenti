@@ -186,13 +186,13 @@ class FakeEngineTest(unittest.TestCase):
     def test_text_pages_skip_ocr(self) -> None:
         doc = read_pdf(self.pdf([[(72, 100, TOTAL), (72, 400, FILLER)]]), ocr_data=self.dir)
         self.assertEqual(self.engine.calls, [])
-        self.assertEqual(doc.text_source, "pdf")
+        self.assertEqual((doc.text_source, doc.ocr_pages), ("pdf", ()))
         self.assertIsNone(doc.lines[0].words[0].confidence)
 
     def test_mixed_document_reads_only_the_scanned_page(self) -> None:
         doc = read_pdf(self.pdf([[(72, 100, TOTAL)], []]), ocr_data=self.dir)
         self.assertEqual(self.engine.calls, [[2]])
-        self.assertEqual(doc.text_source, "mixed")
+        self.assertEqual((doc.text_source, doc.ocr_pages), ("mixed", (2,)))
         self.assertEqual([line.page for line in doc.lines], [1, 2, 2])
         self.assertEqual(doc.lines[0].text, TOTAL)
         self.assertEqual(doc.lines[1].text, "Totale da p2")
@@ -203,7 +203,7 @@ class FakeEngineTest(unittest.TestCase):
         self.assertEqual(self.engine.calls, [list(range(1, 21))])
         self.assertEqual(doc.pages, 25)
         self.assertEqual(sorted({line.page for line in doc.lines}), list(range(1, 21)))
-        self.assertEqual(doc.text_source, "ocr")
+        self.assertEqual((doc.text_source, doc.ocr_pages), ("ocr", tuple(range(1, 21))))
         self.assertEqual(len(doc.warnings), 1)
         self.assertIn("20", doc.warnings[0])
         self.assertNotIn("Totale", doc.warnings[0])
@@ -228,16 +228,79 @@ class FakeEngineTest(unittest.TestCase):
     def test_dump_keeps_confidence_and_text_source(self) -> None:
         doc = read_pdf(self.pdf([[(72, 100, TOTAL)], []]), ocr_data=self.dir)
         data = json.loads(json.dumps(dump_document(doc)))
-        self.assertEqual(data["textSource"], "mixed")
+        self.assertEqual((data["textSource"], data["ocrPages"]), ("mixed", [2]))
+        self.assertEqual(doc.ocr_pages, (2,))
         self.assertNotIn("confidence", data["lines"][0]["words"][0])
         self.assertEqual(data["lines"][1]["words"][0]["confidence"], 96.5)
         loaded = load_dump(data)
         self.assertEqual(loaded.lines, doc.lines)
         self.assertEqual((loaded.text_source, loaded.warnings), (doc.text_source, doc.warnings))
+        self.assertEqual(loaded.ocr_pages, doc.ocr_pages)
         self.assertEqual(dump_document(loaded), data)
-        for bad in ({**data, "textSource": "scanner"}, {**data, "warnings": [1]}):
+        # a dump written before ocrPages existed still loads
+        old = {k: v for k, v in data.items() if k != "ocrPages"}
+        self.assertEqual(load_dump(old).ocr_pages, ())
+        for bad in (
+            {**data, "textSource": "scanner"},
+            {**data, "warnings": [1]},
+            {**data, "ocrPages": [0]},
+            {**data, "ocrPages": [True]},
+            {**data, "ocrPages": "2"},
+        ):
             with self.assertRaises(ValueError):
                 load_dump(bad)
+
+
+def _write_to_stderr_fd(text: bytes) -> None:
+    os.write(2, text)
+
+
+class SilentStderrTest(unittest.TestCase):
+    """A native library writes to file descriptor 2; the engine calls must not let it through."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryFile()
+        self.addCleanup(tmp.close)
+        self.capture = tmp
+        self.saved = os.dup(2)
+        os.dup2(tmp.fileno(), 2)  # fd 2 is a file we can read back
+
+        def restore() -> None:
+            os.dup2(self.saved, 2)
+            os.close(self.saved)
+
+        self.addCleanup(restore)
+
+    def written(self) -> bytes:
+        self.capture.seek(0)
+        return self.capture.read()
+
+    def test_native_write_is_swallowed_and_the_descriptor_restored(self) -> None:
+        _write_to_stderr_fd(b"before;")
+        with ocr._silent_stderr():
+            _write_to_stderr_fd(b"Error in boxClipToRectangle: box outside rectangle;")
+        _write_to_stderr_fd(b"after")
+        self.assertEqual(self.written(), b"before;after")
+
+    def test_descriptor_is_restored_when_the_engine_raises(self) -> None:
+        with self.assertRaises(RuntimeError), ocr._silent_stderr():
+            raise RuntimeError("engine")
+        _write_to_stderr_fd(b"after")
+        self.assertEqual(self.written(), b"after")
+
+    def test_ocr_pages_silences_the_engine_and_its_construction(self) -> None:
+        class Noisy:
+            def read(self, data, pages, dpi):
+                _write_to_stderr_fd(b"read;")
+                return [[] for _ in pages]
+
+        def factory(data_dir):
+            _write_to_stderr_fd(b"construct;")
+            return Noisy()
+
+        with mock.patch.object(ocr, "ENGINE_FACTORY", factory):
+            self.assertEqual(ocr.ocr_pages(b"%PDF", [1], "dati"), [[]])
+        self.assertEqual(self.written(), b"")
 
 
 GRAY = bytes((x * 5 + y * 11) % 256 for y in range(24) for x in range(40))  # 40 x 24, invented
@@ -434,6 +497,18 @@ class RealEngineTest(unittest.TestCase):
                 self.assertGreaterEqual(u.top, v.top - 1)
                 self.assertLessEqual(u.bottom, v.bottom + 1)
                 self.assertGreater(u.bottom - u.top, (v.bottom - v.top) / 2)
+
+    def test_the_real_engine_writes_nothing_to_the_standard_error(self) -> None:
+        with tempfile.TemporaryFile() as capture:
+            saved = os.dup(2)
+            os.dup2(capture.fileno(), 2)
+            try:
+                read_pdf(self.scan([self.TEXT_PAGE, [(72, 100, TOTAL, 14)]]), ocr_data=REAL_DATA)
+            finally:
+                os.dup2(saved, 2)
+                os.close(saved)
+            capture.seek(0)
+            self.assertEqual(capture.read(), b"")
 
     def test_scanned_total_is_read_with_boxes(self) -> None:
         doc = read_pdf(self.scan([[(72, 100, TOTAL, 14), (72, 400, FILLER)]]), ocr_data=REAL_DATA)

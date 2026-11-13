@@ -32,6 +32,7 @@ const full: Record<string, unknown> = {
   checks: [{ code: 'total-matches-items', ok: true, message: 'Il totale torna.' }],
   warnings: ['Due corrispondenze per la scadenza.'],
   textSource: 'pdf',
+  ocrPages: [],
 };
 
 const empty: Record<string, unknown> = {
@@ -51,6 +52,7 @@ const empty: Record<string, unknown> = {
   checks: [],
   warnings: [],
   textSource: 'pdf',
+  ocrPages: [],
 };
 
 const changed = (base: Record<string, unknown>, changes: Record<string, unknown>) => ({
@@ -68,22 +70,47 @@ describe('ExtractionResultSchema', () => {
   });
 
   it('accepts the three text sources and refuses another one, or none', () => {
-    for (const textSource of ['pdf', 'ocr', 'mixed']) {
-      const fields = textSource === 'pdf' ? full.fields : { amount: field(9846, 'medium') };
-      const status = textSource === 'pdf' ? 'riconosciuta' : 'da-confermare';
-      expect(ok(changed(full, { textSource, status, fields })), textSource).toBe(true);
-    }
+    const medium = { amount: field(9846, 'medium') };
+    // a scan: every page read with OCR, nothing sure; a mixed one: a text page 1, OCR page 2
+    const scan = { textSource: 'ocr', ocrPages: [1, 2], status: 'da-confermare', fields: medium };
+    expect(ok(changed(full, { textSource: 'pdf', ocrPages: [] }))).toBe(true);
+    expect(ok(changed(full, scan))).toBe(true);
+    expect(ok(changed(full, { textSource: 'mixed', ocrPages: [2] }))).toBe(true);
     expect(ok(changed(full, { textSource: 'scan' }))).toBe(false);
     expect(ok(changed(full, { textSource: undefined }))).toBe(false);
+    expect(ok(changed(full, { ocrPages: undefined }))).toBe(false);
+    expect(ok(changed(full, { ocrPages: [0] }))).toBe(false);
   });
 
-  it('refuses a high field or the status riconosciuta when the text is not from the PDF', () => {
-    for (const textSource of ['ocr', 'mixed']) {
-      const medium = { amount: field(9846, 'medium') };
-      expect(ok(changed(full, { textSource, status: 'da-confermare', fields: medium }))).toBe(true);
-      expect(ok(changed(full, { textSource, status: 'da-confermare' })), textSource).toBe(false);
-      expect(ok(changed(full, { textSource, status: 'riconosciuta', fields: medium }))).toBe(false);
-    }
+  it('refuses pages read with OCR when the text is all from the PDF', () => {
+    expect(ok(changed(full, { textSource: 'pdf', ocrPages: [2] }))).toBe(false);
+  });
+
+  it('refuses a high field or riconosciuta for a scan (textSource ocr)', () => {
+    const scan = { textSource: 'ocr', ocrPages: [1, 2] };
+    const medium = { amount: field(9846, 'medium') };
+    expect(ok(changed(full, { ...scan, status: 'da-confermare', fields: medium }))).toBe(true);
+    expect(ok(changed(full, { ...scan, status: 'da-confermare' }))).toBe(false);
+    expect(ok(changed(full, { ...scan, status: 'riconosciuta', fields: medium }))).toBe(false);
+  });
+
+  it('judges a mixed result field by field, by the page the field was read from', () => {
+    const mixed = { textSource: 'mixed' };
+    const onPage = (page: number, confidence: string) => ({
+      amount: { value: 9846, confidence, source: { ...source, page } },
+    });
+    // read from the text page: high and riconosciuta stay
+    expect(ok(changed(full, { ...mixed, ocrPages: [2] }))).toBe(true);
+    expect(ok(changed(full, { ...mixed, ocrPages: [2], fields: onPage(1, 'high') }))).toBe(true);
+    // read from the OCR page: never high, never riconosciuta
+    expect(ok(changed(full, { ...mixed, ocrPages: [1] }))).toBe(false);
+    expect(ok(changed(full, { ...mixed, ocrPages: [2], fields: onPage(2, 'high') }))).toBe(false);
+    const doubtful = { ...mixed, ocrPages: [2], fields: onPage(2, 'medium') };
+    expect(ok(changed(full, { ...doubtful, status: 'riconosciuta' }))).toBe(false);
+    expect(ok(changed(full, { ...doubtful, status: 'da-confermare' }))).toBe(true);
+    // a field with no value on the OCR page does not stop riconosciuta
+    const none = { value: null, confidence: 'missing', source: null };
+    expect(ok(changed(full, { ...mixed, ocrPages: [2], fields: { dueDate: none } }))).toBe(true);
   });
 
   it('reads a result without text and no fields', () => {

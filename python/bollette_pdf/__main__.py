@@ -157,6 +157,7 @@ def _unreadable(file_hash: str, file_name: str, message: str) -> dict[str, Any]:
         "checks": [],
         "warnings": [message],
         "textSource": "pdf",
+        "ocrPages": [],
     }
 
 

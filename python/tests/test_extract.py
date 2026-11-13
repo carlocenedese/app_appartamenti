@@ -126,26 +126,71 @@ def as_ocr(doc, confidence=95.0, source="ocr", only=lambda line: True, warnings=
         else line
         for line in doc.lines
     )
-    return dataclasses.replace(doc, lines=lines, text_source=source, warnings=tuple(warnings))
+    pages = tuple(sorted({line.page for line in doc.lines if only(line)}))
+    return dataclasses.replace(
+        doc, lines=lines, text_source=source, ocr_pages=pages, warnings=tuple(warnings)
+    )
 
 
 class OcrTextTest(ExtractTestCase):
     def test_threshold_is_seventy_out_of_a_hundred(self) -> None:
         self.assertEqual(OCR_MIN_WORD_CONFIDENCE, 70)
 
-    def test_ocr_document_is_never_riconosciuta_and_has_no_high_field(self) -> None:
-        for source in ("ocr", "mixed"):
-            doc = as_ocr(self.doc(STANDARD), source=source)
-            result = extract(doc, [light_profile()], AT)
-            self.assertEqual(result["textSource"], source)
-            self.assertEqual(result["status"], "da-confermare")
-            fields = result["fields"]
-            self.assertEqual(fields["amount"]["value"], 8765)
-            self.assertEqual(fields["issueDate"]["value"], "2025-03-15")
-            self.assertEqual(fields["supplier"]["confidence"], "medium")
-            self.assertNotIn("high", {f["confidence"] for f in fields.values()})
-            self.assertEqual(fields["amount"]["confidence"], "medium")
-            self.assertValid(result)
+    def test_scan_is_never_riconosciuta_and_has_no_high_field(self) -> None:
+        doc = as_ocr(self.doc(STANDARD))
+        result = extract(doc, [light_profile()], AT)
+        self.assertEqual((result["textSource"], result["ocrPages"]), ("ocr", [1]))
+        self.assertEqual(result["status"], "da-confermare")
+        fields = result["fields"]
+        self.assertEqual(fields["amount"]["value"], 8765)
+        self.assertEqual(fields["issueDate"]["value"], "2025-03-15")
+        # the supplier comes from the profile (no source): capped for a scan only
+        self.assertEqual(fields["supplier"]["confidence"], "medium")
+        self.assertNotIn("high", {f["confidence"] for f in fields.values()})
+        self.assertValid(result)
+
+    def test_mixed_fields_from_a_text_page_keep_their_confidence(self) -> None:
+        # page 1 has the text layer; page 2 (a back page) was read with OCR and holds no field
+        doc = as_ocr(
+            self.doc(STANDARD, [(72, 80, "Retro del foglio"), (72, 400, FILLER)]),
+            source="mixed",
+            only=lambda line: line.page == 2,
+        )
+        result = extract(doc, [light_profile()], AT)
+        self.assertEqual((result["textSource"], result["ocrPages"]), ("mixed", [2]))
+        self.assertEqual(result["status"], "riconosciuta")
+        self.assertEqual(result["fields"]["amount"]["confidence"], "high")
+        self.assertEqual(result["fields"]["supplier"]["confidence"], "high")
+        self.assertValid(result)
+
+    def test_mixed_field_read_from_an_ocr_page_is_capped_and_doubtful(self) -> None:
+        deadline = (72, 140, "Scadenza 05/04/2025")
+        text_page = [line for line in STANDARD if "Scadenza" not in line[2]]
+        doc = as_ocr(
+            self.doc(text_page, [deadline, (72, 400, FILLER)]),
+            source="mixed",
+            only=lambda line: line.page == 2,
+        )
+        result = extract(doc, [light_profile()], AT)
+        fields = result["fields"]
+        self.assertEqual(result["ocrPages"], [2])
+        self.assertEqual((fields["dueDate"]["value"], fields["dueDate"]["source"]["page"]), ("2025-04-05", 2))
+        self.assertEqual(fields["dueDate"]["confidence"], "medium")
+        self.assertEqual(fields["amount"]["confidence"], "high")  # page 1, text layer
+        self.assertEqual(result["status"], "da-confermare")
+        self.assertValid(result)
+
+    def test_mixed_ocr_field_too_uncertain_to_read_leaves_the_result_riconosciuta(self) -> None:
+        text_page = [line for line in STANDARD if "Scadenza" not in line[2]]
+        doc = as_ocr(
+            self.doc(text_page, [(72, 140, "Scadenza 05/04/2025"), (72, 400, FILLER)]),
+            60.0,
+            source="mixed",
+            only=lambda line: line.page == 2,
+        )
+        result = extract(doc, [light_profile()], AT)
+        self.assertEqual(result["fields"]["dueDate"]["value"], None)  # not required, no value
+        self.assertEqual(result["status"], "riconosciuta")
 
     def test_low_confidence_line_leaves_its_field_empty(self) -> None:
         doc = as_ocr(self.doc(STANDARD), 60.0, only=lambda line: "Totale" in line.text)

@@ -56,7 +56,15 @@ function noneReason(proposal: Proposal): string {
 function proposalReasons(proposal: Proposal, result: ExtractionResult): string[] {
   if (proposal.kind === 'none') return [noneReason(proposal)];
   const reasons: string[] = [];
-  if (result.textSource !== 'pdf') {
+  const readWithOcr = Object.values(result.fields).some(
+    (field) =>
+      field !== undefined &&
+      field.value !== null &&
+      field.source !== null &&
+      result.ocrPages.includes(field.source.page),
+  );
+  // A text PDF with a scanned page is decided by the fields read from that page, not by the page.
+  if (result.textSource === 'ocr' || (result.textSource === 'mixed' && readWithOcr)) {
     reasons.push('Il testo è stato letto con la scansione (OCR): va controllato a mano.');
   }
   if (result.status !== 'riconosciuta') {

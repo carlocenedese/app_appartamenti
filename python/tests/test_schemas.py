@@ -94,11 +94,14 @@ class ValidateTests(unittest.TestCase):
             "parts": [{"label": "Quota fissa", "amount": 1200, "source": source}],
             "identifiers": [{"kind": "pod", "value": "IT001E12345678"}],
             "checks": [{"code": "total-matches-items", "ok": True, "message": "Il totale torna."}],
-            "warnings": [], "textSource": "pdf",
+            "warnings": [], "textSource": "pdf", "ocrPages": [],
         }
         self.assertEqual(schemas.validate("extractionResult", full), [])
         for source in ("ocr", "mixed"):
-            self.assertEqual(schemas.validate("extractionResult", {**full, "textSource": source}), [])
+            changed = {**full, "textSource": source, "ocrPages": [2]}
+            self.assertEqual(schemas.validate("extractionResult", changed), [])
+        self.assertTrue(schemas.validate("extractionResult", {**full, "ocrPages": [0]}))
+        self.assertTrue(schemas.validate("extractionResult", {k: v for k, v in full.items() if k != "ocrPages"}))
         self.assertTrue(schemas.validate("extractionResult", {**full, "textSource": "scan"}))
         empty = {**full, "status": "senza-testo", "profileId": None, "profileRev": None,
                  "kind": None, "category": None, "fields": {}, "parts": [], "identifiers": [],

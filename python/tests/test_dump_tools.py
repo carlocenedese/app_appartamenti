@@ -131,6 +131,8 @@ class PdfReportTest(unittest.TestCase):
         lines = [line.strip() for line in self.report().splitlines()]
         for expected in ("pdf: 5", "ocr: 0", "mixed: 0", "Con avviso OCR non disponibile: 1"):
             self.assertIn(expected, lines)
+        self.assertIn("pdf senza-testo: 1", lines)
+        self.assertIn("ocr riconosciuta: 0", lines)
 
     def test_ocr_data_option_reads_the_scans_with_the_engine(self) -> None:
         from bollette_pdf import ocr

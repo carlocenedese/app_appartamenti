@@ -55,6 +55,7 @@ function result(overrides: Record<string, unknown> = {}): ExtractionResult {
     checks: [{ code: 'total-matches-items', ok: true, message: 'Il totale torna.' }],
     warnings: [],
     textSource: 'pdf',
+    ocrPages: [],
     ...rest,
   });
 }

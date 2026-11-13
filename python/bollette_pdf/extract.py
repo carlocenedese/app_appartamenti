@@ -19,8 +19,10 @@
   `euro`, parentheses, colons and spaces (ruling R57); for `same-line`, only when nothing but
   that noise precedes it and no digit (or `.`/`,` and a digit) follows it (ruling R73).
 
-- a document read with OCR (`textSource` not `pdf`): never `riconosciuta`, no `high` field, and a
-  field whose text line or cell averages under `OCR_MIN_WORD_CONFIDENCE` is empty (ruling R87);
+- OCR (ruling R87), per field: a field whose `source.page` is in `ocrPages` is never `high`, and
+  one whose text line or cell averages under `OCR_MIN_WORD_CONFIDENCE` is empty; a scan
+  (`textSource` `ocr`) is never `riconosciuta` and has no `high` field; a `mixed` document is
+  `da-confermare` only when a field with a value was read from an OCR page;
   the warnings of the reader follow those of the profile.
 
 Warnings and check messages are generic Italian sentences that never quote the document.
@@ -338,6 +340,7 @@ def _result(doc: Document, status: str) -> dict[str, Any]:
         "checks": [],
         "warnings": list(dict.fromkeys(doc.warnings)),
         "textSource": doc.text_source,
+        "ocrPages": list(doc.ocr_pages),
     }
 
 
@@ -382,13 +385,16 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
         or _missing_required(profile, fields)
         or not all(c["ok"] for c in checks)
     )
-    if doc.text_source != "pdf":
-        # Text read with OCR is never sure: no `high` field, never `riconosciuta`. Every field is
-        # capped, also with `mixed`, because the schema refuses a `high` field with any OCR.
-        doubtful = True
-        for field in fields.values():
-            if field["confidence"] == "high":
-                field["confidence"] = "medium"
+    # Ruling R87: a field read from a page read with OCR is never `high`; a scan (`ocr`) is
+    # never `riconosciuta` and caps also the supplier of the profile (no source). A `mixed`
+    # document is doubtful only when a field with a value was read from an OCR page.
+    for field in fields.values():
+        from_ocr = field["source"] is not None and field["source"]["page"] in doc.ocr_pages
+        if field["confidence"] == "high" and (from_ocr or doc.text_source == "ocr"):
+            field["confidence"] = "medium"
+        if from_ocr and field["value"] is not None:
+            doubtful = doubtful or doc.text_source == "mixed"
+    doubtful = doubtful or doc.text_source == "ocr"
     result = _result(doc, "da-confermare" if doubtful else "riconosciuta")
     result.update(
         profileId=profile["id"],

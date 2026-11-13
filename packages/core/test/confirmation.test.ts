@@ -68,6 +68,7 @@ function billResult(fileHash: string, overrides: Record<string, unknown> = {}): 
     checks: [{ code: 'total-matches-items', ok: true, message: 'Il totale torna.' }],
     warnings: [],
     textSource: 'pdf',
+    ocrPages: [],
     ...rest,
   });
 }
@@ -215,30 +216,60 @@ describe('decideRegistration', () => {
     });
   });
 
-  it.each(['ocr', 'mixed'])(
-    'never registers by itself a result read from %s text',
-    async (textSource) => {
-      const { result, proposal } = await billCase();
-      // Forged on purpose: the schema refuses it, the decision must not depend on that.
-      const forged = { ...result, textSource } as ExtractionResult;
-      const decision = decideRegistration({ proposal, result: forged, profile: profile() });
-      expect(decision.action).toBe('review');
-      expect(decision.reasons.join(' ')).toMatch(/OCR|scansion/i);
-      const parsed = billResult(result.fileHash, {
-        textSource,
-        status: 'da-confermare',
-        fields: Object.fromEntries(
-          Object.entries(result.fields).map(([name, f]) => [name, { ...f, confidence: 'medium' }]),
-        ),
-      });
-      expect(parsed.textSource).toBe(textSource);
-      const built = proposalFromExtraction(parsed, context(), ids('ocr'));
-      expect(built.kind).not.toBe('none');
-      expect(
-        decideRegistration({ proposal: built, result: parsed, profile: profile() }).action,
-      ).toBe('review');
-    },
-  );
+  it('never registers by itself a scan (textSource ocr)', async () => {
+    const { result, proposal } = await billCase();
+    // Forged on purpose: the schema refuses it, the decision must not depend on that.
+    const forged = { ...result, textSource: 'ocr', ocrPages: [1, 2] } as ExtractionResult;
+    const decision = decideRegistration({ proposal, result: forged, profile: profile() });
+    expect(decision.action).toBe('review');
+    expect(decision.reasons.join(' ')).toMatch(/OCR|scansion/i);
+    const parsed = billResult(result.fileHash, {
+      textSource: 'ocr',
+      ocrPages: [1, 2],
+      status: 'da-confermare',
+      fields: Object.fromEntries(
+        Object.entries(result.fields).map(([name, f]) => [name, { ...f, confidence: 'medium' }]),
+      ),
+    });
+    const built = proposalFromExtraction(parsed, context(), ids('ocr'));
+    expect(built.kind).not.toBe('none');
+    expect(decideRegistration({ proposal: built, result: parsed, profile: profile() }).action).toBe(
+      'review',
+    );
+  });
+
+  it('decides a mixed result as a text one when no field was read from an OCR page', async () => {
+    // fields come from page 1; page 2 (a back page, say) was read with OCR
+    const { result, proposal } = await billCase();
+    const mixed = billResult(result.fileHash, { textSource: 'mixed', ocrPages: [2] });
+    expect(mixed.status).toBe('riconosciuta');
+    expect(decideRegistration({ proposal, result: mixed, profile: profile() })).toEqual({
+      action: 'auto-register',
+      reasons: [],
+    });
+  });
+
+  it('sends a mixed result to review when a field with a value was read from an OCR page', async () => {
+    const { result, proposal } = await billCase();
+    // Forged on purpose: the schema refuses it, the decision must not depend on that.
+    const forged = { ...result, textSource: 'mixed', ocrPages: [1] } as ExtractionResult;
+    const decision = decideRegistration({ proposal, result: forged, profile: profile() });
+    expect(decision.action).toBe('review');
+    expect(decision.reasons.join(' ')).toMatch(/OCR|scansion/i);
+    const parsed = billResult(result.fileHash, {
+      textSource: 'mixed',
+      ocrPages: [1],
+      status: 'da-confermare',
+      fields: Object.fromEntries(
+        Object.entries(result.fields).map(([name, f]) => [name, { ...f, confidence: 'medium' }]),
+      ),
+    });
+    const built = proposalFromExtraction(parsed, context(), ids('mixed'));
+    expect(built.kind).not.toBe('none');
+    expect(decideRegistration({ proposal: built, result: parsed, profile: profile() }).action).toBe(
+      'review',
+    );
+  });
 
   it('always asks with a draft profile, or a confirmed one with autoRegister false (RF 7)', async () => {
     const { result, proposal } = await billCase();

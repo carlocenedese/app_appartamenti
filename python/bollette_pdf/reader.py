@@ -101,6 +101,8 @@ class Document:
     has_text: bool
     # 'pdf' (no page read with OCR), 'ocr' (every page with text read with OCR) or 'mixed'.
     text_source: str = "pdf"
+    # Pages (from 1, sorted) whose lines were read with OCR; empty when `text_source` is 'pdf'.
+    ocr_pages: tuple[int, ...] = ()
     warnings: tuple[str, ...] = ()
 
     @property
@@ -238,7 +240,7 @@ def read_pdf(
     pages = len(by_page)
     if pages == 0:
         raise PdfReadError("Il file non contiene pagine leggibili.")
-    text_source, warnings = _read_with_ocr(data, by_page, ocr_data, max_ocr_pages)
+    text_source, ocr_pages, warnings = _read_with_ocr(data, by_page, ocr_data, max_ocr_pages)
     lines = [line for page_lines in by_page for line in page_lines]
     non_blank = sum(1 for line in lines for ch in line.text if not ch.isspace())
     return Document(
@@ -248,6 +250,7 @@ def read_pdf(
         lines=tuple(lines),
         has_text=non_blank >= MIN_TEXT_CHARS,
         text_source=text_source,
+        ocr_pages=ocr_pages,
         warnings=warnings,
     )
 
@@ -262,7 +265,9 @@ def _read_image(
     except images.ImageError as error:
         raise PdfReadError(str(error)) from None
     by_page: list[list[Line]] = [[]]
-    text_source, warnings = _read_with_ocr(wrapped, by_page, ocr_data, MAX_OCR_PAGES, info.dpi)
+    text_source, ocr_pages, warnings = _read_with_ocr(
+        wrapped, by_page, ocr_data, MAX_OCR_PAGES, info.dpi
+    )
     non_blank = sum(1 for line in by_page[0] for ch in line.text if not ch.isspace())
     return Document(
         file_hash=file_hash,
@@ -271,6 +276,7 @@ def _read_image(
         lines=tuple(by_page[0]),
         has_text=non_blank >= MIN_TEXT_CHARS,
         text_source=text_source,
+        ocr_pages=ocr_pages,
         warnings=warnings,
     )
 
@@ -281,11 +287,12 @@ def _read_with_ocr(
     data_dir: str | Path | None,
     limit: int,
     dpi: int | None = None,
-) -> tuple[str, tuple[str, ...]]:
-    """Replaces in `by_page` the lines of the pages read with OCR; gives text_source, warnings."""
+) -> tuple[str, tuple[int, ...], tuple[str, ...]]:
+    """Replaces in `by_page` the lines of the pages read with OCR; gives text_source, the pages
+    read with OCR and the warnings."""
     wanted = [number for number, lines in enumerate(by_page, start=1) if _needs_ocr(lines)]
     if not wanted:
-        return "pdf", ()
+        return "pdf", (), ()
     read = None
     if data_dir is not None:
         from .ocr import ocr_pages
@@ -296,7 +303,7 @@ def _read_with_ocr(
             else ocr_pages(data, wanted[:limit], str(data_dir), dpi)
         )
     if read is None:
-        return "pdf", (OCR_UNAVAILABLE_WARNING,)
+        return "pdf", (), (OCR_UNAVAILABLE_WARNING,)
     done = set()
     for number, lines in zip(wanted, read):
         # A page with broken text where OCR finds nothing keeps the text it had.
@@ -306,8 +313,8 @@ def _read_with_ocr(
     pdf_text = any(lines for number, lines in enumerate(by_page, start=1) if number not in done)
     warnings = (OCR_LIMIT_WARNING.format(limit=limit),) if len(wanted) > limit else ()
     if not done:
-        return "pdf", warnings
-    return ("mixed" if pdf_text else "ocr"), warnings
+        return "pdf", (), warnings
+    return ("mixed" if pdf_text else "ocr"), tuple(sorted(done)), warnings
 
 
 def dump_document(doc: Document) -> dict[str, Any]:
@@ -320,6 +327,7 @@ def dump_document(doc: Document) -> dict[str, Any]:
         "pages": doc.pages,
         "hasText": doc.has_text,
         "textSource": doc.text_source,
+        "ocrPages": list(doc.ocr_pages),
         "warnings": list(doc.warnings),
         "lines": [
             {
@@ -371,11 +379,16 @@ def load_dump(data: dict[str, Any]) -> Document:
     if not isinstance(raw_lines, list):
         raise ValueError("Dump non valido: «lines».")
     pages = _int(data, "pages")
-    # textSource and warnings are optional: dumps written before the OCR have neither.
+    # textSource, ocrPages and warnings are optional: dumps written before the OCR have none.
     text_source = data.get("textSource", "pdf")
+    ocr_pages = data.get("ocrPages", [])
     warnings = data.get("warnings", [])
     if text_source not in ("pdf", "ocr", "mixed"):
         raise ValueError("Dump non valido: «textSource».")
+    if not isinstance(ocr_pages, list) or not all(
+        isinstance(n, int) and not isinstance(n, bool) and n >= 1 for n in ocr_pages
+    ):
+        raise ValueError("Dump non valido: «ocrPages».")
     if not isinstance(warnings, list) or not all(isinstance(w, str) for w in warnings):
         raise ValueError("Dump non valido: «warnings».")
     lines = []
@@ -419,5 +432,6 @@ def load_dump(data: dict[str, Any]) -> Document:
         lines=tuple(lines),
         has_text=has_text,
         text_source=text_source,
+        ocr_pages=tuple(sorted(set(ocr_pages))),
         warnings=tuple(warnings),
     )
