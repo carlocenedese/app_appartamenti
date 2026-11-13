@@ -361,6 +361,7 @@ Ognuna: che cosa, perché, costo se è sbagliata.
   sovrapposizioni si prende comunque il minimo degli inizi e il massimo delle fini. Confidenza
   `medium` se un intervallo scritto non si legge o la stessa etichetta ha date diverse.
 - **R78** (12 novembre 2026, Fase B) Carlo approva `docs/rules/lettura-pdf.md` e le fixture; il canone TV resta nel totale Enel; la TARI condivisa si ripartisce secondo la tabella in m² in fondo alla bolletta (da implementare con `parts`); maggior tutela senza profilo, in revisione a mano (decisione di Carlo). Campione a mano rifatto il 13 novembre 2026: 57 su 57 giusti.
+- **R79** (13 novembre 2026, Fase B) TARI condivisa: i profili `acegas-tari-2024` e `-b` hanno `parts` (totale per utenza dalla tabella di pagina 2); regola di Carlo: l'importo da pagare si divide in proporzione ai totali delle utenze, perequative e TEFA già dentro. Fixture `acegas-tari-05` (due utenze, valori inventati) e utenza aggiunta alle 01, 02, 04.
 - **Dalla rilettura finale:** una regola «stessa riga» scritta a mano con testo tra etichetta e
   valore (`Totale da pagare (IVA inclusa) 98,46`) dà `medium`: tenerne conto nei profili della
   Fase B. `registerProposal` legge il profilo prima dei controlli sui duplicati (un errore di I/O

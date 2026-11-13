@@ -73,5 +73,8 @@
       ]
     }
   },
-  "identifiers": []
+  "identifiers": [],
+  "parts": {
+    "pattern": "(Utenza N\\.\\s*\\d+)(?:(?!Utenza N\\.)[\\s\\S])*?Parte fissa\\n(?:[^\\n]*\\n){7}€\\s*([\\d.]*\\d,\\d{2})(?![\\d.,])"
+  }
 }
