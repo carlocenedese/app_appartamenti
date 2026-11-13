@@ -275,7 +275,7 @@ Ognuna: che cosa, perché, costo se è sbagliata.
   di `MONTH_NAMES`, il `groupId` TARI da `newId()`, `includedInConguaglio`/`sharedWithTenants` veri
   per difetto, l'anomalia di consumo confrontata con l'id più piccolo tra i pari dell'anno prima.
   Costo: ritocchi locali.
-- **R65** TARI condivisa (`ctx.tariParts` non vuoto) senza parti lette dà `fail` `missing-parts`
+- **R65** TARI condivisa (`ctx.supplies` non vuoto, ex `tariParts`) senza parti lette dà `fail` `missing-parts`
   (non tutto l'importo a un appartamento); lo stesso appartamento due volte in un avviso dà `fail`
   `duplicate-apartment`. Costo: più avvisi da confermare.
 - **R66** `registerBill` tiene il tipo di operazione `register-bill` per difetto (test esistente);
@@ -361,6 +361,7 @@ Ognuna: che cosa, perché, costo se è sbagliata.
   sovrapposizioni si prende comunque il minimo degli inizi e il massimo delle fini. Confidenza
   `medium` se un intervallo scritto non si legge o la stessa etichetta ha date diverse.
 - **R78** (12 novembre 2026, Fase B) Carlo approva `docs/rules/lettura-pdf.md` e le fixture; il canone TV resta nel totale Enel; la TARI condivisa si ripartisce secondo la tabella in m² in fondo alla bolletta (da implementare con `parts`); maggior tutela senza profilo, in revisione a mano (decisione di Carlo). Campione a mano rifatto il 13 novembre 2026: 57 su 57 giusti.
+- **R80** (13 novembre 2026) Record `supply` («utenza»): etichetta dell'utenza più `apartments: {apartmentId, weight}[]` (almeno uno, pesi interi ≥ 1, ogni appartamento una volta; cartella `_app/dati/supply/`). Sostituisce `ctx.tariParts` nella proposta: la parte letta si divide tra gli appartamenti dell'utenza in proporzione ai pesi, con `splitCents` (centesimi che non tornano: ai resti maggiori, a parità ai primi, la stessa regola di `splitSharedDebit`; **Ruling**: non quella dei posti letto R30 proposta a Carlo a voce, per coerenza con la ripartizione già in uso). Un'utenza di un solo appartamento ha peso 1 e dà lo stesso risultato di prima. I pesi li scrive l'utente. Schermata di collegamento e creazione dell'appartamento: piano 4. Da fare: sostituire `parts-total` con il confronto con «Totale dovuto» dell'avviso (non con la quota nuova).
 - **Dalla rilettura finale:** una regola «stessa riga» scritta a mano con testo tra etichetta e
   valore (`Totale da pagare (IVA inclusa) 98,46`) dà `medium`: tenerne conto nei profili della
   Fase B. `registerProposal` legge il profilo prima dei controlli sui duplicati (un errore di I/O

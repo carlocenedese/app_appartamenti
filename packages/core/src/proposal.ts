@@ -8,7 +8,8 @@
  * Pure: no clock; the ids of the records come from `newId`. Messages are Italian.
  */
 import type { ExtractedField, ExtractionResult } from './extraction';
-import type { Bill, Consumption, Instalment, Tenancy } from './model';
+import type { Bill, Consumption, Instalment, Supply, Tenancy } from './model';
+import { splitCents } from './money';
 import type { Cents } from './money';
 import { addDays, addMonths, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
@@ -41,8 +42,11 @@ export type ProposalContext = {
   tenancies: Tenancy[];
   /** From the user's configuration, never from the code. */
   thresholds: { consumptionAnomalyPercent: number };
-  /** TARI: the apartment of each supply label of a shared notice. */
-  tariParts?: Record<string, { apartmentId: string }>;
+  /**
+   * TARI: the supplies of shared notices (not deleted ones), each with the apartments it is split
+   * between by weight.
+   */
+  supplies?: Pick<Supply, 'label' | 'apartments'>[];
 };
 
 type Fields = ExtractionResult['fields'];
@@ -391,16 +395,14 @@ function tariProposal(
   if (result.parts.length === 0) {
     // A notice the app knows is shared, read without its supplies, must not go entirely to one
     // apartment without anyone noticing (R65): the instalment is proposed but cannot pass.
-    if (Object.keys(ctx.tariParts ?? {}).length > 0) {
+    if ((ctx.supplies ?? []).length > 0) {
       checks.push(
         fail('missing-parts', 'Avviso condiviso letto senza le utenze: va diviso a mano.'),
       );
     }
     instalments.push({ id: newId(), apartmentId: ctx.apartment.id, ...base, rata: total });
   } else {
-    const byLabel = new Map(
-      Object.entries(ctx.tariParts ?? {}).map(([label, part]) => [foldText(label), part]),
-    );
+    const byLabel = new Map((ctx.supplies ?? []).map((supply) => [foldText(supply.label), supply]));
     const known: { apartmentId: string; amount: Cents }[] = [];
     for (const part of result.parts) {
       const target = byLabel.get(foldText(part.label));
@@ -411,7 +413,14 @@ function tariProposal(
       } else if (part.amount <= 0) {
         checks.push(fail('part-amount', `L'utenza «${part.label}» non ha un importo positivo.`));
       } else {
-        known.push({ apartmentId: target.apartmentId, amount: part.amount });
+        // An apartment's share of the supply by weight; cents that do not divide go as in R3.
+        const shares = splitCents(
+          part.amount,
+          target.apartments.map((a) => a.weight),
+        );
+        target.apartments.forEach(({ apartmentId }, index) => {
+          known.push({ apartmentId, amount: shares[index] as Cents });
+        });
       }
     }
     const sum = result.parts.reduce((acc, part) => acc + part.amount, 0);

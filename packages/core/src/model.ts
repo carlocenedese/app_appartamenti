@@ -157,6 +157,26 @@ export const ApartmentSchema = RecordBaseSchema.extend({
   .meta({ description: 'When rooms is present: one unique name per bed (posti).' });
 export type Apartment = z.infer<typeof ApartmentSchema>;
 
+/**
+ * A supply of a shared notice (for example a TARI utenza), linked to the apartments it belongs to.
+ * `weight` is the part of the supply each apartment pays: a whole positive number written by the
+ * user (a supply of one apartment has weight 1); no share is written in the code.
+ */
+export const SupplySchema = RecordBaseSchema.extend({
+  /** The supply code as written on the notice (the label of an extracted part). */
+  label: NonEmptyString,
+  apartments: z.array(z.object({ apartmentId: NonEmptyString, weight: z.int().min(1) })).min(1),
+})
+  .refine(
+    (supply) =>
+      new Set(supply.apartments.map((a) => a.apartmentId)).size === supply.apartments.length,
+    { message: 'An apartment appears once in a supply', path: ['apartments'] },
+  )
+  .meta({
+    description: 'apartments: at least one, each apartment once, weight a whole number >= 1.',
+  });
+export type Supply = z.infer<typeof SupplySchema>;
+
 export const ContractSchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,
   type: z.enum(['1+1', '3+2', '4+4', 'altro']),
@@ -557,6 +577,7 @@ export const recordSchemas = {
   apartment: ApartmentSchema,
   contract: ContractSchema,
   tenancy: TenancySchema,
+  supply: SupplySchema,
   bill: BillSchema,
   payment: PaymentSchema,
   transaction: BankTransactionSchema,

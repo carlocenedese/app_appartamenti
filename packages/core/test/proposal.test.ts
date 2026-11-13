@@ -438,12 +438,15 @@ describe('proposalFromExtraction: TARI', () => {
       identifiers: [],
       ...overrides,
     });
-  const tariParts = { Berchet: { apartmentId: 'apt-b' }, Lovarini: { apartmentId: 'apt-l' } };
+  const supplies = [
+    { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
+    { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+  ];
   const tariContext = (extra: Partial<ProposalContext> = {}) =>
     context({
       apartment: { id: 'apt-b', knownCodes: [] },
       tenancies: [storedTenancy('b', 'apt-b', '2025-01'), storedTenancy('l', 'apt-l', '2025-01')],
-      tariParts,
+      supplies,
       ...extra,
     });
 
@@ -487,7 +490,9 @@ describe('proposalFromExtraction: TARI', () => {
     const proposal = asTari(
       proposalFromExtraction(
         tariResult(),
-        tariContext({ tariParts: { Berchet: { apartmentId: 'apt-b' } } }),
+        tariContext({
+          supplies: [{ label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] }],
+        }),
         ids(),
       ),
     );
@@ -496,10 +501,60 @@ describe('proposalFromExtraction: TARI', () => {
     expect(check(proposal, 'unknown-part')?.message).toContain('Lovarini');
   });
 
+  it('splits a supply of two apartments by weight, sharing the group', () => {
+    const proposal = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({
+          supplies: [
+            {
+              label: 'Berchet',
+              apartments: [
+                { apartmentId: 'apt-b', weight: 1 },
+                { apartmentId: 'apt-c', weight: 2 },
+              ],
+            },
+            { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+          ],
+          tenancies: [
+            storedTenancy('b', 'apt-b', '2025-01'),
+            storedTenancy('c', 'apt-c', '2025-01'),
+            storedTenancy('l', 'apt-l', '2025-01'),
+          ],
+        }),
+        ids(),
+      ),
+    );
+    const [b, c, l] = proposal.instalments;
+    // 10075 split 1:2 gives 3358.33 and 6716.67: the larger remainder takes the extra cent.
+    expect([b?.apartmentId, b?.rata, b?.shared?.weight]).toEqual(['apt-b', 3358, 3358]);
+    expect([c?.apartmentId, c?.rata, c?.shared?.weight]).toEqual(['apt-c', 6717, 6717]);
+    expect([l?.apartmentId, l?.rata]).toEqual(['apt-l', 8471]);
+    expect(b?.shared?.groupId).toBe(l?.shared?.groupId);
+    expect(b?.shared?.groupTotal).toBe(18546);
+    expect(check(proposal, 'duplicate-apartment')).toBeUndefined();
+  });
+
+  it('ignores a label written in other case and spacing', () => {
+    const proposal = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({
+          supplies: [
+            { label: ' BERCHET ', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
+            { label: 'lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+          ],
+        }),
+        ids(),
+      ),
+    );
+    expect(proposal.instalments).toHaveLength(2);
+  });
+
   it('fails unknown-part when no parts map is given', () => {
     const proposal = proposalFromExtraction(
       tariResult(),
-      tariContext({ tariParts: undefined }),
+      tariContext({ supplies: undefined }),
       ids(),
     );
     expect(proposal.checks.filter((c) => c.code === 'unknown-part')).toHaveLength(2);
@@ -591,7 +646,7 @@ describe('proposalFromExtraction: TARI', () => {
     const proposal = asTari(
       proposalFromExtraction(
         tariResult({ parts: [] }),
-        tariContext({ tariParts: undefined }),
+        tariContext({ supplies: undefined }),
         ids(),
       ),
     );
@@ -601,7 +656,7 @@ describe('proposalFromExtraction: TARI', () => {
     expect(severities(proposal)).not.toContain('fail');
     const emptyMap = proposalFromExtraction(
       tariResult({ parts: [] }),
-      tariContext({ tariParts: {} }),
+      tariContext({ supplies: [] }),
       ids(),
     );
     expect(check(emptyMap, 'missing-parts')).toBeUndefined();
@@ -627,7 +682,10 @@ describe('proposalFromExtraction: TARI', () => {
     const sameApartment = proposalFromExtraction(
       tariResult(),
       tariContext({
-        tariParts: { Berchet: { apartmentId: 'apt-b' }, Lovarini: { apartmentId: 'apt-b' } },
+        supplies: [
+          { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
+          { label: 'Lovarini', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
+        ],
       }),
       ids(),
     );
