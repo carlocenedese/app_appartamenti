@@ -105,9 +105,13 @@ def _load_engine(data_dir: str) -> Engine | None:
     try:
         import pypdfium2
         import tesserocr
-    except ImportError:
+
+        return _Tesseract(tesserocr, pypdfium2, str(data_dir))
+    except MemoryError:
+        raise
+    except Exception:
+        # ImportError, or OSError/RuntimeError when a native library does not load: no engine.
         return None
-    return _Tesseract(tesserocr, pypdfium2, str(data_dir))
 
 
 # Seam for the tests: data_dir -> engine, or None when there is no engine.
@@ -144,10 +148,10 @@ def ocr_pages(
     """Lines of each page in `pages` (numbered from 1), or None when OCR is not available."""
     if not pages:
         return []
-    engine = ENGINE_FACTORY(data_dir)
-    if engine is None:
-        return None
     try:
+        engine = ENGINE_FACTORY(data_dir)
+        if engine is None:
+            return None
         data = source if isinstance(source, bytes) else Path(source).read_bytes()
         raw_pages = engine.read(data, pages, dpi)
     except MemoryError:

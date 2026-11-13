@@ -46,6 +46,7 @@ DECIMALS = 2
 CID_GLYPH_LIMIT = 0.3
 MAX_OCR_PAGES = 20
 _CID = re.compile(r"\(cid:[0-9]+\)")
+OCR_UNAVAILABLE_WARNING = "OCR non disponibile: le pagine scansionate non sono state lette."
 OCR_LIMIT_WARNING = (
     "Lette con l'OCR solo le prime {limit} pagine senza testo: le altre vanno controllate a mano."
 )
@@ -231,9 +232,7 @@ def read_pdf(
     pages = len(by_page)
     if pages == 0:
         raise PdfReadError("Il file non contiene pagine leggibili.")
-    text_source, warnings = "pdf", ()
-    if ocr_data is not None:
-        text_source, warnings = _read_with_ocr(data, by_page, str(ocr_data), max_ocr_pages)
+    text_source, warnings = _read_with_ocr(data, by_page, ocr_data, max_ocr_pages)
     lines = [line for page_lines in by_page for line in page_lines]
     non_blank = sum(1 for line in lines for ch in line.text if not ch.isspace())
     return Document(
@@ -248,20 +247,29 @@ def read_pdf(
 
 
 def _read_with_ocr(
-    data: bytes, by_page: list[list[Line]], data_dir: str, limit: int
+    data: bytes, by_page: list[list[Line]], data_dir: str | Path | None, limit: int
 ) -> tuple[str, tuple[str, ...]]:
     """Replaces in `by_page` the lines of the pages read with OCR; gives text_source, warnings."""
-    from .ocr import ocr_pages
-
     wanted = [number for number, lines in enumerate(by_page, start=1) if _needs_ocr(lines)]
-    read = ocr_pages(data, wanted[:limit], data_dir)
-    if not read:
+    if not wanted:
         return "pdf", ()
+    read = None
+    if data_dir is not None:
+        from .ocr import ocr_pages
+
+        read = ocr_pages(data, wanted[:limit], str(data_dir))
+    if read is None:
+        return "pdf", (OCR_UNAVAILABLE_WARNING,)
+    done = set()
     for number, lines in zip(wanted, read):
-        by_page[number - 1] = lines
-    done = set(wanted[:limit])
+        # A page with broken text where OCR finds nothing keeps the text it had.
+        if lines or not by_page[number - 1]:
+            by_page[number - 1] = lines
+            done.add(number)
     pdf_text = any(lines for number, lines in enumerate(by_page, start=1) if number not in done)
     warnings = (OCR_LIMIT_WARNING.format(limit=limit),) if len(wanted) > limit else ()
+    if not done:
+        return "pdf", warnings
     return ("mixed" if pdf_text else "ocr"), warnings
 
 
