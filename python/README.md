@@ -62,6 +62,24 @@ Il percorso è sempre un argomento, mai una variabile d'ambiente.
   sono in `apps/desktop/src-tauri/resources/ocr-data/`), e con `REQUIRE_OCR=1` falliscono se il
   motore manca. Le pagine scansionate sintetiche le scrive `tests/make_scan.py`.
 
+### Immagini JPEG e PNG
+
+`read_pdf` (e quindi `extract` e `build-profile`) accetta anche un file JPEG o PNG, riconosciuto
+dalle prime byte e non dall'estensione, e lo legge come **una pagina** con lo stesso percorso OCR
+di un PDF scansionato (`text_source` `ocr`). Regola R88, nessuna dipendenza nuova.
+
+- `bollette_pdf/images.py` legge solo le intestazioni e impacchetta l'immagine in un PDF di una
+  pagina; i pixel li decodifica pdfium quando disegna la pagina.
+- Risoluzione: 300 punti per pollice, o quella dell'EXIF (JPEG) / del blocco `pHYs` (PNG) se è tra
+  72 e 1200. La pagina misura `pixel * 72 / dpi` punti: le coordinate sono in punti come nei PDF.
+- Orientamento: il valore EXIF 1-8 del JPEG si applica (la foto di un telefono si legge dritta);
+  nessuna correzione dell'inclinazione.
+- `illeggibile` (mai un'eccezione, messaggio senza il contenuto del file): oltre 30 megapixel, file
+  corrotto o troncato, JPEG non a 8 bit / 1 o 3 componenti, PNG con canale alfa o interlacciato.
+  Valgono anche senza il motore; senza motore un'immagine valida dà `senza-testo`.
+- Test: `tests/test_images.py` (intestazioni, senza motore), `tests/test_ocr.py` (finto motore e,
+  con i dati della lingua, motore vero); le immagini sintetiche le scrive `tests/make_image.py`.
+
 ```bash
 BOLLETTE_OCR_TEST_DATA=<cartella> REQUIRE_OCR=1 PYTHON=<venv>/bin/python pnpm python:test
 ```

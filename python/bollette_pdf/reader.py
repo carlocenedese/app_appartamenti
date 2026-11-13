@@ -26,6 +26,8 @@ from typing import Any
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LAParams, LTAnno, LTChar, LTContainer, LTPage, LTTextLine
 
+from . import images
+
 # pdfminer logs warnings about odd fonts and objects, sometimes quoting values of the file;
 # without a handler they would reach stderr through logging's last resort. Nothing of it is
 # wanted («nessun dato personale nei log»): the reader reports problems through PdfReadError.
@@ -212,6 +214,8 @@ def read_pdf(
     except OSError as error:
         raise PdfReadError("Impossibile aprire il file.") from error
     file_hash = hashlib.sha256(data).hexdigest()
+    if images.sniff(data) is not None:  # by the first bytes, whatever the extension
+        return _read_image(path, data, file_hash, ocr_data)
     by_page: list[list[Line]] = []
     try:
         # The bytes read once are both hashed and parsed, so the hash always matches the content.
@@ -226,6 +230,8 @@ def read_pdf(
         # PDFEncryptionError, ...) and bad data can also surface as plain TypeError, ValueError,
         # RecursionError, so any ordinary failure of the parser is wrapped. The original error is
         # dropped (`from None`): it may carry text from the PDF, which must never reach a log.
+        if path.suffix.lower() in images.EXTENSIONS:
+            raise PdfReadError(images.UNREADABLE) from None
         raise PdfReadError(
             "Il file non è un PDF leggibile: potrebbe essere danneggiato o protetto da password."
         ) from None
@@ -246,8 +252,35 @@ def read_pdf(
     )
 
 
+def _read_image(
+    path: Path, data: bytes, file_hash: str, ocr_data: str | Path | None
+) -> Document:
+    """A JPEG or PNG read as one page, through the OCR path of a scanned PDF (rule R88)."""
+    try:
+        info = images.parse_image(data)
+        wrapped = images.image_pdf(data, info)
+    except images.ImageError as error:
+        raise PdfReadError(str(error)) from None
+    by_page: list[list[Line]] = [[]]
+    text_source, warnings = _read_with_ocr(wrapped, by_page, ocr_data, MAX_OCR_PAGES, info.dpi)
+    non_blank = sum(1 for line in by_page[0] for ch in line.text if not ch.isspace())
+    return Document(
+        file_hash=file_hash,
+        file_name=_nfc(path.name),
+        pages=1,
+        lines=tuple(by_page[0]),
+        has_text=non_blank >= MIN_TEXT_CHARS,
+        text_source=text_source,
+        warnings=warnings,
+    )
+
+
 def _read_with_ocr(
-    data: bytes, by_page: list[list[Line]], data_dir: str | Path | None, limit: int
+    data: bytes,
+    by_page: list[list[Line]],
+    data_dir: str | Path | None,
+    limit: int,
+    dpi: int | None = None,
 ) -> tuple[str, tuple[str, ...]]:
     """Replaces in `by_page` the lines of the pages read with OCR; gives text_source, warnings."""
     wanted = [number for number, lines in enumerate(by_page, start=1) if _needs_ocr(lines)]
@@ -257,7 +290,11 @@ def _read_with_ocr(
     if data_dir is not None:
         from .ocr import ocr_pages
 
-        read = ocr_pages(data, wanted[:limit], str(data_dir))
+        read = (
+            ocr_pages(data, wanted[:limit], str(data_dir))
+            if dpi is None
+            else ocr_pages(data, wanted[:limit], str(data_dir), dpi)
+        )
     if read is None:
         return "pdf", (OCR_UNAVAILABLE_WARNING,)
     done = set()

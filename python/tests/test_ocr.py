@@ -9,6 +9,7 @@ otherwise they are skipped, except with REQUIRE_OCR=1, where they fail.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -23,6 +24,7 @@ PYTHON_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PYTHON_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import make_image  # noqa: E402
 import pdfmaker  # noqa: E402
 from bollette_pdf import ocr  # noqa: E402
 from bollette_pdf.__main__ import main  # noqa: E402
@@ -32,6 +34,7 @@ from bollette_pdf.reader import (  # noqa: E402
     MAX_OCR_PAGES,
     OCR_UNAVAILABLE_WARNING,
     Line,
+    PdfReadError,
     Word,
     _needs_ocr,
     dump_document,
@@ -237,6 +240,103 @@ class FakeEngineTest(unittest.TestCase):
                 load_dump(bad)
 
 
+GRAY = bytes((x * 5 + y * 11) % 256 for y in range(24) for x in range(40))  # 40 x 24, invented
+JPEG = make_image.make_jpeg(40, 24, GRAY)
+PNG = make_image.make_png(40, 24, GRAY)
+
+
+class ImageFakeEngineTest(unittest.TestCase):
+    """Images are read through the same OCR path as a scanned PDF: one page."""
+
+    setUp = FakeEngineTest.setUp
+    pdf = FakeEngineTest.pdf
+
+    def image(self, data: bytes, name: str) -> Path:
+        path = self.dir / name
+        path.write_bytes(data)
+        return path
+
+    def test_jpeg_and_png_are_read_as_one_page_by_ocr(self) -> None:
+        for data, name in ((JPEG, "a.jpg"), (PNG, "a.png")):
+            with self.subTest(name=name):
+                self.engine.calls.clear()
+                doc = read_pdf(self.image(data, name), ocr_data=self.dir)
+                self.assertEqual(self.engine.calls, [[1]])
+                self.assertEqual((doc.pages, doc.text_source, doc.has_text), (1, "ocr", True))
+                self.assertEqual(doc.lines[0].text, "Totale da p1")
+                self.assertEqual(doc.file_hash, hashlib.sha256(data).hexdigest())
+                self.assertEqual(doc.file_name, name)
+                self.assertEqual(doc.warnings, ())
+
+    def test_the_engine_gets_a_pdf_page_of_pixels_over_dpi(self) -> None:
+        seen = []
+        read = self.engine.read
+
+        def spy(data: bytes, pages: list[int], dpi: int) -> list:
+            seen.append((data, dpi))
+            return read(data, pages, dpi)
+
+        self.engine.read = spy  # type: ignore[method-assign]
+        read_pdf(self.image(JPEG, "a.jpg"), ocr_data=self.dir)
+        read_pdf(self.image(make_image.make_png(40, 24, GRAY, dpi=150), "b.png"), ocr_data=self.dir)
+        self.assertTrue(seen[0][0].startswith(b"%PDF"))
+        self.assertEqual([dpi for _, dpi in seen], [300, 150])
+        self.assertIn(b"/MediaBox [0 0 9.6 5.76]", seen[0][0])
+        self.assertIn(b"/MediaBox [0 0 19.2 11.52]", seen[1][0])
+
+    def test_signature_beats_the_extension_both_ways(self) -> None:
+        for name in ("scansione.pdf", "scansione.txt", "scansione"):
+            doc = read_pdf(self.image(PNG, name), ocr_data=self.dir)
+            self.assertEqual((doc.pages, doc.text_source), (1, "ocr"))
+        text_pdf = self.pdf([[(72, 100, TOTAL)]], name="foto.jpg")
+        doc = read_pdf(text_pdf, ocr_data=self.dir)
+        self.assertEqual((doc.text_source, doc.lines[0].text), ("pdf", TOTAL))
+
+    def test_unreadable_images_give_an_error_without_their_content(self) -> None:
+        corrupt_png = bytearray(PNG)
+        corrupt_png[len(PNG) // 2] ^= 0xFF
+        cases = {
+            "testo.jpg": TOTAL.encode(),
+            "testo.png": TOTAL.encode(),
+            "troncata.jpg": JPEG[:-2],
+            "rotta.png": bytes(corrupt_png),
+            "grande.jpg": make_image.jpeg_header(8000, 5000),
+            "alfa.png": make_image.make_png(2, 2, bytes(16), color_type=6),
+        }
+        for name, data in cases.items():
+            with self.subTest(name=name), self.assertRaises(PdfReadError) as caught:
+                read_pdf(self.image(data, name), ocr_data=self.dir)
+            self.assertNotIn("Totale", str(caught.exception))
+            self.assertNotIn(name, str(caught.exception))
+        self.assertEqual(self.engine.calls, [])
+
+    def test_no_engine_gives_senza_testo_with_the_warning(self) -> None:
+        for ocr_data in (self.dir, None):
+            with mock.patch.object(ocr, "ENGINE_FACTORY", lambda data_dir: None):
+                doc = read_pdf(self.image(JPEG, "a.jpg"), ocr_data=ocr_data)
+            self.assertEqual((doc.pages, doc.text_source, doc.has_text), (1, "pdf", False))
+            self.assertEqual(doc.warnings, (OCR_UNAVAILABLE_WARNING,))
+
+    def run_cli(self, command: str, path: Path) -> tuple[int, dict, str]:
+        out, err = io.StringIO(), io.StringIO()
+        args = ["--pdf", str(path), "--profiles", str(self.dir), "--at", "2026-01-01"]
+        if command == "extract":
+            args += ["--ocr-data", str(self.dir)]
+        code = main([command, *args], stdout=out, stderr=err)
+        return code, json.loads(out.getvalue()) if out.getvalue() else {}, err.getvalue()
+
+    def test_command_line_accepts_an_image_like_a_pdf(self) -> None:
+        code, result, err = self.run_cli("extract", self.image(JPEG, "a.jpg"))
+        self.assertEqual((code, err, result["textSource"]), (0, "", "ocr"))
+        self.assertNotEqual(result["status"], "illeggibile")
+
+    def test_command_line_unreadable_image_is_a_result_not_an_error(self) -> None:
+        for data in (TOTAL.encode(), make_image.jpeg_header(8000, 5000), JPEG[:-2]):
+            code, result, err = self.run_cli("extract", self.image(data, "x.jpg"))
+            self.assertEqual((code, err, result["status"]), (0, "", "illeggibile"))
+            self.assertNotIn("Totale", json.dumps(result, ensure_ascii=False))
+
+
 class MissingEngineTest(unittest.TestCase):
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
@@ -408,6 +508,61 @@ class RealEngineTest(unittest.TestCase):
         with capture_fd2() as written:
             read_pdf(scan, ocr_data=REAL_DATA)
         self.assertEqual(written(), b"")
+
+    def band(self) -> tuple[int, int, bytes]:
+        items = [(30, 40, TOTAL, 14), (30, 60, "Scadenza 31/03/2026", 12)]
+        return 1400, 260, make_image.render_band(items)
+
+    def read_image(self, data: bytes, name: str):
+        path = self.dir / name
+        path.write_bytes(data)
+        return read_pdf(path, ocr_data=REAL_DATA)
+
+    def assertBandRead(self, doc, width: int, height: int) -> None:
+        self.assertEqual((doc.pages, doc.text_source), (1, "ocr"))
+        self.assertEqual([line.text for line in doc.lines[:2]], [TOTAL, "Scadenza 31/03/2026"])
+        for line in doc.lines:
+            for word in line.words:
+                self.assertTrue(0 <= word.x0 < word.x1 <= width * 72 / 300 + 0.01)
+                self.assertTrue(0 <= word.top < word.bottom <= height * 72 / 300 + 0.01)
+        self.assertAlmostEqual(doc.lines[0].words[0].x0, 30, delta=2)
+        self.assertAlmostEqual(doc.lines[0].baseline, 40, delta=3)
+
+    def test_png_is_read_with_its_boxes_in_points(self) -> None:
+        width, height, rows = self.band()
+        self.assertBandRead(self.read_image(make_image.make_png(width, height, rows), "banda.png"), width, height)
+
+    def test_jpeg_is_read_with_its_boxes_in_points(self) -> None:
+        width, height, rows = self.band()
+        self.assertBandRead(self.read_image(make_image.make_jpeg(width, height, rows), "banda.jpg"), width, height)
+
+    def test_exif_orientation_6_is_read_upright(self) -> None:
+        width, height, rows = self.band()
+        # What a phone stores for a photo that is shown turned 90 degrees clockwise.
+        stored_w, stored_h, stored = make_image.rotate_ccw(width, height, rows)
+        data = make_image.make_jpeg(stored_w, stored_h, stored, orientation=6)
+        self.assertBandRead(self.read_image(data, "foto.jpg"), width, height)
+
+    def test_the_other_orientations_are_read_upright(self) -> None:
+        width, height, rows = self.band()
+        lines = [rows[y * width : (y + 1) * width] for y in range(height)]
+        stored = {
+            2: (width, height, b"".join(line[::-1] for line in lines)),
+            3: (width, height, rows[::-1]),
+            4: (width, height, b"".join(lines[::-1])),
+            8: make_image.rotate_cw(width, height, rows),
+        }
+        for orientation, (w, h, pixels) in stored.items():
+            with self.subTest(orientation=orientation):
+                data = make_image.make_jpeg(w, h, pixels, orientation=orientation)
+                self.assertBandRead(self.read_image(data, "o.jpg"), width, height)
+
+    def test_dpi_of_the_file_sets_the_scale(self) -> None:
+        width, height, rows = self.band()
+        doc = self.read_image(make_image.make_png(width, height, rows, dpi=150), "banda.png")
+        self.assertEqual(doc.lines[0].text, TOTAL)
+        self.assertAlmostEqual(doc.lines[0].words[0].x0, 60, delta=3)
+
 
 
 if __name__ == "__main__":
