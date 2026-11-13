@@ -52,6 +52,25 @@ describe('seedProfiles', () => {
     ]);
   });
 
+  it('skips a seed whose id is not a safe path segment, without naming it', async () => {
+    const store = new MemoryStore();
+    const unsafe = { ...(seeds[0] as object), id: 'a/b' };
+    const r = await seedProfiles(store, [unsafe, ...seeds.slice(1)], 'p1', clock, ids());
+    expect(r.written).toHaveLength(10);
+    expect(r.skipped).toEqual([{ id: null, reason: 'invalid' }]);
+    expect(await dati(store)).toHaveLength(10);
+  });
+
+  it('returns the records as written, with rev 1 whatever the seed says', async () => {
+    const store = new MemoryStore();
+    const seed = { ...(seeds[0] as object), rev: 3 };
+    const r = await seedProfiles(store, [seed], 'p1', clock, ids());
+    const id = (seeds[0] as { id: string }).id;
+    expect(r.written).toHaveLength(1);
+    expect(r.written[0]?.rev).toBe(1);
+    expect(r.written[0]).toEqual(await store.readJson(recordPath('supplierProfile', id)));
+  });
+
   it('does not overwrite an existing record', async () => {
     const store = new MemoryStore();
     const first = seeds[0] as SupplierProfile;

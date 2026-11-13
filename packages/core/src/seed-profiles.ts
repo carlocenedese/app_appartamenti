@@ -19,7 +19,7 @@ export async function seedProfiles(
   clock: () => string,
   newId: () => string,
 ): Promise<{ written: SupplierProfile[]; skipped: SeedSkip[] }> {
-  const written: SupplierProfile[] = [];
+  const toWrite: SupplierProfile[] = [];
   const skipped: SeedSkip[] = [];
   const seen = new Set<string>();
   for (const seed of seeds) {
@@ -30,32 +30,37 @@ export async function seedProfiles(
       continue;
     }
     const profile = parsed.data;
-    if (
-      seen.has(profile.id) ||
-      (await store.readJson(recordPath('supplierProfile', profile.id))) !== undefined
-    ) {
+    let path: string;
+    try {
+      path = recordPath('supplierProfile', profile.id);
+    } catch {
+      // An id that is not a safe path segment passes the schema: skip it, never name it.
+      skipped.push({ id: null, reason: 'invalid' });
+      continue;
+    }
+    if (seen.has(profile.id) || (await store.readJson(path)) !== undefined) {
       skipped.push({ id: profile.id, reason: 'exists' });
       continue;
     }
     seen.add(profile.id);
-    written.push(profile);
+    toWrite.push(profile);
   }
-  if (written.length > 0) {
-    await commitChange(
-      store,
-      {
-        profileId,
-        kind: 'profiles.seed',
-        summary: `Profili dei fornitori iniziali: ${String(written.length)}`,
-        changes: written.map((p) => ({
-          path: recordPath('supplierProfile', p.id),
-          before: undefined,
-          after: p,
-        })),
-      },
-      clock,
-      newId,
-    );
-  }
-  return { written, skipped };
+  if (toWrite.length === 0) return { written: [], skipped };
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'profiles.seed',
+      summary: `Profili dei fornitori iniziali: ${String(toWrite.length)}`,
+      changes: toWrite.map((p) => ({
+        path: recordPath('supplierProfile', p.id),
+        before: undefined,
+        after: p,
+      })),
+    },
+    clock,
+    newId,
+  );
+  // As written by commitChange (rev 1), not as the seeds say.
+  return { written: operation.changes.map((c) => c.after as SupplierProfile), skipped };
 }
