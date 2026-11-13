@@ -14,6 +14,7 @@ import io
 import json
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -705,6 +706,25 @@ class RealEngineTest(unittest.TestCase):
     def test_same_page_twice_gives_the_same_result(self) -> None:
         path = self.scan([self.TEXT_PAGE, [(72, 500, FILLER)]])
         self.assertEqual(read_pdf(path, ocr_data=REAL_DATA), read_pdf(path, ocr_data=REAL_DATA))
+
+    def test_smoke_tool_reads_a_synthetic_scan_with_the_real_engine(self) -> None:
+        smoke = Path(__file__).resolve().parents[1] / "tools" / "ocr_smoke.py"
+        done = subprocess.run(
+            [sys.executable, "-I", str(smoke), "--ocr-data", str(REAL_DATA)],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual((done.returncode, done.stderr), (0, ""))
+        self.assertEqual(done.stdout.strip(), "OCR ok")
+
+    def test_smoke_tool_fails_without_the_data_and_says_nothing_else(self) -> None:
+        smoke = Path(__file__).resolve().parents[1] / "tools" / "ocr_smoke.py"
+        done = subprocess.run(
+            [sys.executable, "-I", str(smoke), "--ocr-data", str(self.dir)],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(done.returncode, 1)
+        self.assertEqual(done.stdout, "")
+        self.assertEqual(done.stderr.strip(), "OCR non funzionante: la scansione di prova non è stata letta.")
 
     def test_blank_scan_gives_no_text(self) -> None:
         doc = read_pdf(self.scan([[], []]), ocr_data=REAL_DATA)

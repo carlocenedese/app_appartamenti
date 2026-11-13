@@ -85,4 +85,11 @@ describe('tauri.conf.json', () => {
     );
     expect(conf.bundle.resources['resources/ocr-data/']).toBe('ocr-data/');
   });
+
+  it('requires a macOS that the native OCR module loads on (minos 15.7)', () => {
+    const conf = JSON.parse(
+      readFileSync(join(root, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json'), 'utf8'),
+    );
+    expect(conf.bundle.macOS.minimumSystemVersion).toBe('15.7');
+  });
 });

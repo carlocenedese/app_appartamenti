@@ -125,6 +125,26 @@ jobs:
           app="apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/App Bollette.app"
           test -s "$app/Contents/Resources/ocr-data/ita.traineddata"
 
+      # The licence texts of the native OCR libraries (tesserocr/.dylibs) travel with them (I4).
+      - name: Check the licence texts of the OCR libraries in the built app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          app="apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/App Bollette.app"
+          texts=$(find "$app/Contents/Resources/python" -path '*bollette_pdf/licenses/ocr-native-libraries.txt')
+          test -n "$texts"
+          for name in Tesseract Leptonica libpng libjpeg-turbo libtiff libwebp liblzma Zstandard; do
+            grep -q "^## $name" $texts
+          done
+
+      # The engine really loads from the built app (a wrong-architecture wheel, a dylib that does
+      # not load, a macOS older than the module's minimum would all leave it silently off, I5):
+      # a synthetic scanned page is read with the bundled interpreter and the bundled data.
+      - name: Run the OCR from the built app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          app="apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/App Bollette.app"
+          "$app/Contents/Resources/python/bin/python3" -I python/tools/ocr_smoke.py --ocr-data "$app/Contents/Resources/ocr-data"
+
       - name: Collect the Windows installers
         if: runner.os == 'Windows'
         shell: bash
