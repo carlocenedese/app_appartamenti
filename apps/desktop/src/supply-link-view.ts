@@ -10,6 +10,8 @@ import { button, el, formatPercent, parsePercent, saveErrorMessage } from './vie
 export interface SupplyLinkInput {
   label: string;
   suggested: ApartmentSuggestion[];
+  /** Starts from this draft (editing a supply) instead of the suggestions. */
+  initial?: SupplyDraft;
   apartments: { id: string; name: string }[];
   onConfirm: (draft: SupplyDraft) => Promise<void>;
 }
@@ -22,14 +24,21 @@ function option(text: string, value: string): HTMLOptionElement {
 
 /** «A chi appartiene l'utenza?»: rows of apartment and percentage; totals and problems come from the core. */
 export function renderSupplyLink(root: HTMLElement, input: SupplyLinkInput): void {
-  const draft = newDraft(input.label, input.suggested);
-  // newDraft leaves the apartments of several suggestions empty; the suggestion is chosen here.
-  draft.rows.forEach((row, i) => {
-    row.apartmentId ||= input.suggested[i]?.apartmentId ?? '';
-  });
+  const draft =
+    input.initial === undefined
+      ? newDraft(input.label, input.suggested)
+      : { ...input.initial, rows: input.initial.rows.map((r) => ({ ...r })) };
   const originOf = (id: string) => input.suggested.find((s) => s.apartmentId === id)?.origin;
-  // With one suggestion the row is fixed at 100%, so the percentage is not asked.
-  const askPercent = () => !(input.suggested.length === 1 && draft.rows.length === 1);
+  // A single row at 100% is the whole supply, so the percentage is not asked.
+  const askPercent = () => !(draft.rows.length === 1 && draft.rows[0]?.basisPoints === 10000);
+  // A lone row chosen by hand is the whole supply too.
+  const fillLone = () => {
+    const [only] = draft.rows;
+    if (draft.rows.length === 1 && only !== undefined && only.basisPoints === 0) {
+      only.basisPoints = 10000;
+    }
+  };
+  let done = false;
 
   const rowsBox = el('div', 'rows');
   const total = el('p', 'total');
@@ -43,7 +52,7 @@ export function renderSupplyLink(root: HTMLElement, input: SupplyLinkInput): voi
     total.textContent = `Totale: ${formatPercent(draftTotal(draft))}`;
     const p = draftProblem(draft);
     problem.textContent = p ?? '';
-    confirm.disabled = p !== undefined;
+    confirm.disabled = done || p !== undefined;
   }
 
   async function submit(): Promise<void> {
@@ -51,6 +60,7 @@ export function renderSupplyLink(root: HTMLElement, input: SupplyLinkInput): voi
     error.textContent = '';
     try {
       await input.onConfirm(draft);
+      done = true;
     } catch (e) {
       error.textContent = saveErrorMessage(e);
     }
@@ -68,6 +78,7 @@ export function renderSupplyLink(root: HTMLElement, input: SupplyLinkInput): voi
       select.value = row.apartmentId;
       select.addEventListener('change', () => {
         row.apartmentId = select.value;
+        fillLone();
         renderRows();
       });
       line.append(select);
@@ -87,6 +98,15 @@ export function renderSupplyLink(root: HTMLElement, input: SupplyLinkInput): voi
         });
         line.append(field, el('span', '', '%'));
       }
+      if (draft.rows.length > 1) {
+        line.append(
+          button('Rimuovi riga', () => {
+            draft.rows.splice(index, 1);
+            fillLone();
+            renderRows();
+          }),
+        );
+      }
       rowsBox.append(line);
     });
     refresh();
@@ -99,6 +119,7 @@ export function renderSupplyLink(root: HTMLElement, input: SupplyLinkInput): voi
 
   const noteLabel = el('label', 'note');
   const noteField = el('textarea');
+  noteField.maxLength = 2000;
   noteField.addEventListener('input', () => {
     draft.note = noteField.value;
   });
@@ -110,7 +131,7 @@ export function renderSupplyLink(root: HTMLElement, input: SupplyLinkInput): voi
 
   root.replaceChildren(
     el('h2', '', "A chi appartiene l'utenza?"),
-    el('p', 'label', input.label),
+    el('p', 'label', draft.label),
     rowsBox,
     add,
     total,

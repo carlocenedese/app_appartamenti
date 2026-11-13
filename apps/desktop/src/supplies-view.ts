@@ -46,6 +46,7 @@ export function renderSupplies(root: HTMLElement, input: SuppliesInput): void {
     const addNote = button('Aggiungi nota', () => {
       const field = el('textarea');
       field.setAttribute('aria-label', 'Nota');
+      field.maxLength = 2000;
       noteBox.replaceChildren(
         field,
         button('Salva nota', () => void run(() => input.onAddNote(supply, field.value)), true),

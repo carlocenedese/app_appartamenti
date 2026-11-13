@@ -119,4 +119,72 @@ describe('renderSupplyLink', () => {
       expect(root.querySelector('.error')?.textContent).toBe('Non è stato possibile salvare.'),
     );
   });
+
+  it('keeps the button disabled after a successful confirm: a second click does nothing', async () => {
+    const onConfirm = vi.fn(() => Promise.resolve());
+    renderSupplyLink(root, {
+      label: 'IT004',
+      suggested: [{ apartmentId: 'a1', origin: 'catasto' }],
+      apartments,
+      onConfirm,
+    });
+    button().click();
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    expect(button().disabled).toBe(true);
+    button().click();
+    await Promise.resolve();
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it('removes a row with «Rimuovi riga», only while there are several', () => {
+    twoSuggestions();
+    const remove = () =>
+      [...root.querySelectorAll('button')].filter((b) => b.textContent === 'Rimuovi riga');
+    expect(remove()).toHaveLength(2);
+    (remove()[0] as HTMLButtonElement).click();
+    expect(root.querySelectorAll('select')).toHaveLength(1);
+    expect(remove()).toHaveLength(0);
+    // The remaining row is the whole supply: 100% and no percentage field.
+    expect(root.querySelectorAll('input.percent')).toHaveLength(0);
+    expect(total()).toBe('Totale: 100,00%');
+    expect(button().disabled).toBe(false);
+  });
+
+  it('starts with one empty row when nothing is suggested, and a chosen apartment gets 100%', () => {
+    renderSupplyLink(root, { label: 'IT005', suggested: [], apartments, onConfirm: vi.fn() });
+    const select = root.querySelector('select') as HTMLSelectElement;
+    expect(root.querySelectorAll('select')).toHaveLength(1);
+    expect(select.value).toBe('');
+    select.value = 'a2';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(root.querySelectorAll('input.percent')).toHaveLength(0);
+    expect(total()).toBe('Totale: 100,00%');
+    expect(button().disabled).toBe(false);
+  });
+
+  it('starts from an initial draft when given', () => {
+    renderSupplyLink(root, {
+      label: 'ignored',
+      suggested: [],
+      apartments,
+      initial: {
+        label: 'IT006',
+        rows: [
+          { apartmentId: 'a1', basisPoints: 6000 },
+          { apartmentId: 'a2', basisPoints: 4000 },
+        ],
+        note: '',
+      },
+      onConfirm: vi.fn(),
+    });
+    expect(total()).toBe('Totale: 100,00%');
+    expect(root.querySelector('.label')?.textContent).toBe('IT006');
+    expect(root.querySelectorAll<HTMLInputElement>('input.percent')[0]?.value).toBe('60,00');
+  });
+
+  it('limits the note to 2000 characters', () => {
+    twoSuggestions();
+    expect((root.querySelector('textarea') as HTMLTextAreaElement).maxLength).toBe(2000);
+  });
 });

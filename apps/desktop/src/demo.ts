@@ -11,6 +11,7 @@ const apartments = [
 export function showDemo(main: HTMLElement): void {
   const supplies: Supply[] = [];
   const notes: Note[] = [];
+  let noteCount = 0;
   const link = document.createElement('section');
   const tab = document.createElement('section');
   main.replaceChildren(link, tab);
@@ -27,7 +28,7 @@ export function showDemo(main: HTMLElement): void {
       },
       onAddNote: (s, text) => {
         notes.push({
-          id: `n${notes.length}`,
+          id: `n${String(noteCount++)}`,
           v: 1,
           rev: 1,
           targetType: 'supply',
@@ -58,7 +59,7 @@ export function showDemo(main: HTMLElement): void {
       });
       if (draft.note.trim() !== '') {
         notes.push({
-          id: 'n-first',
+          id: `n${String(noteCount++)}`,
           v: 1,
           rev: 1,
           targetType: 'supply',
