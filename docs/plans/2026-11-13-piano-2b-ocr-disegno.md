@@ -52,6 +52,20 @@ Stato: **bozza in attesa dell'approvazione di Carlo** (13 novembre 2026). Specif
 - Test: pagine sintetiche con testo noto (importi e date inventati) dall'immagine alla lettura; la stessa pagina dà lo stesso risultato due volte; rapporto sui PDF reali solo con conteggi (stile `python/tools/pdf_report.py`).
 - Prove in CI sui tre sistemi e prova di avvio dall'installer macOS e Windows.
 
+## Mie scelte dopo la lettura di un revisore (da controllare)
+
+Un revisore indipendente ha trovato questi punti; li decido io, Carlo può correggerli.
+
+1. **Piattaforme.** macOS (arm64 e x64) e Windows x64; Linux non è un obiettivo di distribuzione (resta nella CI solo per i test). Se per un obiettivo non esiste una ruota con hash, quel sistema non ha OCR: stato esplicito `senza-testo` con avviso, mai una compilazione da sorgente e mai uno stop dell'installer.
+2. **Licenze delle librerie native.** Si accettano e si registrano in `THIRD_PARTY.md` e `CLAUDE.md` solo licenze permissive in stile BSD, FTL (scegliendo l'opzione FTL della doppia licenza di FreeType), IJG, libpng, libtiff, Zlib. MPL, GPL, AGPL, LGPL o una licenza che non si riesce a identificare fermano il lavoro e si chiede a Carlo.
+3. **Testo misto.** L'OCR gira pagina per pagina solo sulle pagine senza testo (o con glifi rotti oltre la soglia). `textSource` è per documento: `'pdf'`, `'ocr'` o `'mixed'`; se il 2b-2 avrà bisogno della fonte per pagina si aggiunge allora.
+4. **Confidenza.** Con `textSource` diverso da `'pdf'` ogni campo letto da pagine OCR ha confidenza al massimo `medium`, anche se perfetto. Un campo resta vuoto quando il valore non passa il suo riconoscitore (`parse_euro`, date, ecc.) oppure quando la confidenza media delle parole del testo che lo contiene è sotto una soglia; la soglia è del costruttore (parte da 70 su 100) e si scrive come regola in `docs/progress.md`.
+5. **Profili dell'acqua scansionata.** Si scrivono contro fixture sintetiche con il layout dei profili già noti; la messa a punto sui PDF reali la fa Carlo con i soli conteggi e un campione di dieci. Il rapporto sui 39 PDF è informativo; il criterio di successo è quello già usato (campione a mano senza errori su importo, scadenza e numero).
+6. **Immagini.** Risoluzione presunta 300 punti per pollice (quella dell'EXIF se c'è); l'orientamento EXIF si applica (non la correzione dell'inclinazione); un'immagine oltre 30 megapixel o non leggibile dà `illeggibile`, mai un'eccezione.
+7. **Limiti.** Al massimo 20 pagine per documento passano dall'OCR (parametro); le altre restano senza testo con un avviso e lo stato `da-confermare`. Il programma resta una chiamata sincrona per file; il tempo massimo lo tiene chi lo lancia.
+8. **Dimensione e dati.** Va bene il peso stimato. `tessdata_fast` all'inizio; passare a `tessdata_best` (circa 6 MB in più) è la sostituzione di un file e si decide dopo il campione.
+9. **Percorso dei dati e modalità `-I`.** Il percorso dei dati della lingua si passa come argomento al motore, senza variabili d'ambiente. I test che usano il motore reale partono solo se i dati ci sono (variabile `REQUIRE_OCR=1` in CI, come `REQUIRE_PYTHON`); gli altri usano un finto motore.
+
 ## Lasciato al costruttore
 
 Quale soglia di glifi rotti fa scattare l'OCR; la risoluzione di disegno delle pagine (punti per pollice); il nome esatto delle risorse.

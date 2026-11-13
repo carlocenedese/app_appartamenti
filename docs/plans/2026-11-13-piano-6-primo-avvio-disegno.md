@@ -50,6 +50,19 @@ L'app installata non può ancora né creare né aprire una cartella di lavoro: i
 - `othersActive(now, entries, windowMinutes)` e scrittura periodica del file di presenza.
 - Procedura guidata (`apps/desktop/src/first-run.ts`): «Crea gruppo», «Unisciti», profilo, avvisi di sola lettura, di sincronizzazione e di presenza.
 
+## Mie scelte dopo la lettura di un revisore (da controllare)
+
+Un revisore indipendente ha trovato questi punti; li decido io, Carlo può correggerli.
+
+1. **Due stati di sincronizzazione, non tre.** Non c'è modo di distinguere, senza orologio né altri segnali, un record che manca perché Dropbox non l'ha ancora scaricato da uno che manca davvero. Quindi `sync` vale `'ok'` oppure `'behind'` (almeno un record è diverso da come dice l'ultima operazione del registro, o manca): sola lettura, messaggio «sincronizzazione in corso o incompleta». Con il clic dell'utente si usa `repairDiverged`, che oggi scrive il record come dice il registro e rifiuta se il record su disco ha una `rev` più alta; non cambia.
+2. **Quando si scrive.** Si apre in sola lettura se la compatibilità non è `ok`, se `sync` è `'behind'` o se `workspace.json` non è valido. Le copie in conflitto e gli `id` doppi restano avvisi in un elenco di problemi e non bloccano.
+3. **Ripresa di `createWorkspace`.** La procedura fissa una volta sola gli `id` dell'utente e della cartella (nelle impostazioni della macchina) e li riusa a ogni nuovo tentativo; `createUser` e `seedProfiles` saltano ciò che esiste già; `workspace.json` per ultimo. La ripresa parte da sola quando l'utente rilancia «Crea gruppo» con la stessa cartella. Un tentativo con una cartella diversa è un nuovo gruppo.
+4. **«Chi sono io».** A ogni apertura si controlla che l'utente scelto esista in `_app/dati/user` e non sia cancellato; altrimenti la procedura propone di sceglierne o crearne un altro. La lingua è una impostazione della macchina.
+5. **Presenza.** I file di `_app/presenza/` non sono record: stanno fuori da `_app/dati/`, senza `id`, `v`, `rev` né registro, e non li legge `loadAll`. Segnale ogni minuto e finestra di tre minuti, tutte e due impostazioni. L'ora scritta è quella della macchina che scrive; si confronta con l'ora locale con una tolleranza di un minuto. Lo stesso utente su due macchine non è «un altro».
+6. **Verifica dei permessi di Tauri come primo task.** Il primo task è una prova (spike): scegliere una cartella nel dialogo, scriverci con il plugin dei file, riaprirla dopo un riavvio. Se non regge, il ripiego già concordato è un insieme di comandi Rust propri limitati alla cartella scelta (provabile solo in CI). La licenza dei plugin lato Rust si controlla con lo strumento che il progetto già usa per Cargo; `pnpm licenses:check` copre solo npm.
+7. **Regole dei nomi dei conflitti.** Si ricava dal rilevamento esistente di `loadAll`/`loadDir` una lista di regole con Dropbox come predefinita, passata come parametro facoltativo: nessuna firma esistente cambia per i chiamanti dei piani 1-5.
+8. **Versioni alla creazione.** `schemaVersion` è quello del core; `minAppVersion` è la versione corrente del core (`CORE_VERSION`), che resta l'unico riferimento di compatibilità; la versione dell'app Tauri non entra nel controllo.
+
 ## Lasciato al costruttore
 
 Il nome esatto dei file di presenza e della finestra predefinita (come impostazione); il testo dei messaggi; il modo preciso di dare al plugin il permesso sulla cartella scelta.
