@@ -9,7 +9,10 @@ import type { Workspace } from './model';
 /** Version of the engine; a settlement records it so that a snapshot can be reproduced. */
 export const CORE_VERSION = '0.1.0';
 
-/** Layout version of the workspace folder this core writes (`Workspace.schemaVersion`). */
+/**
+ * Layout version of the workspace folder this core writes (`Workspace.schemaVersion`); the app
+ * passes it as `schemaVersion` to `checkCompat` and `assessWorkspace`.
+ */
 export const CORE_SCHEMA_VERSION = 1;
 
 /**

@@ -120,6 +120,67 @@ describe('assessWorkspace', () => {
       { path: '_app/dati/user/u1 2.json', reason: 'conflicted-copy' },
     ]);
   });
+
+  it('checks every kind of record in recordSchemas, such as tenancy', async () => {
+    const store = await cleanFolder();
+    store.putRaw('_app/dati/tenancy/t1 (conflicted copy 2026-11-13).json', '{}');
+    const result = await assessWorkspace(store, app);
+    expect(result.writable).toBe(true);
+    expect(result.problems).toEqual([
+      {
+        path: '_app/dati/tenancy/t1 (conflicted copy 2026-11-13).json',
+        reason: 'conflicted-copy',
+        originalPath: '_app/dati/tenancy/t1.json',
+      },
+    ]);
+  });
+
+  it('is behind for an operation file cut short or from a newer app', async () => {
+    const truncated = new MemoryStore();
+    await truncated.writeJsonAtomic(WORKSPACE_PATH, workspace());
+    truncated.putRaw(`${JOURNAL_DIR}/op.json`, '{"id": "op-1", "v": 1, "chan');
+    const result = await assessWorkspace(truncated, app);
+    expect(result).toMatchObject({ compat: 'ok', sync: 'behind', writable: false });
+    expect(result.problems).toEqual([{ path: `${JOURNAL_DIR}/op.json`, reason: 'malformed-json' }]);
+
+    const future = await cleanFolder();
+    future.putRaw(`${JOURNAL_DIR}/op.json`, JSON.stringify({ id: 'op-9', v: 2 }));
+    expect(await assessWorkspace(future, app)).toMatchObject({
+      sync: 'behind',
+      writable: false,
+      problems: [{ path: `${JOURNAL_DIR}/op.json`, reason: 'future-version' }],
+    });
+  });
+
+  it('lists a conflict copy of an operation without blocking, with the rules it is given', async () => {
+    const store = await cleanFolder();
+    const [name] = await store.list(JOURNAL_DIR);
+    const stem = (name ?? '').slice(0, -'.json'.length);
+    const text = store.getRaw(`${JOURNAL_DIR}/${name ?? ''}`) ?? '';
+    store.putRaw(`${JOURNAL_DIR}/${stem} (conflicted copy).json`, text);
+    store.putRaw(`${JOURNAL_DIR}/${stem} 2.json`, text);
+    const plain = await assessWorkspace(store, app);
+    expect(plain).toMatchObject({ sync: 'ok', writable: true });
+    expect(plain.problems.map(({ path, reason }) => [path, reason])).toEqual([
+      [`${JOURNAL_DIR}/${stem} (conflicted copy).json`, 'conflicted-copy'],
+      [`${JOURNAL_DIR}/${stem} 2.json`, 'duplicate-id'],
+    ]);
+    const both = await assessWorkspace(store, app, [DROPBOX_CONFLICT_RULE, ICLOUD_TEST_RULE]);
+    expect(both).toMatchObject({ sync: 'ok', writable: true });
+    expect(both.problems.map(({ reason }) => reason)).toEqual([
+      'conflicted-copy',
+      'conflicted-copy',
+    ]);
+  });
+
+  it('lets a failure of the store itself go up', async () => {
+    class BrokenStore extends MemoryStore {
+      override async readJson(): Promise<unknown> {
+        throw new Error('disk gone');
+      }
+    }
+    await expect(assessWorkspace(new BrokenStore(), app)).rejects.toThrow('disk gone');
+  });
 });
 
 // A made-up second service for the test: copies named "<name> <n>.json".
