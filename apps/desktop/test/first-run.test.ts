@@ -129,6 +129,29 @@ describe('renderFirstRun: «Crea gruppo»', () => {
     expect(settings()).toEqual({ folder: ROOT, userId: 'id-1' });
   });
 
+  it('refuses a folder that already holds data of a group, with a message and no pending ids', async () => {
+    // Another group arrived without its workspace.json.
+    let n = 0;
+    await createUser(
+      store,
+      { id: 'u-9', name: 'Zeno' },
+      'u-9',
+      () => NOW,
+      () => `z-${String(n++)}`,
+    );
+    renderFirstRun(root, input());
+    await screen('Crea gruppo');
+    type('group', 'Casa al mare');
+    type('me', 'Mario');
+    primary().click();
+    await vi.waitFor(() =>
+      expect(root.querySelector('.error')?.textContent).toContain('già dei dati'),
+    );
+    expect(fs.names(`${ROOT}/_app`)).not.toContain('workspace.json');
+    expect((await liveUsers(store)).map((u) => u.id)).toEqual(['u-9']);
+    expect(settings().pendingWorkspace).toBeUndefined();
+  });
+
   it('starts a new group with new ids when the retry picks another folder', async () => {
     saved = JSON.stringify({
       pendingWorkspace: { folder: '/Dropbox/Altro', workspaceId: 'old-ws', userId: 'old-u' },
@@ -221,6 +244,35 @@ describe('renderFirstRun: opening a folder', () => {
     expect(settings().userId).toBe('u-1');
   });
 
+  it('a double click on «Continua» creates one user only', async () => {
+    await existingGroup({ folder: ROOT, userId: 'u-gone' });
+    renderFirstRun(root, input());
+    await screen('Chi sei?');
+    const select = root.querySelector('select') as HTMLSelectElement;
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    type('me', 'Lucia');
+    const go = primary();
+    go.click();
+    go.click();
+    await screen('Gruppo pronto');
+    expect((await liveUsers(store)).filter((u) => u.name === 'Lucia')).toHaveLength(1);
+  });
+
+  it('with only a cut-short journal file: no «Ripara», the wait message and a way to check again', async () => {
+    await existingGroup();
+    fs.put(`${ROOT}/_app/journal/2026-11-13T10-00-00.000Z-u-1-zz.json`, '{"id":');
+    renderFirstRun(root, input());
+    await screen('Sola lettura');
+    expect(buttonNamed('Ripara')).toBeUndefined();
+    expect(root.textContent).toContain('Aspetta che Dropbox finisca');
+    expect(root.textContent).not.toContain('usa «Ripara»');
+    fs.put(`${ROOT}/_app/journal/2026-11-13T10-00-00.000Z-u-1-zz.json`, '{}');
+    buttonNamed('Ricontrolla').click();
+    await vi.waitFor(() => expect(heading()).toBe('Sola lettura'));
+    expect(repairDiverged).not.toHaveBeenCalled();
+  });
+
   it('creates a new user with a fresh id when asked', async () => {
     await existingGroup({ folder: ROOT, userId: 'u-gone' });
     renderFirstRun(root, input());
@@ -260,6 +312,30 @@ describe('renderFirstRun: opening a folder', () => {
     expect(ticks.map((t) => t.ms)).toEqual([60_000]);
     handle.stop();
     expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('a tick rewrites the presence and updates the notice', async () => {
+    await existingGroup();
+    let n = 0;
+    await createUser(
+      store,
+      { id: 'u-2', name: 'Lucia' },
+      'u-2',
+      () => NOW,
+      () => `x-${String(n++)}`,
+    );
+    let now = NOW;
+    renderFirstRun(root, input({ clock: () => now }));
+    await screen('Gruppo pronto');
+    await vi.waitFor(() => expect(fs.names(`${ROOT}/_app/presenza`)).toEqual(['u-1.json']));
+    expect(root.querySelector('.presence')?.textContent).toBe('');
+    now = '2026-11-13T10:01:00.000Z';
+    fs.put(`${ROOT}/_app/presenza/u-2.json`, JSON.stringify({ userId: 'u-2', at: now }));
+    ticks[0]?.tick();
+    await vi.waitFor(() =>
+      expect(root.querySelector('.presence')?.textContent).toBe('Lucia sta lavorando'),
+    );
+    expect(JSON.parse(await fs.readText(`${ROOT}/_app/presenza/u-1.json`)).at).toBe(now);
   });
 
   it('shows no notice when nobody else is active', async () => {

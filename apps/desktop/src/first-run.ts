@@ -115,7 +115,18 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
         delete done.pendingWorkspace;
         await saveMachineSettings(input.settings, done);
         open(folder);
-      } catch {
+      } catch (e) {
+        if (e instanceof RangeError) {
+          // Ruling: a refusal is not an interrupted creation, so its ids are dropped (the same
+          // folder would only be refused again; a later empty folder gets fresh ones).
+          const current = await load();
+          delete current.pendingWorkspace;
+          await saveMachineSettings(input.settings, current).catch(() => undefined);
+          error.textContent =
+            'Questa cartella contiene già dei dati di un gruppo. Per entrarci usa «Unisciti a un ' +
+            'gruppo»; per crearne uno nuovo scegli una cartella vuota.';
+          return;
+        }
         error.textContent =
           'Non è stato possibile creare il gruppo. Se la cartella contiene già un gruppo, usa ' +
           '«Unisciti a un gruppo»; altrimenti riprova con la stessa cartella: il lavoro fatto non si perde.';
@@ -201,7 +212,22 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
       );
       return;
     }
-    // compat ok, so the folder is behind: repair only when the user asks.
+    // compat ok, so the folder is behind. Only a diverged record can be repaired, and only when
+    // the user asks; a journal file cut short or from a newer app just has to arrive.
+    if (!assessment.problems.some((x) => x.reason === 'diverged')) {
+      show(
+        'Sola lettura',
+        el(
+          'p',
+          '',
+          'La cartella è aperta in sola lettura: sincronizzazione in corso o incompleta. ' +
+            'Aspetta che Dropbox finisca, poi ricontrolla.',
+        ),
+        errorLine(note),
+        link('Ricontrolla', () => open(folder)),
+      );
+      return;
+    }
     const repair = button(
       'Ripara',
       () => {
@@ -255,6 +281,7 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
     const go = button(
       'Continua',
       () => {
+        go.disabled = true;
         void (async () => {
           error.textContent = '';
           let userId = select.value;
@@ -277,6 +304,8 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
             open(folder);
           } catch {
             error.textContent = 'Non è stato possibile salvare.';
+          } finally {
+            go.disabled = false;
           }
         })();
       },

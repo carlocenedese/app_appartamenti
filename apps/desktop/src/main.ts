@@ -22,6 +22,11 @@ if (import.meta.env.DEV && typeof document !== 'undefined' && location.hash === 
   void import('./demo').then((m) => m.showDemo(document.querySelector('main') as HTMLElement));
 }
 
+const seedFiles = import.meta.glob<unknown>('../../../python/seed-profiles/*.json', {
+  eager: true,
+  import: 'default',
+});
+
 // First start, still being built: reached only with #primo-avvio in development builds.
 if (import.meta.env.DEV && typeof document !== 'undefined' && location.hash === '#primo-avvio') {
   void Promise.all([
@@ -34,8 +39,8 @@ if (import.meta.env.DEV && typeof document !== 'undefined' && location.hash === 
       settings: settings.tauriSettingsBackend,
       pickFolder: tauri.pickFolder,
       openStore: (folder) => new tauri.TauriStore(folder, tauri.tauriFsBackend),
-      // shortcut: no bundled profiles yet; read resources/seed-profiles/ (R83) when the app is wired.
-      seeds: () => Promise.resolve([]),
+      // The same files the installer bundles (R83), taken from the repository at build time: no network.
+      seeds: () => Promise.resolve(Object.values(seedFiles)),
       clock: () => new Date().toISOString(),
       newId: () => crypto.randomUUID(),
       schedule: (ms, tick) => {
