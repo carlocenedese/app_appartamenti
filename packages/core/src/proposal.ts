@@ -446,7 +446,7 @@ function tariProposal(
           checks.push(
             fail(
               'part-share',
-              `La percentuale è troppo piccola per questo importo: la quota dell'utenza «${part.label}» è zero. Controlla le percentuali.`,
+              `La quota di un appartamento su questa utenza «${part.label}» è zero: la percentuale è troppo piccola per questo importo. Controlla le percentuali.`,
             ),
           );
         } else {

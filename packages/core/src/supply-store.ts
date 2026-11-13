@@ -5,12 +5,13 @@
  */
 import { commitChange } from './journal';
 import { NoteSchema, SupplySchema } from './model';
-import type { Supply } from './model';
+import type { Note, Supply } from './model';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
 import { draftProblem } from './supply-link';
+import { foldText } from './text';
 import type { SupplyDraft } from './supply-link';
 
 function checkedDraft(draft: SupplyDraft): Pick<Supply, 'label' | 'apartments'> {
@@ -35,6 +36,10 @@ export async function linkSupply(
     { ...checkedDraft(draft), id: newId(), v: 1, rev: 1 },
     'supply',
   );
+  const key = foldText(supply.label);
+  if ((await liveSupplies(store)).some((s) => foldText(s.label) === key)) {
+    throw new RangeError("Esiste già un'utenza con questa etichetta.");
+  }
   const at = clock();
   const text = draft.note.trim();
   const note =
@@ -123,4 +128,46 @@ export async function removeSupply(
 /** The supplies that are not deleted; broken files are left out, as with `loadAll`. */
 export async function liveSupplies(store: Store): Promise<Supply[]> {
   return (await loadAll(store, 'supply', SupplySchema)).records;
+}
+
+/** Writes a private note on a supply, one `supply.note`; refuses an empty or over-long text first. */
+export async function addSupplyNote(
+  store: Store,
+  supply: Supply,
+  text: string,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<Note> {
+  const trimmed = text.trim();
+  if (trimmed === '') throw new RangeError('La nota è vuota.');
+  if (trimmed.length > 2000) throw new RangeError('La nota supera i 2000 caratteri.');
+  const at = clock();
+  const note = parseOrThrow(
+    NoteSchema,
+    {
+      id: newId(),
+      v: 1,
+      rev: 1,
+      targetType: 'supply',
+      targetId: supply.id,
+      text: trimmed,
+      profileId,
+      at,
+      visibleToTenants: false,
+    },
+    'note',
+  );
+  await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'supply.note',
+      summary: `Nota sull'utenza ${supply.label}`,
+      changes: [{ path: recordPath('note', note.id), before: undefined, after: note }],
+    },
+    () => at,
+    newId,
+  );
+  return note;
 }

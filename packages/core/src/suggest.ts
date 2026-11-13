@@ -9,10 +9,34 @@ export interface ApartmentSuggestion {
   origin: 'catasto' | 'indirizzo';
 }
 
-const STREET_TYPES = new Set(['via', 'v', 'galleria', 'gal', 'viale', 'piazza', 'pza']);
+// Abbreviation (written without dots) to the canonical street type; a different type is a different street.
+const STREET_TYPES = new Map<string, string>([
+  ...[
+    'via',
+    'galleria',
+    'viale',
+    'piazza',
+    'corso',
+    'largo',
+    'riva',
+    'salita',
+    'androna',
+    'calle',
+    'campo',
+  ].map((t): [string, string] => [t, t]),
+  ['v', 'via'],
+  ['gal', 'galleria'],
+  ['pza', 'piazza'],
+  ['cso', 'corso'],
+]);
 
-/** Street (without its type word) and first number group, or undefined when there is no number. */
-function addressKey(address: string): string | undefined {
+interface AddressKey {
+  type: string | undefined;
+  rest: string;
+}
+
+/** Street type, street name and first number group, or undefined when there is no number. */
+function addressKey(address: string): AddressKey | undefined {
   const text = foldText(address)
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
@@ -22,8 +46,16 @@ function addressKey(address: string): string | undefined {
   const match = /^(.*?)\s*(\d+)/u.exec(text);
   if (match === null) return undefined;
   const words = (match[1] as string).split(' ').filter((w) => w !== '');
-  if (words.length > 0 && STREET_TYPES.has(words[0] as string)) words.shift();
-  return words.length === 0 ? undefined : `${words.join(' ')}|${match[2] as string}`;
+  const type = STREET_TYPES.get(words[0] ?? '');
+  if (type !== undefined) words.shift();
+  return words.length === 0
+    ? undefined
+    : { type, rest: `${words.join(' ')}|${match[2] as string}` };
+}
+
+// An address without a street type word matches a typed one (ruling).
+function sameAddress(a: AddressKey, b: AddressKey): boolean {
+  return a.rest === b.rest && (a.type === undefined || b.type === undefined || a.type === b.type);
 }
 
 /** Apartments the property written in a notice points to: cadastre first, then address. */
@@ -43,9 +75,13 @@ export function suggestApartments(
       (cadastre ?? []).some((c) => c.sheet === sheet && c.parcel === parcel && c.sub === sub)
     ) {
       result.push({ apartmentId: id, origin: 'catasto' });
-    } else if (key !== undefined && address !== undefined && addressKey(address) === key) {
-      result.push({ apartmentId: id, origin: 'indirizzo' });
+    } else {
+      const other = address === undefined ? undefined : addressKey(address);
+      if (key !== undefined && other !== undefined && sameAddress(other, key)) {
+        result.push({ apartmentId: id, origin: 'indirizzo' });
+      }
     }
   }
-  return result;
+  const exact = result.filter((r) => r.origin === 'catasto');
+  return exact.length > 0 ? exact : result;
 }

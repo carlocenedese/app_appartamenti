@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ExtractionResultSchema,
+  addSupplyNote,
   InstalmentSchema,
   StaleWriteError,
   SupplySchema,
@@ -77,6 +78,61 @@ describe('linkSupply', () => {
     await expect(linkSupply(store, draft({ label: '' }), 'p1', clock, ids())).rejects.toThrow();
     expect(await files(store)).toEqual([]);
     expect(await store.list('_app/dati/supply')).toEqual([]);
+  });
+});
+
+describe('linkSupply duplicate label', () => {
+  it('refuses a second live supply with the same label, ignoring case', async () => {
+    const store = new MemoryStore();
+    await linkSupply(store, draft(), 'p1', clock, ids('a'));
+    await expect(
+      linkSupply(store, draft({ label: 'BERCHET' }), 'p1', clock, ids('b')),
+    ).rejects.toThrow("Esiste già un'utenza con questa etichetta.");
+    expect(await files(store)).toHaveLength(1);
+  });
+
+  it('allows the label again once the first supply is removed', async () => {
+    const store = new MemoryStore();
+    const first = await linkSupply(store, draft(), 'p1', clock, ids('a'));
+    await removeSupply(store, first, 'p1', clock, ids('r'));
+    await expect(linkSupply(store, draft(), 'p1', clock, ids('b'))).resolves.toBeDefined();
+  });
+});
+
+describe('addSupplyNote', () => {
+  it('writes one supply.note operation with a trimmed private note', async () => {
+    const store = new MemoryStore();
+    const supply = await linkSupply(store, draft(), 'p1', clock, ids('a'));
+    const note = await addSupplyNote(
+      store,
+      supply,
+      '  Contatore in cortile ',
+      'p1',
+      clock,
+      ids('n'),
+    );
+    expect(note).toMatchObject({
+      targetType: 'supply',
+      targetId: supply.id,
+      text: 'Contatore in cortile',
+      profileId: 'p1',
+      visibleToTenants: false,
+    });
+    const ops = (await readJournal(store)).operations;
+    expect(ops.map((o) => o.kind).sort()).toEqual(['supply.link', 'supply.note']);
+    expect(await notesFor(store, 'supply', supply.id)).toHaveLength(1);
+  });
+
+  it('refuses an empty or too long text before writing anything', async () => {
+    const store = new MemoryStore();
+    const supply = await linkSupply(store, draft(), 'p1', clock, ids('a'));
+    for (const text of ['', '   ', 'x'.repeat(2001)]) {
+      await expect(addSupplyNote(store, supply, text, 'p1', clock, ids('n'))).rejects.toThrow(
+        RangeError,
+      );
+    }
+    expect(await files(store)).toHaveLength(1);
+    expect(await notesFor(store, 'supply', supply.id)).toEqual([]);
   });
 });
 

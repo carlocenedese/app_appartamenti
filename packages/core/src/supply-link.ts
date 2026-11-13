@@ -11,13 +11,25 @@ function percent(basisPoints: number): string {
   return `${Math.trunc(basisPoints / 100)},${String(basisPoints % 100).padStart(2, '0')}%`;
 }
 
-/** One row at 100% for a single suggestion, otherwise empty rows (one per suggestion). */
+/** One row per suggestion (100% for a single one); with none, one empty row to fill in. */
 export function newDraft(label: string, suggested: { apartmentId: string }[]): SupplyDraft {
   const rows =
-    suggested.length === 1
-      ? [{ apartmentId: (suggested[0] as { apartmentId: string }).apartmentId, basisPoints: 10000 }]
-      : suggested.map(() => ({ apartmentId: '', basisPoints: 0 }));
+    suggested.length === 0
+      ? [{ apartmentId: '', basisPoints: 0 }]
+      : suggested.map((s) => ({
+          apartmentId: s.apartmentId,
+          basisPoints: suggested.length === 1 ? 10000 : 0,
+        }));
   return { label, rows, note: '' };
+}
+
+/** The draft to edit an existing supply (the note is new text, so it starts empty). */
+export function draftFromSupply(supply: Pick<Supply, 'label' | 'apartments'>): SupplyDraft {
+  return {
+    label: supply.label,
+    rows: supply.apartments.map((a) => ({ apartmentId: a.apartmentId, basisPoints: a.weight })),
+    note: '',
+  };
 }
 
 export function draftTotal(draft: SupplyDraft): number {

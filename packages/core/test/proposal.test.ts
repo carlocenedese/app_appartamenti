@@ -510,6 +510,7 @@ describe('proposalFromExtraction: TARI', () => {
     expect(proposal.instalments).toHaveLength(1);
     expect(check(proposal, 'unknown-part')?.severity).toBe('fail');
     expect(check(proposal, 'unknown-part')?.message).toContain('Lovarini');
+    expect(check(proposal, 'unknown-part')?.message).toContain('Collegala qui sotto');
   });
 
   it('splits a supply of two apartments by weight, sharing the group', () => {
@@ -581,6 +582,9 @@ describe('proposalFromExtraction: TARI', () => {
       ),
     );
     expect(check(proposal, 'part-share')?.severity).toBe('fail');
+    expect(check(proposal, 'part-share')?.message).toContain(
+      'La quota di un appartamento su questa utenza «Berchet» è zero: la percentuale è troppo piccola per questo importo. Controlla le percentuali.',
+    );
     expect(proposal.instalments.map((i) => i.apartmentId)).toEqual(['apt-l']);
   });
 
@@ -613,6 +617,9 @@ describe('proposalFromExtraction: TARI', () => {
       ),
     );
     expect(check(proposal, 'duplicate-supply')?.severity).toBe('fail');
+    expect(check(proposal, 'duplicate-supply')?.message).toContain(
+      'Apri Impostazioni, Utenze e correggi',
+    );
     expect(check(proposal, 'unknown-part')?.severity).toBe('fail');
     expect(proposal.instalments.map((i) => i.apartmentId)).toEqual(['apt-l']);
   });

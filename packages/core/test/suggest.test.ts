@@ -39,6 +39,29 @@ describe('suggestApartments', () => {
     ).toEqual([{ apartmentId: 'a1', origin: 'catasto' }]);
   });
 
+  it('keeps the street type: Viale Roma is not Via Roma, V. Roma is', () => {
+    expect(suggestApartments({ address: 'Viale Roma 10' }, apartments)).toEqual([]);
+    expect(suggestApartments({ address: 'V. Roma 10' }, apartments)).toEqual([
+      { apartmentId: 'a2', origin: 'indirizzo' },
+    ]);
+    expect(suggestApartments({ address: 'C.so Roma 10' }, apartments)).toEqual([]);
+  });
+
+  it('lets an address without a street type match a typed one', () => {
+    expect(suggestApartments({ address: 'Roma 10' }, apartments)).toEqual([
+      { apartmentId: 'a2', origin: 'indirizzo' },
+    ]);
+  });
+
+  it('returns only the cadastre matches when there are any', () => {
+    expect(
+      suggestApartments(
+        { address: 'Via Roma 10', sheet: '12', parcel: '345', sub: '6' },
+        apartments,
+      ),
+    ).toEqual([{ apartmentId: 'a1', origin: 'catasto' }]);
+  });
+
   it('does not match the same number in another street', () => {
     expect(suggestApartments({ address: 'Via Milano 10' }, apartments)).toEqual([]);
   });

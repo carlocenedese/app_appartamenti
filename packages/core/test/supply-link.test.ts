@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { SupplySchema } from '../src/model';
-import { draftProblem, draftToSupply, draftTotal, newDraft } from '../src/supply-link';
+import {
+  draftFromSupply,
+  draftProblem,
+  draftToSupply,
+  draftTotal,
+  newDraft,
+} from '../src/supply-link';
 
 const row = (apartmentId: string, basisPoints: number) => ({ apartmentId, basisPoints });
 const draft = (rows: { apartmentId: string; basisPoints: number }[], note = '') => ({
@@ -14,12 +20,28 @@ describe('newDraft', () => {
   it('one suggestion gives one row at 100%', () => {
     expect(newDraft('UT-1', [{ apartmentId: 'a1' }]).rows).toEqual([row('a1', 10000)]);
   });
-  it('no or several suggestions give empty rows', () => {
-    expect(newDraft('UT-1', []).rows).toEqual([]);
+  it('several suggestions give one row each, with the apartment and no share', () => {
     expect(newDraft('UT-1', [{ apartmentId: 'a1' }, { apartmentId: 'a2' }]).rows).toEqual([
-      row('', 0),
-      row('', 0),
+      row('a1', 0),
+      row('a2', 0),
     ]);
+  });
+  it('no suggestion gives one empty row', () => {
+    expect(newDraft('UT-1', []).rows).toEqual([row('', 0)]);
+  });
+});
+
+describe('draftFromSupply', () => {
+  it('turns a supply into a draft with weights as basis points and no note', () => {
+    expect(
+      draftFromSupply({
+        label: 'UT-1',
+        apartments: [
+          { apartmentId: 'a1', weight: 6000 },
+          { apartmentId: 'a2', weight: 4000 },
+        ],
+      }),
+    ).toEqual({ label: 'UT-1', rows: [row('a1', 6000), row('a2', 4000)], note: '' });
   });
 });
 
