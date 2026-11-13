@@ -161,6 +161,17 @@ def check_profile_rules(profile: dict[str, Any]) -> list[str]:
     if valid_from is not None and valid_to is not None and valid_to < valid_from:
         errors.append("validTo: il profilo finisce prima di cominciare")
 
+    recognise = profile.get("recognise")
+    words = recognise.get("ocrAnyOf") if isinstance(recognise, dict) else None
+    if isinstance(words, list):
+        from .profiles import normalize_ocr
+
+        folded = [normalize_ocr(word) for word in words if isinstance(word, str) and word != ""]
+        if "" in folded or len(set(folded)) != len(folded):
+            errors.append(
+                "recognise/ocrAnyOf: ogni testo deve avere una lettera o una cifra e non ripetersi"
+            )
+
     fields = profile.get("fields")
     if isinstance(fields, dict):
         for name, spec in fields.items():

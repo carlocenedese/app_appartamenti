@@ -10,7 +10,8 @@
   "validFrom": "2020-01-01",
   "recognise": {
     "allOf": ["servizi intestati a", "smc"],
-    "noneOf": []
+    "noneOf": [],
+    "ocrAnyOf": ["smc"]
   },
   "fields": {
     "number": {

@@ -160,6 +160,72 @@
       }
     },
     {
+      "name": "ocrAnyOf with words",
+      "valid": true,
+      "set": {
+        "recognise": {
+          "allOf": ["x"],
+          "noneOf": [],
+          "ocrAnyOf": ["luce", "Società emittente"]
+        }
+      }
+    },
+    {
+      "name": "empty ocrAnyOf",
+      "valid": true,
+      "set": {
+        "recognise": {
+          "allOf": ["x"],
+          "noneOf": [],
+          "ocrAnyOf": []
+        }
+      }
+    },
+    {
+      "name": "ocrAnyOf not a list",
+      "valid": false,
+      "set": {
+        "recognise": {
+          "allOf": ["x"],
+          "noneOf": [],
+          "ocrAnyOf": "luce"
+        }
+      }
+    },
+    {
+      "name": "empty ocrAnyOf text",
+      "valid": false,
+      "set": {
+        "recognise": {
+          "allOf": ["x"],
+          "noneOf": [],
+          "ocrAnyOf": [""]
+        }
+      }
+    },
+    {
+      "name": "ocrAnyOf text without letters or digits",
+      "valid": false,
+      "set": {
+        "recognise": {
+          "allOf": ["x"],
+          "noneOf": [],
+          "ocrAnyOf": ["***", "luce"]
+        }
+      }
+    },
+    {
+      "name": "ocrAnyOf duplicate after normalising",
+      "valid": false,
+      "set": {
+        "recognise": {
+          "allOf": ["x"],
+          "noneOf": [],
+          "ocrAnyOf": ["Società", "societa'"]
+        }
+      }
+    },
+    {
       "name": "missing supplier",
       "valid": false,
       "unset": ["supplier"]

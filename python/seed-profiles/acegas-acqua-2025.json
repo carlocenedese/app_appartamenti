@@ -10,7 +10,8 @@
   "validFrom": "2025-01-01",
   "recognise": {
     "allOf": ["servizio idrico"],
-    "noneOf": ["gestore della tassa sui rifiuti"]
+    "noneOf": ["gestore della tassa sui rifiuti"],
+    "ocrAnyOf": ["idrico"]
   },
   "fields": {
     "number": {

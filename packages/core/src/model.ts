@@ -495,6 +495,16 @@ const FIELD_VALUE_TYPES = {
   consumption: 'quantity',
 } as const;
 
+/** Same as `normalize_ocr` in python/bollette_pdf/profiles.py (rule R89). */
+function normaliseOcr(text: string): string {
+  return text
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
 export const SupplierProfileSchema = RecordBaseSchema.extend({
   supplier: NonEmptyString,
   kind: z.enum(['bill', 'tari']),
@@ -510,6 +520,8 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
   recognise: z.object({
     allOf: z.array(NonEmptyString).min(1),
     noneOf: z.array(NonEmptyString),
+    /** R90: words that recognise a scanned page instead of `allOf`; a text PDF ignores them. */
+    ocrAnyOf: z.array(NonEmptyString).optional(),
   }),
   fields: z.partialRecord(
     z.enum(Object.keys(FIELD_VALUE_TYPES) as [keyof typeof FIELD_VALUE_TYPES]),
@@ -537,6 +549,16 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
     message: 'A TARI profile must not have a category',
     path: ['category'],
   })
+  .refine(
+    (profile) => {
+      const words = (profile.recognise.ocrAnyOf ?? []).map(normaliseOcr);
+      return words.every((word) => word !== '') && new Set(words).size === words.length;
+    },
+    {
+      message: 'An ocrAnyOf text needs a letter or a digit and must not repeat another',
+      path: ['recognise', 'ocrAnyOf'],
+    },
+  )
   .refine((profile) => profile.kind === 'tari' || profile.parts === undefined, {
     message: 'Only a TARI profile has parts',
     path: ['parts'],

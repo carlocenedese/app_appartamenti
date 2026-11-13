@@ -60,16 +60,21 @@ def normalize_ocr(text: str) -> str:
 
 def recognises(profile: dict[str, Any], pdf_text: str, ocr_text: str = "") -> bool:
     """Every `allOf` text is in the PDF text (`normalize`) or in the OCR text (`normalize_ocr`),
-    none of `noneOf` is."""
+    or (R90) a word of `ocrAnyOf` is in the OCR text; none of `noneOf` is."""
 
     def found(condition: str) -> bool:
         folded = normalize_ocr(condition)
         return normalize(condition) in pdf_text or (folded != "" and folded in ocr_text)
 
     recognise = profile["recognise"]
-    return all(found(text) for text in recognise["allOf"]) and not any(
-        found(text) for text in recognise["noneOf"]
+    if any(found(text) for text in recognise["noneOf"]):
+        return False
+    padded = f" {ocr_text} "
+    anchored = any(
+        folded != "" and f" {folded} " in padded
+        for folded in map(normalize_ocr, recognise.get("ocrAnyOf", []))
     )
+    return anchored or all(found(text) for text in recognise["allOf"])
 
 
 def matching_profiles(doc: Document, profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:

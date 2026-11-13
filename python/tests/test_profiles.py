@@ -14,8 +14,10 @@ sys.path.insert(0, str(PYTHON_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pdfmaker  # noqa: E402
-from bollette_pdf.profiles import load_profiles, matching_profiles  # noqa: E402
+from bollette_pdf.profiles import load_profiles, matching_profiles, normalize_ocr  # noqa: E402
 from bollette_pdf.reader import Document, Line, Word, read_pdf  # noqa: E402
+
+SEED_DIR = PYTHON_DIR / "seed-profiles"
 
 FILLER = "Testo di riempimento della bolletta inventata, con abbastanza caratteri per la lettura."
 
@@ -183,6 +185,60 @@ class OcrMatchingTest(unittest.TestCase):
     def test_accents_are_not_folded_for_a_text_pdf_profile_on_another_supplier(self) -> None:
         doc = fake_doc({1: ["Gas Inventato Spa"]}, "ocr", (1,))
         self.assertEqual(matching_profiles(doc, [profile()]), [])
+
+
+class OcrAnyOfTest(unittest.TestCase):
+    """Rule R90: `recognise.ocrAnyOf` is an alternative to `allOf` for scanned pages only."""
+
+    ANCHOR = {"allOf": ["frase lunga che la scansione rovina"], "noneOf": ["nota di credito"],
+              "ocrAnyOf": ["inventata"]}
+
+    def test_scan_with_the_word_is_recognised_without_all_of(self) -> None:
+        doc = fake_doc({1: ["Luce INVENTATA, Spa"]}, "ocr", (1,))
+        anchored = profile(recognise=self.ANCHOR)
+        self.assertEqual(matching_profiles(doc, [anchored]), [anchored])
+
+    def test_scan_without_the_word_is_not_recognised(self) -> None:
+        doc = fake_doc({1: ["Luce Diversa Spa"]}, "ocr", (1,))
+        self.assertEqual(matching_profiles(doc, [profile(recognise=self.ANCHOR)]), [])
+
+    def test_word_is_matched_as_a_whole_word(self) -> None:
+        doc = fake_doc({1: ["Luce Inventatissima"]}, "ocr", (1,))
+        self.assertEqual(matching_profiles(doc, [profile(recognise=self.ANCHOR)]), [])
+
+    def test_none_of_still_excludes_a_scan(self) -> None:
+        doc = fake_doc({1: ["Luce Inventata", "Nota di credito"]}, "ocr", (1,))
+        self.assertEqual(matching_profiles(doc, [profile(recognise=self.ANCHOR)]), [])
+
+    def test_text_pdf_ignores_it_entirely(self) -> None:
+        doc = fake_doc({1: ["Luce Inventata Spa"]}, "pdf", ())
+        self.assertEqual(matching_profiles(doc, [profile(recognise=self.ANCHOR)]), [])
+
+    def test_mixed_uses_it_only_for_the_ocr_pages(self) -> None:
+        anchored = profile(recognise=self.ANCHOR)
+        on_pdf_page = fake_doc({1: ["Luce Inventata"], 2: ["altro"]}, "mixed", (2,))
+        self.assertEqual(matching_profiles(on_pdf_page, [anchored]), [])
+        on_ocr_page = fake_doc({1: ["altro"], 2: ["Luce Inventata"]}, "mixed", (2,))
+        self.assertEqual(matching_profiles(on_ocr_page, [anchored]), [anchored])
+
+    def test_profile_without_it_is_unchanged(self) -> None:
+        doc = fake_doc({1: ["Luce Inventata"]}, "ocr", (1,))
+        self.assertEqual(matching_profiles(doc, [profile(recognise={
+            "allOf": ["frase lunga"], "noneOf": []})]), [])
+
+    def test_seed_profiles_have_one_word_and_no_word_spans_two_kinds_of_bill(self) -> None:
+        profiles, warnings = load_profiles(SEED_DIR)
+        self.assertEqual(warnings, [])
+        owners: dict[str, set[tuple[str, str, str | None]]] = {}
+        for item in profiles:
+            words = item["recognise"].get("ocrAnyOf", [])
+            self.assertEqual(len(words), 1, item["id"])
+            word = normalize_ocr(words[0])
+            self.assertEqual(word, words[0], item["id"])
+            owners.setdefault(word, set()).add(
+                (item["supplier"], item["kind"], item.get("category"))
+            )
+        self.assertTrue(all(len(kinds) == 1 for kinds in owners.values()), owners)
 
 
 if __name__ == "__main__":

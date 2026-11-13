@@ -142,6 +142,23 @@ profili (`allOf[0]`) non compaiono nelle scansioni nemmeno normalizzate (0 su 39
 alternative a parola singola per fornitore, che richiedono un cambio dello schema (in attesa di
 decisione di Carlo, R89).
 
+### Terzo giro (R90, `recognise.ocrAnyOf`)
+
+`recognise` può avere `ocrAnyOf` (R90, approvato da Carlo il 13 novembre 2026): un documento letto
+con l'OCR (`ocr`, o le pagine OCR di un `mixed`) è riconosciuto dal profilo se soddisfa `allOf`
+**oppure** contiene, come parola intera nel testo normalizzato come in R89, almeno uno dei testi di
+`ocrAnyOf`; `noneOf` esclude comunque. Un PDF di testo (e le pagine di testo di un `mixed`) ignora
+`ocrAnyOf` del tutto; un profilo senza `ocrAnyOf` non cambia. Ogni testo deve avere una lettera o una
+cifra una volta normalizzato e non ripetersi (JSON Schema, Zod e `check_profile_rules`, casi in
+`profile-cases.json`). I profili seed ne hanno una parola ciascuno (acqua «idrico», TARI «tari», Enel
+«enel», Fastweb «fastweb», gas Hera «smc», luce Hera «kwh»). Tentativo unico: se le scansioni restano
+poco riconosciute, si ripiega su «da rivedere» e inserimento a mano (decisione di Carlo, R90).
+
+Esito sulle stesse cartelle (solo conteggi): delle 39 scansioni 9 sono riconosciute (tutte `da-confermare`:
+4 Enel, 3 acqua, 1 TARI, 1 gas Hera) e 30 no; ambigue 0; dei campi delle 9 riconosciute non se ne legge quasi nessuno
+(importo, scadenza e numero mancano in 9 su 9). Le altre origini non cambiano (`pdf` 89 e 86, `mixed` 153, 1 e 6).
+Il resto resta a mano: «da rivedere» e inserimento a mano.
+
 ## Casi dubbi
 
 - **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il

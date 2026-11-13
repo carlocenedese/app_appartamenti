@@ -10,7 +10,8 @@
   "validFrom": "2025-11-01",
   "recognise": {
     "allOf": ["società emittente:", "kwh"],
-    "noneOf": []
+    "noneOf": [],
+    "ocrAnyOf": ["kwh"]
   },
   "fields": {
     "number": {
