@@ -266,6 +266,20 @@ def _parts(
             parts.append(
                 {"label": key[0], "amount": amount, "source": _source(page, words, match.group(0))}
             )
+    add = _compile((profile.get("parts") or {}).get("add"))
+    if add is not None and parts:
+        by_label = {part["label"]: part for part in parts}
+        for page in range(1, layout.pages + 1):
+            for match in add.finditer(layout.page_text(page).text):
+                try:
+                    label, amount_text = match.group(1), match.group(2)
+                except IndexError:
+                    break
+                part = by_label.get(label.strip()) if label is not None else None
+                extra = _parse("euro", amount_text) if amount_text is not None else None
+                if part is None or extra is None:
+                    continue
+                part["amount"] = part["amount"] + extra
     return parts, repeated
 
 

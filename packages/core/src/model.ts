@@ -501,7 +501,13 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
   ),
   identifiers: z.array(z.object({ kind: IdentifierKindSchema, pattern: PatternSchema })),
   /** TARI only: one match per part of the notice, label in group 1 and amount in group 2. */
-  parts: z.object({ pattern: PatternSchema }).optional(),
+  parts: z
+    .object({
+      pattern: PatternSchema,
+      /** Same two groups: an amount added to the part with the same label (e.g. perequative). */
+      add: PatternSchema.optional(),
+    })
+    .optional(),
   /** One match per line item, amount in group 1; the items are summed to check the total. */
   items: z.object({ pattern: PatternSchema }).optional(),
 })
@@ -552,6 +558,10 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
   )
   .refine((profile) => profile.parts === undefined || hasGroups(profile.parts.pattern, 2), {
     message: 'Il pattern delle parti deve avere almeno 2 gruppi di cattura (etichetta e importo)',
+    path: ['parts'],
+  })
+  .refine((profile) => profile.parts?.add === undefined || hasGroups(profile.parts.add, 2), {
+    message: 'Il pattern delle aggiunte alle parti deve avere almeno 2 gruppi di cattura',
     path: ['parts'],
   })
   .refine((profile) => profile.items === undefined || hasGroups(profile.items.pattern, 1), {
