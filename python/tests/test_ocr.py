@@ -689,10 +689,13 @@ class RealEngineTest(unittest.TestCase):
     def test_command_line_creates_no_socket(self) -> None:
         out, err = io.StringIO(), io.StringIO()
         args = ["--pdf", str(self.scan([[(72, 100, TOTAL, 14), (72, 400, FILLER)]])), "--profiles", str(self.dir), "--at", "2026-01-01"]
-        with mock.patch.object(socket, "socket", side_effect=AssertionError("rete")):
+        with mock.patch.object(socket, "socket") as network:
             code = main(["extract", *args, "--ocr-data", str(REAL_DATA)], stdout=out, stderr=err)
         self.assertEqual((code, err.getvalue()), (0, ""))
-        self.assertIn(json.loads(out.getvalue())["status"], ("riconosciuta", "non-riconosciuta", "da-confermare"))
+        network.assert_not_called()
+        result = json.loads(out.getvalue())
+        # no profile in the folder: the scan is read (text found) but recognised by none
+        self.assertEqual((result["status"], result["textSource"]), ("non-riconosciuta", "ocr"))
 
     def test_mixed_document(self) -> None:
         path = self.scan([[(72, 100, "Pagina di testo")], self.TEXT_PAGE], scanned={2})
@@ -703,9 +706,15 @@ class RealEngineTest(unittest.TestCase):
         self.assertEqual([line.text for line in doc.lines[1:]], ["Totale da pagare 123,45", "Scadenza 31/03/2026"])
         self.assertIsNotNone(doc.lines[1].words[0].confidence)
 
-    def test_same_page_twice_gives_the_same_result(self) -> None:
+    def test_same_scan_in_two_processes_gives_the_same_bytes(self) -> None:
         path = self.scan([self.TEXT_PAGE, [(72, 500, FILLER)]])
-        self.assertEqual(read_pdf(path, ocr_data=REAL_DATA), read_pdf(path, ocr_data=REAL_DATA))
+        args = [sys.executable, "-I", "-m", "bollette_pdf", "extract", "--pdf", str(path),
+                "--profiles", str(self.dir), "--at", "2026-01-01", "--ocr-data", str(REAL_DATA)]
+        runs = [subprocess.run(args, capture_output=True, check=False) for _ in range(2)]
+        self.assertEqual([run.returncode for run in runs], [0, 0])
+        self.assertEqual([run.stderr for run in runs], [b"", b""])
+        self.assertIn(b'"textSource"', runs[0].stdout)
+        self.assertEqual(runs[0].stdout, runs[1].stdout)
 
     def test_smoke_tool_reads_a_synthetic_scan_with_the_real_engine(self) -> None:
         smoke = Path(__file__).resolve().parents[1] / "tools" / "ocr_smoke.py"
