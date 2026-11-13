@@ -122,7 +122,7 @@ controllati a mano che chiede il piano: resta da fare con Carlo.**
   `acegas-tari-2024-b` leggono le utenze con `parts`: per ogni «Utenza N.» il «TOTALE» della riga
   «Parte fissa» nella tabella di pagina 2 (importo da inizio anno, TEFA compreso). Regola di
   ripartizione decisa da Carlo (13 novembre 2026): l'«Importo da pagare» si divide in proporzione
-  a quei totali; le componenti perequative sono già nei totali. Il calcolo e il collegamento
+  a quei totali; le componenti perequative **non** sono nei totali delle utenze (nell'avviso di dicembre 2025: 306,44 + 257,66 = 564,10 = TARI 537,24 + TEFA 26,86; le perequative, 7,60 € a utenza, sono in una tabella a parte e fanno parte dell'importo da pagare). Carlo ha deciso di aggiungerle alla rispettiva utenza: **non ancora implementato**, `parts` oggi legge solo il «TOTALE» della tabella. Il calcolo e il collegamento
   utenza-appartamento (`tariParts`) sono del modulo di proposta, già previsto dalla sezione 42 R3;
   senza codici noti la bolletta va comunque in revisione. Un avviso senza utenze leggibili
   (`parts-found`) è `da-confermare`. Letti 2 utenze su tutte le 8 bollette `[B+L]` (e 1 o 2 sulle
