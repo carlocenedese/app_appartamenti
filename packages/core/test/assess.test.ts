@@ -110,6 +110,20 @@ describe('assessWorkspace', () => {
     ]);
   });
 
+  it('lists a conflict copy of workspace.json as a problem that does not block', async () => {
+    const store = await cleanFolder();
+    store.putRaw('_app/workspace (conflicted copy 2026-11-13).json', JSON.stringify(workspace()));
+    const result = await assessWorkspace(store, app);
+    expect(result).toMatchObject({ compat: 'ok', sync: 'ok', writable: true });
+    expect(result.problems).toEqual([
+      {
+        path: '_app/workspace (conflicted copy 2026-11-13).json',
+        reason: 'conflicted-copy',
+        originalPath: WORKSPACE_PATH,
+      },
+    ]);
+  });
+
   it('uses the conflict rules it is given', async () => {
     const store = await cleanFolder();
     store.putRaw('_app/dati/user/u1 2.json', userJson('u1'));

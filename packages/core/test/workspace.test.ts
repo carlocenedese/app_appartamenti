@@ -73,6 +73,35 @@ describe('createWorkspace', () => {
     }
   });
 
+  it('refuses a folder with records or operations of another group, before any write', async () => {
+    const other = new FlakyStore(0);
+    await createWorkspace(
+      other,
+      { ...input, workspaceId: 'ws-9', user: { id: 'u-9', name: 'Zeno' } },
+      seeds,
+      clock,
+      ids('z'),
+    );
+    const partial = new MemoryStore(); // the other group arrived without workspace.json
+    for (const dir of ['_app/journal', '_app/dati/user', '_app/dati/supplierProfile']) {
+      for (const name of await other.list(dir))
+        partial.putRaw(`${dir}/${name}`, other.getRaw(`${dir}/${name}`) ?? '');
+    }
+    const onlyData = new MemoryStore();
+    onlyData.putRaw('_app/dati/user/u-9.json', other.getRaw('_app/dati/user/u-9.json') ?? '');
+    for (const store of [partial, onlyData]) {
+      const before = await store.list('_app/journal');
+      const err = await createWorkspace(store, input, seeds, clock, ids('a')).catch(
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(RangeError);
+      expect((err as Error).message).not.toMatch(/Casa|Anna|Zeno/);
+      expect(store.getRaw(WORKSPACE_PATH)).toBeUndefined();
+      expect(await store.list('_app/dati/user')).not.toContain('u-1.json');
+      expect(await store.list('_app/journal')).toEqual(before);
+    }
+  });
+
   it('resumes after an interruption at any write, without duplicates', async () => {
     const total = new FlakyStore(0);
     await createWorkspace(total, input, seeds, clock, ids('a'));

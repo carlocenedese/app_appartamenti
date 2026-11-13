@@ -51,6 +51,20 @@ export async function assessWorkspace(
   const journal = (await readJournal(store, conflictRules)).problems;
   const diverged = await checkConsistency(store, conflictRules);
   problems.push(...journal, ...diverged);
+  // A conflict copy of workspace.json sits in `_app/`, which `loadAll` does not read.
+  for (const name of await store.list('_app')) {
+    if (
+      name.endsWith('.json') &&
+      name.includes('workspace') &&
+      conflictRules.some((rule) => rule.isConflictName(name))
+    ) {
+      problems.push({
+        path: `_app/${name}`,
+        reason: 'conflicted-copy',
+        originalPath: WORKSPACE_PATH,
+      });
+    }
+  }
   problems.sort((a, b) => compareText(a.path, b.path));
   // An operation file cut short or from a newer app is a journal that has not fully arrived.
   const halfArrived = journal.some(
