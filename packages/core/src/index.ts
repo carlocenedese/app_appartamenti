@@ -21,4 +21,5 @@ export * from './proposal';
 export * from './confirmation';
 export * from './supply-link';
 export * from './supply-store';
+export * from './users';
 export * from './seed-profiles';
