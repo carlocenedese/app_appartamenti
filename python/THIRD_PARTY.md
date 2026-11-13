@@ -27,6 +27,13 @@ verifiche in `docs/rules/ocr-licenze.md`. Le ruote macOS (arm64 e x86_64) non po
 licenze delle librerie in `tesserocr/.dylibs/`: licenza e indirizzo a monte sono quelli sotto, **non
 verificati dentro la ruota**.
 
+In `requirements.txt` le due ruote sono fissate con il marcatore `sys_platform == "darwin"`
+(`tesserocr==2.12.0`, `pypdfium2==5.14.0`): pip non le installa su Windows e Linux, e
+`check_licenses.py` le controlla solo su macOS. Il campo `License` di pypdfium2 è testo libero
+(«BSD-3-Clause, Apache-2.0, dependency licenses»): `check_licenses.py` lo accetta solo per la
+versione 5.14.0 e solo con quel testo esatto. `ita.traineddata` è scaricato con controllo SHA-256
+da `scripts/ocr-data.mjs` in `resources/ocr-data/` (su Windows c'è solo una nota).
+
 | Componente                        | Versione | Licenza                          | Origine del testo                              |
 | --------------------------------- | -------- | -------------------------------- | ---------------------------------------------- |
 | tesserocr                         | 2.12.0   | MIT                              | `.dist-info/licenses/LICENSE` nella ruota      |

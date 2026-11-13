@@ -215,6 +215,35 @@ class MainTests(unittest.TestCase):
         )
         self.assertEqual(cl.canonical("pdfminer.six"), "pdfminer-six")
 
+    def test_reviewed_free_text_licence_of_pypdfium2(self):
+        # Free text, not SPDX: accepted only for the reviewed version (docs/rules/ocr-licenze.md).
+        field = "BSD-3-Clause, Apache-2.0, dependency licenses"
+        reviewed = FakeDistribution("pypdfium2", license=field)
+        reviewed.metadata.replace_header("Version", "5.14.0")
+        other_version = FakeDistribution("pypdfium2", license=field)
+        other_text = FakeDistribution("pypdfium2", license=field + ", more")
+        other_text.metadata.replace_header("Version", "5.14.0")
+        results = {(r.version, r.licence): r.allowed for r in cl.check([reviewed, other_version, other_text])}
+        self.assertEqual(
+            results,
+            {
+                ("5.14.0", "BSD-3-Clause AND Apache-2.0"): True,
+                ("1.0", field): False,
+                ("5.14.0", field + ", more"): False,
+            },
+        )
+
+    def test_shipped_names_follow_the_platform_marker(self):
+        # pip installs a pin with `; sys_platform == "darwin"` only on macOS (the OCR wheels).
+        text = 'attrs==26.1.0 \\\ntesserocr==2.12.0 ; sys_platform == "darwin" \\\n'
+        self.assertEqual(cl.shipped_names(text, "darwin"), {"attrs", "tesserocr"})
+        self.assertEqual(cl.shipped_names(text, "win32"), {"attrs"})
+        self.assertEqual(cl.shipped_names(text, "linux"), {"attrs"})
+
+    def test_shipped_names_refuse_another_marker(self):
+        with self.assertRaises(ValueError):
+            cl.shipped_names('x==1 ; python_version < "3.14"\n', "darwin")
+
     def test_the_real_requirements_are_read(self):
         names = cl.shipped_names(cl.REQUIREMENTS.read_text("utf-8"))
         self.assertIn("pdfminer-six", names)

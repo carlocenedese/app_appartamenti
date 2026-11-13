@@ -145,6 +145,15 @@ def _classifier_licence(classifier: str) -> str | None:
     return _ALIASES.get(name.lower(), name)
 
 
+# Free-text `License` fields read and judged by hand, as SPDX: (name, version, exact field) ->
+# expression. Another version or another text is judged as usual (and fails).
+_REVIEWED = {
+    # The licence files of the wheel, including the libraries built into PDFium, are listed in
+    # docs/rules/ocr-licenze.md (accepted for macOS on 13 November 2026).
+    ("pypdfium2", "5.14.0", "BSD-3-Clause, Apache-2.0, dependency licenses"): "BSD-3-Clause AND Apache-2.0",
+}
+
+
 def licence_of(distribution) -> tuple[str, ...]:
     """The licence alternatives a distribution states; empty when it states none.
 
@@ -156,6 +165,9 @@ def licence_of(distribution) -> tuple[str, ...]:
     if expression:
         return (expression,)
     field = (meta.get("License") or "").strip()
+    reviewed = _REVIEWED.get((canonical(meta.get("Name") or ""), meta.get("Version") or "", field))
+    if reviewed is not None:
+        return (reviewed,)
     if field and field.lower() not in _MISSING and len(field) <= _MAX_LICENSE_FIELD and "\n" not in field:
         return (_normalise(field),)
     classifiers = [
@@ -192,7 +204,9 @@ def installed_distributions():
 
 
 REQUIREMENTS = Path(__file__).resolve().parents[1] / "requirements.txt"
-_PINNED = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==")
+_PINNED = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==[^;\s]*\s*(?:;\s*(.*?))?\s*\\?\s*$")
+# The only environment marker the project uses: the OCR wheels ship on macOS only.
+_PLATFORM_MARKER = re.compile(r"""^sys_platform\s*==\s*["']([^"']+)["']$""")
 
 
 def canonical(name: str) -> str:
@@ -200,13 +214,22 @@ def canonical(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
-def shipped_names(requirements_text: str) -> set[str]:
-    """The canonical names pinned (`name==version`) in a requirements file."""
+def shipped_names(requirements_text: str, platform: str = sys.platform) -> set[str]:
+    """The canonical names pinned (`name==version`) in a requirements file that pip installs on
+    `platform`. A marker other than `sys_platform == "..."` raises ValueError."""
     names = set()
     for line in requirements_text.splitlines():
         match = _PINNED.match(line)
-        if match:
-            names.add(canonical(match.group(1)))
+        if not match:
+            continue
+        marker = match.group(2)
+        if marker:
+            only = _PLATFORM_MARKER.match(marker)
+            if only is None:
+                raise ValueError(f"Marcatore non gestito in requirements.txt: {marker}")
+            if only.group(1) != platform:
+                continue
+        names.add(canonical(match.group(1)))
     return names
 
 

@@ -23,6 +23,8 @@
 // then made the only copy of the interpreter (keepOneLauncher).
 // Run as a script it first checks python/seed-profiles/ and copies it into
 // resources/seed-profiles/ (scripts/seed-profiles.mjs).
+// Then it puts the OCR language data into resources/ocr-data/ (scripts/ocr-data.mjs): downloaded
+// and checked on macOS, only a note on Windows, where OCR is not shipped yet.
 // Only Node built-ins: no npm dependencies.
 
 import { spawnSync } from 'node:child_process';
@@ -44,6 +46,7 @@ import { devNull, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
+import { bundleOcrData } from './ocr-data.mjs';
 import { bundleSeedProfiles } from './seed-profiles.mjs';
 
 /** Destination, relative to the root of the repository. */
@@ -363,6 +366,7 @@ if (isEntryPoint) {
     .then(() => {
       bundleSeedProfiles(fileURLToPath(new URL('..', import.meta.url)));
     })
+    .then(() => bundleOcrData(fileURLToPath(new URL('..', import.meta.url))))
     .then(() => main())
     .catch((error) => {
       console.error(error.message);
