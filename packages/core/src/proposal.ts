@@ -43,10 +43,10 @@ export type ProposalContext = {
   /** From the user's configuration, never from the code. */
   thresholds: { consumptionAnomalyPercent: number };
   /**
-   * TARI: the supplies of shared notices (not deleted ones), each with the apartments it is split
+   * TARI: the supplies of shared notices (deleted ones are ignored), each with the apartments it is split
    * between by weight.
    */
-  supplies?: Pick<Supply, 'label' | 'apartments'>[];
+  supplies?: Pick<Supply, 'label' | 'apartments' | 'deleted'>[];
 };
 
 type Fields = ExtractionResult['fields'];
@@ -347,6 +347,11 @@ function lastDay(month: YearMonth): ISODate {
   return addDays(`${addMonths(month, 1)}-01` as ISODate, -1);
 }
 
+/** The supplies the caller gave that are not deleted. */
+function liveSupplies(ctx: ProposalContext): NonNullable<ProposalContext['supplies']> {
+  return (ctx.supplies ?? []).filter((supply) => supply.deleted !== true);
+}
+
 function tariProposal(
   result: ExtractionResult,
   ctx: ProposalContext,
@@ -395,18 +400,30 @@ function tariProposal(
   if (result.parts.length === 0) {
     // A notice the app knows is shared, read without its supplies, must not go entirely to one
     // apartment without anyone noticing (R65): the instalment is proposed but cannot pass.
-    if ((ctx.supplies ?? []).length > 0) {
+    if (liveSupplies(ctx).length > 0) {
       checks.push(
         fail('missing-parts', 'Avviso condiviso letto senza le utenze: va diviso a mano.'),
       );
     }
     instalments.push({ id: newId(), apartmentId: ctx.apartment.id, ...base, rata: total });
   } else {
-    const byLabel = new Map((ctx.supplies ?? []).map((supply) => [foldText(supply.label), supply]));
+    const byLabel = new Map<string, (typeof ctx.supplies & object)[number]>();
+    for (const supply of liveSupplies(ctx)) {
+      const key = foldText(supply.label);
+      if (byLabel.has(key)) {
+        // Which of the two owns the part cannot be told: nothing is proposed for either (R80).
+        checks.push(
+          fail('duplicate-supply', `Due utenze hanno la stessa etichetta «${supply.label}».`),
+        );
+        byLabel.set(key, { ...supply, apartments: [] });
+      } else {
+        byLabel.set(key, supply);
+      }
+    }
     const known: { apartmentId: string; amount: Cents }[] = [];
     for (const part of result.parts) {
       const target = byLabel.get(foldText(part.label));
-      if (target === undefined) {
+      if (target === undefined || target.apartments.length === 0) {
         checks.push(
           fail('unknown-part', `L'utenza «${part.label}» non è collegata a un appartamento.`),
         );
@@ -418,9 +435,16 @@ function tariProposal(
           part.amount,
           target.apartments.map((a) => a.weight),
         );
-        target.apartments.forEach(({ apartmentId }, index) => {
-          known.push({ apartmentId, amount: shares[index] as Cents });
-        });
+        if (shares.some((share) => share <= 0)) {
+          // A zero share would make the group inconsistent for the matching (weight > 0).
+          checks.push(
+            fail('part-share', `La quota di un appartamento sull'utenza «${part.label}» è zero.`),
+          );
+        } else {
+          target.apartments.forEach(({ apartmentId }, index) => {
+            known.push({ apartmentId, amount: shares[index] as Cents });
+          });
+        }
       }
     }
     const sum = result.parts.reduce((acc, part) => acc + part.amount, 0);

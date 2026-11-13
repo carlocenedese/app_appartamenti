@@ -535,6 +535,86 @@ describe('proposalFromExtraction: TARI', () => {
     expect(check(proposal, 'duplicate-apartment')).toBeUndefined();
   });
 
+  it('fails part-share and proposes nothing for a supply whose share rounds to zero', () => {
+    const proposal = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({
+          supplies: [
+            {
+              label: 'Berchet',
+              apartments: [
+                { apartmentId: 'apt-b', weight: 1 },
+                { apartmentId: 'apt-c', weight: 100000 },
+              ],
+            },
+            { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+          ],
+        }),
+        ids(),
+      ),
+    );
+    expect(check(proposal, 'part-share')?.severity).toBe('fail');
+    expect(proposal.instalments.map((i) => i.apartmentId)).toEqual(['apt-l']);
+  });
+
+  it('fails duplicate-supply for two supplies with the same label, proposing neither', () => {
+    const berchet = { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] };
+    const proposal = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({
+          supplies: [
+            berchet,
+            { ...berchet, label: 'berchet', apartments: [{ apartmentId: 'apt-c', weight: 1 }] },
+            { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+          ],
+        }),
+        ids(),
+      ),
+    );
+    expect(check(proposal, 'duplicate-supply')?.severity).toBe('fail');
+    expect(check(proposal, 'unknown-part')?.severity).toBe('fail');
+    expect(proposal.instalments.map((i) => i.apartmentId)).toEqual(['apt-l']);
+  });
+
+  it('ignores a deleted supply and treats a supply without apartments as unknown', () => {
+    const proposal = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({
+          supplies: [
+            {
+              label: 'Berchet',
+              apartments: [{ apartmentId: 'apt-b', weight: 1 }],
+              deleted: true,
+            },
+            { label: 'Lovarini', apartments: [] },
+          ],
+        }),
+        ids(),
+      ),
+    );
+    expect(proposal.instalments).toHaveLength(0);
+    expect(proposal.checks.filter((c) => c.code === 'unknown-part')).toHaveLength(2);
+  });
+
+  it('fails duplicate-apartment when one apartment gets two supplies', () => {
+    const proposal = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({
+          supplies: [
+            { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
+            { label: 'Lovarini', apartments: [{ apartmentId: 'apt-b', weight: 2 }] },
+          ],
+        }),
+        ids(),
+      ),
+    );
+    expect(check(proposal, 'duplicate-apartment')?.severity).toBe('fail');
+  });
+
   it('ignores a label written in other case and spacing', () => {
     const proposal = asTari(
       proposalFromExtraction(
