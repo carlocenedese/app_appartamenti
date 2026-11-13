@@ -1,7 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal capability for the main window: no file, shell or network access",
+  "description": "Main window: the folder dialog and the file operations TauriStore uses, with no static scope. Only the folder the user picks is reachable (added at runtime by the dialog, kept by persisted-scope). No shell, network or delete.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-read-dir",
+    "fs:allow-read-file",
+    "fs:allow-read-text-file",
+    "fs:allow-rename",
+    "fs:allow-write-text-file"
+  ]
 }
