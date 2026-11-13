@@ -9,6 +9,9 @@ import type { Workspace } from './model';
 /** Version of the engine; a settlement records it so that a snapshot can be reproduced. */
 export const CORE_VERSION = '0.1.0';
 
+/** Layout version of the workspace folder this core writes (`Workspace.schemaVersion`). */
+export const CORE_SCHEMA_VERSION = 1;
+
 /**
  * A plain `MAJOR.MINOR.PATCH` version: three numbers without leading zeros, digits `0-9` only
  * (the pattern also goes into the JSON Schema, where `\d` would match other scripts in Python).
