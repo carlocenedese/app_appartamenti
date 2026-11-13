@@ -10,6 +10,12 @@ import type { Workspace } from './model';
 export const CORE_VERSION = '0.1.0';
 
 /**
+ * Layout version of the workspace folder this core writes (`Workspace.schemaVersion`); the app
+ * passes it as `schemaVersion` to `checkCompat` and `assessWorkspace`.
+ */
+export const CORE_SCHEMA_VERSION = 1;
+
+/**
  * A plain `MAJOR.MINOR.PATCH` version: three numbers without leading zeros, digits `0-9` only
  * (the pattern also goes into the JSON Schema, where `\d` would match other scripts in Python).
  * Pre-release tags (`1.2.3-beta.1`) and build metadata (`1.2.3+5`) are rejected on purpose: the

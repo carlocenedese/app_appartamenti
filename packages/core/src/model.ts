@@ -190,6 +190,13 @@ export const SupplySchema = RecordBaseSchema.extend({
   });
 export type Supply = z.infer<typeof SupplySchema>;
 
+/** A person who uses the app on this folder. The name is personal data: never put it in a log or message. */
+export const UserSchema = RecordBaseSchema.extend({
+  // `\S` rejects a name of whitespace only.
+  name: NonEmptyString.regex(/\S/, { message: 'The name is empty' }),
+});
+export type User = z.infer<typeof UserSchema>;
+
 export const ContractSchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,
   type: z.enum(['1+1', '3+2', '4+4', 'altro']),
@@ -644,6 +651,7 @@ export const recordSchemas = {
   match: BillMatchSchema,
   note: NoteSchema,
   supplierProfile: SupplierProfileSchema,
+  user: UserSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 
