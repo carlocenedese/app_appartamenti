@@ -43,6 +43,7 @@ INVENTED_NUMBERS = {
     "acegas-tari-02": "9732/15/83030",
     "acegas-tari-03": "82777942925",
     "acegas-tari-04": "5114/21/62591",
+    "acegas-tari-05": "6431/9/57122",
     "enel-01": "7185744691",
     "enel-02": "2213731725",
     "enel-03": "0902204015",
@@ -109,9 +110,13 @@ class FixturesTest(unittest.TestCase):
                 result = _extract(fixture["dump"])
                 expected = dict(fixture["expected"])
                 confidence = expected.pop("confidence")
+                parts = expected.pop("parts", [])
                 self.assertEqual(result["status"], expected.pop("status"))
                 self.assertEqual(expected["number"], INVENTED_NUMBERS.get(path.stem))
                 self.assertEqual(result["profileId"], fixture["profileId"])
+                self.assertEqual(
+                    [{"label": p["label"], "amount": p["amount"]} for p in result["parts"]], parts
+                )
                 for name, value in expected.items():
                     self.assertEqual(result["fields"][name]["value"], value, name)
                     self.assertEqual(result["fields"][name]["confidence"], confidence[name], name)

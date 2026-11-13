@@ -118,10 +118,15 @@ controllati a mano che chiede il piano: resta da fare con Carlo.**
   gli «Altri servizi».
 - **Ancore ambigue:** per Enel 2020-23 «PERIODO» compare in più punti, e le regole sono perciò
   `medium`.
-- **TARI condivisa tra Berchet e Lovarini (`[B+L]`):** regola decisa da Carlo (12 novembre 2026):
-  la ripartizione segue la tabella in fondo alla bolletta, che divide l'importo per m². Il
-  profilo non legge ancora le utenze con `parts`, che il piano prevede: resta da fare, leggendo
-  quella tabella (nessuna percentuale scritta nel codice).
+- **TARI condivisa tra Berchet e Lovarini (`[B+L]`):** i profili `acegas-tari-2024` e
+  `acegas-tari-2024-b` leggono le utenze con `parts`: per ogni «Utenza N.» il «TOTALE» della riga
+  «Parte fissa» nella tabella di pagina 2 (importo da inizio anno, TEFA compreso). Regola di
+  ripartizione decisa da Carlo (13 novembre 2026): l'«Importo da pagare» si divide in proporzione
+  a quei totali; le componenti perequative sono già nei totali. Il calcolo e il collegamento
+  utenza-appartamento (`tariParts`) sono del modulo di proposta, già previsto dalla sezione 42 R3;
+  senza codici noti la bolletta va comunque in revisione. Un avviso senza utenze leggibili
+  (`parts-found`) è `da-confermare`. Letti 2 utenze su tutte le 8 bollette `[B+L]` (e 1 o 2 sulle
+  altre). Gli avvisi cumulativi (periodo oltre i 4 mesi nuovi) danno `tari-months`.
 - **TARI 2020 e acqua di altri appartamenti:** una bolletta TARI del 2020 non è riconosciuta; non
   c'è un profilo dell'acqua di Berchet e Pulci.
 - **Non profilati:** Vodafone (Pulci 2020-21), caldaia, Bacchiglione, spese condominiali, acqua di
@@ -129,7 +134,7 @@ controllati a mano che chiede il piano: resta da fare con Carlo.**
 
 ## Fixture
 
-16 file in `fixtures/pdf/`, una per layout (due di Hera luce, due di acqua, quattro di TARI, uno
+17 file in `fixtures/pdf/`, una per layout (due di Hera luce, due di acqua, cinque di TARI, uno
 di Fastweb, tre di Hera gas di cui una nota di credito, quattro di Enel). Il caso di un layout che
 cambia si prova nel test, che rinomina un'etichetta e si aspetta `da-confermare`. Ogni file contiene il minimo
 di righe con cui il profilo legge gli stessi valori e gli stessi livelli di confidenza: si toglie
