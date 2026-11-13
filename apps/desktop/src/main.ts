@@ -21,3 +21,30 @@ if (typeof document !== 'undefined') {
 if (import.meta.env.DEV && typeof document !== 'undefined' && location.hash === '#utenze-demo') {
   void import('./demo').then((m) => m.showDemo(document.querySelector('main') as HTMLElement));
 }
+
+// First start, still being built: reached only with #primo-avvio in development builds.
+if (import.meta.env.DEV && typeof document !== 'undefined' && location.hash === '#primo-avvio') {
+  void Promise.all([
+    import('./first-run'),
+    import('./machine-settings'),
+    import('./tauri-store'),
+  ]).then(([firstRun, settings, tauri]) => {
+    const main = document.querySelector('main') as HTMLElement;
+    firstRun.renderFirstRun(main, {
+      settings: settings.tauriSettingsBackend,
+      pickFolder: tauri.pickFolder,
+      openStore: (folder) => new tauri.TauriStore(folder, tauri.tauriFsBackend),
+      // shortcut: no bundled profiles yet; read resources/seed-profiles/ (R83) when the app is wired.
+      seeds: () => Promise.resolve([]),
+      clock: () => new Date().toISOString(),
+      newId: () => crypto.randomUUID(),
+      schedule: (ms, tick) => {
+        const handle = setInterval(tick, ms);
+        return () => clearInterval(handle);
+      },
+      onReady: () => {
+        main.replaceChildren(document.createTextNode('Cartella pronta.'));
+      },
+    });
+  });
+}

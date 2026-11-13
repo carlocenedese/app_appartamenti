@@ -61,3 +61,31 @@ button.primary {
   padding: 0.75rem 1rem;
   margin-block: 0.75rem;
 }
+
+/* First start: same plain look as the supply screens. */
+body:has(.first-run) {
+  place-items: start center;
+}
+.first-run {
+  width: min(32rem, 100% - 2rem);
+  padding-block: 1rem;
+}
+.first-run .field {
+  display: grid;
+  gap: 0.25rem;
+  margin-block: 0.5rem;
+}
+.first-run .link {
+  display: block;
+  margin-top: 0.75rem;
+  border: none;
+  background: none;
+  padding: 0;
+  color: LinkText;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.first-run .presence:empty,
+.first-run .error:empty {
+  display: none;
+}

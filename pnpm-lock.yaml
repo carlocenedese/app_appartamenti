@@ -205,12 +205,18 @@ importers:
       '@bollette/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@tauri-apps/api':
+        specifier: 2.12.4
+        version: 2.12.4
       '@tauri-apps/plugin-dialog':
         specifier: 2.8.4
         version: 2.8.4
       '@tauri-apps/plugin-fs':
         specifier: 2.7.1
         version: 2.7.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
     devDependencies:
       '@tauri-apps/cli':
         specifier: 2.12.4

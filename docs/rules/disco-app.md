@@ -30,12 +30,18 @@ In `src/lib.rs` i plugin sono solo registrati, nell'ordine fs, dialog, persisted
     "core:default",
     "dialog:allow-open",
     "fs:allow-exists",
-    "fs:allow-mkdir",
     "fs:allow-read-dir",
     "fs:allow-read-file",
-    "fs:allow-read-text-file",
     "fs:allow-rename",
-    "fs:allow-write-text-file"
+    { "identifier": "fs:allow-mkdir", "allow": [{ "path": "$APPCONFIG" }] },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$APPCONFIG/machine-settings.json" }]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "$APPCONFIG/machine-settings.json" }]
+    }
   ]
 }
 ```
@@ -43,6 +49,9 @@ In `src/lib.rs` i plugin sono solo registrati, nell'ordine fs, dialog, persisted
 - Nessun ambito statico (`scope`) e nessun `fs:default`: senza una cartella scelta il plugin dei
   file rifiuta ogni percorso. Nessun permesso di cancellare (`fs:allow-remove`): l'app non cancella
   mai (i record hanno `deleted`).
+- Impostazioni della macchina (piano 6, task 6): `mkdir`, lettura e scrittura di testo hanno in più un
+  ambito proprio, solo `$APPCONFIG` (mkdir) e `$APPCONFIG/machine-settings.json`; si somma a quello
+  della cartella scelta a runtime. Non provato nell'app vera (vedi R84).
 - `tauri.conf.json`, `plugins.fs`:
   - `requireLiteralLeadingDot: false`: altrimenti su macOS il modello `cartella/**` non comprende i
     nomi che iniziano con un punto, cioè i file temporanei `.tmp-*` della scrittura atomica.
