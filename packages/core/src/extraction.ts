@@ -74,7 +74,22 @@ export const ExtractionResultSchema = z
       consumption: extractedField(ConsumptionSchema).optional(),
     }),
     /** TARI only: the parts of the notice. */
-    parts: z.array(z.object({ label: z.string(), amount: CentsSchema, source: SourceSchema })),
+    parts: z.array(
+      z.object({
+        label: z.string(),
+        amount: CentsSchema,
+        source: SourceSchema,
+        /** The property the part refers to, as written in the notice. */
+        property: z
+          .object({
+            address: z.string(),
+            sheet: z.string().optional(),
+            parcel: z.string().optional(),
+            sub: z.string().optional(),
+          })
+          .optional(),
+      }),
+    ),
     identifiers: z.array(z.object({ kind: IdentifierKindSchema, value: NonEmptyString })),
     /** Checks made by the extractor, e.g. the total equals the sum of the items. */
     checks: z.array(z.object({ code: NonEmptyString, ok: z.boolean(), message: z.string() })),

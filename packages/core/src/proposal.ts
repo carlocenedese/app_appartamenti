@@ -413,7 +413,10 @@ function tariProposal(
       if (byLabel.has(key)) {
         // Which of the two owns the part cannot be told: nothing is proposed for either (R80).
         checks.push(
-          fail('duplicate-supply', `Due utenze hanno la stessa etichetta «${supply.label}».`),
+          fail(
+            'duplicate-supply',
+            `Due utenze hanno la stessa etichetta «${supply.label}». Apri Impostazioni, Utenze e correggi: finché ce ne sono due, nessuna delle due viene usata.`,
+          ),
         );
         byLabel.set(key, { ...supply, apartments: [] });
       } else {
@@ -425,7 +428,10 @@ function tariProposal(
       const target = byLabel.get(foldText(part.label));
       if (target === undefined || target.apartments.length === 0) {
         checks.push(
-          fail('unknown-part', `L'utenza «${part.label}» non è collegata a un appartamento.`),
+          fail(
+            'unknown-part',
+            `L'utenza «${part.label}» non è collegata a un appartamento. Collegala qui sotto.`,
+          ),
         );
       } else if (part.amount <= 0) {
         checks.push(fail('part-amount', `L'utenza «${part.label}» non ha un importo positivo.`));
@@ -438,7 +444,10 @@ function tariProposal(
         if (shares.some((share) => share <= 0)) {
           // A zero share would make the group inconsistent for the matching (weight > 0).
           checks.push(
-            fail('part-share', `La quota di un appartamento sull'utenza «${part.label}» è zero.`),
+            fail(
+              'part-share',
+              `La percentuale è troppo piccola per questo importo: la quota dell'utenza «${part.label}» è zero. Controlla le percentuali.`,
+            ),
           );
         } else {
           target.apartments.forEach(({ apartmentId }, index) => {
