@@ -522,6 +522,8 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
       pattern: PatternSchema,
       /** Same two groups: an amount added to the part with the same label (e.g. perequative). */
       add: PatternSchema.optional(),
+      /** Five groups: supply label, address, sheet, parcel, sub; sets the property of the part with that label. */
+      property: z.object({ pattern: PatternSchema }).optional(),
     })
     .optional(),
   /** One match per line item, amount in group 1; the items are summed to check the total. */
@@ -580,6 +582,15 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
     message: 'Il pattern delle aggiunte alle parti deve avere almeno 2 gruppi di cattura',
     path: ['parts'],
   })
+  .refine(
+    (profile) =>
+      profile.parts?.property === undefined || hasGroups(profile.parts.property.pattern, 5),
+    {
+      message:
+        "Il pattern dell'immobile delle parti deve avere almeno 5 gruppi di cattura (etichetta, indirizzo, foglio, particella, subalterno)",
+      path: ['parts'],
+    },
+  )
   .refine((profile) => profile.items === undefined || hasGroups(profile.items.pattern, 1), {
     message: 'Il pattern delle voci deve avere almeno 1 gruppo di cattura (importo)',
     path: ['items'],

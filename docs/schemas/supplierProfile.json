@@ -202,6 +202,19 @@
           "type": "string",
           "minLength": 1,
           "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+        },
+        "property": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+            }
+          },
+          "required": [
+            "pattern"
+          ]
         }
       },
       "required": [

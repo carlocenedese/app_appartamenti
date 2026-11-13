@@ -280,6 +280,20 @@ def _parts(
                 if part is None or extra is None:
                     continue
                 part["amount"] = part["amount"] + extra
+    prop = _compile(((profile.get("parts") or {}).get("property") or {}).get("pattern"))
+    if prop is not None and prop.groups >= 5 and parts:
+        by_label = {part["label"]: part for part in parts}
+        for page in range(1, layout.pages + 1):
+            for match in prop.finditer(layout.page_text(page).text):
+                label, address = match.group(1), match.group(2)
+                part = by_label.get(label.strip()) if label is not None else None
+                if part is None or address is None or not address.strip():
+                    continue
+                found = {"address": address.strip()}
+                for key, group in (("sheet", 3), ("parcel", 4), ("sub", 5)):
+                    if match.group(group):
+                        found[key] = match.group(group)
+                part.setdefault("property", found)
     return parts, repeated
 
 

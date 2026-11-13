@@ -206,4 +206,7 @@ def check_profile_rules(profile: dict[str, Any]) -> list[str]:
             _check_pattern(f"{name}.pattern", section.get("pattern"), minimum, errors)
             if name == "parts" and section.get("add") is not None:
                 _check_pattern("parts.add", section.get("add"), 2, errors)
+            prop = section.get("property") if name == "parts" else None
+            if isinstance(prop, dict):
+                _check_pattern("parts.property", prop.get("pattern"), 5, errors)
     return errors
