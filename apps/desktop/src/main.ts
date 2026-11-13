@@ -16,3 +16,8 @@ if (typeof document !== 'undefined') {
   const element = document.getElementById('version');
   if (element !== null) showVersion(element);
 }
+
+// Local demo of the two supply screens (invented data), reached only with #utenze-demo in development builds.
+if (import.meta.env.DEV && typeof document !== 'undefined' && location.hash === '#utenze-demo') {
+  void import('./demo').then((m) => m.showDemo(document.querySelector('main') as HTMLElement));
+}

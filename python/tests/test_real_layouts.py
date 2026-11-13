@@ -115,7 +115,7 @@ class FixturesTest(unittest.TestCase):
                 self.assertEqual(expected["number"], INVENTED_NUMBERS.get(path.stem))
                 self.assertEqual(result["profileId"], fixture["profileId"])
                 self.assertEqual(
-                    [{"label": p["label"], "amount": p["amount"]} for p in result["parts"]], parts
+                    [{k: v for k, v in p.items() if k != "source"} for p in result["parts"]], parts
                 )
                 for name, value in expected.items():
                     self.assertEqual(result["fields"][name]["value"], value, name)

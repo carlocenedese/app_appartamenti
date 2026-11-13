@@ -44,9 +44,9 @@ export type ProposalContext = {
   thresholds: { consumptionAnomalyPercent: number };
   /**
    * TARI: the supplies of shared notices (deleted ones are ignored), each with the apartments it is split
-   * between by weight.
+   * between by weight (basis points).
    */
-  supplies?: Pick<Supply, 'label' | 'apartments' | 'deleted'>[];
+  supplies?: Pick<Supply, 'id' | 'label' | 'apartments' | 'deleted'>[];
 };
 
 type Fields = ExtractionResult['fields'];
@@ -413,19 +413,25 @@ function tariProposal(
       if (byLabel.has(key)) {
         // Which of the two owns the part cannot be told: nothing is proposed for either (R80).
         checks.push(
-          fail('duplicate-supply', `Due utenze hanno la stessa etichetta «${supply.label}».`),
+          fail(
+            'duplicate-supply',
+            `Due utenze hanno la stessa etichetta «${supply.label}». Apri Impostazioni, Utenze e correggi: finché ce ne sono due, nessuna delle due viene usata.`,
+          ),
         );
         byLabel.set(key, { ...supply, apartments: [] });
       } else {
         byLabel.set(key, supply);
       }
     }
-    const known: { apartmentId: string; amount: Cents }[] = [];
+    const known: { apartmentId: string; amount: Cents; supplyId: string }[] = [];
     for (const part of result.parts) {
       const target = byLabel.get(foldText(part.label));
       if (target === undefined || target.apartments.length === 0) {
         checks.push(
-          fail('unknown-part', `L'utenza «${part.label}» non è collegata a un appartamento.`),
+          fail(
+            'unknown-part',
+            `L'utenza «${part.label}» non è collegata a un appartamento. Collegala qui sotto.`,
+          ),
         );
       } else if (part.amount <= 0) {
         checks.push(fail('part-amount', `L'utenza «${part.label}» non ha un importo positivo.`));
@@ -438,11 +444,14 @@ function tariProposal(
         if (shares.some((share) => share <= 0)) {
           // A zero share would make the group inconsistent for the matching (weight > 0).
           checks.push(
-            fail('part-share', `La quota di un appartamento sull'utenza «${part.label}» è zero.`),
+            fail(
+              'part-share',
+              `La quota di un appartamento su questa utenza «${part.label}» è zero: la percentuale è troppo piccola per questo importo. Controlla le percentuali.`,
+            ),
           );
         } else {
           target.apartments.forEach(({ apartmentId }, index) => {
-            known.push({ apartmentId, amount: shares[index] as Cents });
+            known.push({ apartmentId, amount: shares[index] as Cents, supplyId: target.id });
           });
         }
       }
@@ -458,10 +467,11 @@ function tariProposal(
       seen.add(apartmentId);
     }
     const groupId = newId();
-    for (const { apartmentId, amount } of known) {
+    for (const { apartmentId, amount, supplyId } of known) {
       instalments.push({
         id: newId(),
         apartmentId,
+        supplyId,
         ...base,
         rata: amount,
         shared: { groupId, groupTotal: total, weight: amount },

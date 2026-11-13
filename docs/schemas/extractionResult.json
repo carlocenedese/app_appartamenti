@@ -753,6 +753,26 @@
               "box",
               "text"
             ]
+          },
+          "property": {
+            "type": "object",
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "sheet": {
+                "type": "string"
+              },
+              "parcel": {
+                "type": "string"
+              },
+              "sub": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "address"
+            ]
           }
         },
         "required": [

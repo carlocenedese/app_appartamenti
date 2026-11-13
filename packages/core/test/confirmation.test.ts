@@ -121,8 +121,16 @@ const tariContext = () =>
     apartment: { id: 'apt-b', knownCodes: [] },
     tenancies: [tenancy('b', 'apt-b'), tenancy('l', 'apt-l')] as ProposalContext['tenancies'],
     supplies: [
-      { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
-      { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+      {
+        id: 'sup-berchet',
+        label: 'Berchet',
+        apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+      },
+      {
+        id: 'sup-lovarini',
+        label: 'Lovarini',
+        apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+      },
     ],
   });
 

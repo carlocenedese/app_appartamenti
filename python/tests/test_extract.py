@@ -749,6 +749,26 @@ class TariTest(ExtractTestCase):
                          [("parts-found", True), ("parts-unique", True)])
         self.assertValid(result)
 
+    def test_property_of_each_supply_is_read_by_label(self) -> None:
+        profile = self.tari_profile()
+        profile["parts"]["property"] = {
+            "pattern": "Utenza ([a-z]+)(?:(?!Utenza)[\\s\\S])*?Immobile: ([^\\n/]*[^\\s/])"
+            "(?:\\s*/ Fog\\. ([0-9]+) Num\\. ([0-9]+) Sub\\. ([0-9]+))?"
+        }
+        doc = self.doc([(72, 80, "Comune Inventato - Avviso TARI"),
+                        (72, 120, "Utenza abitazione 120,00"), (72, 140, "Utenza box 30,50"),
+                        (72, 200, "Totale avviso 150,50"),
+                        (72, 220, "Utenza abitazione"),
+                        (72, 230, "Immobile: VIA ESEMPIO 12 / Fog. 10 Num. 20 Sub. 30"),
+                        (72, 240, "Utenza box"), (72, 250, "Immobile: VIA ESEMPIO 14"),
+                        (72, 400, FILLER)])
+        result = extract(doc, [profile], AT)
+        self.assertEqual([p.get("property") for p in result["parts"]], [
+            {"address": "VIA ESEMPIO 12", "sheet": "10", "parcel": "20", "sub": "30"},
+            {"address": "VIA ESEMPIO 14"},
+        ])
+        self.assertValid(result)
+
     def test_no_parts_found_is_da_confermare(self) -> None:
         doc = self.doc([(72, 80, "Comune Inventato - Avviso TARI"),
                         (72, 200, "Totale avviso 150,50"), (72, 400, FILLER)])

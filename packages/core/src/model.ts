@@ -141,6 +141,12 @@ export const ApartmentSchema = RecordBaseSchema.extend({
   annualitaStart: AnnualitaStartSchema,
   /** Start of the condominium fiscal year, when the apartment has one. */
   condominioStart: AnnualitaStartSchema.optional(),
+  /** Street address, as written on the notices. */
+  address: NonEmptyString.optional(),
+  /** Cadastral identifiers (foglio, particella, subalterno), one entry per unit. */
+  cadastre: z
+    .array(z.object({ sheet: NonEmptyString, parcel: NonEmptyString, sub: NonEmptyString }))
+    .optional(),
 })
   .refine(
     (apartment) => apartment.rooms === undefined || apartment.rooms.length === apartment.posti,
@@ -159,21 +165,28 @@ export type Apartment = z.infer<typeof ApartmentSchema>;
 
 /**
  * A supply of a shared notice (for example a TARI utenza), linked to the apartments it belongs to.
- * `weight` is the part of the supply each apartment pays: a whole positive number written by the
- * user (a supply of one apartment has weight 1); no share is written in the code.
+ * `weight` is the part of the supply each apartment pays, in basis points (1..10000, whole): the
+ * weights of a supply add up to exactly 10000; no share is written in the code.
  */
 export const SupplySchema = RecordBaseSchema.extend({
   /** The supply code as written on the notice (the label of an extracted part). */
   label: NonEmptyString,
-  apartments: z.array(z.object({ apartmentId: NonEmptyString, weight: z.int().min(1) })).min(1),
+  apartments: z
+    .array(z.object({ apartmentId: NonEmptyString, weight: z.int().min(1).max(10000) }))
+    .min(1),
 })
   .refine(
     (supply) =>
       new Set(supply.apartments.map((a) => a.apartmentId)).size === supply.apartments.length,
     { message: 'An apartment appears once in a supply', path: ['apartments'] },
   )
+  .refine((supply) => supply.apartments.reduce((sum, a) => sum + a.weight, 0) === 10000, {
+    message: 'The weights of a supply add up to exactly 10000',
+    path: ['apartments'],
+  })
   .meta({
-    description: 'apartments: at least one, each apartment once, weight a whole number >= 1.',
+    description:
+      'apartments: at least one, each apartment once, weight in basis points (1..10000), sum exactly 10000.',
   });
 export type Supply = z.infer<typeof SupplySchema>;
 
@@ -316,6 +329,8 @@ export const InstalmentSchema = RecordBaseSchema.extend({
   straordinaria: z.boolean().optional(),
   /** Apartment whose bank account pays the debit, when it is not this one. */
   paidFromApartmentId: NonEmptyString.optional(),
+  /** The supply this instalment was born from, when it was split by supply. */
+  supplyId: NonEmptyString.optional(),
   /** A notice shared by several apartments. */
   shared: z
     .object({
@@ -366,6 +381,7 @@ export const NoteSchema = RecordBaseSchema.extend({
     'tenancy',
     'bill',
     'instalment',
+    'supply',
     'payment',
     'transaction',
     'match',
@@ -506,6 +522,8 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
       pattern: PatternSchema,
       /** Same two groups: an amount added to the part with the same label (e.g. perequative). */
       add: PatternSchema.optional(),
+      /** Five groups: supply label, address, sheet, parcel, sub; sets the property of the part with that label. */
+      property: z.object({ pattern: PatternSchema }).optional(),
     })
     .optional(),
   /** One match per line item, amount in group 1; the items are summed to check the total. */
@@ -564,6 +582,15 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
     message: 'Il pattern delle aggiunte alle parti deve avere almeno 2 gruppi di cattura',
     path: ['parts'],
   })
+  .refine(
+    (profile) =>
+      profile.parts?.property === undefined || hasGroups(profile.parts.property.pattern, 5),
+    {
+      message:
+        "Il pattern dell'immobile delle parti deve avere almeno 5 gruppi di cattura (etichetta, indirizzo, foglio, particella, subalterno)",
+      path: ['parts'],
+    },
+  )
   .refine((profile) => profile.items === undefined || hasGroups(profile.items.pattern, 1), {
     message: 'Il pattern delle voci deve avere almeno 1 gruppo di cattura (importo)',
     path: ['items'],

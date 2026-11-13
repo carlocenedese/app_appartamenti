@@ -439,8 +439,12 @@ describe('proposalFromExtraction: TARI', () => {
       ...overrides,
     });
   const supplies = [
-    { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
-    { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+    { id: 'sup-berchet', label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 10000 }] },
+    {
+      id: 'sup-lovarini',
+      label: 'Lovarini',
+      apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+    },
   ];
   const tariContext = (extra: Partial<ProposalContext> = {}) =>
     context({
@@ -467,6 +471,7 @@ describe('proposalFromExtraction: TARI', () => {
       conguaglioPrec: 0,
       coversFrom: '2026-01',
       coversTo: '2026-04',
+      supplyId: 'sup-berchet',
       shared: { groupTotal: 18546, weight: 10075 },
     });
     expect(lovarini).toMatchObject({ apartmentId: 'apt-l', shared: { weight: 8471 } });
@@ -491,7 +496,13 @@ describe('proposalFromExtraction: TARI', () => {
       proposalFromExtraction(
         tariResult(),
         tariContext({
-          supplies: [{ label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] }],
+          supplies: [
+            {
+              id: 'sup-berchet',
+              label: 'Berchet',
+              apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+            },
+          ],
         }),
         ids(),
       ),
@@ -499,6 +510,7 @@ describe('proposalFromExtraction: TARI', () => {
     expect(proposal.instalments).toHaveLength(1);
     expect(check(proposal, 'unknown-part')?.severity).toBe('fail');
     expect(check(proposal, 'unknown-part')?.message).toContain('Lovarini');
+    expect(check(proposal, 'unknown-part')?.message).toContain('Collegala qui sotto');
   });
 
   it('splits a supply of two apartments by weight, sharing the group', () => {
@@ -508,13 +520,18 @@ describe('proposalFromExtraction: TARI', () => {
         tariContext({
           supplies: [
             {
+              id: 'sup-berchet',
               label: 'Berchet',
               apartments: [
-                { apartmentId: 'apt-b', weight: 1 },
-                { apartmentId: 'apt-c', weight: 2 },
+                { apartmentId: 'apt-b', weight: 3333 },
+                { apartmentId: 'apt-c', weight: 6667 },
               ],
             },
-            { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+            {
+              id: 'sup-lovarini',
+              label: 'Lovarini',
+              apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+            },
           ],
           tenancies: [
             storedTenancy('b', 'apt-b', '2025-01'),
@@ -526,7 +543,7 @@ describe('proposalFromExtraction: TARI', () => {
       ),
     );
     const [b, c, l] = proposal.instalments;
-    // 10075 split 1:2 gives 3358.33 and 6716.67: the larger remainder takes the extra cent.
+    // 10075 split 3333:6667 gives 3358.0 and 6717.0: the larger remainder takes the extra cent.
     expect([b?.apartmentId, b?.rata, b?.shared?.weight]).toEqual(['apt-b', 3358, 3358]);
     expect([c?.apartmentId, c?.rata, c?.shared?.weight]).toEqual(['apt-c', 6717, 6717]);
     expect([l?.apartmentId, l?.rata]).toEqual(['apt-l', 8471]);
@@ -538,42 +555,71 @@ describe('proposalFromExtraction: TARI', () => {
   it('fails part-share and proposes nothing for a supply whose share rounds to zero', () => {
     const proposal = asTari(
       proposalFromExtraction(
-        tariResult(),
+        tariResult({
+          parts: [
+            { label: 'Berchet', amount: 4000, source },
+            { label: 'Lovarini', amount: 8471, source },
+          ],
+        }),
         tariContext({
           supplies: [
             {
+              id: 'sup-berchet',
               label: 'Berchet',
               apartments: [
                 { apartmentId: 'apt-b', weight: 1 },
-                { apartmentId: 'apt-c', weight: 100000 },
+                { apartmentId: 'apt-c', weight: 9999 },
               ],
             },
-            { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+            {
+              id: 'sup-lovarini',
+              label: 'Lovarini',
+              apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+            },
           ],
         }),
         ids(),
       ),
     );
     expect(check(proposal, 'part-share')?.severity).toBe('fail');
+    expect(check(proposal, 'part-share')?.message).toContain(
+      'La quota di un appartamento su questa utenza «Berchet» è zero: la percentuale è troppo piccola per questo importo. Controlla le percentuali.',
+    );
     expect(proposal.instalments.map((i) => i.apartmentId)).toEqual(['apt-l']);
   });
 
   it('fails duplicate-supply for two supplies with the same label, proposing neither', () => {
-    const berchet = { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] };
+    const berchet = {
+      id: 'sup-berchet',
+      label: 'Berchet',
+      apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+    };
     const proposal = asTari(
       proposalFromExtraction(
         tariResult(),
         tariContext({
           supplies: [
             berchet,
-            { ...berchet, label: 'berchet', apartments: [{ apartmentId: 'apt-c', weight: 1 }] },
-            { label: 'Lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+            {
+              ...berchet,
+              id: 'sup-berchet-2',
+              label: 'berchet',
+              apartments: [{ apartmentId: 'apt-c', weight: 10000 }],
+            },
+            {
+              id: 'sup-lovarini',
+              label: 'Lovarini',
+              apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+            },
           ],
         }),
         ids(),
       ),
     );
     expect(check(proposal, 'duplicate-supply')?.severity).toBe('fail');
+    expect(check(proposal, 'duplicate-supply')?.message).toContain(
+      'Apri Impostazioni, Utenze e correggi',
+    );
     expect(check(proposal, 'unknown-part')?.severity).toBe('fail');
     expect(proposal.instalments.map((i) => i.apartmentId)).toEqual(['apt-l']);
   });
@@ -585,11 +631,12 @@ describe('proposalFromExtraction: TARI', () => {
         tariContext({
           supplies: [
             {
+              id: 'sup-berchet',
               label: 'Berchet',
-              apartments: [{ apartmentId: 'apt-b', weight: 1 }],
+              apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
               deleted: true,
             },
-            { label: 'Lovarini', apartments: [] },
+            { id: 'sup-lovarini', label: 'Lovarini', apartments: [] },
           ],
         }),
         ids(),
@@ -605,8 +652,16 @@ describe('proposalFromExtraction: TARI', () => {
         tariResult(),
         tariContext({
           supplies: [
-            { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
-            { label: 'Lovarini', apartments: [{ apartmentId: 'apt-b', weight: 2 }] },
+            {
+              id: 'sup-berchet',
+              label: 'Berchet',
+              apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+            },
+            {
+              id: 'sup-lovarini',
+              label: 'Lovarini',
+              apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+            },
           ],
         }),
         ids(),
@@ -621,8 +676,16 @@ describe('proposalFromExtraction: TARI', () => {
         tariResult(),
         tariContext({
           supplies: [
-            { label: ' BERCHET ', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
-            { label: 'lovarini', apartments: [{ apartmentId: 'apt-l', weight: 1 }] },
+            {
+              id: 'sup-berchet',
+              label: ' BERCHET ',
+              apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+            },
+            {
+              id: 'sup-lovarini',
+              label: 'lovarini',
+              apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+            },
           ],
         }),
         ids(),
@@ -761,8 +824,16 @@ describe('proposalFromExtraction: TARI', () => {
       tariResult(),
       tariContext({
         supplies: [
-          { label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
-          { label: 'Lovarini', apartments: [{ apartmentId: 'apt-b', weight: 1 }] },
+          {
+            id: 'sup-berchet',
+            label: 'Berchet',
+            apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+          },
+          {
+            id: 'sup-lovarini',
+            label: 'Lovarini',
+            apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+          },
         ],
       }),
       ids(),

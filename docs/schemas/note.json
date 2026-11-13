@@ -26,6 +26,7 @@
         "tenancy",
         "bill",
         "instalment",
+        "supply",
         "payment",
         "transaction",
         "match"
