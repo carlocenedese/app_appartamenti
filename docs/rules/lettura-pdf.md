@@ -96,6 +96,36 @@ conservato nel repository, ha confrontato l'importo letto con il valore scritto 
 pagare» nello stesso documento: nessuna differenza. **Non è il campione di dieci PDF per fornitore
 controllati a mano che chiede il piano: resta da fare con Carlo.**
 
+## Scansioni lette con OCR (13 novembre 2026)
+
+Con `python/tools/pdf_report.py --ocr-data` (motore Tesseract 5.5.3, dati `ita.traineddata` di
+`tessdata_fast` 4.1.0, profili `python/seed-profiles/`, data `2026-11-13`), in sola lettura sulle
+cartelle in Dropbox di Berchet 3 e Pulci 2a (Lovarini non ha scansioni). Il rapporto stampa solo
+conteggi e non è conservato nel repository: nessun PDF, nome, importo o testo letto è stato
+copiato o scritto. **Questi conteggi NON sono il campione controllato a mano: da controllare a
+mano con Carlo, un campione di dieci scansioni, prima di fidarsi dell'OCR.**
+
+| Appartamento | PDF | Senza testo prima | Letti con OCR (`ocr`) | Con qualche pagina OCR (`mixed`) | Solo testo (`pdf`) | Riconosciute | Da confermare | Non riconosciute | Senza testo | Illeggibili | Avviso «OCR non disponibile» |
+| ------------ | --- | ----------------- | --------------------- | -------------------------------- | ------------------ | ------------ | ------------- | ---------------- | ----------- | ----------- | ---------------------------- |
+| Berchet 3    | 150 | 20                | 20                    | 77                               | 53                 | 28           | 75            | 47               | 0           | 0           | 0                            |
+| Pulci 2a     | 224 | 19                | 19                    | 83                               | 122                | 61           | 79            | 84               | 0           | 0           | 0                            |
+
+Prima (solo testo del PDF, stesse cartelle): Berchet 103 riconosciute, 0 da confermare, 27 non
+riconosciute; Pulci 139, 1 e 65. Durata: circa 5 minuti per Berchet e 1,5 per Pulci.
+
+- Tutte le scansioni senza testo (39) ora hanno testo. Nessuna è `senza-testo` e nessuna è
+  `illeggibile`. Un PDF letto con OCR non è mai `riconosciuta` (regola R87): quelli che un profilo
+  riconosce vanno `da-confermare`, gli altri restano `non-riconosciuta` (non c'è un profilo
+  dell'acqua di Berchet e Pulci). I conteggi non separano gli stati per origine del testo.
+- **Da decidere con Carlo:** 160 PDF che hanno testo (77 di Berchet, 83 di Pulci) hanno anche
+  qualche pagina senza testo (pagine solo immagine, per esempio di un'altra scansione dentro il
+  PDF) che ora passa dall'OCR, quindi sono `mixed` e, per R87, tutti i campi sono `medium` e lo
+  stato è `da-confermare`: bollette che prima erano `riconosciuta` con importo `high` (Berchet da
+  103 a 28, Pulci da 139 a 61). La regola `mixed` (un solo tetto per tutto il documento) va
+  riconsiderata: per esempio lasciare ai campi letti dal testo del PDF la loro confidenza.
+- Il motore scrive sull'errore standard messaggi di Leptonica (`box outside rectangle`) per
+  alcune pagine; senza testo né dati dei documenti, ma da zittire.
+
 ## Casi dubbi
 
 - **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il
