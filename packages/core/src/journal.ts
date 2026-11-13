@@ -12,7 +12,8 @@
  */
 import { z } from 'zod';
 import { TimestampSchema } from './model';
-import { compareText, isSafePath, loadDir } from './store/load';
+import { DROPBOX_CONFLICT_RULE, compareText, isSafePath, loadDir } from './store/load';
+import type { ConflictNameRule } from './store/load';
 import { StaleWriteError, currentRev, writeRecord } from './store/records';
 import { MalformedJsonError, assertSafeRelPath, assertSafeSegment } from './store/store';
 import type { Problem, Store } from './store/store';
@@ -214,11 +215,17 @@ export async function commitChange(
  */
 export async function readJournal(
   store: Store,
+  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
 ): Promise<{ operations: Operation[]; problems: Problem[] }> {
   const naming = { stemOf: journalStem, strict: false };
-  const { records, problems } = await loadDir(store, JOURNAL_DIR, OperationSchema, naming, {
-    includeDeleted: true,
-  });
+  const { records, problems } = await loadDir(
+    store,
+    JOURNAL_DIR,
+    OperationSchema,
+    naming,
+    { includeDeleted: true },
+    conflictRules,
+  );
   return { operations: [...records].sort(compareByTime), problems };
 }
 
@@ -497,8 +504,11 @@ function latestAfter(operations: readonly Operation[]): Map<string, JsonRecord &
 }
 
 /** The same for the journal in `store`. */
-async function latestAfterByPath(store: Store): Promise<Map<string, JsonRecord & { rev: number }>> {
-  return latestAfter((await readJournal(store)).operations);
+async function latestAfterByPath(
+  store: Store,
+  conflictRules?: readonly ConflictNameRule[],
+): Promise<Map<string, JsonRecord & { rev: number }>> {
+  return latestAfter((await readJournal(store, conflictRules)).operations);
 }
 
 /** Structural equality of two JSON values; the order of the keys of an object does not matter. */
@@ -542,8 +552,11 @@ async function readTolerant(store: Store, path: string): Promise<unknown> {
  * between the journal and the record leaves, or an edit by hand. Only these problems are
  * returned: the files of the journal that cannot be read are in `readJournal`'s `problems`.
  */
-export async function checkConsistency(store: Store): Promise<Problem[]> {
-  const latest = await latestAfterByPath(store);
+export async function checkConsistency(
+  store: Store,
+  conflictRules?: readonly ConflictNameRule[],
+): Promise<Problem[]> {
+  const latest = await latestAfterByPath(store, conflictRules);
   const problems: Problem[] = [];
   for (const [path, after] of [...latest].sort(([a], [b]) => compareText(a, b))) {
     if (!jsonEqual(await readTolerant(store, path), after)) {

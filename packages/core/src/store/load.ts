@@ -16,9 +16,20 @@ import {
 } from './store';
 import type { Problem, Store } from './store';
 
-// The markers Dropbox puts in the name of a conflict copy: English "conflicted copy" and Italian
-// "Copia in conflitto di <name>". To be checked on a real Italian Dropbox (spec section 36).
-const CONFLICT_MARKER = /conflicted copy|copia in conflitto/i;
+/**
+ * How one sync service names the copy it makes when two people save the same file at once. A name
+ * is a conflict copy when any rule in use says so; another service is supported by adding a rule.
+ */
+export type ConflictNameRule = { service: string; isConflictName(name: string): boolean };
+
+/**
+ * Dropbox: "conflicted copy" in English, "Copia in conflitto di <name>" in Italian, any case. To
+ * be checked on a real Italian Dropbox (spec section 36). The default rule of `loadAll`.
+ */
+export const DROPBOX_CONFLICT_RULE: ConflictNameRule = {
+  service: 'dropbox',
+  isConflictName: (name) => /conflicted copy|copia in conflitto/i.test(name),
+};
 // The parenthesised group with the marker, with the space before it and the " (1)" Dropbox adds
 // when the same conflict repeats; several groups when a conflict copy was itself in conflict.
 const CONFLICT_GROUP = / ?\([^()]*(?:conflicted copy|copia in conflitto)[^()]*\)(?: \([0-9]+\))?/gi;
@@ -75,9 +86,10 @@ function conflictProblem(dir: string, name: string): Problem {
  * (temporary `.tmp-*` files and anything else are ignored). Each file is sorted into exactly one
  * of these, in this order:
  *
- * 1. a name with `conflicted copy` or `copia in conflitto` in it (any case): a Dropbox conflict
- *    copy. Reported as `conflicted-copy` with `originalPath`, and never loaded as a record, even
- *    if its content is valid: which of the two files is right is for the user to decide;
+ * 1. a name that one of `conflictRules` (default: Dropbox only) calls a conflict copy. Reported
+ *    as `conflicted-copy`, with `originalPath` when a Dropbox group can be cut from the name, and
+ *    never loaded as a record, even if its content is valid: which of the two files is right is
+ *    for the user to decide;
  * 2. a name that is not a safe store path (a stray file that this app did not write and that
  *    Windows could not hold): reported as `schema-mismatch` without being read;
  * 3. not valid JSON (`MalformedJsonError` from the store): `malformed-json`;
@@ -105,10 +117,11 @@ export async function loadAll<T extends { id: string }>(
   kind: string,
   schema: ZodType<T>,
   opts: LoadOptions = {},
+  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
 ): Promise<{ records: T[]; problems: Problem[] }> {
   assertSafeSegment(kind);
   const naming = { stemOf: (record: T) => record.id, strict: true };
-  return loadDir(store, `${DATA_DIR}/${kind}`, schema, naming, opts);
+  return loadDir(store, `${DATA_DIR}/${kind}`, schema, naming, opts, conflictRules);
 }
 
 /**
@@ -131,6 +144,7 @@ export async function loadDir<T extends { id: string }>(
   schema: ZodType<T>,
   naming: Naming<T>,
   opts: LoadOptions = {},
+  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
 ): Promise<{ records: T[]; problems: Problem[] }> {
   const names = (await store.list(dir)).map((name) => name.normalize('NFC'));
 
@@ -141,7 +155,7 @@ export async function loadDir<T extends { id: string }>(
     if (!name.endsWith(JSON_EXTENSION) || name.startsWith(TEMP_PREFIX)) continue;
     const path = `${dir}/${name}`;
 
-    if (CONFLICT_MARKER.test(name)) {
+    if (conflictRules.some((rule) => rule.isConflictName(name))) {
       problems.push(conflictProblem(dir, name));
       continue;
     }

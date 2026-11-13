@@ -33,6 +33,7 @@ describe('writeJsonSchemas', () => {
       'supply',
       'tenancy',
       'transaction',
+      'user',
       'workspace',
     ].map((kind) => `${kind}.json`);
     expect(readdirSync(outDir).sort()).toEqual(expected);

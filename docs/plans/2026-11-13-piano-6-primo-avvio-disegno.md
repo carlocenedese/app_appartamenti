@@ -16,7 +16,7 @@ L'app installata non può ancora né creare né aprire una cartella di lavoro: i
 
 1. Creare una cartella di lavoro: utente, profili iniziali (`seedProfiles`), poi `_app/workspace.json` per ultimo (fa da marcatore di fine); se si interrompe, la ripresa non sovrascrive nulla.
 2. «Unisciti a un gruppo»: scegliere una cartella con `_app/workspace.json` valido e compatibile, poi scegliere o creare il proprio profilo utente.
-3. All'apertura valutare la cartella: compatibilità (`ok`, sola lettura, serve aggiornare), sincronizzazione (`ok`, `incomplete`, `diverged`) e problemi, con un messaggio chiaro per ognuno.
+3. All'apertura valutare la cartella: compatibilità (`ok`, sola lettura, serve aggiornare), sincronizzazione (`ok`, `behind`) e problemi, con un messaggio chiaro per ognuno.
 4. L'avviso di presenza di altri utenti.
 5. L'app desktop può leggere e scrivere la cartella scelta, con i permessi minimi.
 
@@ -44,8 +44,8 @@ L'app installata non può ancora né creare né aprire una cartella di lavoro: i
 ## Disegno
 
 - `User` (record `user`): `name`, id sicuro come nome di file; funzione `createUser`, operazione `users.create`.
-- `createWorkspace(store, {name, user}, seeds, app, clock, newId)`: rifiuta se esiste `workspace.json`; scrive utente, `seedProfiles`, poi `workspace.json` (con `schemaVersion`, `minAppVersion` dell'app, `createdAt`).
-- `assessWorkspace(store, app, conflictRules)`: `{compat, sync: 'ok' | 'incomplete' | 'diverged', users, problems}`.
+- `createWorkspace(store, {workspaceId, name, user: {id, name}}, seeds, clock, newId)`: rifiuta se esiste `workspace.json` o se `_app/journal` e `_app/dati` contengono file che non sono di una creazione interrotta dello stesso gruppo (stesso `user.id`; decisione di Carlo, 13 novembre 2026); scrive utente, `seedProfiles`, poi `workspace.json` (con `schemaVersion`, `minAppVersion` dell'app, `createdAt`).
+- `assessWorkspace(store, app, conflictRules)`: `{compat, sync: 'ok' | 'behind', writable, problems}`.
 - `TauriStore implements Store` con scrittura atomica (file temporaneo e rinomina), le impostazioni per macchina nella cartella di configurazione dell'app, il selettore di cartelle.
 - `othersActive(now, entries, windowMinutes)` e scrittura periodica del file di presenza.
 - Procedura guidata (`apps/desktop/src/first-run.ts`): «Crea gruppo», «Unisciti», profilo, avvisi di sola lettura, di sincronizzazione e di presenza.

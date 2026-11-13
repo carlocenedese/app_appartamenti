@@ -11,6 +11,7 @@ import {
   PaymentSchema,
   SupplierProfileSchema,
   SupplySchema,
+  UserSchema,
   TenancySchema,
   WorkspaceSchema,
   recordSchemas,
@@ -60,6 +61,7 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
       { apartmentId: 'apt-2', weight: 7500 },
     ],
   },
+  user: { ...base, name: 'Utente di prova' },
   tenancy: {
     ...base,
     apartmentId: 'apt-1',
@@ -225,6 +227,7 @@ describe('recordSchemas', () => {
         'supply',
         'tenancy',
         'transaction',
+        'user',
       ].sort(),
     );
   });
@@ -234,6 +237,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.contract).toBe(ContractSchema);
     expect(recordSchemas.tenancy).toBe(TenancySchema);
     expect(recordSchemas.supply).toBe(SupplySchema);
+    expect(recordSchemas.user).toBe(UserSchema);
     expect(recordSchemas.bill).toBe(BillSchema);
     expect(recordSchemas.payment).toBe(PaymentSchema);
     expect(recordSchemas.transaction).toBe(BankTransactionSchema);
@@ -450,6 +454,11 @@ describe('Tenancy', () => {
     const parsed = TenancySchema.parse(without(validRecords.tenancy, 'room', 'to'));
     expect(parsed).not.toHaveProperty('room');
     expect(parsed).not.toHaveProperty('to');
+  });
+
+  it('accepts a user and rejects a blank name', () => {
+    expect(UserSchema.safeParse(validRecords.user).success).toBe(true);
+    expect(UserSchema.safeParse(changed(validRecords.user, { name: ' ' })).success).toBe(false);
   });
 
   it('accepts a supply of several apartments and rejects a bad one', () => {

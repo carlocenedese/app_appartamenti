@@ -18,6 +18,11 @@ tauri-build = { version = "=2.7.4", features = [] }
 
 [dependencies]
 tauri = { version = "=2.12.5", features = [] }
+# Official plugins (Apache-2.0 OR MIT): files, the folder dialog, and persisted-scope, which keeps
+# the picked folder in the file scope across restarts (docs/rules/disco-app.md).
+tauri-plugin-fs = "=2.7.1"
+tauri-plugin-dialog = "=2.8.4"
+tauri-plugin-persisted-scope = "=2.4.2"
 
 [profile.release]
 codegen-units = 1
