@@ -118,6 +118,13 @@ jobs:
           app="apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/App Bollette.app"
           "$app/Contents/Resources/python/bin/python3" -I -m bollette_pdf --version
 
+      # The language data of the OCR is a resource next to python/ (macOS only, R85).
+      - name: Check the OCR language data in the built app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          app="apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos/App Bollette.app"
+          test -s "$app/Contents/Resources/ocr-data/ita.traineddata"
+
       - name: Collect the Windows installers
         if: runner.os == 'Windows'
         shell: bash

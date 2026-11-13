@@ -1,0 +1,481 @@
+{
+  "layout": "Acqua, riepilogo su due colonne (2025-26), scansione letta con OCR (testo inventato)",
+  "profileId": "acegas-acqua-2025",
+  "expected": {
+    "status": "da-confermare",
+    "number": "310758294163",
+    "issueDate": "2026-05-29",
+    "dueDate": "2026-06-22",
+    "amount": 8740,
+    "consumption": {
+      "quantity": "31.000",
+      "unit": "mc"
+    },
+    "confidence": {
+      "number": "medium",
+      "issueDate": "medium",
+      "dueDate": "medium",
+      "amount": "medium",
+      "consumption": "medium",
+      "periodStart": "medium",
+      "periodEnd": "medium"
+    },
+    "periodStart": "2025-10-03",
+    "periodEnd": "2026-05-04"
+  },
+  "dump": {
+    "fileHash": "0d7c1e5a9b3f4826a1c05e7d9f2b8a4c6e3d1f07b5a98c24e6d0f3a1b7c59e82",
+    "pages": 6,
+    "hasText": true,
+    "textSource": "ocr",
+    "warnings": [],
+    "lines": [
+      {
+        "page": 1,
+        "x0": 28.65,
+        "top": 194.09,
+        "x1": 179.77,
+        "bottom": 214.09,
+        "baseline": 209.89,
+        "words": [
+          {
+            "text": "Totale",
+            "x0": 28.65,
+            "top": 194.09,
+            "x1": 84.19,
+            "bottom": 214.09,
+            "confidence": 96.0
+          },
+          {
+            "text": "da",
+            "x0": 89.73,
+            "top": 194.09,
+            "x1": 111.97,
+            "bottom": 214.09,
+            "confidence": 93.0
+          },
+          {
+            "text": "pagare",
+            "x0": 117.51,
+            "top": 194.09,
+            "x1": 179.77,
+            "bottom": 214.09,
+            "confidence": 95.0
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 415.43,
+        "top": 194.09,
+        "x1": 505.45,
+        "bottom": 214.13,
+        "baseline": 209.89,
+        "words": [
+          {
+            "text": "87,40",
+            "x0": 415.43,
+            "top": 194.13,
+            "x1": 488.79,
+            "bottom": 214.13,
+            "confidence": 88.0
+          },
+          {
+            "text": "E",
+            "x0": 494.33,
+            "top": 194.09,
+            "x1": 505.45,
+            "bottom": 214.09,
+            "confidence": 91.0
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 28.65,
+        "top": 224.68,
+        "x1": 90.91,
+        "bottom": 238.68,
+        "baseline": 235.74,
+        "words": [
+          {
+            "text": "Scadenza",
+            "x0": 28.65,
+            "top": 224.68,
+            "x1": 90.91,
+            "bottom": 238.68,
+            "confidence": 94.0
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "x0": 398.77,
+        "top": 224.71,
+        "x1": 507.67,
+        "bottom": 238.71,
+        "baseline": 235.74,
+        "words": [
+          {
+            "text": "22",
+            "x0": 398.77,
+            "top": 224.71,
+            "x1": 417.44,
+            "bottom": 238.71,
+            "confidence": 90.0
+          },
+          {
+            "text": "giugno",
+            "x0": 422.11,
+            "top": 224.71,
+            "x1": 465.66,
+            "bottom": 238.71,
+            "confidence": 92.0
+          },
+          {
+            "text": "2026",
+            "x0": 470.32,
+            "top": 224.71,
+            "x1": 507.67,
+            "bottom": 238.71,
+            "confidence": 89.0
+          }
+        ]
+      },
+      {
+        "page": 3,
+        "x0": 28.65,
+        "top": 205.07,
+        "x1": 250.22,
+        "bottom": 214.07,
+        "baseline": 212.18,
+        "words": [
+          {
+            "text": "Numero",
+            "x0": 28.65,
+            "top": 205.86,
+            "x1": 57.1,
+            "bottom": 213.86,
+            "confidence": 95.0
+          },
+          {
+            "text": "fattura",
+            "x0": 59.32,
+            "top": 205.86,
+            "x1": 81.97,
+            "bottom": 213.86,
+            "confidence": 93.0
+          },
+          {
+            "text": "elettronica",
+            "x0": 84.19,
+            "top": 205.86,
+            "x1": 121.08,
+            "bottom": 213.86,
+            "confidence": 87.0
+          },
+          {
+            "text": "valida",
+            "x0": 123.29,
+            "top": 205.86,
+            "x1": 144.19,
+            "bottom": 213.86,
+            "confidence": 96.0
+          },
+          {
+            "text": "ai",
+            "x0": 146.41,
+            "top": 205.86,
+            "x1": 152.63,
+            "bottom": 213.86,
+            "confidence": 93.0
+          },
+          {
+            "text": "fini",
+            "x0": 154.85,
+            "top": 205.86,
+            "x1": 165.06,
+            "bottom": 213.86,
+            "confidence": 95.0
+          },
+          {
+            "text": "fiscali",
+            "x0": 167.28,
+            "top": 205.86,
+            "x1": 187.27,
+            "bottom": 213.86,
+            "confidence": 88.0
+          },
+          {
+            "text": "310758294163",
+            "x0": 190.17,
+            "top": 205.07,
+            "x1": 250.22,
+            "bottom": 214.07,
+            "confidence": 91.0
+          }
+        ]
+      },
+      {
+        "page": 3,
+        "x0": 28.65,
+        "top": 218.49,
+        "x1": 131.03,
+        "bottom": 227.49,
+        "baseline": 225.6,
+        "words": [
+          {
+            "text": "Data",
+            "x0": 28.65,
+            "top": 219.28,
+            "x1": 45.54,
+            "bottom": 227.28,
+            "confidence": 94.0
+          },
+          {
+            "text": "emissione",
+            "x0": 47.76,
+            "top": 219.28,
+            "x1": 83.77,
+            "bottom": 227.28,
+            "confidence": 90.0
+          },
+          {
+            "text": "29.05.2026",
+            "x0": 86.01,
+            "top": 218.49,
+            "x1": 131.03,
+            "bottom": 227.49,
+            "confidence": 92.0
+          }
+        ]
+      },
+      {
+        "page": 3,
+        "x0": 28.65,
+        "top": 276.96,
+        "x1": 223.65,
+        "bottom": 285.96,
+        "baseline": 284.36,
+        "words": [
+          {
+            "text": "Consumo",
+            "x0": 28.65,
+            "top": 276.96,
+            "x1": 60.85,
+            "bottom": 285.96,
+            "confidence": 89.0
+          },
+          {
+            "text": "rilevato",
+            "x0": 63.05,
+            "top": 276.96,
+            "x1": 99.85,
+            "bottom": 285.96,
+            "confidence": 95.0
+          },
+          {
+            "text": "dal",
+            "x0": 102.05,
+            "top": 276.96,
+            "x1": 115.85,
+            "bottom": 285.96,
+            "confidence": 93.0
+          },
+          {
+            "text": "03.10.2025",
+            "x0": 118.05,
+            "top": 276.96,
+            "x1": 164.05,
+            "bottom": 285.96,
+            "confidence": 87.0
+          },
+          {
+            "text": "al",
+            "x0": 166.25,
+            "top": 276.96,
+            "x1": 175.45,
+            "bottom": 285.96,
+            "confidence": 96.0
+          },
+          {
+            "text": "12.04.2026",
+            "x0": 177.65,
+            "top": 276.96,
+            "x1": 223.65,
+            "bottom": 285.96,
+            "confidence": 93.0
+          }
+        ]
+      },
+      {
+        "page": 3,
+        "x0": 28.65,
+        "top": 258.96,
+        "x1": 219.05,
+        "bottom": 267.96,
+        "baseline": 266.36,
+        "words": [
+          {
+            "text": "Consumo",
+            "x0": 28.65,
+            "top": 258.96,
+            "x1": 60.85,
+            "bottom": 267.96,
+            "confidence": 95.0
+          },
+          {
+            "text": "stimato",
+            "x0": 63.05,
+            "top": 258.96,
+            "x1": 95.25,
+            "bottom": 267.96,
+            "confidence": 88.0
+          },
+          {
+            "text": "dal",
+            "x0": 97.45,
+            "top": 258.96,
+            "x1": 111.25,
+            "bottom": 267.96,
+            "confidence": 91.0
+          },
+          {
+            "text": "13.04.2026",
+            "x0": 113.45,
+            "top": 258.96,
+            "x1": 159.45,
+            "bottom": 267.96,
+            "confidence": 94.0
+          },
+          {
+            "text": "al",
+            "x0": 161.65,
+            "top": 258.96,
+            "x1": 170.85,
+            "bottom": 267.96,
+            "confidence": 90.0
+          },
+          {
+            "text": "04.05.2026",
+            "x0": 173.05,
+            "top": 258.96,
+            "x1": 219.05,
+            "bottom": 267.96,
+            "confidence": 92.0
+          }
+        ]
+      },
+      {
+        "page": 3,
+        "x0": 411.31,
+        "top": 306.96,
+        "x1": 559.77,
+        "bottom": 317.96,
+        "baseline": 315.65,
+        "words": [
+          {
+            "text": "Consumo",
+            "x0": 411.31,
+            "top": 306.96,
+            "x1": 458.38,
+            "bottom": 317.96,
+            "confidence": 89.0
+          },
+          {
+            "text": "fatturato",
+            "x0": 461.43,
+            "top": 306.96,
+            "x1": 501.74,
+            "bottom": 317.96,
+            "confidence": 95.0
+          },
+          {
+            "text": "(metri",
+            "x0": 504.79,
+            "top": 306.96,
+            "x1": 532.88,
+            "bottom": 317.96,
+            "confidence": 93.0
+          },
+          {
+            "text": "cubi)",
+            "x0": 535.93,
+            "top": 306.96,
+            "x1": 559.77,
+            "bottom": 317.96,
+            "confidence": 87.0
+          }
+        ]
+      },
+      {
+        "page": 3,
+        "x0": 755.54,
+        "top": 306.96,
+        "x1": 808.14,
+        "bottom": 317.96,
+        "baseline": 315.65,
+        "words": [
+          {
+            "text": "31,000",
+            "x0": 755.54,
+            "top": 306.96,
+            "x1": 789.17,
+            "bottom": 317.96,
+            "confidence": 96.0
+          },
+          {
+            "text": "mc",
+            "x0": 792.24,
+            "top": 306.96,
+            "x1": 808.14,
+            "bottom": 317.96,
+            "confidence": 93.0
+          }
+        ]
+      },
+      {
+        "page": 6,
+        "x0": 28.65,
+        "top": 134.4,
+        "x1": 184.65,
+        "bottom": 142.4,
+        "baseline": 140.72,
+        "words": [
+          {
+            "text": "Carta",
+            "x0": 28.65,
+            "top": 134.4,
+            "x1": 64.65,
+            "bottom": 142.4,
+            "confidence": 95.0
+          },
+          {
+            "text": "del",
+            "x0": 68.65,
+            "top": 134.4,
+            "x1": 104.65,
+            "bottom": 142.4,
+            "confidence": 88.0
+          },
+          {
+            "text": "Servizio",
+            "x0": 108.65,
+            "top": 134.4,
+            "x1": 144.65,
+            "bottom": 142.4,
+            "confidence": 91.0
+          },
+          {
+            "text": "Idrico",
+            "x0": 148.65,
+            "top": 134.4,
+            "x1": 184.65,
+            "bottom": 142.4,
+            "confidence": 94.0
+          }
+        ]
+      }
+    ]
+  }
+}

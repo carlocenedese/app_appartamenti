@@ -25,7 +25,8 @@ from bollette_pdf.reader import load_dump  # noqa: E402
 
 AT = "2026-11-12"
 SEED = REPO / "python" / "seed-profiles"
-FIXTURES = sorted((REPO / "fixtures" / "pdf").glob("*.json"))
+FIXTURE_DIR = REPO / "fixtures" / "pdf"
+FIXTURES = sorted(FIXTURE_DIR.glob("*.json"))
 
 # Shapes of personal data; only the invented codes of fixtures/README.md may match.
 IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?:\s?[0-9A-Z]){11,30}\b")
@@ -39,6 +40,7 @@ FICTITIOUS = {"IT60 X054 2811 1010 0000 0123 456", "RSSMRA80A01H501U", "IT001E12
 INVENTED_NUMBERS = {
     "acegas-acqua-01": "452030663064",
     "acegas-acqua-02": "493622410726",
+    "acegas-acqua-ocr-01": "310758294163",
     "acegas-tari-01": "5570/2/65484",
     "acegas-tari-02": "9732/15/83030",
     "acegas-tari-03": "82777942925",
@@ -98,7 +100,7 @@ class SeedProfilesTest(unittest.TestCase):
 
 class FixturesTest(unittest.TestCase):
     def test_there_are_fixtures_for_every_supplier(self) -> None:
-        names = {path.stem.rsplit("-", 1)[0] for path in FIXTURES}
+        names = {path.stem.rsplit("-", 1)[0].removesuffix("-ocr") for path in FIXTURES}
         self.assertEqual(
             names, {"acegas-acqua", "acegas-tari", "enel", "fastweb", "hera-gas", "hera-luce"}
         )
@@ -143,6 +145,31 @@ class FixturesTest(unittest.TestCase):
                 for profile in matching:
                     self.assertEqual(profile.get("category"), own.get("category"))
                     self.assertEqual(profile["kind"], own["kind"])
+
+    def test_a_scanned_water_bill_is_read_through_ocr_and_never_high(self) -> None:
+        # Synthetic dump (invented text and numbers) of a scan: the euro sign is read as «E».
+        fixture = _fixture(FIXTURE_DIR / "acegas-acqua-ocr-01.json")
+        self.assertEqual(fixture["dump"]["textSource"], "ocr")
+        self.assertTrue(all("confidence" in w for l in fixture["dump"]["lines"] for w in l["words"]))
+        result = _extract(fixture["dump"])
+        self.assertEqual((result["status"], result["textSource"]), ("da-confermare", "ocr"))
+        self.assertEqual(result["profileId"], "acegas-acqua-2025")
+        fields = result["fields"]
+        self.assertEqual(
+            (fields["amount"]["value"], fields["dueDate"]["value"], fields["number"]["value"]),
+            (8740, "2026-06-22", INVENTED_NUMBERS["acegas-acqua-ocr-01"]),
+        )
+        self.assertNotIn("high", {f["confidence"] for f in fields.values()})
+
+    def test_a_scanned_amount_read_with_low_confidence_is_left_empty(self) -> None:
+        fixture = _fixture(FIXTURE_DIR / "acegas-acqua-ocr-01.json")
+        for line in fixture["dump"]["lines"]:
+            if any(w["text"] == "87,40" for w in line["words"]):
+                for word in line["words"]:
+                    word["confidence"] = 40.0
+        fields = _extract(fixture["dump"])["fields"]
+        self.assertIsNone(fields["amount"]["value"])
+        self.assertEqual(fields["dueDate"]["value"], "2026-06-22")
 
     def test_two_layouts_of_the_same_supplier(self) -> None:
         profile_ids = {_fixture(path)["profileId"] for path in FIXTURES}
