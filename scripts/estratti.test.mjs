@@ -214,6 +214,52 @@ describe('pnpm estratti con un CSV', () => {
   );
 
   it(
+    'annulla con un pagamento dipendente rifiuta con id e conteggi, senza dati personali',
+    async () => {
+      const s = await setup();
+      const id = importFile(s, write('e.csv', csvText())).json.statementId;
+      const store = new FsStore(s.dir);
+      const tx = readdirSync(join(s.dir, '_app', 'dati', 'transaction'))[0].replace('.json', '');
+      const payment = {
+        id: 'pay-dip',
+        v: 1,
+        rev: 1,
+        apartmentId: apartment().id,
+        tenantId: 't1',
+        date: '2026-10-05',
+        amount: 1000,
+        confirmed: true,
+        kind: 'canone',
+        source: 'csv',
+        transactionId: tx,
+      };
+      await commitChange(
+        store,
+        {
+          profileId: 'p1',
+          kind: 'income.confirm',
+          summary: 'x',
+          changes: [{ path: recordPath('payment', 'pay-dip'), before: undefined, after: payment }],
+        },
+        () => ORA,
+        () => 'op-pay',
+      );
+      const journal = journalCount(s.dir);
+      const undone = cli(['annulla', ...s.common, '--estratto', id]);
+      expect(undone.code).toBe(1);
+      expect(undone.json).toEqual({
+        status: 'rejected',
+        reason: 'dependent-payments',
+        message: 'Rifiutato: dei pagamenti dipendono dai movimenti di questo estratto.',
+        paymentIds: ['pay-dip'],
+      });
+      expect(scanText(undone.out)).toEqual([]);
+      expect(journalCount(s.dir)).toBe(journal);
+    },
+    TIMEOUT,
+  );
+
+  it(
     'annulla con il registro non riallineato dà un rifiuto con messaggio costante',
     async () => {
       const s = await setup();

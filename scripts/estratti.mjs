@@ -58,6 +58,7 @@ const MESSAGES = {
   'no-import': 'Rifiutato: nessuna importazione da annullare per questo estratto.',
   'shared-transactions': 'Rifiutato: un altro estratto elenca gli stessi movimenti.',
   'held-duplicates': 'Rifiutato: un altro estratto ha righe da rivedere che ne dipendono.',
+  'dependent-payments': 'Rifiutato: dei pagamenti dipendono dai movimenti di questo estratto.',
   'later-changes': 'Rifiutato: dopo l’importazione ci sono state altre modifiche.',
   'journal-not-aligned': 'Rifiutato: il registro non è riallineato con i dati.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -289,7 +290,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
   need(values, 'estratto');
   try {
     const result = await undoImport(store, values.estratto, who, clock, newId);
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    if (result.status === 'refused') {
+      throw new Stop(
+        'rejected',
+        result.reason,
+        result.reason === 'dependent-payments' ? { paymentIds: result.paymentIds } : {},
+      );
+    }
     return { status: 'undone', statementId: values.estratto, operationId: result.operation.id };
   } catch (error) {
     if (error instanceof Stop) throw error;
