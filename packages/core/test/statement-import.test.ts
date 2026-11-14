@@ -7,6 +7,7 @@ import {
   BankTransactionSchema,
   StatementReadError,
   StatementSchema,
+  checkConsistency,
   commitChange,
   importStatement,
   isoDate,
@@ -859,7 +860,7 @@ describe('after review: interruptions, hidden twins, masked accounts', () => {
     const { store, accountId, newId } = await seeded();
     await saveBankProfile(
       store,
-      { ...profile, accountPattern: 'conto ?([A-Z0-9*]*)' },
+      { ...profile, accountPattern: 'conto ?([A-Z0-9*•#]*)' },
       'p1',
       clock,
       ids('q'),
@@ -883,6 +884,90 @@ describe('after review: interruptions, hidden twins, masked accounts', () => {
       status: 'rejected',
       reason: 'masked-account',
     });
+    expect(await run('conto ••••3456', 'c')).toMatchObject({ reason: 'masked-account' });
+    expect(await run('conto ####3456', 'd')).toMatchObject({ reason: 'masked-account' });
     expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('after an interrupted import and its resume, undoing leaves no movement behind', async () => {
+    for (const limit of [1, 2, 3, 4]) {
+      const { store, accountId, newId } = await flaky();
+      const f = file([
+        ['2026-10-05', 'Alfa', '-1.00'],
+        ['2026-10-06', 'Beta', '-2.00'],
+        ['2026-10-07', 'Gamma', '-3.00'],
+      ]);
+      const input = { accountId, fileBytes: f.bytes, fileName: 'a', table: f.table, period: OCT };
+      store.limit = limit; // the journal file, then limit - 1 movements; never the statement
+      await expect(importStatement(store, input, 'p1', clock, newId)).rejects.toThrow(
+        'interrupted',
+      );
+      store.limit = Infinity;
+      const r = await importStatement(store, input, 'p1', clock, newId);
+      if (r.status !== 'imported') throw new Error('x');
+      expect(await live(store)).toHaveLength(3);
+      expect((await undoImport(store, r.statement.id, 'p1', clock, newId)).status).toBe('undone');
+      expect(await live(store), `limit ${String(limit)}`).toHaveLength(0);
+      expect(await statementsOf(store)).toHaveLength(0);
+      expect(await checkConsistency(store)).toEqual([]);
+    }
+  });
+
+  it('after an interrupted keep and its resume, undoing the import leaves no movement behind', async () => {
+    const { store, accountId, newId } = await flaky();
+    const f = file([['2026-10-05', 'Alfa', '-1.00', 'Prenotato']]);
+    const r = await importStatement(
+      store,
+      { accountId, fileBytes: f.bytes, fileName: 'a', table: f.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    if (r.status !== 'imported') throw new Error('x');
+    store.limit = 2;
+    await expect(resolveHeld(store, r.statement.id, 2, 'keep', 'p1', clock, newId)).rejects.toThrow(
+      'interrupted',
+    );
+    store.limit = Infinity;
+    await resolveHeld(store, r.statement.id, 2, 'keep', 'p1', clock, newId);
+    expect((await undoImport(store, r.statement.id, 'p1', clock, newId)).status).toBe('undone');
+    expect(await live(store)).toHaveLength(0);
+    expect(await checkConsistency(store)).toEqual([]);
+  });
+
+  it('a possible twin held on another account does not block the undo', async () => {
+    const { store, accountId, newId } = await seeded();
+    const second = await saveAccount(
+      store,
+      { apartmentId: 'apt', label: 'Altro', bankProfileId: profile.id, iban: OTHER_IBAN },
+      'p1',
+      clock,
+      ids('z'),
+    );
+    if (second.status !== 'saved') throw new Error('account');
+    const imp = async (id: string, movements: Mv[], name: string) => {
+      const f = file(movements);
+      const r = await importStatement(
+        store,
+        { accountId: id, fileBytes: f.bytes, fileName: name, table: f.table, period: OCT },
+        'p1',
+        clock,
+        newId,
+      );
+      if (r.status !== 'imported') throw new Error('x');
+      return r.statement.id;
+    };
+    const a = await imp(accountId, [['2026-10-10', 'Bonifico Rossi', '-10.00']], 'a');
+    await imp(
+      second.account.id,
+      [
+        ['2026-10-10', 'Bonifico Rossi', '-10.00'],
+        ['2026-10-11', 'Altro', '-1.00'],
+      ],
+      'b',
+    );
+    await imp(second.account.id, [['2026-10-10', 'BON. ROSSI', '-10.00']], 'c');
+    expect((await statementsOf(store)).some((x) => x.held.length > 0)).toBe(true);
+    expect((await undoImport(store, a, 'p1', clock, newId)).status).toBe('undone');
   });
 });

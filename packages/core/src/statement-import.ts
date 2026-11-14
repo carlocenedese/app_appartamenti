@@ -319,11 +319,17 @@ export async function undoImport(
   const target = operations
     .filter((o) => o.kind === 'statement.import' && o.changes.some((c) => c.path === path))
     .flatMap((o) => undoTargetOf(operations, o) ?? [])
-    .at(-1);
+    // The first import in force: after an interrupted import and its resume, the first one alone
+    // holds the movements written before the interruption; the later ones go with it.
+    .at(0);
   if (target === undefined) throw new RangeError('No import of this statement to undo');
 
   const dependents = await dependentsOf(store, target.id);
-  const decisions = dependents.filter((o) => o.kind === 'statement.resolve');
+  const decisions = dependents.filter(
+    (o) =>
+      o.kind === 'statement.resolve' ||
+      (o.kind === 'statement.import' && o.changes.some((c) => c.path === path)),
+  );
   const going = new Set(
     [target, ...decisions].flatMap((o) =>
       o.changes.filter((c) => c.path.startsWith(TRANSACTION_DIR)).map((c) => c.path),
