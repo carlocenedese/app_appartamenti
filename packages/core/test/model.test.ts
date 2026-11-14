@@ -7,6 +7,8 @@ import {
   ApartmentSchema,
   BankProfileSchema,
   StatementSchema,
+  TenantSchema,
+  PayerSchema,
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
@@ -19,6 +21,7 @@ import {
   UserSchema,
   TenancySchema,
   WorkspaceSchema,
+  DEFAULT_RENT_LATE_DAYS,
   recordSchemas,
 } from '../src/model';
 import type {
@@ -111,6 +114,14 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     ],
   },
   user: { ...base, name: 'Utente di prova' },
+  tenant: { ...base, name: 'Mario Rossi', language: 'it' },
+  payer: {
+    ...base,
+    key: 'iban:IT60X0542811101000000123456',
+    tenantId: 'ten-1',
+    validFrom: '2026-01-01',
+    source: 'confirmed',
+  },
   tenancy: {
     ...base,
     apartmentId: 'apt-1',
@@ -280,6 +291,8 @@ describe('recordSchemas', () => {
         'tenancy',
         'transaction',
         'user',
+        'tenant',
+        'payer',
       ].sort(),
     );
   });
@@ -1263,5 +1276,46 @@ describe('accounts, bank profiles and statements (plan 3a)', () => {
         }),
       ),
     ).toBe(true);
+  });
+});
+
+describe('tenant, payer and rentLateDays (plan 3b)', () => {
+  it('rejects an empty tenant name and an unknown language', () => {
+    expect(TenantSchema.safeParse(validRecords.tenant).success).toBe(true);
+    expect(TenantSchema.safeParse(changed(validRecords.tenant, { name: '' })).success).toBe(false);
+    expect(TenantSchema.safeParse(changed(validRecords.tenant, { language: 'de' })).success).toBe(
+      false,
+    );
+  });
+
+  it('accepts only normalised payer keys', () => {
+    const ok = (key: string) => PayerSchema.safeParse(changed(validRecords.payer, { key })).success;
+    expect(ok('iban:IT60X0542811101000000123456')).toBe(true);
+    expect(ok('name:mario rossi')).toBe(true);
+    for (const key of [
+      'iban:it60x0542811101000000123456',
+      'iban:IT60 X0542811101000000123456',
+      'name:Mario Rossi',
+      'name:',
+      'tel:1',
+    ]) {
+      expect(ok(key), key).toBe(false);
+    }
+  });
+
+  it('rejects a payer validTo before validFrom', () => {
+    const parse = (validTo: string) =>
+      PayerSchema.safeParse(changed(validRecords.payer, { validTo })).success;
+    expect(parse('2025-12-31')).toBe(false);
+    expect(parse('2026-01-01')).toBe(true);
+  });
+
+  it('bounds rentLateDays to an integer between 0 and 31', () => {
+    const parse = (rentLateDays: number) =>
+      ApartmentSchema.safeParse(changed(validRecords.apartment, { rentLateDays })).success;
+    expect([-1, 32, 2.5].map(parse)).toEqual([false, false, false]);
+    expect([0, 10, 31].map(parse)).toEqual([true, true, true]);
+    expect(ApartmentSchema.safeParse(validRecords.apartment).success).toBe(true);
+    expect(DEFAULT_RENT_LATE_DAYS).toBe(10);
   });
 });
