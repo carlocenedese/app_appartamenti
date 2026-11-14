@@ -30,3 +30,4 @@ export * from './seed-profiles';
 export * from './workspace';
 export * from './assess';
 export * from './presence';
+export * from './statement-table';
