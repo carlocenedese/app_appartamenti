@@ -31,7 +31,8 @@ type ErrorCode =
   | 'no-amount'
   | 'zero-amount'
   | 'bad-period'
-  | 'unsafe-pattern';
+  | 'unsafe-pattern'
+  | 'bad-disp-code';
 
 /** Never carries the cell value: statements hold personal data. `column` is a profile field name. */
 export class StatementReadError extends Error {
@@ -45,38 +46,44 @@ export class StatementReadError extends Error {
   }
 }
 
-/** Profile patterns run only on text up to this long: bounds the work of any pattern. */
-const MAX_PATTERN_INPUT = 1000;
+/**
+ * Profile patterns run only on text up to this long. A cap alone does not bound a bad pattern
+ * (`(a|aa)+$` is exponential on 40 characters), so `hasRiskyShape` refuses those shapes first.
+ */
+const MAX_PATTERN_INPUT = 300;
 
 /**
- * Whether `pattern` nests a quantifier in a group that is itself repeated with `+`, `*` or `{n,}`
- * (`(a+)+$`), the classic catastrophic-backtracking shape.
- * shortcut: overlapping alternations such as `(a|a)*` are not detected; the input cap bounds them.
+ * Whether `pattern` has a shape that backtracks badly: a group repeated with `+`, `*` or `{n,}`
+ * that holds a quantifier (`(a+)+$`) or an alternation (`(a|aa)+$`), or more than one `.*`/`.+`
+ * (`.*.*x`). A heuristic, not a proof. The full solution (a linear-time engine such as RE2, or a
+ * worker with a timeout) is a future decision: the patterns come from profiles we write, not
+ * from hostile files.
  */
-function hasNestedQuantifier(pattern: string): boolean {
+function hasRiskyShape(pattern: string): boolean {
   const bare = pattern.replace(/\\./gs, '_').replace(/\[[^\]]*\]/g, '_');
-  const repeat = (at: number): number => {
+  if ((bare.match(/\.[+*]/g) ?? []).length > 1) return true;
+  const repeat = (at: number): boolean => {
     const c = bare[at];
-    if (c === '+' || c === '*') return 1;
-    if (c === '{') return /^\{\d*,\d*\}/.test(bare.slice(at)) ? 1 : 0;
-    return 0;
+    if (c === '+' || c === '*') return true;
+    return c === '{' && /^\{\d*,\d*\}/.test(bare.slice(at));
   };
-  const stack: boolean[] = [];
+  const stack: boolean[] = []; // per open group: holds a quantifier or an alternation
   for (let i = 0; i < bare.length; i += 1) {
-    if (bare[i] === '(') stack.push(false);
-    else if (bare[i] === ')') {
+    const c = bare[i];
+    if (c === '(') stack.push(false);
+    else if (c === ')') {
       const inner = stack.pop() ?? false;
-      if (inner && repeat(i + 1) === 1) return true;
-      if (inner && stack.length > 0) stack[stack.length - 1] = true;
-      if (repeat(i + 1) === 1 && stack.length > 0) stack[stack.length - 1] = true;
-    } else if (repeat(i) === 1 && stack.length > 0) stack[stack.length - 1] = true;
+      if (inner && repeat(i + 1)) return true;
+      if (stack.length > 0 && (inner || repeat(i + 1))) stack[stack.length - 1] = true;
+    } else if (stack.length > 0 && (c === '|' || repeat(i))) stack[stack.length - 1] = true;
   }
   return false;
 }
 
 function safePattern(pattern: string | undefined): RegExp | undefined {
   if (pattern === undefined) return undefined;
-  if (hasNestedQuantifier(pattern)) throw new StatementReadError('unsafe-pattern', 0);
+  // Row 0: the profile is at fault, not a row of the file.
+  if (hasRiskyShape(pattern)) throw new StatementReadError('unsafe-pattern', 0);
   return new RegExp(pattern);
 }
 
@@ -104,6 +111,7 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
   const rows = table.sheets[0]?.rows ?? [];
   const accountRe = safePattern(profile.accountPattern);
   const periodRe = safePattern(profile.periodPattern);
+  const dispCodeRe = safePattern(profile.dispCodePattern);
   const nameRe = safePattern(profile.counterparty?.name);
   const ibanRe = safePattern(profile.counterparty?.iban);
 
@@ -152,7 +160,13 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
 
   const magnitude = (cell: StatementCell | undefined, row: number, column: string): Cents => {
     if (cell?.t === 'n') {
-      if (/^-?[0-9]+(\.[0-9]{1,2})?$/.test(cell.v)) return parseEuro(cell.v);
+      if (/^-?[0-9]+(\.[0-9]{1,2})?$/.test(cell.v)) {
+        try {
+          return parseEuro(cell.v); // throws on a number beyond the safe integers, with the value
+        } catch {
+          throw new StatementReadError('bad-amount', row, column);
+        }
+      }
       // `1.234` could be one euro and a bit or one thousand two hundred: never guess.
       throw new StatementReadError(
         /^-?[0-9]+\.[0-9]{3}$/.test(cell.v) ? 'ambiguous-number' : 'bad-amount',
@@ -175,6 +189,12 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
     if (cells.every(empty)) continue;
     const row = r + 1;
 
+    // Footer rows (totals, balance) have neither date nor amount; text in the date cell is not skipped.
+    const noAmount =
+      amountCol !== undefined
+        ? empty(cells[amountCol])
+        : empty(cells[debitCol as number]) && empty(cells[creditCol as number]);
+    if (empty(cells[dateCol]) && noAmount) continue;
     const dateCell = cells[dateCol];
     const date =
       dateCell?.t === 'd'
@@ -189,8 +209,8 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
       const cell = cells[amountCol];
       if (empty(cell)) throw new StatementReadError('no-amount', row, 'amount');
       const value = magnitude(cell, row, 'amount');
-      // An empty Segno cell leaves the sign the amount already has.
-      if (signCol === undefined || empty(cells[signCol])) amount = value;
+      // An empty Segno cell is fine only for a negative amount: a positive one would be a silent credit.
+      if (signCol === undefined || (empty(cells[signCol]) && value < 0)) amount = value;
       else {
         const sign = cells[signCol];
         if (among(sign, profile.signValues?.debit)) amount = -Math.abs(value);
@@ -220,7 +240,12 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
       booked: !(pendingCol !== undefined && among(cells[pendingCol], profile.pendingValues)),
     };
     const code = codeCol === undefined ? '' : text(cells[codeCol]).trim();
-    if (code !== '') entry.dispCode = code;
+    if (code !== '') {
+      if (dispCodeRe !== undefined && exec(dispCodeRe, code) === null) {
+        throw new StatementReadError('bad-disp-code', row, 'dispCode');
+      }
+      entry.dispCode = code;
+    }
 
     const name = exec(nameRe, description)?.[1]?.trim();
     const iban = normaliseIban(exec(ibanRe, description)?.[1] ?? '');

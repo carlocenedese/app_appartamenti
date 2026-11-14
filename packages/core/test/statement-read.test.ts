@@ -18,6 +18,8 @@ const base = BankProfileSchema.parse(
 const profile = (over: Record<string, unknown> = {}): BankProfile =>
   BankProfileSchema.parse({ ...base, ...over });
 
+// Wrong check digits, built here so that no whole IBAN is written in the source.
+const BAD_IBAN = `IT${'00'}X0542811101000000123456`;
 const s = (v: string): StatementCell => ({ t: 's', v });
 const n = (v: string): StatementCell => ({ t: 'n', v });
 const d = (v: string): StatementCell => ({ t: 'd', v: isoDate(v) });
@@ -59,7 +61,7 @@ describe('readStatementTable', () => {
     const r = readStatementTable(
       table(
         HEADER,
-        line(d('2026-10-27'), s('Addebito'), s('HERA COMM'), n('-92.81'), null, s('123')),
+        line(d('2026-10-27'), s('Addebito'), s('HERA COMM'), n('-92.81'), null, s('A123')),
       ),
       base,
     );
@@ -69,7 +71,7 @@ describe('readStatementTable', () => {
         date: '2026-10-27',
         amount: -9281,
         description: 'Addebito - HERA COMM',
-        dispCode: '123',
+        dispCode: 'A123',
         booked: true,
       },
     ]);
@@ -86,7 +88,7 @@ describe('readStatementTable', () => {
       description: 'Bonifico',
     });
     const iso = readStatementTable(
-      table(HEADER, line(s('2026-10-27'), s('x'), null, s('1,5'))),
+      table(HEADER, line(s('2026-10-27'), s('x'), null, s('1,5'), s('A'))),
       profile({ dateFormat: 'YYYY-MM-DD' }),
     );
     expect(iso.rows[0]?.amount).toBe(150);
@@ -97,8 +99,8 @@ describe('readStatementTable', () => {
       const e = failure(
         table(
           HEADER,
-          line(d('2026-10-27'), s('a'), null, n('1')),
-          line(cell, s('a'), null, n('1')),
+          line(d('2026-10-27'), s('a'), null, n('1'), s('A')),
+          line(cell, s('a'), null, n('1'), s('A')),
         ),
       );
       expect([e.code, e.row]).toEqual(['bad-date', 3]);
@@ -112,7 +114,6 @@ describe('readStatementTable', () => {
     expect([amb.code, amb.row]).toEqual(['ambiguous-number', 2]);
     const text = failure(table(HEADER, line(d('2026-10-27'), s('a'), null, s('abc'), s('D'))));
     expect(text.code).toBe('bad-amount');
-    expect(n('1.2')).toBeTruthy();
     expect(
       readStatementTable(table(HEADER, line(d('2026-10-27'), s('a'), null, n('1.2'), s('A'))), base)
         .rows[0]?.amount,
@@ -125,7 +126,9 @@ describe('readStatementTable', () => {
     expect(readStatementTable(t(s('D')), base).rows[0]?.amount).toBe(-9281);
     expect(readStatementTable(t(s('A')), base).rows[0]?.amount).toBe(9281);
     expect(failure(t(s('X'))).code).toBe('unknown-sign');
-    expect(readStatementTable(t(null), base).rows[0]?.amount).toBe(9281);
+    // An empty Segno with a positive amount would be a silent credit: refused; a negative amount is clear.
+    const empty = failure(t(null));
+    expect([empty.code, empty.row]).toEqual(['unknown-sign', 2]);
   });
 
   it('takes the sign from the cell when there is no sign column', () => {
@@ -185,13 +188,7 @@ describe('readStatementTable', () => {
           n('1'),
           s('A'),
         ),
-        line(
-          d('2026-10-27'),
-          s('Bonifico'),
-          s('da Mario Rossi, IT00X0542811101000000123456'),
-          n('1'),
-          s('A'),
-        ),
+        line(d('2026-10-27'), s('Bonifico'), s(`da Mario Rossi, ${BAD_IBAN}`), n('1'), s('A')),
         line(d('2026-10-27'), s('Bonifico'), s('niente'), n('1'), s('A')),
       ),
       base,
@@ -308,11 +305,68 @@ describe('readStatementTable', () => {
       }
     });
     it('does not run a pattern on an overlong cell', () => {
-      const long = `conto ${'A'.repeat(100_000)}`;
+      const long = `conto ${'A'.repeat(301)}`;
       const t0 = Date.now();
       const r = readStatementTable(table([s(long)], HEADER), base);
       expect(r.declaredAccount).toBeUndefined();
       expect(Date.now() - t0).toBeLessThan(1000);
     });
+  });
+
+  it('keeps an empty Segno with a negative amount', () => {
+    const r = readStatementTable(
+      table(HEADER, line(d('2026-10-27'), s('a'), null, n('-3.00'))),
+      base,
+    );
+    expect(r.rows[0]?.amount).toBe(-300);
+  });
+
+  it('turns an out-of-range number cell into bad-amount without the value', () => {
+    const e = failure(
+      table(HEADER, line(d('2026-10-27'), s('a'), null, n('12345678901234567890'), s('A'))),
+    );
+    expect([e.code, e.row]).toEqual(['bad-amount', 2]);
+    expect(e.message).not.toContain('1234567');
+  });
+
+  it('skips a footer row with neither date nor amount, refuses text in the date cell', () => {
+    const ok = line(d('2026-10-27'), s('a'), null, n('1'), s('A'));
+    const r = readStatementTable(table(HEADER, ok, [null, s('Totale')]), base);
+    expect(r.rows).toHaveLength(1);
+    const e = failure(table(HEADER, ok, [s('Totale'), null, null, n('5.00'), s('A')]));
+    expect([e.code, e.row]).toEqual(['bad-date', 3]);
+  });
+
+  it('keeps identical rows as two rows', () => {
+    const ok = line(d('2026-10-27'), s('a'), null, n('1'), s('A'));
+    expect(readStatementTable(table(HEADER, ok, ok), base).rows).toHaveLength(2);
+  });
+
+  it('accepts a one-day period and keeps an invalid declared IBAN as written', () => {
+    const r = readStatementTable(
+      table([s(`dal 05/10/2026 al 05/10/2026 conto ${BAD_IBAN}`)], HEADER),
+      base,
+    );
+    expect(r.declaredPeriod).toEqual({ from: '2026-10-05', to: '2026-10-05' });
+    expect(r.declaredAccount).toBe(BAD_IBAN);
+  });
+
+  it('applies dispCodePattern: a code that does not fit is refused without the value', () => {
+    const e = failure(table(HEADER, line(d('2026-10-27'), s('a'), null, n('1'), s('A'), s('zz9'))));
+    expect([e.code, e.row]).toEqual(['bad-disp-code', 2]);
+    expect(e.message).not.toContain('zz9');
+  });
+
+  it('rejects overlapping alternations and chained wildcards, without running them', () => {
+    for (const bad of ['(a|aa)+$', '((a|b)c)*', '.*.*.*.*x', '.+x.*y']) {
+      const p = { ...base, accountPattern: bad } as BankProfile;
+      const t0 = Date.now();
+      expect(failure(table([s('a'.repeat(40))], HEADER), p).code).toBe('unsafe-pattern');
+      expect(Date.now() - t0).toBeLessThan(500);
+    }
+    for (const ok of ['(a|b)c', '(a|b)?c', 'x.*y', '\\.*a\\.*b']) {
+      const p = { ...base, accountPattern: ok } as BankProfile;
+      expect(() => readStatementTable(table([s('x')], HEADER), p)).not.toThrow();
+    }
   });
 });

@@ -153,7 +153,7 @@
   - `StatementReadError` con `code` tra `no-header`, `missing-column`, `bad-date`, `bad-amount`, `unknown-sign`, `debit-and-credit`, `no-amount`, `zero-amount`, `bad-period`, e `row`, `column?`. Il messaggio è costante e non porta mai il valore.
 
 - [ ] **Step 1: test che falliscono** (tabelle scritte a mano con il profilo sintetico e le sue varianti):
-  - riga `d 2026-10-27 | s Addebito | s HERA COMM | n -92.81 | s 123` dà `{ date: '2026-10-27', amount: -9281, description: 'Addebito - HERA COMM', dispCode: '123', booked: true }`;
+  - riga `d 2026-10-27 | s Addebito | s HERA COMM | n -92.81 | s A123` dà `{ date: '2026-10-27', amount: -9281, description: 'Addebito - HERA COMM', dispCode: 'A123', booked: true }`;
   - date di testo `27/10/2026`; importo di testo `-1.234,56` dà `-123456`;
   - le celle `n 1.234` e `n 1e5` danno `bad-amount` alla riga giusta;
   - importo `n 92.81` con «Segno» `D` dà `-9281`, con `X` dà `unknown-sign`;
