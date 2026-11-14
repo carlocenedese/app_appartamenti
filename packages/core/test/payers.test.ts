@@ -3,6 +3,9 @@ import { firstPresenceDay, nameInText, payerKeyOf, nameKeyOf, validPayers } from
 import { ISODateSchema, PayerSchema, TenancySchema } from '../src/model';
 import type { Payer, Tenancy } from '../src/model';
 
+// A wrong check digit made at run time: no whole made-up IBAN is written in the file.
+const BAD_IBAN = 'IT60X0542811101000000123456'.replace(/6$/, '7');
+
 const day = (text: string) => ISODateSchema.parse(text);
 
 const payer = (over: Record<string, unknown>): Payer =>
@@ -37,8 +40,13 @@ describe('payerKeyOf', () => {
     );
   });
   it('falls back to the name when the IBAN check fails', () => {
-    expect(payerKeyOf({ iban: 'IT60X0542811101000000123457', name: 'Mario Rossi' })).toBe(
-      'name:mario rossi',
+    expect(payerKeyOf({ iban: BAD_IBAN, name: 'Mario Rossi' })).toBe('name:mario rossi');
+    expect(payerKeyOf({ iban: BAD_IBAN })).toBeUndefined();
+  });
+  it('gives the same key to one IBAN under different names', () => {
+    const iban = 'IT60X0542811101000000123456';
+    expect(payerKeyOf({ iban, name: 'Mario Rossi' })).toBe(
+      payerKeyOf({ iban, name: 'Anna Verdi' }),
     );
   });
   it('folds the name', () => {
@@ -78,6 +86,24 @@ describe('validPayers', () => {
     ];
     expect(validPayers(list, key, day('2025-05-01')).map((p) => p.tenantId)).toEqual(['t1', 't2']);
   });
+  it('includes both ends of the validity', () => {
+    const list = [
+      payer({ id: 'a', validFrom: '2025-05-01' }),
+      payer({ id: 'b', tenantId: 't2', validTo: '2025-05-01' }),
+    ];
+    expect(validPayers(list, key, day('2025-05-01')).map((p) => p.id)).toEqual(['a', 'b']);
+  });
+  it('picks the record with the smallest id whatever the input order', () => {
+    const z = payer({ id: 'z', source: 'confirmed' });
+    const y = payer({ id: 'y', source: 'manual' });
+    for (const list of [
+      [z, y],
+      [y, z],
+    ]) {
+      const [only] = validPayers(list, key, day('2025-05-01'));
+      expect([only?.id, only?.source]).toEqual(['y', 'manual']);
+    }
+  });
   it('ignores other keys', () => {
     expect(validPayers([payer({ key: 'name:altro' })], key, day('2025-05-01'))).toEqual([]);
   });
@@ -87,6 +113,7 @@ describe('nameInText', () => {
   it('matches whole words in any order', () => {
     expect(nameInText('Mario Rossi', ['BONIFICO DA ROSSI MARIO'])).toBe(true);
     expect(nameInText('Mario Rossi', ['bonifico', 'da MARIO e ROSSI'])).toBe(true);
+    expect(nameInText('Mario Rossi', ['MARIO', 'ROSSI'])).toBe(true);
   });
   it('rejects glued words and longer words', () => {
     expect(nameInText('Mario Rossi', ['MARIOROSSI'])).toBe(false);
@@ -104,6 +131,7 @@ describe('firstPresenceDay', () => {
       tenancy({ id: '2', from: '2024-10' }),
       tenancy({ id: '3', from: '2020-01', apartmentId: 'a2' }),
       tenancy({ id: '4', from: '2019-01', deleted: true }),
+      tenancy({ id: '5', from: '2015-01', tenantId: 't2' }),
     ];
     expect(firstPresenceDay(list, 't1', 'a1')).toBe('2024-10-01');
     expect(firstPresenceDay(list, 't1', 'a3')).toBeUndefined();

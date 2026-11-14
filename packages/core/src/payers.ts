@@ -21,7 +21,8 @@ export function payerKeyOf(counterparty?: { name?: string; iban?: string }): Pay
 /** Live payers with this key valid on `date` (both ends included), one per tenant, by `tenantId`. */
 export function validPayers(payers: Payer[], key: PayerKey, date: ISODate): Payer[] {
   const byTenant = new Map<string, Payer>();
-  for (const p of payers) {
+  // By id first, so the record kept for a tenant does not depend on the loading order.
+  for (const p of [...payers].sort((a, b) => compareText(a.id, b.id))) {
     if (p.deleted === true || p.key !== key) continue;
     if (p.validFrom > date || (p.validTo !== undefined && p.validTo < date)) continue;
     if (!byTenant.has(p.tenantId)) byTenant.set(p.tenantId, p);
