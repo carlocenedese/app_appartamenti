@@ -31,3 +31,4 @@ export * from './workspace';
 export * from './assess';
 export * from './presence';
 export * from './statement-table';
+export * from './statement-read';
