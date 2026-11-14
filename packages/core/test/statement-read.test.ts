@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { BankProfileSchema, type BankProfile } from '../src/model';
 import { isoDate } from '../src/period';
-import { StatementReadError, readStatementTable } from '../src/statement-read';
+import { StatementReadError, isSafePattern, readStatementTable } from '../src/statement-read';
 import type { StatementCell, StatementTable } from '../src/statement-table';
 
 const base = BankProfileSchema.parse(
@@ -299,7 +299,7 @@ describe('readStatementTable', () => {
       }
     });
     it('accepts safe patterns, including escaped and bracketed quantifiers', () => {
-      for (const ok of ['(a+)b', '(\\+a)+', '([+*])+', '(ab)+', '(a{2})+', '(a)?b+']) {
+      for (const ok of ['(a+)b', '(\\+a)', '([+*])x', '(ab)x', '(a{2})b']) {
         const p = { ...base, accountPattern: ok } as BankProfile;
         expect(() => readStatementTable(table([s('x')], HEADER), p)).not.toThrow();
       }
@@ -357,16 +357,82 @@ describe('readStatementTable', () => {
     expect(e.message).not.toContain('zz9');
   });
 
-  it('rejects overlapping alternations and chained wildcards, without running them', () => {
-    for (const bad of ['(a|aa)+$', '((a|b)c)*', '.*.*.*.*x', '.+x.*y']) {
-      const p = { ...base, accountPattern: bad } as BankProfile;
-      const t0 = Date.now();
-      expect(failure(table([s('a'.repeat(40))], HEADER), p).code).toBe('unsafe-pattern');
-      expect(Date.now() - t0).toBeLessThan(500);
-    }
-    for (const ok of ['(a|b)c', '(a|b)?c', 'x.*y', '\\.*a\\.*b']) {
-      const p = { ...base, accountPattern: ok } as BankProfile;
-      expect(() => readStatementTable(table([s('x')], HEADER), p)).not.toThrow();
-    }
+  it('empty Segno with a zero amount is zero-amount', () => {
+    const e = failure(table(HEADER, line(d('2026-10-27'), s('a'), null, n('0'))));
+    expect([e.code, e.row]).toEqual(['zero-amount', 2]);
+  });
+
+  describe('safe pattern subset', () => {
+    const rejected = [
+      'a*a*a*a*a*a*b',
+      '\\d*\\d*\\d*\\d*x',
+      '[a-z]+[a-z]+[a-z]+[a-z]+!',
+      '(?:a|aa){30}$',
+      '(a|aa)+$',
+      '(a+)+$',
+      '(a*)*',
+      '(a+){2,}',
+      '(a{1,5})+',
+      '(x(a+)y)+',
+      '((a|b)c)*',
+      '((a|b)c)?',
+      '(a?){30}a{30}',
+      '.*.*.*.*x',
+      'a{0,41}',
+      'a*a*a?a?b',
+      'a{0,40}a{0,40}a*a*b',
+      '(a)\\1',
+      '(?=a)b',
+      '(?!a)b',
+      '(?<=a)b',
+      '(a',
+      'a)',
+      'a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t',
+    ];
+    const accepted = [
+      'Conto: (\\d{4}) (\\w+)',
+      'dal (\\d{2}/\\d{2}/\\d{4}) al (\\d{2}/\\d{2}/\\d{4})',
+      'IT\\d{2}[A-Z0-9]{23}',
+      '.*SDD.*',
+      '(.+) - (.+)',
+      '(a|b)c',
+      '(?:a|b)c',
+      '\\+a+\\+',
+      '[+*]+x',
+      'a{0,40}b',
+      '(a{2})b',
+      'a*a*b',
+      'a*a*a?b',
+      'a{0,40}a{0,40}b',
+      '(a|a)(a|a)(a|a)(a|a)b',
+      '(a+)b(c+)',
+    ];
+    it('refuses what is not provably cheap', () => {
+      for (const pattern of rejected)
+        expect([pattern, isSafePattern(pattern)]).toEqual([pattern, false]);
+    });
+    it('accepts the typical patterns, and each costs under 100 ms on 300 hostile characters', () => {
+      for (const pattern of accepted) {
+        expect([pattern, isSafePattern(pattern)]).toEqual([pattern, true]);
+        const re = new RegExp(pattern);
+        for (const input of [
+          'a'.repeat(299) + '!',
+          '1'.repeat(299) + '!',
+          ' '.repeat(150) + 'a'.repeat(149) + '!',
+        ]) {
+          const t0 = performance.now();
+          re.exec(input);
+          expect(performance.now() - t0, pattern).toBeLessThan(100);
+        }
+      }
+    });
+    it('readStatementTable refuses a rejected pattern without running it', () => {
+      for (const bad of ['(a|aa)+$', '.*.*.*.*x', 'a*a*a*a*a*a*b']) {
+        const p = { ...base, accountPattern: bad } as BankProfile;
+        const t0 = Date.now();
+        expect(failure(table([s('a'.repeat(40))], HEADER), p).code).toBe('unsafe-pattern');
+        expect(Date.now() - t0).toBeLessThan(500);
+      }
+    });
   });
 });

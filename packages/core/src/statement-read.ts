@@ -46,44 +46,122 @@ export class StatementReadError extends Error {
   }
 }
 
-/**
- * Profile patterns run only on text up to this long. A cap alone does not bound a bad pattern
- * (`(a|aa)+$` is exponential on 40 characters), so `hasRiskyShape` refuses those shapes first.
- */
+/** Profile patterns run only on text up to this long (a longer text is skipped). */
 const MAX_PATTERN_INPUT = 300;
+const MAX_PATTERN_LENGTH = 200;
+/** Largest `m` of a `{n,m}` quantifier. */
+const MAX_BOUNDED = 40;
+/** Largest product of the choices the quantifiers and alternations can make (see `isSafePattern`). */
+const MAX_CHOICES = MAX_PATTERN_INPUT * MAX_PATTERN_INPUT * 2;
 
 /**
- * Whether `pattern` has a shape that backtracks badly: a group repeated with `+`, `*` or `{n,}`
- * that holds a quantifier (`(a+)+$`) or an alternation (`(a|aa)+$`), or more than one `.*`/`.+`
- * (`.*.*x`). A heuristic, not a proof. The full solution (a linear-time engine such as RE2, or a
- * worker with a timeout) is a future decision: the patterns come from profiles we write, not
- * from hostile files.
+ * Whether `pattern` is in a subset that is cheap by construction, found by parsing it (not by
+ * matching text against it); everything else is refused. The rules:
+ * 1. at most two unbounded quantifiers (`*`, `+`, `{n,}`) in the whole pattern;
+ * 2. no quantifier of any kind on a group that holds a quantifier or an alternation `|`;
+ * 3. `{n,m}` only with m <= 40;
+ * 4. no backreference and no lookaround (only `(...)` and `(?:...)`);
+ * 5. the product of the choices (an unbounded quantifier counts 300, `{n,m}` m-n+1, `?` 2, each
+ *    `|` 2) is at most 300 x 300 x 2, so alternations stay out of repeated groups and cannot pile up.
+ * Backtracking then takes at most 300 (start positions) x that product steps on an input of at
+ * most 300 characters, and the typical patterns of a bank profile are well inside. The measured
+ * worst cases are under 100 ms. A linear-time engine (RE2) or a worker with a timeout would lift
+ * the limits: a future decision, since the patterns come from profiles we write, not from files.
  */
-function hasRiskyShape(pattern: string): boolean {
-  const bare = pattern.replace(/\\./gs, '_').replace(/\[[^\]]*\]/g, '_');
-  if ((bare.match(/\.[+*]/g) ?? []).length > 1) return true;
-  const repeat = (at: number): boolean => {
-    const c = bare[at];
-    if (c === '+' || c === '*') return true;
-    return c === '{' && /^\{\d*,\d*\}/.test(bare.slice(at));
+export function isSafePattern(pattern: string): boolean {
+  if (pattern.length > MAX_PATTERN_LENGTH) return false;
+  const groups: { quantified: boolean; alternation: boolean }[] = [
+    { quantified: false, alternation: false },
+  ];
+  let unbounded = 0;
+  let choices = 1;
+  let i = 0;
+  const top = (): { quantified: boolean; alternation: boolean } =>
+    groups[groups.length - 1] as { quantified: boolean; alternation: boolean };
+
+  /** Reads a quantifier at `i`; `undefined` when none, `false` when it is not allowed. */
+  const quantifier = (): boolean | undefined => {
+    const c = pattern[i];
+    let factor: number;
+    if (c === '*' || c === '+') {
+      unbounded += 1;
+      factor = MAX_PATTERN_INPUT;
+      i += 1;
+    } else if (c === '?') {
+      factor = 2;
+      i += 1;
+    } else if (c === '{') {
+      const m = /^\{(\d+)(?:(,)(\d*))?\}/.exec(pattern.slice(i, i + 12));
+      if (m === null) return undefined; // not a quantifier: a literal brace
+      const low = Number(m[1]);
+      i += m[0].length;
+      if (m[2] === undefined) {
+        if (low > MAX_BOUNDED) return false;
+        factor = 1;
+      } else if (m[3] === '') {
+        unbounded += 1;
+        factor = MAX_PATTERN_INPUT;
+      } else {
+        const high = Number(m[3]);
+        if (high > MAX_BOUNDED || high < low) return false;
+        factor = high - low + 1;
+      }
+    } else return undefined;
+    if (pattern[i] === '?') i += 1; // lazy
+    choices *= factor;
+    return unbounded <= 2 && choices <= MAX_CHOICES;
   };
-  const stack: boolean[] = []; // per open group: holds a quantifier or an alternation
-  for (let i = 0; i < bare.length; i += 1) {
-    const c = bare[i];
-    if (c === '(') stack.push(false);
-    else if (c === ')') {
-      const inner = stack.pop() ?? false;
-      if (inner && repeat(i + 1)) return true;
-      if (stack.length > 0 && (inner || repeat(i + 1))) stack[stack.length - 1] = true;
-    } else if (stack.length > 0 && (c === '|' || repeat(i))) stack[stack.length - 1] = true;
+
+  while (i < pattern.length) {
+    const c = pattern[i] as string;
+    let group: { quantified: boolean; alternation: boolean } | undefined;
+    if (c === '\\') {
+      const next = pattern[i + 1];
+      if (next === undefined || /[1-9kK]/.test(next)) return false; // backreference
+      i += 2;
+    } else if (c === '[') {
+      i += 1;
+      if (pattern[i] === '^') i += 1;
+      while (i < pattern.length && pattern[i] !== ']') i += pattern[i] === '\\' ? 2 : 1;
+      if (i >= pattern.length) return false;
+      i += 1;
+    } else if (c === '(') {
+      if (pattern[i + 1] === '?') {
+        if (pattern[i + 2] !== ':') return false; // lookaround, named group, flags
+        i += 3;
+      } else i += 1;
+      groups.push({ quantified: false, alternation: false });
+      continue;
+    } else if (c === ')') {
+      group = groups.pop();
+      if (groups.length === 0 || group === undefined) return false; // unbalanced
+      i += 1;
+    } else if (c === '|') {
+      top().alternation = true;
+      choices *= 2;
+      if (choices > MAX_CHOICES) return false;
+      i += 1;
+      continue;
+    } else i += 1;
+
+    const q = quantifier();
+    if (q === false) return false;
+    if (q === true) {
+      if (group !== undefined && (group.quantified || group.alternation)) return false;
+      top().quantified = true;
+    }
+    if (group !== undefined) {
+      top().quantified ||= group.quantified;
+      top().alternation ||= group.alternation;
+    }
   }
-  return false;
+  return groups.length === 1;
 }
 
 function safePattern(pattern: string | undefined): RegExp | undefined {
   if (pattern === undefined) return undefined;
   // Row 0: the profile is at fault, not a row of the file.
-  if (hasRiskyShape(pattern)) throw new StatementReadError('unsafe-pattern', 0);
+  if (!isSafePattern(pattern)) throw new StatementReadError('unsafe-pattern', 0);
   return new RegExp(pattern);
 }
 
@@ -210,7 +288,7 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
       if (empty(cell)) throw new StatementReadError('no-amount', row, 'amount');
       const value = magnitude(cell, row, 'amount');
       // An empty Segno cell is fine only for a negative amount: a positive one would be a silent credit.
-      if (signCol === undefined || (empty(cells[signCol]) && value < 0)) amount = value;
+      if (signCol === undefined || (empty(cells[signCol]) && value <= 0)) amount = value;
       else {
         const sign = cells[signCol];
         if (among(sign, profile.signValues?.debit)) amount = -Math.abs(value);
