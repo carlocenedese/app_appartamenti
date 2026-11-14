@@ -918,4 +918,53 @@ describe('registerProposal: documents of one file by page range', () => {
     ]);
     expect(records[0]?.fileDocument?.documentKind).toBe('tari');
   });
+
+  /** A TARI notice of `year` read from pages `first`-`last` of a 4-page file (all: no range). */
+  async function runTari(
+    store: MemoryStore,
+    range: [number, number],
+    prefix: string,
+    year: string,
+  ) {
+    const base = tariResult(await hashBytes(PDF));
+    const result = {
+      ...base,
+      pages: 4,
+      pageRange: range,
+      fields: {
+        ...base.fields,
+        periodStart: field(`${year}-01-01`) as never,
+        periodEnd: field(`${year}-04-30`) as never,
+        dueDate: field(`${year}-03-16`) as never,
+      },
+    };
+    return registerProposal(
+      store,
+      {
+        proposal: proposalFromExtraction(result, tariContext(), ids(prefix)),
+        result,
+        bytes: PDF,
+        profileId: 'carlo',
+        mode: 'manual',
+      },
+      tickingClock(),
+    );
+  }
+
+  it('an old TARI instalment without fileDocument against a partial range is a possible-duplicate', async () => {
+    const store = new MemoryStore();
+    expect((await runTari(store, [1, 4], 'a', '2026')).status).toBe('registered');
+    const { records } = await loadAll(store, 'instalment', InstalmentSchema);
+    expect(records.every((i) => i.fileDocument === undefined)).toBe(true);
+    // Another year: only the pages tell it may be the same notice.
+    expect((await runTari(store, [3, 4], 'b', '2027')).status).toBe('possible-duplicate');
+    expect((await loadAll(store, 'instalment', InstalmentSchema)).records).toHaveLength(2);
+  });
+
+  it('disjoint ranges of one file with the same esercizio and rateIndex are a possible-duplicate', async () => {
+    const store = new MemoryStore();
+    expect((await runTari(store, [1, 2], 'a', '2026')).status).toBe('registered');
+    expect((await runTari(store, [3, 4], 'b', '2026')).status).toBe('possible-duplicate');
+    expect((await loadAll(store, 'instalment', InstalmentSchema)).records).toHaveLength(2);
+  });
 });

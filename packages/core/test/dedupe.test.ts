@@ -638,5 +638,9 @@ describe('samePages', () => {
     expect(samePages(undefined, doc(3, 4))).toBe('overlap');
     expect(samePages(doc(3, 4), undefined)).toBe('overlap');
     expect(samePages(undefined, undefined)).toBe('same');
+    // The order of the records does not matter.
+    expect(samePages(doc(3, 4), doc(1, 2))).toBe('disjoint');
+    expect(samePages(doc(1, 4), doc(2, 3))).toBe('overlap');
+    expect(samePages(doc(2, 3), doc(1, 4))).toBe('overlap');
   });
 });
