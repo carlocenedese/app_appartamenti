@@ -18,8 +18,8 @@ python -I -m bollette_pdf --version
 - `extract --pages a-b` legge solo le pagine `a..b` (interi, `1 <= a <= b <= pagine del file`, un
   solo intervallo): il risultato ha `pageRange [a, b]`, e `textSource`, `ocrPages` e «senza testo»
   valgono per quelle pagine. Un intervallo non valido, o oltre l'ultima pagina, dà codice `2` e
-  `Intervallo di pagine non valido: nessun output.`. Il file si rilegge a ogni chiamata. Senza
-  `--pages` e con due valori diversi per importo o numero, l'avviso «Il file potrebbe contenere
+  `Intervallo di pagine non valido: nessun output.`. Il file si rilegge a ogni chiamata. Con
+  due valori diversi per importo o numero, l'avviso «Il file potrebbe contenere
   più documenti.» (il valore e la confidenza non cambiano; decisione R94).
 - `build-profile` legge il PDF e il file `--spec` (formato qui sotto; `box` è
   `[x0, top, x1, bottom]` in punti dall'angolo in alto a sinistra della pagina) e scrive il
@@ -58,7 +58,7 @@ Il percorso è sempre un argomento, mai una variabile d'ambiente.
   pollice) e tesserocr ne legge le parole con riquadro e confidenza (0-100), con un solo thread;
   le coordinate sono quelle del lettore di testo (punti dall'angolo in alto a sinistra).
 - Una pagina passa dall'OCR se non ha testo o se più del 30% dei glifi sono `(cid:N)`; al massimo
-  20 pagine per documento (`MAX_OCR_PAGES`), le altre restano come sono, con un avviso in
+  20 pagine per chiamata (`MAX_OCR_PAGES`; con `--pages` si contano solo le pagine dell'intervallo), le altre restano come sono, con un avviso in
   `Document.warnings`. `Document.text_source` vale `pdf`, `ocr` o `mixed` (regola R86).
 - tesserocr e pypdfium2 si installano solo su macOS (`sys_platform == 'darwin'`). Senza le due
   librerie o senza i dati della lingua nessun errore: le pagine restano senza testo e
