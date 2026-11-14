@@ -6,7 +6,8 @@
  *   metadata block), so `registerBill` also compares what the bill says and reports a
  *   `possible-duplicate` for a person to decide, instead of registering it or refusing it.
  * - A bank debit has no file and no number. Its `id` is a fingerprint of what the statement says
- *   (`transactionKey`), so the same debit read from two statements that overlap gets the same
+ *   (`transactionKey`; with an `accountId` the parts are `['account', accountId, ...]`, without one
+ *   they are those written before accounts existed), so the same debit read from two statements that overlap gets the same
  *   `id` and is written over itself instead of twice. Two identical debits on the same day are
  *   two debits: `keyTransactions` tells them apart by their order of appearance.
  *
@@ -182,7 +183,8 @@ function identityParts({
 }
 
 /**
- * The fingerprint of a debit: the SHA-256 (lowercase hexadecimal) of its apartment, date, amount,
+ * The fingerprint of a debit: the SHA-256 (lowercase hexadecimal) of its apartment (or, when the
+ * debit has an `accountId`, of `'account'` and the account, which implies the apartment), date, amount,
  * description (as `foldText` writes it: case, spaces and the way an accent is written do not
  * count) and `occurrence`, which is 0 for the first of the identical debits of a day, 1 for the
  * second, and so on. It is used as the `id` of the `BankTransaction`, so it is made of characters
