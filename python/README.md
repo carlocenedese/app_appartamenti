@@ -126,6 +126,7 @@ PYTHON=.venv-python/bin/python REQUIRE_PYTHON=1 pnpm test
 
 - `tools/dump_text.py <file.pdf>`: stampa il testo di un PDF come documento JSON (`dump_document`), da rileggere con `load_dump`.
 - `tools/pdf_report.py --profiles <cartella> --at AAAA-MM-GG <cartelle-di-pdf>...`: legge i PDF delle cartelle (anche annidate, senza scrivere nulla) e stampa solo conteggi per stato e fornitore, i campi letti con confidenza `high` (escluso `supplier`, sempre `high`), le cartelle non leggibili e i profili ignorati, mai nomi, percorsi o testo.
+- `tools/xlsx_structure.py [--json] [--header-row N] [--code-columns "Cod Disp.,Segno"] <file.xlsx>`: stampa la sola STRUTTURA di un estratto conto XLSX (solo libreria standard, file in sola lettura): per foglio righe e colonne, la riga delle intestazioni, e per colonna tipo prevalente (testo, numero, data, vuoto), non vuoti, distinti (solo il conteggio), lunghezza min/max del testo, formato dichiarato, prima e ultima data come `AAAA-MM`; l'elenco dei valori solo per le colonne a bassa cardinalità (al più 12 distinti) che si chiamano come un codice (`--code-columns`, default `Cod Disp.`, `Cod. Disp.`, `Segno`, `Valuta`). Le righe sopra l'intestazione mostrano solo il tipo delle celle e l'eventuale intervallo di date come `AAAA-MM..AAAA-MM`. Mai righe, testi, IBAN, nomi, importi, giorni. File non zip, corrotto, troppo grande o con DOCTYPE: `File non valido o troppo grande: nessun output.` e codice `2`. Uso (R98): `python3 -I python/tools/xlsx_structure.py "/percorso/Lista_Operazioni_X.xlsx"`.
 
 ## Dipendenze
 
