@@ -50,6 +50,15 @@ class RestrictTest(unittest.TestCase):
         self.assertTrue(part.lines)
         self.assertTrue(all(line.page > self.first for line in part.lines))
 
+    def test_range_ends_are_included_and_neighbours_left_out(self) -> None:
+        pages = {line.page for line in self.doc.lines}
+        for first, last in ((1, 3), (3, 3), (3, 5)):
+            kept = {line.page for line in restrict(self.doc, first, last).lines}
+            self.assertEqual(kept, {p for p in pages if first <= p <= last}, (first, last))
+        self.assertTrue({1, 3} <= pages)  # the fixture has lines on both ends and outside
+        self.assertEqual({line.page for line in restrict(self.doc, 3, 3).lines}, {3})
+        self.assertEqual({line.page for line in restrict(self.doc, 1, 1).lines}, {1})
+
     def test_range_outside_the_file_is_refused(self) -> None:
         for first, last in ((0, 1), (2, 1), (1, self.doc.pages + 1)):
             with self.assertRaises(ValueError):
@@ -104,8 +113,15 @@ class ExtractRangeTest(unittest.TestCase):
         self.assertEqual(whole["fields"]["amount"]["value"], one["expected"]["amount"])
         alone = extract(restrict(doc, 1, one["dump"]["pages"]), PROFILES, AT)
         self.assertNotIn(WARNING_MANY_DOCUMENTS, alone["warnings"])
-        without = dict(whole, warnings=[w for w in whole["warnings"] if w != WARNING_MANY_DOCUMENTS])
-        self.assertEqual(without["status"], whole["status"])
+        # values written out: the warning changes neither the status nor a confidence
+        self.assertEqual(whole["status"], "riconosciuta")
+        self.assertEqual(whole["fields"]["number"]["confidence"], "high")
+        self.assertEqual(whole["fields"]["supplier"]["confidence"], "high")
+
+    def test_a_single_bill_never_warns(self) -> None:
+        for path in sorted(FIXTURES.glob("*.json")):
+            result = extract(load_dump(fixture(path.stem)["dump"]), PROFILES, AT)
+            self.assertNotIn(WARNING_MANY_DOCUMENTS, result["warnings"], path.stem)
 
     def test_unrecognised_attachment_after_a_bill(self) -> None:
         dump = compose(self.hera)
@@ -162,7 +178,13 @@ class CliPagesTest(unittest.TestCase):
     def test_unreadable_file_is_reported_with_a_range(self) -> None:
         self.pdf.write_bytes(b"not a pdf")
         code, out, _ = run(*self.args, "--pages", "1-1")
-        self.assertEqual((code, json.loads(out)["status"]), (0, "illeggibile"))
+        result = json.loads(out)
+        self.assertEqual((code, result["status"]), (0, "illeggibile"))
+        self.assertEqual((result["pageRange"], result["pages"]), (None, 0))
+
+    def test_huge_number_is_a_bad_range_not_an_internal_error(self) -> None:
+        for bad in ("1-" + "9" * 5000, "9" * 5000 + "-1"):
+            self.assertEqual(run(*self.args, f"--pages={bad}"), (2, "", PAGES_ERROR + "\n"))
 
 
 if __name__ == "__main__":

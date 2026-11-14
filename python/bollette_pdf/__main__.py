@@ -227,7 +227,7 @@ def _parse_pages(value: str | None) -> tuple[int, int] | None:
     """`a-b` as (a, b), with 1 <= a <= b; None when `--pages` is not given."""
     if value is None:
         return None
-    match = _PAGES.fullmatch(value)
+    match = _PAGES.fullmatch(value) if len(value) <= 20 else None  # int() refuses 4300+ digits
     if match is None or not 1 <= int(match[1]) <= int(match[2]):
         raise _Rejected(PAGES_ERROR)
     return int(match[1]), int(match[2])
