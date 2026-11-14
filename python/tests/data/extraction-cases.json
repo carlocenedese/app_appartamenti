@@ -161,6 +161,110 @@
       "jsonSchema": true
     },
     {
+      "name": "source on the last page of the range",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 1,
+            "confidence": "high",
+            "source": {
+              "page": 3,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "part and ocr page inside the range",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "da-confermare",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {},
+        "parts": [
+          {
+            "label": "Quota",
+            "amount": 1200,
+            "source": {
+              "page": 2,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        ],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "mixed",
+        "ocrPages": [2, 3]
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "field without a source",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": null,
+            "confidence": "missing",
+            "source": null
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
       "name": "range reversed",
       "result": {
         "v": 1,
@@ -194,7 +298,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "page range"
     },
     {
       "name": "range beyond the file",
@@ -230,7 +335,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "page range"
     },
     {
       "name": "range from page 0",
@@ -302,7 +408,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "page range"
     },
     {
       "name": "range with no pages",
@@ -328,7 +435,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "page range"
     },
     {
       "name": "range missing",
@@ -435,7 +543,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "inside the page range"
     },
     {
       "name": "part source before the range",
@@ -471,7 +580,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "inside the page range"
     },
     {
       "name": "ocr page before the range",
@@ -497,7 +607,8 @@
         "ocrPages": [1]
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "inside the page range"
     },
     {
       "name": "unknown kind with a profile",
@@ -533,7 +644,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "document kind"
     },
     {
       "name": "bill kind without a profile",
@@ -559,7 +671,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "document kind"
     },
     {
       "name": "tari kind on a bill profile",
@@ -595,7 +708,8 @@
         "ocrPages": []
       },
       "zod": false,
-      "jsonSchema": true
+      "jsonSchema": true,
+      "reason": "document kind"
     },
     {
       "name": "kind not in the enum",

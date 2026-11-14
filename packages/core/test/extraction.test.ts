@@ -80,10 +80,20 @@ describe('ExtractionResultSchema', () => {
   it('agrees with the cases shared with the Python tests', () => {
     const file = new URL('../../../python/tests/data/extraction-cases.json', import.meta.url);
     const { cases } = JSON.parse(readFileSync(file, 'utf8')) as {
-      cases: { name: string; result: unknown; zod: boolean }[];
+      cases: { name: string; result: unknown; zod: boolean; reason?: string }[];
     };
     expect(cases.length).toBeGreaterThan(10);
-    for (const { name, result, zod } of cases) expect([name, ok(result)]).toEqual([name, zod]);
+    for (const { name, result, zod, reason } of cases) {
+      const parsed = ExtractionResultSchema.safeParse(result);
+      expect([name, parsed.success]).toEqual([name, zod]);
+      // A refusal by a refine says why: its message names the reason.
+      if (reason !== undefined && !parsed.success) {
+        expect([name, parsed.error.issues.map((issue) => issue.message).join(' ')]).toEqual([
+          name,
+          expect.stringContaining(reason),
+        ]);
+      }
+    }
   });
 
   it('reads a complete result and parses amounts to cents', () => {
