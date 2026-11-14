@@ -60,7 +60,7 @@
   - `ApartmentSchema.rentLateDays?: z.int().min(0).max(31)`; `DEFAULT_RENT_LATE_DAYS = 10`.
   - `recordSchemas` con `tenant` e `payer`.
 
-- [ ] **Step 1: test che falliscono.** `TenantSchema` rifiuta `name: ''` e `language: 'de'`. `PayerSchema` accetta `key: 'iban:IT60X0542811101000000123456'` e `'name:mario rossi'`; rifiuta `'iban:it60x0542811101000000123456'`, `'iban:IT60X0542811101000000123457'`, `'name:Mario Rossi'`, `'name:'`, `'tel:1'`, e `validTo` prima di `validFrom`. `ApartmentSchema` rifiuta `rentLateDays: -1`, `32`, `2.5`; un appartamento senza il campo resta valido. `recordSchemas.tenant` e `.payer` esistono.
+- [ ] **Step 1: test che falliscono.** `TenantSchema` rifiuta `name: ''` e `language: 'de'`. `PayerSchema` accetta `key: 'iban:IT60X0542811101000000123456'` e `'name:mario rossi'`; rifiuta `'iban:it60x0542811101000000123456'`, `'iban:IT60X0542811101000000123456'`, `'name:Mario Rossi'`, `'name:'`, `'tel:1'`, e `validTo` prima di `validFrom`. `ApartmentSchema` rifiuta `rentLateDays: -1`, `32`, `2.5`; un appartamento senza il campo resta valido. `recordSchemas.tenant` e `.payer` esistono.
 - [ ] **Step 2:** `pnpm test -- model` fallisce.
 - [ ] **Step 3: implementare**; `pnpm schemas:export`; scrivere la prossima R libera con il Ruling 2 del disegno (`rentLateDays` 0-31, predefinito 10).
 - [ ] **Step 4:** lint, typecheck, test, `pnpm data:check` passano.
