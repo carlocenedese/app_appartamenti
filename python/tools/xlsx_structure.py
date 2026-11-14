@@ -300,8 +300,10 @@ def _read_sheet(
     return rows
 
 
-def _workbook(zf: zipfile.ZipFile, budget: list[int]) -> tuple[list[tuple[int, str, bool]], int]:
-    """(position, member path, hidden) of every sheet, and the epoch ordinal of the date system."""
+def _workbook(
+    zf: zipfile.ZipFile, budget: list[int]
+) -> tuple[list[tuple[int, str, bool, str]], int]:
+    """(position, member path, hidden, name) of every sheet, and the epoch ordinal of the date system."""
     workbook = _member(zf, "xl/workbook.xml", budget)
     rels = _member(zf, "xl/_rels/workbook.xml.rels", budget)
     if workbook is None or rels is None:
@@ -319,7 +321,9 @@ def _workbook(zf: zipfile.ZipFile, budget: list[int]) -> tuple[list[tuple[int, s
         path = path.lstrip("/") if path.startswith("/") else posixpath.normpath(f"xl/{path}")
         if not path or path.startswith(".."):
             raise _Rejected(BAD_FILE)
-        found.append((len(found) + 1, path, node.get("state", "visible") != "visible"))
+        found.append(
+            (len(found) + 1, path, node.get("state", "visible") != "visible", node.get("name", ""))
+        )
     if not found or len(found) > MAX_SHEETS:
         raise _Rejected(BAD_FILE)
     return found, epoch
@@ -476,7 +480,7 @@ def analyse(
             styles = _read_styles(_member(zf, "xl/styles.xml", budget))
             shared = _read_shared(_member(zf, "xl/sharedStrings.xml", budget))
             listed, epoch = _workbook(zf, budget)
-            for position, member, is_hidden in listed:
+            for position, member, is_hidden, _name in listed:
                 if is_hidden:
                     hidden += 1
                     continue
