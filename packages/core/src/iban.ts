@@ -1,11 +1,13 @@
 /** IBAN normalisation and the ISO 13616 mod-97 check. */
 
-const SHAPE = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/;
+// Checked before upper-casing: `toUpperCase` turns non-ASCII letters ("ſ", "ı") into ASCII ones.
+const SHAPE = /^[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]{11,30}$/;
 
 /** The IBAN without spaces and in capitals, or `undefined` when its shape or check digits are wrong. */
 export function normaliseIban(text: string): string | undefined {
-  const iban = text.replace(/\s+/g, '').toUpperCase();
-  if (!SHAPE.test(iban)) return undefined;
+  const stripped = text.replace(/\s+/g, '');
+  if (!SHAPE.test(stripped)) return undefined;
+  const iban = stripped.toUpperCase();
   const moved = iban.slice(4) + iban.slice(0, 4);
   let remainder = 0;
   for (const char of moved) {

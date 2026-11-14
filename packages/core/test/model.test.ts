@@ -1179,7 +1179,7 @@ describe('accounts, bank profiles and statements (plan 3a)', () => {
     expect(
       ok(
         AccountSchema,
-        changed(validRecords.account, { iban: `${'IT60X054281110100000012345'}7` }),
+        changed(validRecords.account, { iban: `${'IT60X0542811101000000123456'.slice(0, -1)}7` }),
       ),
     ).toBe(false);
     expect(ok(AccountSchema, without(validRecords.account, 'iban', 'holder'))).toBe(true);
@@ -1213,6 +1213,42 @@ describe('accounts, bank profiles and statements (plan 3a)', () => {
       false,
     );
     expect(ok(StatementSchema, changed(validRecords.statement, { periodSource: 'x' }))).toBe(false);
+  });
+
+  it('rejects empty label lists: they would recognise any file', () => {
+    const empty = (changes: Record<string, unknown>) =>
+      ok(BankProfileSchema, changed(bankProfile, changes));
+    expect(empty({ header: { allOf: [] } })).toBe(false);
+    const columns = bankProfile['columns'] as Record<string, unknown>;
+    expect(empty({ columns: { ...columns, description: [] } })).toBe(false);
+    expect(empty({ signValues: { debit: [], credit: ['A'] } })).toBe(false);
+    expect(empty({ signValues: { debit: ['D'], credit: [] } })).toBe(false);
+    expect(empty({ pendingValues: [] })).toBe(false);
+  });
+
+  it('allows one-day ranges and refuses sign without amount', () => {
+    expect(ok(StatementSchema, changed(validRecords.statement, { from: '2026-01-31' }))).toBe(true);
+    expect(ok(BankProfileSchema, changed(bankProfile, { validTo: '2020-01-01' }))).toBe(true);
+    const columns = bankProfile['columns'] as Record<string, unknown>;
+    const split = {
+      ...columns,
+      amount: undefined,
+      debit: 'Dare',
+      credit: 'Avere',
+      pending: undefined,
+    };
+    expect(ok(BankProfileSchema, changed(bankProfile, { columns: split }))).toBe(false); // sign left
+  });
+
+  it('checks the held rows', () => {
+    const held = validRecords.statement['held'] as Record<string, unknown>[];
+    const withHeld = (changes: Record<string, unknown>) =>
+      ok(StatementSchema, changed(validRecords.statement, { held: [{ ...held[0], ...changes }] }));
+    expect(withHeld({ decision: 'keep' })).toBe(true);
+    expect(withHeld({ decision: 'maybe' })).toBe(false);
+    expect(withHeld({ reason: 'other' })).toBe(false);
+    expect(withHeld({ row: 0 })).toBe(false);
+    expect(withHeld({ transaction: { id: 'x' } })).toBe(false);
   });
 
   it('keeps a transaction without the new fields valid', () => {

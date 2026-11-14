@@ -52,6 +52,7 @@
       "type": "object",
       "properties": {
         "allOf": {
+          "minItems": 1,
           "type": "array",
           "items": {
             "type": "string",
@@ -71,6 +72,7 @@
           "minLength": 1
         },
         "description": {
+          "minItems": 1,
           "type": "array",
           "items": {
             "type": "string",
@@ -118,6 +120,7 @@
       "type": "object",
       "properties": {
         "debit": {
+          "minItems": 1,
           "type": "array",
           "items": {
             "type": "string",
@@ -125,6 +128,7 @@
           }
         },
         "credit": {
+          "minItems": 1,
           "type": "array",
           "items": {
             "type": "string",
@@ -138,6 +142,7 @@
       ]
     },
     "pendingValues": {
+      "minItems": 1,
       "type": "array",
       "items": {
         "type": "string",

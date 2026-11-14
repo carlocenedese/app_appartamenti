@@ -682,7 +682,8 @@ export const AccountSchema = RecordBaseSchema.extend({
 });
 export type Account = z.infer<typeof AccountSchema>;
 
-const LabelsSchema = z.array(NonEmptyString);
+/** Never empty: a profile with no label to look for would recognise any file. */
+const LabelsSchema = z.array(NonEmptyString).min(1);
 
 export const BankProfileSchema = RecordBaseSchema.extend({
   bank: NonEmptyString,
