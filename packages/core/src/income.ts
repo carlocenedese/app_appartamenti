@@ -1,5 +1,10 @@
-/** Income from tenants: who paid a bank credit (phase «chi»). Proposals are recomputed, never stored. */
+/**
+ * Income from tenants: who paid a bank credit (phase «chi») and what for (phase «che cosa»).
+ * Proposals are recomputed, never stored.
+ */
+import { checkTenantOverlaps, isPresent } from './conguaglio';
 import { normaliseIban } from './iban';
+import { DEFAULT_RENT_LATE_DAYS } from './model';
 import type {
   Account,
   Apartment,
@@ -7,11 +12,14 @@ import type {
   Payer,
   PayerKey,
   Payment,
+  Statement,
   Tenancy,
   Tenant,
 } from './model';
 import { nameInText, nameKeyOf, payerKeyOf, validPayers } from './payers';
-import type { YearMonth } from './period';
+import { addMonths, monthsInPeriod } from './period';
+import type { ISODate, YearMonth } from './period';
+import { chooseRentMonth } from './rent-month';
 import { compareText } from './text';
 
 /** Live and deleted records alike: the functions filter. */
@@ -133,5 +141,198 @@ function candidateOrder(
       return compareText(a.label, b.label) || compareText(a.id, b.id);
     });
     return keyed.map((k) => k.id);
+  };
+}
+
+export type IncomeReason =
+  | 'new-payer'
+  | 'multi-tenant'
+  | 'name-only-payer'
+  | 'amount-differs'
+  | 'late'
+  | 'month-paid'
+  | 'not-present'
+  | 'earlier-open';
+
+/** Only ids, a constant reason and the month: never names, descriptions or IBANs. */
+export interface IncomeProposal {
+  id: string;
+  transactionId: string;
+  step: 'chi' | 'cosa';
+  reason: IncomeReason;
+  tenantIds: string[];
+  key?: PayerKey;
+  month?: YearMonth;
+}
+
+export type PaymentDraft = Omit<Payment, 'v' | 'rev'>;
+
+export interface IncomeResult {
+  payments: PaymentDraft[];
+  proposals: IncomeProposal[];
+  skipped: { transactionId: string; reason: 'no-account' | 'own-account' }[];
+}
+
+/**
+ * The months with at least one day inside a live statement of a live account of the apartment
+ * (R112): only these can be «to pay». Before the first statement imported, rent counts as paid.
+ */
+export function coveredMonths(
+  ctx: { accounts: Account[]; statements: Statement[] },
+  apartmentId: string,
+): Set<YearMonth> {
+  const accounts = new Set(
+    ctx.accounts
+      .filter((a) => a.deleted !== true && a.apartmentId === apartmentId)
+      .map((a) => a.id),
+  );
+  const months = new Set<YearMonth>();
+  for (const s of ctx.statements) {
+    if (s.deleted === true || !accounts.has(s.accountId)) continue;
+    for (const m of monthsInPeriod(s.from as ISODate, s.to as ISODate)) months.add(m);
+  }
+  return months;
+}
+
+/**
+ * Turns the live credits without a live payment into automatic rent payments (R4 strict: one
+ * payer, the oldest month to pay, exact rent plus flat charge) or proposals, in order of date
+ * then id. Earlier automatic payments of the run count as paid; an earlier «che cosa» proposal
+ * of the same tenant blocks the later ones (`earlier-open`, decision C). Everything sorted by id.
+ */
+export function reconcileIncome(
+  input: IncomeContext & { transactions: BankTransaction[]; statements: Statement[] },
+): IncomeResult {
+  const handled = new Set(
+    input.payments.flatMap((p) =>
+      p.deleted !== true && p.transactionId !== undefined ? [p.transactionId] : [],
+    ),
+  );
+  const credits = input.transactions
+    .filter((t) => t.deleted !== true && t.amount > 0 && !handled.has(t.id))
+    .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
+  const payments: PaymentDraft[] = [];
+  const proposals: IncomeProposal[] = [];
+  const skipped: IncomeResult['skipped'] = [];
+  const open = new Set<string>();
+  const covered = new Map<string, Set<YearMonth>>();
+
+  for (const tx of credits) {
+    const ctx = {
+      ...input,
+      payments: [...input.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
+    };
+    const who = whoPaid(tx, ctx);
+    const account = input.accounts.find((a) => a.deleted !== true && a.id === tx.accountId);
+    if (who.kind === 'skip' || account === undefined) {
+      skipped.push({
+        transactionId: tx.id,
+        reason: who.kind === 'skip' ? who.reason : 'no-account',
+      });
+      continue;
+    }
+    if (who.kind === 'ask') {
+      proposals.push({
+        id: `p-chi-${tx.id}`,
+        transactionId: tx.id,
+        step: 'chi',
+        reason: who.reason,
+        tenantIds: who.tenantIds,
+        ...(who.key === undefined ? {} : { key: who.key }),
+      });
+      continue;
+    }
+    const { tenantId, key } = who;
+    const { apartmentId } = account;
+    const ask = (reason: IncomeReason, month?: YearMonth): void => {
+      open.add(tenantId);
+      proposals.push({
+        id: `p-cosa-${tx.id}`,
+        transactionId: tx.id,
+        step: 'cosa',
+        reason,
+        tenantIds: [tenantId],
+        key,
+        ...(month === undefined ? {} : { month }),
+      });
+    };
+    if (open.has(tenantId)) {
+      ask('earlier-open');
+      continue;
+    }
+
+    const dateMonth = tx.date.slice(0, 7) as YearMonth;
+    const mine = input.tenancies.filter(
+      (t) => t.deleted !== true && t.tenantId === tenantId && t.apartmentId === apartmentId,
+    );
+    const presentMonths = [
+      ...new Set(
+        mine.flatMap((t) =>
+          t.from > dateMonth
+            ? []
+            : monthsInPeriod(
+                `${t.from}-01` as ISODate,
+                `${t.to !== undefined && t.to < dateMonth ? t.to : dateMonth}-01` as ISODate,
+              ),
+        ),
+      ),
+    ].sort(compareText);
+    checkTenantOverlaps(mine, presentMonths);
+    if (!presentMonths.includes(dateMonth) && !presentMonths.includes(addMonths(dateMonth, -1))) {
+      ask('not-present');
+      continue;
+    }
+
+    let cov = covered.get(apartmentId);
+    if (cov === undefined) {
+      cov = coveredMonths(input, apartmentId);
+      covered.set(apartmentId, cov);
+    }
+    const paid = new Set(
+      ctx.payments
+        .filter(
+          (p) =>
+            p.deleted !== true &&
+            p.kind === 'canone' &&
+            p.tenantId === tenantId &&
+            p.apartmentId === apartmentId,
+        )
+        .map((p) => p.forMonth ?? p.date.slice(0, 7)),
+    );
+    const unpaid = presentMonths.filter((m) => cov.has(m) && !paid.has(m));
+    const apartment = input.apartments.find((a) => a.deleted !== true && a.id === apartmentId);
+    const choice = chooseRentMonth({
+      date: tx.date as ISODate,
+      unpaid,
+      lateDays: apartment?.rentLateDays ?? DEFAULT_RENT_LATE_DAYS,
+    });
+    if (choice.status === 'review') {
+      ask(choice.reason);
+      continue;
+    }
+    const presence = mine.find((t) => isPresent(t, choice.month));
+    if (presence === undefined || presence.monthlyRent + presence.monthlyForfait !== tx.amount) {
+      ask('amount-differs', choice.month);
+      continue;
+    }
+    payments.push({
+      id: `pay-${tx.id}`,
+      apartmentId,
+      tenantId,
+      date: tx.date,
+      amount: tx.amount,
+      confirmed: true,
+      kind: 'canone',
+      forMonth: choice.month,
+      source: 'csv',
+      transactionId: tx.id,
+    });
+  }
+
+  const byId = (a: { id: string }, b: { id: string }): number => compareText(a.id, b.id);
+  return {
+    payments: payments.sort(byId),
+    proposals: proposals.sort(byId),
+    skipped: skipped.sort((a, b) => compareText(a.transactionId, b.transactionId)),
   };
 }

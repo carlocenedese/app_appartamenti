@@ -1,0 +1,412 @@
+import { describe, expect, it } from 'vitest';
+import { collectedForfait, SettlementInputError } from '../src/conguaglio';
+import { coveredMonths, reconcileIncome } from '../src/income';
+import type { IncomeContext } from '../src/income';
+import {
+  AccountSchema,
+  BankTransactionSchema,
+  PayerSchema,
+  PaymentSchema,
+  StatementSchema,
+  TenancySchema,
+} from '../src/model';
+import type { BankTransaction, Statement } from '../src/model';
+import type { YearMonth } from '../src/period';
+import { apartment } from './helpers/conguaglio-builders';
+import { ibanEndingWith } from './helpers/iban-build';
+
+const base = { v: 1, rev: 1 };
+const OWN_A = ibanEndingWith('1');
+const OWN_B = ibanEndingWith('2');
+const PAYER_IBAN = ibanEndingWith('77');
+const OTHER_IBAN = ibanEndingWith('78');
+
+const account = (id: string, apartmentId: string, iban: string) =>
+  AccountSchema.parse({ ...base, id, apartmentId, label: 'Conto', bankProfileId: 'bp1', iban });
+
+const tenancy = (over: Record<string, unknown>) =>
+  TenancySchema.parse({
+    ...base,
+    id: 'ten1',
+    apartmentId: 'a1',
+    tenantId: 't1',
+    from: '2026-01',
+    monthlyRent: 40000,
+    monthlyForfait: 5000,
+    ...over,
+  });
+
+const payer = (over: Record<string, unknown> = {}) =>
+  PayerSchema.parse({
+    ...base,
+    id: 'pr1',
+    key: `iban:${PAYER_IBAN}`,
+    tenantId: 't1',
+    validFrom: '2026-01-01',
+    source: 'confirmed',
+    ...over,
+  });
+
+const payment = (over: Record<string, unknown>) =>
+  PaymentSchema.parse({
+    ...base,
+    apartmentId: 'a1',
+    tenantId: 't1',
+    date: '2026-01-05',
+    amount: 45000,
+    confirmed: true,
+    kind: 'canone',
+    source: 'manual',
+    ...over,
+  });
+
+const statement = (over: Record<string, unknown> = {}): Statement =>
+  StatementSchema.parse({
+    ...base,
+    id: 's1',
+    accountId: 'c1',
+    bankProfileId: 'bp1',
+    fileName: 'estratto.csv',
+    suggestedPath: 'estratti/estratto.csv',
+    from: '2026-01-01',
+    to: '2026-12-31',
+    periodSource: 'file',
+    rowCount: 0,
+    transactionIds: [],
+    held: [],
+    ...over,
+  });
+
+const tx = (id: string, date: string, amount = 45000, iban = PAYER_IBAN): BankTransaction =>
+  BankTransactionSchema.parse({
+    ...base,
+    id,
+    apartmentId: 'a1',
+    accountId: 'c1',
+    date,
+    amount,
+    description: 'Bonifico a vostro favore',
+    statementHash: 'h1',
+    counterparty: { iban },
+  });
+
+type Input = Parameters<typeof reconcileIncome>[0];
+
+const input = (over: Partial<Input> = {}): Input => ({
+  accounts: [account('c1', 'a1', OWN_A), account('c2', 'a2', OWN_B)],
+  apartments: [apartment({ id: 'a1' })],
+  tenancies: [tenancy({})],
+  tenants: [],
+  payers: [payer()],
+  payments: [],
+  transactions: [],
+  statements: [statement()],
+  ...over,
+});
+
+const auto = (transactionId: string, date: string, forMonth: string, amount = 45000) => ({
+  id: `pay-${transactionId}`,
+  apartmentId: 'a1',
+  tenantId: 't1',
+  date,
+  amount,
+  confirmed: true,
+  kind: 'canone',
+  forMonth,
+  source: 'csv',
+  transactionId,
+});
+
+const cosa = (transactionId: string, reason: string, month?: string) => ({
+  id: `p-cosa-${transactionId}`,
+  transactionId,
+  step: 'cosa',
+  reason,
+  tenantIds: ['t1'],
+  key: `iban:${PAYER_IBAN}`,
+  ...(month === undefined ? {} : { month }),
+});
+
+/** January paid, so that a February transaction looks only at February. */
+const janPaid = payment({ id: 'pm-jan', forMonth: '2026-01' });
+
+describe('coveredMonths', () => {
+  const ctx = (
+    statements: Statement[],
+  ): Pick<IncomeContext, 'accounts'> & {
+    statements: Statement[];
+  } => ({ accounts: input().accounts, statements });
+
+  it('counts a month when at least one of its days is in a live statement of the apartment', () => {
+    const months = coveredMonths(
+      { ...ctx([statement({ from: '2026-01-31', to: '2026-02-01' })]) },
+      'a1',
+    );
+    expect([...months].sort()).toEqual(['2026-01', '2026-02']);
+  });
+
+  it('ignores deleted statements and statements of another apartment or unknown account', () => {
+    const months = coveredMonths(
+      ctx([
+        statement({ id: 's1', deleted: true }),
+        statement({ id: 's2', accountId: 'c2' }),
+        statement({ id: 's3', accountId: 'c9' }),
+        statement({ id: 's4', from: '2026-05-10', to: '2026-06-02' }),
+      ]),
+      'a1',
+    );
+    expect([...months].sort()).toEqual(['2026-05', '2026-06']);
+  });
+});
+
+describe('reconcileIncome, phase «che cosa»', () => {
+  it('records the exact rent of the month by itself', () => {
+    const result = reconcileIncome(
+      input({ payments: [janPaid], transactions: [tx('x1', '2026-02-03')] }),
+    );
+    expect(result).toEqual({
+      payments: [auto('x1', '2026-02-03', '2026-02')],
+      proposals: [],
+      skipped: [],
+    });
+  });
+
+  it('500 euro and two months in one transfer are amount-differs with the proposed month', () => {
+    const result = reconcileIncome(
+      input({
+        payments: [janPaid],
+        transactions: [tx('x1', '2026-02-03', 50000), tx('x2', '2026-01-03', 90000, OTHER_IBAN)],
+        payers: [payer(), payer({ id: 'pr2', key: `iban:${OTHER_IBAN}`, tenantId: 't2' })],
+        tenancies: [tenancy({}), tenancy({ id: 'ten2', tenantId: 't2', room: 'B' })],
+      }),
+    );
+    expect(result.payments).toEqual([]);
+    expect(result.proposals).toEqual([
+      cosa('x1', 'amount-differs', '2026-02'),
+      {
+        ...cosa('x2', 'amount-differs', '2026-01'),
+        tenantIds: ['t2'],
+        key: `iban:${OTHER_IBAN}`,
+      },
+    ]);
+  });
+
+  it('a month already paid is month-paid', () => {
+    const result = reconcileIncome(
+      input({
+        payments: [janPaid, payment({ id: 'pm-feb', forMonth: '2026-02', confirmed: false })],
+        transactions: [tx('x1', '2026-02-20')],
+      }),
+    );
+    expect(result.proposals).toEqual([cosa('x1', 'month-paid')]);
+  });
+
+  it('a rent payment of another apartment does not pay the month here', () => {
+    const result = reconcileIncome(
+      input({
+        payments: [janPaid, payment({ id: 'pm-feb', forMonth: '2026-02', apartmentId: 'a2' })],
+        transactions: [tx('x1', '2026-02-20')],
+      }),
+    );
+    expect(result.payments).toEqual([auto('x1', '2026-02-20', '2026-02')]);
+  });
+
+  it('10 days late is automatic for the month before, 11 is late', () => {
+    expect(reconcileIncome(input({ transactions: [tx('x1', '2026-02-10')] })).payments).toEqual([
+      auto('x1', '2026-02-10', '2026-01'),
+    ]);
+    expect(reconcileIncome(input({ transactions: [tx('x1', '2026-02-11')] })).proposals).toEqual([
+      cosa('x1', 'late'),
+    ]);
+  });
+
+  it('rentLateDays of the apartment moves the boundary', () => {
+    const apartments = [apartment({ id: 'a1', rentLateDays: 5 })];
+    expect(
+      reconcileIncome(input({ apartments, transactions: [tx('x1', '2026-02-05')] })).payments,
+    ).toEqual([auto('x1', '2026-02-05', '2026-01')]);
+    expect(
+      reconcileIncome(input({ apartments, transactions: [tx('x1', '2026-02-06')] })).proposals,
+    ).toEqual([cosa('x1', 'late')]);
+  });
+
+  it('an open October blocks the exact rent of 3 November (decision C)', () => {
+    const payments = [
+      ...['01', '02', '03', '04', '05', '06', '07', '08', '09'].map((m) =>
+        payment({ id: `pm-${m}`, forMonth: `2026-${m}` }),
+      ),
+    ];
+    const blocked = reconcileIncome(
+      input({
+        payments,
+        transactions: [tx('x-oct', '2026-10-05', 50000), tx('x-nov', '2026-11-03')],
+      }),
+    );
+    expect(blocked.payments).toEqual([]);
+    expect(blocked.proposals).toEqual([
+      cosa('x-nov', 'earlier-open'),
+      cosa('x-oct', 'amount-differs', '2026-10'),
+    ]);
+
+    // With October exact, both are automatic: the run's own payments count as paid.
+    const free = reconcileIncome(
+      input({ payments, transactions: [tx('x-nov', '2026-11-03'), tx('x-oct', '2026-10-05')] }),
+    );
+    expect(free.payments).toEqual([
+      auto('x-nov', '2026-11-03', '2026-11'),
+      auto('x-oct', '2026-10-05', '2026-10'),
+    ]);
+    expect(free.proposals).toEqual([]);
+  });
+
+  it('a room change uses the presence of the chosen month', () => {
+    const tenancies = [
+      tenancy({ id: 'ten1', to: '2026-03' }),
+      tenancy({ id: 'ten2', from: '2026-04', room: 'B', monthlyRent: 50000 }),
+    ];
+    const payments = ['01', '02', '03'].map((m) =>
+      payment({ id: `pm-${m}`, forMonth: `2026-${m}` }),
+    );
+    const result = reconcileIncome(
+      input({
+        tenancies,
+        payments,
+        transactions: [tx('x1', '2026-04-02', 55000), tx('x2', '2026-05-02', 45000)],
+      }),
+    );
+    expect(result.payments).toEqual([auto('x1', '2026-04-02', '2026-04', 55000)]);
+    expect(result.proposals).toEqual([cosa('x2', 'amount-differs', '2026-05')]);
+  });
+
+  it('after leaving in October: 5 November pays October, 20 December is not-present', () => {
+    const tenancies = [tenancy({ to: '2026-10' })];
+    const payments = ['01', '02', '03', '04', '05', '06', '07', '08', '09'].map((m) =>
+      payment({ id: `pm-${m}`, forMonth: `2026-${m}` }),
+    );
+    const result = reconcileIncome(
+      input({
+        tenancies,
+        payments,
+        transactions: [tx('x1', '2026-11-05'), tx('x2', '2026-12-20', 12000)],
+      }),
+    );
+    expect(result.payments).toEqual([auto('x1', '2026-11-05', '2026-10')]);
+    expect(result.proposals).toEqual([cosa('x2', 'not-present')]);
+  });
+
+  it('a month outside the covered months is not to pay', () => {
+    const transactions = [tx('x1', '2026-02-15')];
+    expect(
+      reconcileIncome(input({ transactions, statements: [statement({ from: '2026-02-01' })] }))
+        .payments,
+    ).toEqual([auto('x1', '2026-02-15', '2026-02')]);
+    expect(reconcileIncome(input({ transactions })).proposals).toEqual([cosa('x1', 'late')]);
+  });
+
+  it('two overlapping presences of the tenant throw tenant-overlap', () => {
+    const tenancies = [tenancy({}), tenancy({ id: 'ten2', from: '2026-02', room: 'B' })];
+    const run = () => reconcileIncome(input({ tenancies, transactions: [tx('x1', '2026-03-03')] }));
+    expect(run).toThrow(SettlementInputError);
+    expect(run).toThrow(expect.objectContaining({ code: 'tenant-overlap' }) as Error);
+  });
+
+  it('collectedForfait on the drafts gives the expected flat charge', () => {
+    const { payments } = reconcileIncome(
+      input({ transactions: [tx('x1', '2026-01-05'), tx('x2', '2026-02-04')] }),
+    );
+    const rows = collectedForfait({
+      tenancies: input().tenancies,
+      payments: payments.map((p) => ({ ...p, v: 1 as const, rev: 1 })),
+      months: ['2026-01', '2026-02', '2026-03'] as YearMonth[],
+    });
+    expect(rows.map((r) => [r.month, r.forfaitCollected])).toEqual([
+      ['2026-01', 5000],
+      ['2026-02', 5000],
+      ['2026-03', 0],
+    ]);
+  });
+
+  it('who-proposals, skips, debits and transactions with a live payment', () => {
+    const result = reconcileIncome(
+      input({
+        payers: [],
+        payments: [payment({ id: 'pm1', transactionId: 'x-paid' })],
+        transactions: [
+          tx('x-new', '2026-02-03'),
+          tx('x-own', '2026-02-03', 45000, OWN_B),
+          { ...tx('x-acc', '2026-02-04'), accountId: 'c9' },
+          tx('x-debit', '2026-02-03', -45000),
+          { ...tx('x-gone', '2026-02-03'), deleted: true },
+          tx('x-paid', '2026-02-03'),
+        ],
+      }),
+    );
+    expect(result).toEqual({
+      payments: [],
+      proposals: [
+        {
+          id: 'p-chi-x-new',
+          transactionId: 'x-new',
+          step: 'chi',
+          reason: 'new-payer',
+          tenantIds: ['t1'],
+          key: `iban:${PAYER_IBAN}`,
+        },
+      ],
+      skipped: [
+        { transactionId: 'x-acc', reason: 'no-account' },
+        { transactionId: 'x-own', reason: 'own-account' },
+      ],
+    });
+  });
+
+  it('shuffled input gives the same result, and rerunning with the drafts adds nothing', () => {
+    const tenancies = [
+      tenancy({ id: 'ten1', to: '2026-03' }),
+      tenancy({ id: 'ten2', from: '2026-04', room: 'B' }),
+      tenancy({ id: 'ten3', tenantId: 't2', room: 'C' }),
+    ];
+    const payers = [payer(), payer({ id: 'pr2', key: `iban:${OTHER_IBAN}`, tenantId: 't2' })];
+    const transactions = [
+      tx('x1', '2026-01-05'),
+      tx('x2', '2026-02-05', 50000),
+      tx('x3', '2026-03-05'),
+      tx('y1', '2026-01-06', 45000, OTHER_IBAN),
+      tx('y2', '2026-02-06', 45000, OTHER_IBAN),
+      tx('z1', '2026-02-07', 45000, ibanEndingWith('79')),
+    ];
+    const ordered = reconcileIncome(input({ tenancies, payers, transactions }));
+    const shuffled = reconcileIncome(
+      input({
+        tenancies: [...tenancies].reverse(),
+        payers: [...payers].reverse(),
+        transactions: [
+          transactions[4],
+          transactions[0],
+          transactions[5],
+          transactions[2],
+          transactions[1],
+          transactions[3],
+        ].filter((t): t is BankTransaction => t !== undefined),
+      }),
+    );
+    expect(shuffled).toEqual(ordered);
+    expect(ordered.payments.map((p) => p.id)).toEqual(['pay-x1', 'pay-y1', 'pay-y2']);
+    expect(ordered.proposals.map((p) => [p.id, p.reason])).toEqual([
+      ['p-chi-z1', 'new-payer'],
+      ['p-cosa-x2', 'amount-differs'],
+      ['p-cosa-x3', 'earlier-open'],
+    ]);
+
+    const again = reconcileIncome(
+      input({
+        tenancies,
+        payers,
+        transactions,
+        payments: ordered.payments.map((p) => ({ ...p, v: 1 as const, rev: 1 })),
+      }),
+    );
+    expect(again.payments).toEqual([]);
+    expect(again.proposals).toEqual(ordered.proposals);
+  });
+});
