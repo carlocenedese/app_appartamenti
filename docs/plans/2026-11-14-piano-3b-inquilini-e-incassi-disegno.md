@@ -1,6 +1,7 @@
 # Piano 3b: inquilini, paganti e incassi (disegno)
 
-Stato: **bozza, da approvare da Carlo.** Solo disegno, nessun codice. Il piano copre il core
+Stato: **approvato da Carlo il 14 novembre 2026, con le cinque raccomandazioni (sotto, «Decise da
+Carlo»).** Piano: `docs/plans/2026-11-14-piano-3b-inquilini-e-incassi.md`. Solo disegno, nessun codice. Il piano copre il core
 (`packages/core`) e la riga di comando (`pnpm estratti`); **niente schermate e niente veste
 grafica**. Riferimenti: disegno approvato del piano 3 (`docs/plans/2026-11-14-piano-3-csv-disegno.md`,
 «Risposte» 3-7, 12, 13 e «Mie scelte» 8), piano 3a (`docs/plans/2026-11-14-piano-3a-conti-ed-estratti.md`),
@@ -72,12 +73,13 @@ Tutti `v: 1`, campi minimi, nessun campo nuovo obbligatorio sui record esistenti
   come nel contratto), `language?: 'it' | 'en'`. L'`id` è quello già usato da `Tenancy.tenantId` e
   `Payment.tenantId`. Nessun altro dato personale («Mie scelte» 4 del piano 3).
 - **`payer`** (approccio C2 del piano 3): `key` (`iban:<IBAN normalizzato>` o
-  `name:<foldText del nome>`), `tenantId`, `validFrom` (`YYYY-MM-DD`), `validTo?`, `source`
+  `name:<foldText del nome>`), `tenantId`, `validFrom` (`YYYY-MM-DD`, il primo giorno della prima
+presenza dell'inquilino nell'appartamento del conto: decisione A), `validTo?`, `source`
   (`confirmed` per ora; `manual` quando l'interfaccia permetterà di inserirlo a mano, sezione 17
   punto 7). Un record per associazione: un genitore che paga per due figli sono due `payer` con la
   stessa `key`.
-- **`Apartment.rentLateDays?`**: intero da 0 a 31; assente vale 10 (decisione 6). Il 10 è il valore
-  deciso da Carlo, scritto una volta come costante con nome, non una regola fiscale.
+- **`Apartment.rentLateDays?`**: intero da 0 a 31 (Ruling, sotto); assente vale 10 (decisione 6).
+  Il 10 è il valore deciso da Carlo, scritto una volta come costante con nome, non una regola fiscale.
 - **`Payment`**: nessun campo nuovo. Un pagamento creato da un movimento ha `source: 'csv'`,
   `transactionId`, `confirmed: true`, `forMonth` sempre esplicito. Un bonifico di più mesi o di più
   tipi dà più `Payment` con lo stesso `transactionId`, la cui somma è l'importo del movimento.
@@ -105,6 +107,8 @@ successivi.
 2. **Conto proprio:** IBAN di un `account` (anche di un altro appartamento) → `skipped:
    'own-account'`, lasciato al 3c.
 3. **Paganti validi** alla data: i `payer` vivi con quella chiave e `validFrom <= data <= validTo`.
+   Un `payer` `name:` non vale per un movimento che porta un IBAN (decisione B): il movimento va «chi
+   è» con quell'inquilino in cima, e la conferma crea un secondo `payer` `iban:`.
    - uno solo → l'inquilino è quello;
    - più di uno (inquilini diversi) → proposta «chi è» con **solo quegli inquilini**, in cima, mai
      automatico (decisione 5);
@@ -114,7 +118,8 @@ successivi.
 4. **Nome nella causale:** tutte le parole di `foldText(tenant.name)` compaiono come parole intere
    in `foldText(description)` o nel nome della controparte. Nessuna somiglianza parziale.
 
-Confermare una proposta «chi è» crea il `payer` e, nella stessa operazione, risponde anche al «che
+Confermare una proposta «chi è» crea il `payer` (salvo l'opzione «solo questa volta», decisione D)
+e, nella stessa operazione, risponde anche al «che
 cosa» di quel movimento (la sezione 15 chiede le due cose insieme). Per quel pagante la domanda «chi
 è» non torna più (decisione 3); per un pagante di più inquilini torna a ogni movimento, ma solo con i
 suoi inquilini.
@@ -124,7 +129,8 @@ suoi inquilini.
 Con un inquilino unico dato da un `payer`, il movimento si registra **da solo** (`Payment` `canone`)
 solo se tutte queste condizioni valgono:
 
-1. la chiave ha un solo `payer` valido (decisione 5);
+1. la chiave ha un solo `payer` valido (decisione 5), e nessun movimento precedente dello stesso
+   inquilino è ancora in revisione (decisione C, motivo `earlier-open`);
 2. il mese scelto è «da pagare»: l'inquilino è presente nell'appartamento del conto e non ha un
    `Payment` `canone` vivo (confermato o no) per quel mese;
 3. il mese si sceglie così (decisione 6): sia M il mese più vecchio da pagare, fino al mese della
@@ -135,7 +141,7 @@ solo se tutte queste condizioni valgono:
 Tutto il resto è una proposta «che cosa è» con l'inquilino già scritto e un motivo costante:
 `amount-differs` (500 €, parziali, più mesi, compensazioni: R4), `late`, `month-paid` (anticipo o
 mese già pagato), `not-present` (conguaglio o caparra di chi è uscito o deve entrare),
-`multi-tenant`. La conferma indica una o più parti `{ kind, forMonth, amount }` con somma uguale
+`multi-tenant`, `earlier-open`. La conferma indica una o più parti `{ kind, forMonth, amount }` con somma uguale
 all'importo; il tipo è uno di `canone`, `caparra`, `conguaglio`, `altro`.
 
 ### Proposte e conferme senza dati personali
@@ -154,7 +160,8 @@ proposto; mai nomi, causali o IBAN. La riga di comando li mostra solo con `--det
 - Annullare `income.reconcile` toglie i pagamenti automatici; annullare una conferma toglie anche il
   `payer`, e la domanda «chi è» torna.
 - **Dipendenze verso il 3a:** R106 dice che `undoImport` non controlla i pagamenti che puntano ai
-  movimenti. Il 3b aggiunge il controllo: `undoImport` rifiuta con `dependent-payments` (domanda 5).
+  movimenti. Il 3b aggiunge il controllo: `undoImport` rifiuta con `dependent-payments` e l'elenco
+  degli `id` (decisione E).
 - **Prerequisito:** `reconcile` e `confirmIncome` chiamano prima `checkConsistency`; con un problema
   rifiutano con `inconsistent-store` e non scrivono nulla. La riga di comando dà codice 1 e un
   messaggio costante.
@@ -212,10 +219,16 @@ Fixture di un anno su due conti: inquilini con nomi inventati, IBAN di prova agg
    secondo canone per lo stesso mese.
 3. **Candidati «chi è»:** tutti gli inquilini con una presenza nell'appartamento del conto, anche
    passata o futura (caparra prima dell'ingresso, conguaglio dopo l'uscita); l'ordine li separa.
-4. **Nome nella causale solo a parole intere**, nessuna distanza tra stringhe: niente punteggi
-   nascosti (decisione 1).
-5. **Un `tenant` senza nome** non esiste: una presenza il cui `tenantId` non ha un record `tenant` è
+4. **Un `tenant` senza nome** non esiste: una presenza il cui `tenantId` non ha un record `tenant` è
    candidata, ma senza il criterio del nome, e la riga di comando lo segnala nei conteggi.
+
+## Ruling (14 novembre 2026, da scrivere in `docs/progress.md` alla prossima R libera)
+
+1. **Nome nella causale solo a parole intere:** tutte le parole di `foldText(tenant.name)` devono
+   comparire come parole intere; nessuna distanza tra stringhe, niente punteggi nascosti
+   (decisione 1).
+2. **`rentLateDays` intero da 0 a 31:** oltre un mese il «mese prima» non avrebbe più senso, e due
+   mesi arretrati vanno sempre in revisione (decisione 6).
 
 ## Rischi
 
@@ -226,7 +239,7 @@ Fixture di un anno su due conti: inquilini con nomi inventati, IBAN di prova agg
   Si vede dai conteggi; si corregge con il profilo vero (3a, Task 9).
 - **Pagante comune a due inquilini mai visto come tale:** la prima conferma crea un solo `payer` e i
   bonifici dell'altro inquilino diventerebbero automatici sul primo se l'importo coincide. Mitigato
-  dalla domanda 3 (proposta aperta) e dall'importo esatto della presenza; resta un rischio da
+  dalla decisione C (proposta aperta) e dall'importo esatto della presenza; resta un rischio da
   mostrare nell'elenco dei registrati automaticamente.
 - **Privacy:** nomi degli inquilini in chiaro nei record `tenant`, come gli altri dati (decisione 1
   del piano 3); mai nei log, nei `summary` né nell'uscita predefinita.
@@ -238,7 +251,13 @@ Fixture di un anno su due conti: inquilini con nomi inventati, IBAN di prova agg
   o nessuna.
 - Se la banca mette l'IBAN dell'ordinante nei bonifici in entrata o solo il nome.
 
-## Domande aperte per Carlo
+## Decise da Carlo (14 novembre 2026)
+
+Le cinque domande della bozza, **tutte decise da Carlo il 14 novembre 2026 come raccomandato**. Nel
+testo sopra si citano come decisioni A (1), B (2), C (3), D (4) ed E (5).
+
+Una domanda nata scrivendo il piano resta aperta: da quando un mese conta come «da pagare» (piano,
+«Da confermare con Carlo prima del Task 5»).
 
 1. **Da quando vale un pagante confermato** (`validFrom`)? Se vale dalla data del bonifico
    confermato, gli estratti più vecchi importati dopo richiedono di nuovo «chi è» (contro la
