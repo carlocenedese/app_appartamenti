@@ -134,6 +134,17 @@ class PdfReportTest(unittest.TestCase):
         self.assertIn("pdf senza-testo: 1", lines)
         self.assertIn("ocr riconosciuta: 0", lines)
 
+    def test_counts_the_many_documents_warning_by_profile(self) -> None:
+        self.assertIn("Con avviso più documenti: 0", self.report())
+        # Both bills in one file, read whole: the file warns, under the profile that read it.
+        bills = [make_sample._page(bill) for bill in make_sample.BILLS.values()]
+        pdfmaker.make_pdf(self.pdfs / "composto-segreto.pdf", bills)
+        lines = [line.strip() for line in self.run_ok(self.pdfs).splitlines()]
+        self.assertIn("Con avviso più documenti: 1", lines)
+        start = lines.index("Con avviso più documenti per fornitore:")
+        self.assertEqual(lines[start + 1 : start + 3], ["(nessun profilo): 0", "luce-esempio: 1"])
+        self.assertIn("Totale: 6", lines)
+
     def test_ocr_data_option_reads_the_scans_with_the_engine(self) -> None:
         from bollette_pdf import ocr
         from test_ocr import FakeEngine
