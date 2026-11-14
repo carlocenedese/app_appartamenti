@@ -179,6 +179,11 @@ export function addMonths(m: YearMonth, n: number): YearMonth {
   return fromMonthNumber(toMonthNumber(m) + n);
 }
 
+/** The last day of a month. */
+export function lastDayOfMonth(month: YearMonth): ISODate {
+  return addDays(`${addMonths(month, 1)}-01` as ISODate, -1);
+}
+
 /** A lease year start must exist every year, so February 29 is not allowed. */
 function assertAnnualitaStart({ month, day }: AnnualitaStart): void {
   if (!Number.isInteger(month) || month < 1 || month > 12) {
