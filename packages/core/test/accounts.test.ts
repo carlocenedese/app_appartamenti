@@ -163,6 +163,27 @@ describe('saveAccount', () => {
     expect(await store.list('_app/dati/account')).toEqual([]);
   });
 
+  it('rejects a deleted bank profile', async () => {
+    const store = await seeded();
+    const [stored] = (await loadAll(store, 'bankProfile', BankProfileSchema)).records;
+    if (stored === undefined) throw new Error('missing');
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'bank-profile.remove',
+        summary: 'x',
+        changes: [{ path: recordPath('bankProfile', stored.id), before: stored, after: undefined }],
+      },
+      clock,
+      ids('r'),
+    );
+    expect(await saveAccount(store, draft(), 'p1', clock, ids('a'))).toEqual({
+      status: 'rejected',
+      reason: 'unknown-bank-profile',
+    });
+  });
+
   it('frees the IBAN of a deleted account', async () => {
     const store = await seeded();
     const first = await saveAccount(store, draft(), 'p1', clock, ids('a'));
@@ -185,6 +206,38 @@ describe('saveAccount', () => {
       ids('r'),
     );
     expect((await saveAccount(store, draft(), 'p1', clock, ids('b'))).status).toBe('saved');
+  });
+});
+
+describe('journal summaries', () => {
+  it('hold no name, label, bank or IBAN typed by the user', async () => {
+    const store = new MemoryStore();
+    const apt = apartment();
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'apartment.create',
+        summary: 'x',
+        changes: [{ path: recordPath('apartment', apt.id), before: undefined, after: apt }],
+      },
+      clock,
+      ids('s'),
+    );
+    await saveBankProfile(store, { ...profile, bank: 'SentinellaBanca' }, 'p1', clock, ids('b'));
+    await saveAccount(
+      store,
+      draft({ label: 'SentinellaConto', holder: 'SentinellaTitolare' }),
+      'p1',
+      clock,
+      ids('a'),
+    );
+    const { operations } = await readJournal(store);
+    const mine = operations.filter((o) => o.kind !== 'apartment.create');
+    expect(mine).toHaveLength(2);
+    for (const op of mine) {
+      expect(op.summary).not.toMatch(/Sentinella|IT60|X054/i);
+    }
   });
 });
 
@@ -218,8 +271,33 @@ describe('statementFilePath', () => {
       'Riservato_proprietari/Estratti_conto/Citta-Nord/2026-27/2026-10-31_Estratto_Banca-d-Italia-sede_2026-10.xlsx',
     );
     expect(p).toMatch(/^[A-Za-z0-9_\-/.]+$/);
-    expect(path({ apartment: apt({ name: 'CON' }) })).toContain('/Appartamento_CON/');
+    for (const name of [
+      'CON',
+      'PRN',
+      'AUX',
+      'NUL',
+      'COM1',
+      'COM9',
+      'LPT1',
+      'LPT9',
+      'nul',
+      'Com1',
+      'lpt9',
+    ]) {
+      expect(path({ apartment: apt({ name }) })).toContain(`/Appartamento_${name}/`);
+    }
+    expect(path({ apartment: apt({ name: 'con.txt' }) })).toContain('/con-txt/');
+    expect(path({ apartment: apt({ name: 'Con_3' }) })).toContain('/Con_3/');
     expect(path({ apartment: apt({ name: '???' }) })).toContain('/Appartamento/');
+    const long = path({
+      apartment: apt({ name: Array(20).fill('Abcdefghijklmnopqrstuvwxyzabcd').join('_') }),
+    });
+    expect(long.split('/')[2]).toHaveLength(60);
+    expect(long.split('/')[2]).toMatch(/^[A-Za-z_]+$/);
+    expect(path({ apartment: apt({ name: 'Ab_'.repeat(30) }) }).split('/')[2]).toBe(
+      Array(20).fill('Ab').join('_'),
+    );
+    expect(path({ apartment: apt({ name: 'Берчет 😀' }) })).toContain('/Appartamento/');
     expect(path({ bank: '' })).toContain('_Estratto_Banca_');
   });
 });

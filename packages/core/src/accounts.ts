@@ -32,7 +32,7 @@ export async function saveBankProfile(
     {
       profileId,
       kind: 'bank-profile.save',
-      summary: `Salvato il profilo della banca ${checked.bank}`,
+      summary: 'Profilo della banca salvato',
       changes: [{ path: recordPath('bankProfile', checked.id), before: existing, after: checked }],
     },
     clock,
@@ -82,7 +82,7 @@ export async function saveAccount(
     {
       profileId,
       kind: 'account.save',
-      summary: `Salvato il conto ${account.label}`,
+      summary: 'Conto salvato',
       changes: [{ path: recordPath('account', account.id), before: undefined, after: account }],
     },
     clock,
@@ -95,6 +95,8 @@ export async function saveAccount(
   };
 }
 
+/** Longest apartment folder name (Windows paths stop at 260 characters in all). */
+const MAX_FOLDER = 60;
 const RESERVED = /^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$/i;
 
 /** The apartment's folder name: words kept apart by `_` (`Berchet_3`), each one safe; never a Windows reserved name. */
@@ -103,7 +105,11 @@ function apartmentFolder(name: string): string {
     .split('_')
     .map((part) => safeWord(part, '', 30))
     .filter((part) => part !== '');
-  const folder = parts.length === 0 ? 'Appartamento' : parts.join('_');
+  const joined = parts
+    .join('_')
+    .slice(0, MAX_FOLDER)
+    .replace(/[_-]+$/, '');
+  const folder = joined === '' ? 'Appartamento' : joined;
   return RESERVED.test(folder) ? `Appartamento_${folder}` : folder;
 }
 
