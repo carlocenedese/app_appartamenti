@@ -85,7 +85,7 @@ export function whoPaid(tx: BankTransaction, ctx: IncomeContext): WhoResult {
 
 /**
  * Sorts tenant ids: name in the text; then rent plus flat charge of a presence in the apartment in
- * the month equal to the amount; then present in that month without a live rent payment for it;
+ * the month equal to the amount; then present in that month without a live rent payment for it there;
  * then name (the id without a live tenant), then id.
  */
 function candidateOrder(
@@ -107,7 +107,10 @@ function candidateOrder(
     ctx.payments
       .filter(
         (p) =>
-          p.deleted !== true && p.kind === 'canone' && (p.forMonth ?? p.date.slice(0, 7)) === month,
+          p.deleted !== true &&
+          p.kind === 'canone' &&
+          p.apartmentId === apartmentId &&
+          (p.forMonth ?? p.date.slice(0, 7)) === month,
       )
       .map((p) => p.tenantId),
   );

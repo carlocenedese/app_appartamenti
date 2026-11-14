@@ -150,9 +150,13 @@ describe('whoPaid: known payers', () => {
   });
 
   it('asks with the name payer on top when the row brings an IBAN (decision B)', () => {
+    // t1 is a relative paying under another name; t2 wins every other criterion.
     const c = ctx({
-      tenants: [tenant('t1', 'Mario Rossi'), tenant('t2', 'Anna Neri')],
-      tenancies: [tenancy({ id: 'n1', tenantId: 't1' }), tenancy({ id: 'n2', tenantId: 't2' })],
+      tenants: [tenant('t1', 'Zoe Bianchi'), tenant('t2', 'Anna Neri')],
+      tenancies: [
+        tenancy({ id: 'n1', tenantId: 't1' }),
+        tenancy({ id: 'n2', tenantId: 't2', monthlyRent: 45000 }),
+      ],
       payers: [payer({ id: 'p1', key: 'name:mario rossi', tenantId: 't1' })],
     });
     expect(whoPaid(tx({ counterparty: { iban: PAYER_IBAN, name: 'Mario Rossi' } }), c)).toEqual({
@@ -160,6 +164,28 @@ describe('whoPaid: known payers', () => {
       reason: 'name-only-payer',
       tenantIds: ['t1', 't2'],
       key,
+    });
+  });
+
+  it('lets the IBAN payer win over a name payer of another tenant', () => {
+    const c = ctx({
+      payers: [
+        payer({ id: 'p1', key, tenantId: 't1' }),
+        payer({ id: 'p2', key: 'name:mario rossi', tenantId: 't2' }),
+      ],
+    });
+    expect(whoPaid(tx({ counterparty: { iban: PAYER_IBAN, name: 'Mario Rossi' } }), c)).toEqual({
+      kind: 'known',
+      tenantId: 't1',
+      key,
+    });
+  });
+
+  it('skips an own account even when a valid payer has its IBAN', () => {
+    const c = ctx({ payers: [payer({ id: 'p1', key: `iban:${OWN_B}`, tenantId: 't1' })] });
+    expect(whoPaid(tx({ counterparty: { iban: OWN_B } }), c)).toEqual({
+      kind: 'skip',
+      reason: 'own-account',
     });
   });
 });
@@ -259,5 +285,29 @@ describe('whoPaid: new payer', () => {
       tenantIds: [],
       key: `iban:${PAYER_IBAN}`,
     });
+  });
+
+  it('breaks a tie on the same name by id', () => {
+    const c = ctx({
+      tenants: [tenant('t2', 'Anna Bruni'), tenant('t1', 'Anna Bruni')],
+      tenancies: [tenancy({ id: 'n2', tenantId: 't2' }), tenancy({ id: 'n1', tenantId: 't1' })],
+    });
+    expect(whoPaid(tx(), c)).toMatchObject({ tenantIds: ['t1', 't2'] });
+  });
+
+  it('does not count a rent paid for another apartment as paid here', () => {
+    const c = ctx({
+      tenants: [tenant('t1', 'Zoe Bianchi'), tenant('t2', 'Anna Neri')],
+      tenancies: [
+        tenancy({ id: 'n1', tenantId: 't1' }),
+        tenancy({ id: 'n1b', tenantId: 't1', apartmentId: 'a2' }),
+        tenancy({ id: 'n2', tenantId: 't2' }),
+      ],
+      payments: [
+        payment({ id: 'm1', tenantId: 't1', apartmentId: 'a2' }),
+        payment({ id: 'm2', tenantId: 't2' }),
+      ],
+    });
+    expect(whoPaid(tx(), c)).toMatchObject({ tenantIds: ['t1', 't2'] });
   });
 });
