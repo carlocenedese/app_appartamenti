@@ -40,8 +40,9 @@ I numeri sono quelli delle domande della bozza.
 1. **Contenitore:** «come preferisci»: vale la raccomandazione, **A1 + B2**. L'XLSX si legge in
    Python con la sola libreria standard; il core legge anche i CSV.
 2. **Conti:** IMU, F24 e rate condominiali «si riconoscono da soli» ed escono dai tre conti degli
-   appartamenti, **tutti della stessa banca**. *Interpretazione:* non ci sono altri conti da
-   importare; si richiede conferma solo se ne compare un altro. Sezione 23 corretta.
+   appartamenti, **tutti della stessa banca**. Non ci sono altri conti da importare;
+   IMU, F24 e rate restano da confermare («Mie scelte», 9, confermata da Carlo il 14 novembre
+   2026). Sezione 23 corretta.
 3. **Periodo coperto da un estratto:** dal file, se lo dichiara; altrimenti lo indica Carlo
    all'importazione. **Mai dalle date dei movimenti.**
 4. **Mese di un canone automatico:** si abbina da solo al mese della data, se quel mese non è già
@@ -435,17 +436,15 @@ si allinea alla sezione 24, o il contrario; fino ad allora non si tocca.
    bollette.
 7. **Uscita della riga di comando senza dati personali di default**, perché le prove sui file veri le
    fa Carlo e i risultati possono finire in una conversazione con Claude (sezione 28).
-8. **Misura del ritardo del canone (risposta 4, interpretazione da riconfermare).** Il ritardo è il
-   numero di giorni tra l'ultimo giorno del mese da pagare e la data del bonifico; un bonifico dentro
-   il mese ha ritardo 0. Si abbina in automatico al mese più vecchio ancora da pagare (con
-   l'inquilino presente), se il ritardo è al massimo `rentLateDays`. Due mesi arretrati superano
-   sempre la soglia e vanno in revisione. Se Carlo intende un altro giorno di partenza (per esempio
-   il 5 del mese, come «non incassato dopo il 5» della sezione 27), cambia solo la data da cui si
-   contano i giorni, e i test di confine.
-9. **Conti (risposta 2, interpretazione).** «Si riconoscono da soli» vuol dire che IMU, F24 e rate
-   si trovano tra i movimenti dei tre conti senza importare altri conti; non che si abbinano senza
-   conferma (la risposta 8 vuole l'F24 sempre confermato). Il modello ammette comunque più conti per
-   appartamento (sezione 13): se ne compare un altro, si chiede a Carlo.
+8. **Misura del ritardo del canone (risposta 4; confermata da Carlo il 14 novembre 2026).** Il
+   ritardo è il numero di giorni tra l'ultimo giorno del mese da pagare e la data del bonifico; un
+   bonifico dentro il mese ha ritardo 0. Si abbina in automatico al mese più vecchio ancora da
+   pagare (con l'inquilino presente), se il ritardo è al massimo `rentLateDays` (10 se non
+   indicato). Due mesi arretrati superano sempre la soglia e vanno in revisione.
+9. **Conti (risposta 2; confermata da Carlo il 14 novembre 2026).** IMU, F24 e rate si riconoscono
+   tra i movimenti dei tre conti, senza importare altri conti, ma restano da confermare (la
+   risposta 8 vuole l'F24 sempre confermato). Il modello ammette comunque più conti per
+   appartamento (sezione 13).
 10. **Giroconti solo tra conti propri** (risposta 9): la proposta di giroconto nasce solo quando la
     controparte ha l'IBAN di un `account`, mai dal testo della causale («giroconto», «bonifico»).
 
@@ -479,6 +478,3 @@ seed della banca (cartella dei seed esistente o una nuova); ordine dei campi nei
    si usano le quote del prospetto di calcolo del commercialista, inserite una volta in punti base
    come i pesi delle utenze (R80). La sezione 42, R3 («in parti proporzionali») si corregge solo
    dopo la risposta.
-2. **Da riconfermare solo se serve:** la misura del ritardo del canone («Mie scelte», 8: si contano
-   i giorni dall'ultimo del mese da pagare) e, se compare un conto diverso dai tre, la risposta 2
-   («Mie scelte», 9). Nessuno dei due blocca 3a.
