@@ -22,7 +22,7 @@ export type StatementTable = z.infer<typeof StatementTableSchema>;
 /** Never carries the cell value: statements hold personal data. */
 export class CsvError extends Error {
   constructor(
-    readonly code: 'unclosed-quote',
+    readonly code: 'unclosed-quote' | 'stray-quote',
     readonly row: number,
   ) {
     super(`CSV ${code} at row ${row}`);
@@ -39,11 +39,13 @@ export function parseCsv(text: string, separator: ';' | ','): StatementTable {
   let rowNo = 1; // 1-based number of the row being read
   let quoteRow = 0; // row where the open quote started, 0 when none
   let inQuotes = false;
+  let closed = false; // the current field was quoted and is closed: only a separator or line end may follow
   let touched = false; // the current row has content or a separator
 
   const endField = (): void => {
     row.push(field === '' ? null : { t: 's', v: field });
     field = '';
+    closed = false;
   };
   const endRow = (): void => {
     if (touched) {
@@ -62,12 +64,17 @@ export function parseCsv(text: string, separator: ';' | ','): StatementTable {
         if (src[i + 1] === '"') {
           field += '"';
           i += 1;
-        } else inQuotes = false;
+        } else {
+          inQuotes = false;
+          closed = true;
+        }
       } else {
         field += c;
-        if (c === '\n') rowNo += 1;
+        if (c === '\n' || (c === '\r' && src[i + 1] !== '\n')) rowNo += 1;
       }
-    } else if (c === '"') {
+    } else if (closed && c !== separator && c !== '\n' && c !== '\r') {
+      throw new CsvError('stray-quote', rowNo);
+    } else if (c === '"' && field === '') {
       inQuotes = true;
       quoteRow = rowNo;
       touched = true;

@@ -142,6 +142,7 @@
 **Interfaces:**
 
 - Consumes: `StatementTable`, `BankProfile`, `parseEuro`, `normaliseIban`, `isoDate`, `foldText`.
+- Proteggere `accountPattern`/`periodPattern` dal ReDoS dove vengono eseguiti (lunghezza massima dell'input, niente quantificatori annidati) con test.
 - Produces:
   - `readStatementTable(table: StatementTable, profile: BankProfile): StatementRead`, con `StatementRead = { rows: StatementRow[]; declaredPeriod?: { from: ISODate; to: ISODate }; declaredAccount?: string }`.
   - `StatementRow = { row: number; date: ISODate; amount: Cents; description: string; dispCode?: string; counterparty?: { name?: string; iban?: string }; booked: boolean }`.
