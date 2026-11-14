@@ -48,6 +48,10 @@ WARNING_UNREADABLE_ITEM = "Voce non leggibile, esclusa dalla somma delle voci."
 # Words read with OCR (confidence 0-100): a field whose text line or cell averages less is empty.
 OCR_MIN_WORD_CONFIDENCE = 70
 
+# The value of the amount or the number is read with two different values: the file may hold
+# more than one document (the restricted read of `--pages` is the way to choose one).
+WARNING_MANY_DOCUMENTS = "Il file potrebbe contenere più documenti."
+
 MESSAGE_PROFILE_UNIQUE = "Più profili di fornitori diversi riconoscono il documento."
 
 _MISSING: dict[str, Any] = {"value": None, "confidence": "missing", "source": None}
@@ -176,8 +180,9 @@ def _read_span(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, list[dic
     return (first[0][0], last[0][1]), confidence, [first[1], last[1]]
 
 
-def _read_field(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, dict | None]:
-    """(value, confidence, source) of one field of a profile."""
+def _read_field(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, dict | None, bool]:
+    """(value, confidence, source, agree) of one field of a profile; `agree` is False when the
+    rule that gives the value reads it with different values at different occurrences."""
     for index, rule in enumerate(spec.get("rules", [])):
         readings = []
         for anchor in layout.anchors(rule.get("anchor", "")):
@@ -188,12 +193,15 @@ def _read_field(layout: Layout, spec: dict[str, Any]) -> tuple[Any, str, dict | 
         if readings:
             value, source, whole = readings[0]
             agree = all(other == value for other, _, _ in readings[1:])
-            return value, "high" if index == 0 and agree and whole else "medium", source
-    return None, "missing", None
+            return value, "high" if index == 0 and agree and whole else "medium", source, agree
+    return None, "missing", None, True
 
 
-def _read_fields(layout: Layout, profile: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """The output fields of `profile` (period split in periodStart and periodEnd)."""
+def _read_fields(
+    layout: Layout, profile: dict[str, Any], disagree: set[str] | None = None
+) -> dict[str, dict[str, Any]]:
+    """The output fields of `profile` (period split in periodStart and periodEnd). The names of
+    the fields read with different values at different occurrences are added to `disagree`."""
     fields: dict[str, dict[str, Any]] = {
         "supplier": {"value": profile["supplier"], "confidence": "high", "source": None}
     }
@@ -205,7 +213,9 @@ def _read_fields(layout: Layout, profile: dict[str, Any]) -> dict[str, dict[str,
             value, confidence, sources = _read_span(layout, spec)
             source = None
         else:
-            value, confidence, source = _read_field(layout, spec)
+            value, confidence, source, agree = _read_field(layout, spec)
+            if not agree and disagree is not None:
+                disagree.add(name)
             sources = [source, source]
         if value is None:
             entries = {"periodStart": None, "periodEnd": None} if name == "period" else {name: None}
@@ -350,7 +360,7 @@ def _result(doc: Document, status: str) -> dict[str, Any]:
         "v": 1,
         "fileHash": doc.file_hash,
         "pages": doc.pages,
-        "pageRange": [1, doc.pages] if doc.pages else None,
+        "pageRange": list(doc.page_range or (1, doc.pages)) if doc.pages else None,
         "status": status,
         "profileId": None,
         "profileRev": None,
@@ -377,9 +387,10 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
     layout = Layout(doc)
     today = at[:10]
     readings: dict[int, dict[str, dict[str, Any]]] = {}
+    disagreeing: dict[int, set[str]] = {}
     complete: list[int] = []
     for index, profile in enumerate(matching):
-        fields = readings[index] = _read_fields(layout, profile)
+        fields = readings[index] = _read_fields(layout, profile, disagreeing.setdefault(index, set()))
         issue = fields.get("issueDate", _MISSING)["value"]
         if not _in_validity(profile, issue if issue is not None else today):
             continue
@@ -394,6 +405,8 @@ def extract(doc: Document, profiles: list[dict[str, Any]], at: str) -> dict[str,
     profile, fields = matching[chosen], readings[chosen]
 
     warnings: list[str] = []
+    if disagreeing[chosen] & {"amount", "number"}:
+        warnings.append(WARNING_MANY_DOCUMENTS)
     items_sum, items_from_ocr = _items_sum(doc, profile, warnings)
     checks = run_checks(fields, items_sum)
     parts: list[dict[str, Any]] = []

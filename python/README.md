@@ -15,6 +15,12 @@ python -I -m bollette_pdf --version
 
 - `extract` legge il PDF con i profili `*.json` della cartella `--profiles` (quelli rotti o non
   validi diventano avvisi con il solo nome del file) e scrive un `ExtractionResult` validato.
+- `extract --pages a-b` legge solo le pagine `a..b` (interi, `1 <= a <= b <= pagine del file`, un
+  solo intervallo): il risultato ha `pageRange [a, b]`, e `textSource`, `ocrPages` e «senza testo»
+  valgono per quelle pagine. Un intervallo non valido, o oltre l'ultima pagina, dà codice `2` e
+  `Intervallo di pagine non valido: nessun output.`. Il file si rilegge a ogni chiamata. Senza
+  `--pages` e con due valori diversi per importo o numero, l'avviso «Il file potrebbe contenere
+  più documenti.» (il valore e la confidenza non cambiano; decisione R94).
 - `build-profile` legge il PDF e il file `--spec` (formato qui sotto; `box` è
   `[x0, top, x1, bottom]` in punti dall'angolo in alto a sinistra della pagina) e scrive il
   `supplierProfile` costruito (in `bozza`), solo se rilegge i valori scelti con confidenza `high` (decisione R60).
