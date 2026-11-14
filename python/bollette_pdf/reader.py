@@ -211,12 +211,18 @@ def _needs_ocr(lines: list[Line]) -> bool:
 
 
 def read_pdf(
-    path: Path, *, ocr_data: str | Path | None = None, max_ocr_pages: int = MAX_OCR_PAGES
+    path: Path,
+    *,
+    ocr_data: str | Path | None = None,
+    max_ocr_pages: int = MAX_OCR_PAGES,
+    page_range: tuple[int, int] | None = None,
 ) -> Document:
     """Reads the PDF at `path`; raises PdfReadError if it cannot be read.
 
     With `ocr_data` (folder of ita.traineddata), pages without useful text are read with OCR,
-    at most `max_ocr_pages`; without the engine or the data they stay as they are."""
+    at most `max_ocr_pages`; without the engine or the data they stay as they are. With
+    `page_range` (first, last) only the pages of the range are candidates for OCR, and the limit
+    counts them alone (the call is for those pages; the caller then applies `restrict`)."""
     path = Path(path)
     try:
         data = path.read_bytes()
@@ -247,7 +253,9 @@ def read_pdf(
     pages = len(by_page)
     if pages == 0:
         raise PdfReadError("Il file non contiene pagine leggibili.")
-    text_source, ocr_pages, warnings = _read_with_ocr(data, by_page, ocr_data, max_ocr_pages)
+    text_source, ocr_pages, warnings = _read_with_ocr(
+        data, by_page, ocr_data, max_ocr_pages, page_range=page_range
+    )
     lines = [line for page_lines in by_page for line in page_lines]
     non_blank = sum(1 for line in lines for ch in line.text if not ch.isspace())
     return Document(
@@ -294,10 +302,16 @@ def _read_with_ocr(
     data_dir: str | Path | None,
     limit: int,
     dpi: int | None = None,
+    page_range: tuple[int, int] | None = None,
 ) -> tuple[str, tuple[int, ...], tuple[str, ...]]:
     """Replaces in `by_page` the lines of the pages read with OCR; gives text_source, the pages
     read with OCR and the warnings."""
-    wanted = [number for number, lines in enumerate(by_page, start=1) if _needs_ocr(lines)]
+    first, last = page_range if page_range is not None else (1, len(by_page))
+    wanted = [
+        number
+        for number, lines in enumerate(by_page, start=1)
+        if first <= number <= last and _needs_ocr(lines)
+    ]
     if not wanted:
         return "pdf", (), ()
     read = None

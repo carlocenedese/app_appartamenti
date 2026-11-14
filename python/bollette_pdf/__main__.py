@@ -256,7 +256,7 @@ def _run_extract(
         raise _Rejected("Impossibile leggere il file indicato con --pdf.") from None
     loaded, warnings = load_profiles(Path(profiles))
     try:
-        doc = read_pdf(path, ocr_data=ocr_data)
+        doc = read_pdf(path, ocr_data=ocr_data, page_range=page_range)
     except PdfReadError as error:
         result = _unreadable(hashlib.sha256(data).hexdigest(), file_name, str(error))
         warnings = []
