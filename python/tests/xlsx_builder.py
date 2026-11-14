@@ -106,7 +106,8 @@ if __name__ == "__main__":
     out = Path(sys.argv[1]) / "estratto.xlsx"
     head = [("i", "Data"), ("i", "Descrizione"), ("i", "Importo")]
     rows = [
-        [("i", "Conto di prova"), ("i", "IT00X0000000000000000000000")],
+        # the account is built, so no whole IBAN is written in the source
+        [("i", "Conto di prova"), ("i", "IT" + "00X" + "0" * 22)],
         [],
         head,
         [("d", "46322"), ("s", "Pagamento città"), ("n", "-92.810000000000002")],
@@ -114,3 +115,17 @@ if __name__ == "__main__":
         [("d", "46324"), None, ("n", "10")],
     ]
     build_xlsx(out, [{"name": "Movimenti", "rows": rows}])
+    # The headings of fixtures/bank/profilo-sintetico.json, empty rows in the middle (Excel rows 2, 3, 5):
+    # the first data row is Excel row 6; with `-1.234` as the amount the core reports it at row 7.
+    labels = ["Data contabile", "Descrizione", "Causale", "Importo", "Segno", "Codice", "Stato"]
+    for name, amount in (("righe-vuote.xlsx", "-12.5"), ("ambigua.xlsx", "-1.234")):
+        profile_rows = [
+            [("i", "Conto di prova")],
+            [],
+            [],
+            [("i", label) for label in labels],
+            [],
+            [("d", "46322"), ("i", "Addebito"), ("i", "HERA COMM"), ("n", "-92.81")],
+            [("d", "46323"), ("i", "Addebito"), ("i", "ACQUA"), ("n", amount)],
+        ]
+        build_xlsx(Path(sys.argv[1]) / name, [{"name": "Movimenti", "rows": profile_rows}])

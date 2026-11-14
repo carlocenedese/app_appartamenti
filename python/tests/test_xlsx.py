@@ -107,11 +107,14 @@ class TableTest(unittest.TestCase):
             xlsx_builder.build_xlsx(self.file, [sheet([[("n", raw)]])])
             self.rejected()
 
-    def test_rows_without_cells_are_skipped_and_trailing_holes_trimmed(self) -> None:
+    def test_rows_without_cells_are_kept_empty_so_row_numbers_are_excel_rows(self) -> None:
         rows = [[("i", "a")], [], [None, None], [None, ("i", "b"), ("i", "")], [("i", ""), None]]
         xlsx_builder.build_xlsx(self.file, [sheet(rows)])
         self.assertEqual(self.table()["sheets"][0]["rows"],
-                         [[{"t": "s", "v": "a"}], [None, {"t": "s", "v": "b"}]])
+                         [[{"t": "s", "v": "a"}], [], [], [None, {"t": "s", "v": "b"}], []])
+        raw = f'<worksheet {xlsx_builder.NS}><sheetData><row r="4"><c r="A4" t="inlineStr"><is><t>z</t></is></c></row></sheetData></worksheet>'
+        xlsx_builder.build_xlsx(self.file, [sheet([])], raw_sheets={1: raw})
+        self.assertEqual(self.table()["sheets"][0]["rows"], [[], [], [], [{"t": "s", "v": "z"}]])
 
     def test_hidden_sheets_are_skipped_and_all_hidden_is_rejected(self) -> None:
         sheets = [sheet([[("i", SECRET)]], "Nascosto", "hidden"), sheet([[("i", "x")]], "Visibile")]
@@ -137,6 +140,88 @@ class TableTest(unittest.TestCase):
         self.table()
         self.assertEqual(self.file.read_bytes(), before)
         self.assertEqual([p.name for p in self.dir.iterdir()], ["estratto.xlsx"])
+
+    # --- order, duplicates, text and number forms ----------------------------------------------
+
+    def raw_sheet(self, body: str) -> None:
+        xml = f"<worksheet {xlsx_builder.NS}><sheetData>{body}</sheetData></worksheet>"
+        xlsx_builder.build_xlsx(self.file, [sheet([])], raw_sheets={1: xml})
+
+    def test_cells_and_rows_out_of_order_or_repeated_are_rejected(self) -> None:
+        def cell(ref: str) -> str:
+            return f'<c r="{ref}"><v>1</v></c>'
+
+        for body in (
+            f'<row r="1">{cell("B1")}{cell("A1")}</row>',
+            f'<row r="1">{cell("A1")}{cell("A1")}</row>',
+            f'<row r="5">{cell("A5")}</row><row r="3">{cell("A3")}</row>',
+            f'<row r="3">{cell("A3")}</row><row r="3">{cell("A3")}</row>',
+            f'<row r="2">{cell("A1")}</row>',  # the cell says another row
+            f'<row r="1"><c r="1A"><v>1</v></c></row>',
+            f'<row r="1"><c r="A1"><v>1</v></c><c><v>2</v></c><c r="B1"><v>3</v></c></row>',
+        ):
+            self.raw_sheet(body)
+            self.rejected()
+        self.raw_sheet(f'<row r="1">{cell("A1")}{cell("C1")}</row><row>{cell("A2")}</row>')
+        self.assertEqual(self.table()["sheets"][0]["rows"],
+                         [[{"t": "n", "v": "1.0"}, None, {"t": "n", "v": "1.0"}], [{"t": "n", "v": "1.0"}]])
+
+    def test_cells_without_a_reference_count_from_the_left(self) -> None:
+        self.raw_sheet('<row r="1"><c><v>1</v></c><c><v>2</v></c></row>')
+        self.assertEqual(self.table()["sheets"][0]["rows"],
+                         [[{"t": "n", "v": "1.0"}, {"t": "n", "v": "2.0"}]])
+
+    def test_numbers_use_ascii_decimal_text_only(self) -> None:
+        for raw in ("1_000", "١٢", "0x10", "1,5", "1e", "--1", "٣.٤"):
+            xlsx_builder.build_xlsx(self.file, [sheet([[("n", raw)]])])
+            self.rejected()
+        xlsx_builder.build_xlsx(self.file, [sheet([[("n", " +1.5E2 "), ("n", ".5"), ("n", "7.")]])])
+        self.assertEqual([c["v"] for c in self.table()["sheets"][0]["rows"][0]], ["150.0", "0.5", "7.0"])
+
+    def test_inline_text_skips_phonetic_runs_and_keeps_rich_runs(self) -> None:
+        self.raw_sheet('<row r="1"><c r="A1" t="inlineStr"><is><t>ab</t><rPh sb="0" eb="1"><t>XX</t></rPh>'
+                       '<phoneticPr fontId="1"/></is></c><c r="B1" t="inlineStr"><is><r><t>c</t></r>'
+                       '<r><rPr/><t>d</t></r><rPh><t>YY</t></rPh></is></c></row>')
+        self.assertEqual(self.table()["sheets"][0]["rows"],
+                         [[{"t": "s", "v": "ab"}, {"t": "s", "v": "cd"}]])
+
+    def test_text_is_not_trimmed_and_blank_numbers_are_empty(self) -> None:
+        rows = [[("i", "  "), ("str", " x "), ("e", " #N/A "), ("b", " ")]]
+        xlsx_builder.build_xlsx(self.file, [sheet(rows)])
+        self.assertEqual([c["v"] for c in self.table()["sheets"][0]["rows"][0]], ["  ", " x ", " #N/A ", " "])
+        self.raw_sheet('<row r="1"><c r="A1"><v> </v></c><c r="B1"><v/></c><c r="C1"><f>1+1</f></c></row>')
+        self.assertEqual(self.table()["sheets"][0]["rows"], [[]])
+
+    def test_a_style_outside_the_table_is_not_a_date(self) -> None:
+        self.raw_sheet('<row r="1"><c r="A1" s="9"><v>46322</v></c><c r="B1" s="1"><v>46322</v></c></row>')
+        self.assertEqual(self.table()["sheets"][0]["rows"],
+                         [[{"t": "n", "v": "46322.0"}, {"t": "d", "v": "2026-10-27"}]])
+
+    def test_numbers_with_a_long_positional_form_are_rejected(self) -> None:
+        for raw in ("1e-300", "1e-40", "1.5e300", "1e+40", "-1e-39"):
+            xlsx_builder.build_xlsx(self.file, [sheet([[("n", raw)]])])
+            self.rejected()
+        xlsx_builder.build_xlsx(self.file, [sheet([[("n", "1e-38"), ("n", "1e+39")]])])
+        self.assertEqual([len(c["v"]) for c in self.table()["sheets"][0]["rows"][0]], [40, 40])
+
+    def test_total_output_is_capped_before_anything_is_written(self) -> None:
+        rows = [[("n", "1e-30")] * 20 for _ in range(50)]  # 1000 small cells, a few KB of XML
+        xlsx_builder.build_xlsx(self.file, [sheet(rows)])
+        self.table()
+        for cap in (10_000, 1):
+            with mock.patch.object(xlsx, "MAX_OUTPUT_BYTES", cap):
+                self.rejected()
+        self.assertEqual(xlsx.MAX_OUTPUT_BYTES, 8 * 1024 * 1024)
+        quotes = ('"' * 3000, "é" * 3000)  # escaped (2 bytes each) or 2 bytes each in UTF-8: counted as written
+        xlsx_builder.build_xlsx(self.file, [sheet([[("i", q)] for q in quotes])])
+        with mock.patch.object(xlsx, "MAX_OUTPUT_BYTES", 11_000):
+            self.rejected()
+        with mock.patch.object(xlsx, "MAX_OUTPUT_BYTES", 13_000):
+            self.table()
+        # many empty rows also count: they are output too
+        self.raw_sheet('<row r="1000"><c r="A1000"/></row>')
+        with mock.patch.object(xlsx, "MAX_OUTPUT_BYTES", 100):
+            self.rejected()
 
     # --- rejected files: constant message, code 2, empty stdout -------------------------------
 
@@ -269,7 +354,7 @@ class TableTest(unittest.TestCase):
                 modules.update(a.name for a in node.names)
             elif isinstance(node, ast.ImportFrom):
                 modules.add(node.module or "")
-        self.assertEqual(modules, {"__future__", "io", "posixpath", "re", "zipfile", "datetime", "decimal",
+        self.assertEqual(modules, {"__future__", "io", "json", "posixpath", "re", "zipfile", "datetime", "decimal",
                                    "pathlib", "typing", "xml.etree"})
         self.assertIsNone(re.search(r"\b(today|now|utcnow|random|socket|urllib)\b", source))
 

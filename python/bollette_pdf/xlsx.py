@@ -13,14 +13,16 @@ cells and sheets, duplicate members, path traversal, UTF-8 only, no DOCTYPE or E
 Cells: text (shared, inline or formula string) is `s`; a number is `n` with the shortest decimal text
 that reads back the same double (`repr`, never rounded, no exponent); a number whose cell style is a
 date and whose serial is at least 1 is `d` (ISO, from the integer part, system 1900 or 1904); an
-empty cell or a hole is `null`. Rows with no cell are skipped (as empty CSV lines are) and trailing
-holes are cut. Hidden sheets are skipped. Any problem with the file: one constant message, no
+empty cell or a hole is `null`. A row with no cell is `[]` (row N of the table is row N of Excel) and
+trailing holes are cut. Rows and cells out of order or repeated, numbers longer than 40 characters
+and an output over 8 MB reject the file. Hidden sheets are skipped. Any problem with the file: one constant message, no
 content, exit code 2.
 """
 
 from __future__ import annotations
 
 import io
+import json
 import posixpath
 import re
 import zipfile
@@ -38,6 +40,8 @@ MAX_ROWS = 50_000
 MAX_COLS = 256
 MAX_CELLS = 2_000_000
 MAX_SHEETS = 50
+MAX_OUTPUT_BYTES = 8 * 1024 * 1024  # the JSON the app reads; the same cap as the test helper of the core
+MAX_NUMBER_CHARS = 40  # a bank amount has neither 40 digits nor an exponent beyond that
 BAD_FILE = "File non valido o troppo grande: nessun output."
 TABLE_ERROR = BAD_FILE
 
@@ -179,13 +183,23 @@ class TableError(Exception):
     """The file cannot be read: the message is the constant `TABLE_ERROR`, never any content."""
 
 
+_NUMBER = re.compile(r"[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?", re.ASCII)
+
+
 def _number(raw: str) -> str:
-    """The shortest decimal text that reads back the same double; positional, never an exponent."""
+    """The shortest decimal text that reads back the same double; positional, never an exponent.
+    Only ASCII decimal text (float() also takes `1_000` and other scripts' digits); a form longer
+    than MAX_NUMBER_CHARS is refused (`1e-300` would become 300 characters: an amplification)."""
+    if _NUMBER.fullmatch(raw.strip()) is None:
+        raise _Rejected(BAD_FILE)
     text = repr(float(raw))
     if text in ("inf", "-inf", "nan"):
         raise _Rejected(BAD_FILE)
     # shortcut: a double is exact only to 17 digits; the cell text itself is not kept
-    return format(Decimal(text), "f") if "e" in text else text
+    text = format(Decimal(text), "f") if "e" in text else text
+    if len(text) > MAX_NUMBER_CHARS:
+        raise _Rejected(BAD_FILE)
+    return text
 
 
 def _iso_date(serial: float, epoch: int) -> str:
@@ -200,7 +214,16 @@ def _cell(c: ET.Element, shared: list[str], styles: list[str], epoch: int) -> di
     kind = c.get("t", "n")
     value = next((v.text or "" for v in c if _tag(v) == "v"), "")
     if kind == "inlineStr":
-        text = "".join(t.text or "" for p in c if _tag(p) == "is" for t in p.iter() if _tag(t) == "t")
+        # like the shared strings: runs `r` and plain `t`, never the phonetic text `rPh`
+        text = "".join(
+            (t.text or "")
+            for p in c
+            if _tag(p) == "is"
+            for run in p
+            if _tag(run) in ("t", "r")
+            for t in ([run] if _tag(run) == "t" else list(run))
+            if _tag(t) == "t"
+        )
     elif kind == "s":
         try:
             text = shared[int(value)]
@@ -220,23 +243,38 @@ def _cell(c: ET.Element, shared: list[str], styles: list[str], epoch: int) -> di
 
 
 def _read_sheet(
-    data: bytes, shared: list[str], styles: list[str], epoch: int
+    data: bytes, shared: list[str], styles: list[str], epoch: int, output: list[int]
 ) -> list[list[dict[str, str] | None]]:
+    """Rows as Excel numbers them: row N is `rows[N - 1]`, an empty row is `[]`. Rows and the cells
+    of a row must be in strictly increasing order (a cell moved to another column would be an amount
+    under another heading); `output` is the running size of the JSON, capped by MAX_OUTPUT_BYTES."""
     _check_text(data)
     rows: list[list[dict[str, str] | None]] = []
-    last_row = cells = 0
+    cells = 0
     for _, row in ET.iterparse(io.BytesIO(data), events=("end",)):
         if _tag(row) != "row":
             continue
-        last_row = int(row.get("r", last_row + 1))
-        if not 1 <= last_row <= MAX_ROWS:
+        number = int(row.get("r", len(rows) + 1))
+        if not len(rows) < number <= MAX_ROWS:
             raise _Rejected(BAD_FILE)
+        output[0] += 3 * (number - len(rows))
+        rows.extend([] for _ in range(number - len(rows) - 1))
         line: list[dict[str, str] | None] = []
         last_col = 0
         for c in row:
             if _tag(c) != "c":
                 continue
-            last_col = _column_index(c.get("r") or "") if c.get("r") else last_col + 1
+            ref = c.get("r")
+            if ref is None:
+                column = last_col + 1
+            else:
+                match = re.fullmatch(r"([A-Z]+)([0-9]+)", ref, re.ASCII)
+                if match is None or int(match[2]) != number:
+                    raise _Rejected(BAD_FILE)
+                column = _column_index(ref)
+            if column <= last_col:
+                raise _Rejected(BAD_FILE)
+            last_col = column
             cells += 1
             if last_col > MAX_COLS or cells > MAX_CELLS:
                 raise _Rejected(BAD_FILE)
@@ -244,8 +282,11 @@ def _read_sheet(
             if cell is not None:
                 line.extend([None] * (last_col - 1 - len(line)))
                 line.append(cell)
-        if line:
-            rows.append(line)
+                output[0] += len(json.dumps(cell["v"], ensure_ascii=False).encode("utf-8")) + 14
+            if output[0] > MAX_OUTPUT_BYTES:
+                raise _Rejected(BAD_FILE)
+        output[0] += 5 * len(line)
+        rows.append(line)
         row.clear()
     return rows
 
@@ -257,6 +298,7 @@ def read_table(path: Path) -> dict[str, Any]:
         if path.stat().st_size > MAX_FILE_BYTES:
             raise _Rejected(BAD_FILE)
         budget = [0]
+        output = [0]
         with zipfile.ZipFile(path) as zf:
             names = zf.namelist()
             if len(names) > MAX_MEMBERS or len(set(names)) != len(names):
@@ -270,7 +312,7 @@ def read_table(path: Path) -> dict[str, Any]:
                 data = _member(zf, member, budget)
                 if data is None:
                     raise _Rejected(BAD_FILE)
-                sheets.append({"name": name, "rows": _read_sheet(data, shared, styles, epoch)})
+                sheets.append({"name": name, "rows": _read_sheet(data, shared, styles, epoch, output)})
         if not sheets:
             raise _Rejected(BAD_FILE)
     except Exception:  # _Rejected, BadZipFile, ParseError, OSError, ...: never echo what they quote
