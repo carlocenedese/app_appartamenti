@@ -447,6 +447,22 @@ describe('transactionKey', () => {
     expect(await transactionKey({ ...base }, 0)).toBe(key);
   });
 
+  it('keeps the fingerprint of a debit without an account (value pinned before accounts)', async () => {
+    expect(await transactionKey(base, 0)).toBe(
+      '58cdf85ecbd5c0a78c2ebca21605f124a6d8d150e15d594726e1945c62dbb716',
+    );
+  });
+
+  it('tells two accounts of one apartment apart, and an account from none', async () => {
+    const keys = await Promise.all([
+      transactionKey({ ...base, accountId: 'acc-1' }, 0),
+      transactionKey({ ...base, accountId: 'acc-2' }, 0),
+      transactionKey(base, 0),
+    ]);
+    expect(new Set(keys).size).toBe(3);
+    expect(await transactionKey({ ...base, accountId: 'acc-1' }, 0)).toBe(keys[0]);
+  });
+
   it('changes with each part of the debit and with the occurrence', async () => {
     const keys = await Promise.all([
       transactionKey(base, 0),
@@ -545,6 +561,23 @@ describe('keyTransactions', () => {
       await transactionKey(debit, 1),
       await transactionKey(debit, 2),
     ]);
+  });
+
+  it('numbers identical rows of one account 0, 1, 2 and keeps them when a fourth is added', async () => {
+    const same = row('2026-03-05', -6300, 'Addebito SDD Luce', { accountId: 'acc-1' });
+    const three = await idsOf([same, same, same]);
+    const four = await idsOf([same, same, same, same]);
+    const debit = { ...same };
+    expect(three).toEqual([
+      await transactionKey(debit, 0),
+      await transactionKey(debit, 1),
+      await transactionKey(debit, 2),
+    ]);
+    expect(four.slice(0, 3)).toEqual(three);
+    expect(new Set(four).size).toBe(4);
+    // The same row on another account of the apartment starts again from 0, with another id.
+    const other = await idsOf([{ ...same, accountId: 'acc-2' }]);
+    expect(other[0]).not.toBe(three[0]);
   });
 
   it('counts the occurrences within identical debits only, and in input order', async () => {

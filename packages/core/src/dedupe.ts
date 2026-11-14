@@ -159,13 +159,25 @@ type DebitIdentity = {
   date: ISODate;
   amount: Cents;
   description: string;
+  /** The bank account; when present it is part of the identity (two accounts, two debits). */
+  accountId?: string;
 };
 
 /**
  * The text a debit is told apart by. The parts go through `JSON.stringify` as strings, so a part
  * that contains a separator, a quote or a digit cannot run into the next one.
  */
-function identityParts({ apartmentId, date, amount, description }: DebitIdentity): string[] {
+function identityParts({
+  apartmentId,
+  date,
+  amount,
+  description,
+  accountId,
+}: DebitIdentity): string[] {
+  // Without an account the parts are those written before accounts existed: same fingerprints.
+  if (accountId !== undefined) {
+    return ['account', accountId, date, String(amount), foldText(description)];
+  }
   return [apartmentId, date, String(amount), foldText(description)];
 }
 
