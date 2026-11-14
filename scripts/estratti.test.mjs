@@ -634,6 +634,19 @@ async function incomeSetup() {
 }
 const month = (s, name, rows, from, to) =>
   importFile(s, write(name, incomeCsv(rows)), ['--dal', from, '--al', to]);
+/** Every file of the data folder with its bytes: nothing may change when nothing is written. */
+const snapshot = (dir) => {
+  const out = {};
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const f = join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else out[f] = readFileSync(f, 'utf8');
+    }
+  };
+  walk(dir);
+  return out;
+};
 const registerSize = (dir) => {
   try {
     return readdirSync(join(dir, '_app', 'dati', 'payment')).length;
@@ -655,7 +668,8 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect(first.json).toMatchObject({ status: 'reconciled', written: 0, skipped: 0 });
       expect(first.json.proposals).toHaveLength(1);
       const [proposal] = first.json.proposals;
-      expect(proposal).toMatchObject({ step: 'chi', reason: 'new-payer', tenantIds: ['t1'] });
+      expect(proposal).toMatchObject({ step: 'chi', reason: 'new-payer', tenantCount: 1 });
+      expect(proposal.tenantIds).toBeUndefined();
       expect(registerSize(s.dir)).toBe(0);
 
       const ok = cli([
@@ -669,6 +683,7 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
         'canone:2026-10:850,00',
       ]);
       expect(ok.code).toBe(0);
+      expect(ok.json.payerId).toBe(proposal.id.replace('p-chi-', 'payer-'));
       expect(ok.json).toMatchObject({
         status: 'confirmed',
         paymentIds: [`${proposal.id.replace('p-chi-', 'pay-')}-1`],
@@ -679,7 +694,9 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
         0,
       );
       const before = journalCount(s.dir);
+      const snap = snapshot(s.dir);
       const dry = cli(['riconcilia', ...s.common, '--prova']);
+      expect(snapshot(s.dir)).toEqual(snap);
       expect(dry.json).toMatchObject({ status: 'reconciled', written: 1, proposals: [] });
       expect(journalCount(s.dir)).toBe(before);
       expect(registerSize(s.dir)).toBe(1);
@@ -690,7 +707,7 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
 
       const all = [...s.outputs, first.out, ok.out, dry.out, real.out].join('');
       for (const secret of [NAME, CAUSALE, LABEL, IBAN, '850']) expect(all).not.toContain(secret);
-      expect(scanText(all, 'out')).toEqual([]);
+      expect(scanText(all)).toEqual([]);
     },
     TIMEOUT,
   );
@@ -706,6 +723,7 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
         date: '2026-10-05',
         amount: 85000,
         tenantNames: [NAME],
+        tenantIds: ['t1'],
       });
       expect(run.json.proposals[0].description).toContain(CAUSALE);
     },
@@ -804,6 +822,47 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect(JSON.parse(readFileSync(file, 'utf8')).amount).toBe(record.amount);
       expect(cli(['ripara', ...s.common]).json).toMatchObject({ repaired: 0 });
       expect(cli(['riconcilia', ...s.common]).code).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'le opzioni di un altro comando sono rifiutate (2, nulla scritto); --id non valido = 2; errore inatteso = 3',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const snap = snapshot(s.dir);
+      const part = ['--parte', 'canone:2026-10:850,00'];
+      for (const args of [
+        ['conferma', '--proposta', proposal.id, '--inquilino', 't1', ...part, '--prova'],
+        ['inquilino', '--id', 't2', '--nome', 'X', '--prova'],
+        ['ripara', '--prova'],
+        ['riconcilia', '--solo-questa-volta'],
+        ['riconcilia', ...part],
+        ['inquilino', '--id', 't2', '--nome', 'X', '--dettagli'],
+      ]) {
+        const r = cli([args[0], ...s.common, ...args.slice(1)]);
+        expect([args, r.code]).toEqual([args, 2]);
+        expect(r.json).toMatchObject({ status: 'invalid', reason: 'bad-arguments' });
+      }
+      for (const id of ['../x', 'a b', 'x'.repeat(65), 'CON', 'nul', 'COM1', 'a/b', 'a.']) {
+        const r = cli(['inquilino', ...s.common, '--id', id, '--nome', 'X']);
+        expect([id, r.code]).toEqual([id, 2]);
+      }
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const failed = await main(
+        ['inquilino', '--cartella', s.dir, '--ora', ORA, '--id', 't9', '--nome', 'Y'],
+        {
+          now: () => ORA,
+          newId: () => {
+            throw new Error('segreto-nel-messaggio');
+          },
+        },
+      );
+      expect(failed.code).toBe(3);
+      expect(failed.output).not.toMatch(/segreto/);
     },
     TIMEOUT,
   );

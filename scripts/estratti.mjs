@@ -338,17 +338,24 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const operation = await saveTenant(
-      store,
-      {
-        id: values.id,
-        name: values.nome,
-        ...(values.lingua === undefined ? {} : { language: values.lingua }),
-      },
-      who,
-      clock,
-      newId,
-    );
+    let operation;
+    try {
+      operation = await saveTenant(
+        store,
+        {
+          id: values.id,
+          name: values.nome,
+          ...(values.lingua === undefined ? {} : { language: values.lingua }),
+        },
+        who,
+        clock,
+        newId,
+      );
+    } catch (error) {
+      // An id the store refuses (a name reserved on Windows, a bad segment) is a bad argument.
+      if (error instanceof RangeError) throw invalid('bad-arguments');
+      throw error;
+    }
     return { status: 'saved', id: values.id, operationId: operation.id };
   }
 
@@ -364,6 +371,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       extra = (p) => {
         const tx = txs.find((t) => t.id === p.transactionId);
         return {
+          tenantIds: p.tenantIds,
           date: tx?.date,
           amount: tx?.amount,
           description: tx?.description,
@@ -378,7 +386,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         id: p.id,
         step: p.step,
         reason: p.reason,
-        tenantIds: p.tenantIds,
+        // Ids are chosen by the user (they could be real names): only a count without --dettagli.
+        tenantCount: p.tenantIds.length,
         ...(p.month === undefined ? {} : { month: p.month }),
         ...extra(p),
       })),
@@ -478,6 +487,16 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       throw invalid('bad-arguments');
     }
     const { values, positionals } = parsed;
+    // An option of another command would be ignored in silence (`conferma --prova` would write).
+    const only = {
+      prova: ['riconcilia'],
+      dettagli: ['riconcilia', 'importa'],
+      parte: ['conferma'],
+      'solo-questa-volta': ['conferma'],
+    };
+    for (const [option, commands] of Object.entries(only)) {
+      if (values[option] !== undefined && !commands.includes(name)) throw invalid('bad-arguments');
+    }
     need(values, 'cartella');
     const now = values.ora ?? io.now();
     if (!TimestampSchema.safeParse(now).success) throw invalid('bad-arguments');
