@@ -298,6 +298,30 @@ function undoState(operations: readonly Operation[]): {
   return { undoers, isEffective };
 }
 
+/**
+ * What to undo to take `operation` back: `operation` itself when it is in force and was never
+ * undone, the redo in force when it was undone and brought back, `undefined` when it is not in
+ * force (it was undone and not brought back). It is the calculation `undoOperation` needs.
+ */
+export function undoTargetOf(
+  operations: readonly Operation[],
+  operation: Operation,
+): Operation | undefined {
+  const { undoers, isEffective } = undoState(operations);
+  if (!isEffective(operation.id)) return undefined;
+  // A redo can itself have been undone and brought back: follow the chain (cut on a damaged loop).
+  const seen = new Set<string>();
+  let target = operation;
+  for (;;) {
+    const [first] = undoers.get(target.id) ?? [];
+    if (first === undefined || seen.has(target.id)) return target;
+    seen.add(target.id);
+    const redo = (undoers.get(first.id) ?? []).find((undoer) => isEffective(undoer.id));
+    if (redo === undefined) return target;
+    target = redo;
+  }
+}
+
 /** The operation with id `opId`; throws if there is none. */
 function locate(operations: readonly Operation[], opId: string): Operation {
   const operation = operations.find((candidate) => candidate.id === opId);

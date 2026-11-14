@@ -1,5 +1,5 @@
 /** "Undo the whole file": takes back every registration that created a record from one PDF. */
-import { readJournal, undoOperation } from './journal';
+import { readJournal, undoOperation, undoTargetOf } from './journal';
 import type { Operation } from './journal';
 import type { Store } from './store/store';
 
@@ -18,27 +18,22 @@ export async function undoFile(
   newId: () => string,
 ): Promise<Operation[]> {
   const { operations } = await readJournal(store);
-  // An operation is undone when an undo of it is itself in force (a redo brings it back).
-  const undoersOf = new Map<string, Operation[]>();
-  for (const op of operations) {
-    if (op.undoes !== undefined)
-      undoersOf.set(op.undoes, [...(undoersOf.get(op.undoes) ?? []), op]);
-  }
-  const inForce = (id: string, seen: ReadonlySet<string> = new Set()): boolean =>
-    seen.has(id) || !(undoersOf.get(id) ?? []).some((u) => inForce(u.id, new Set(seen).add(id)));
-
-  const targets = operations.filter(
-    (op) =>
-      op.undoes === undefined &&
-      inForce(op.id) &&
-      op.changes.some(
+  const targets = operations.flatMap((op) => {
+    if (
+      op.undoes !== undefined ||
+      !op.changes.some(
         ({ before, after }) =>
           before === undefined &&
           typeof after === 'object' &&
           after !== null &&
           (after as { fileHash?: unknown }).fileHash === fileHash,
-      ),
-  );
+      )
+    )
+      return [];
+    // A document that was undone and brought back is taken back by undoing the redo in force.
+    const target = undoTargetOf(operations, op);
+    return target === undefined ? [] : [target];
+  });
   const undone: Operation[] = [];
   for (const op of targets.reverse()) {
     undone.push(await undoOperation(store, op.id, profileId, clock, newId));

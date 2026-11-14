@@ -110,4 +110,52 @@ describe('undoFile', () => {
     expect(result.map((o) => o.undoes)).toEqual([a.id]);
     expect(await undoneIds(store)).not.toContain(other.id);
   });
+
+  describe('with documents that were restored (undo, then redo)', () => {
+    it('undoes the redo of a restored document and the others, then is repeatable', async () => {
+      const store = new MemoryStore();
+      const a = await register(store, 'bill', 'b1', 'H1');
+      const b = await register(store, 'bill', 'b2', 'H1');
+      const u1 = await undoOperation(store, b.id, P, clock, newId);
+      const redo = await undoOperation(store, u1.id, P, clock, newId);
+
+      const result = await undoFile(store, 'H1', P, clock, newId);
+
+      expect(result.map((o) => o.undoes)).toEqual([redo.id, a.id]);
+      expect(await store.readJson(recordPath('bill', 'b1'))).toMatchObject({ deleted: true });
+      expect(await store.readJson(recordPath('bill', 'b2'))).toMatchObject({ deleted: true });
+      expect(await undoFile(store, 'H1', P, clock, newId)).toEqual([]);
+    });
+
+    it('survives several undo and redo cycles', async () => {
+      const store = new MemoryStore();
+      const a = await register(store, 'bill', 'b1', 'H1');
+      let last = await undoOperation(store, a.id, P, clock, newId);
+      for (let i = 0; i < 3; i++) last = await undoOperation(store, last.id, P, clock, newId);
+      // undo, redo, undo, redo: a is in force through the last redo
+      const result = await undoFile(store, 'H1', P, clock, newId);
+      expect(result.map((o) => o.undoes)).toEqual([last.id]);
+      expect(await undoFile(store, 'H1', P, clock, newId)).toEqual([]);
+    });
+
+    it('works when every operation has the same timestamp', async () => {
+      const store = new MemoryStore();
+      const same = (): string => '2026-11-14T09:00:00.000Z';
+      const a = await commitChange(
+        store,
+        {
+          profileId: P,
+          kind: 'register-bill',
+          summary: 'a',
+          changes: [{ path: recordPath('bill', 'b1'), after: bill('b1', 'H1') }],
+        },
+        same,
+        newId,
+      );
+      const u = await undoOperation(store, a.id, P, same, newId);
+      const redo = await undoOperation(store, u.id, P, same, newId);
+      const result = await undoFile(store, 'H1', P, same, newId);
+      expect(result.map((o) => o.undoes)).toEqual([redo.id]);
+    });
+  });
 });
