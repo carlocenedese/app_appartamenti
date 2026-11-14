@@ -69,6 +69,15 @@ export function hasOcrReading(result: {
   );
 }
 
+/** What a document is: a bill, a TARI notice, or something no profile recognises. */
+export const DocumentKindSchema = z.enum(['bill', 'tari', 'unknown']);
+export type DocumentKind = z.infer<typeof DocumentKindSchema>;
+
+/** Whether `page` lies in the result's page range (a result with no range has no page). */
+function inRange(range: [number, number] | null, page: number): boolean {
+  return range !== null && page >= range[0] && page <= range[1];
+}
+
 export const ExtractionResultSchema = z
   .object({
     v: z.literal(1),
@@ -77,6 +86,11 @@ export const ExtractionResultSchema = z
     fileHash: z.string().regex(/^[0-9a-f]{64}$/),
     fileName: NonEmptyString,
     pages: z.int().min(0),
+    /**
+     * The pages (from 1, both included) this result was read from; `null` only for a file that
+     * could not be read (`pages` 0). `source.page` and `ocrPages` stay inside it.
+     */
+    pageRange: z.tuple([z.int().min(1), z.int().min(1)]).nullable(),
     status: z.enum([
       'riconosciuta',
       'da-confermare',
@@ -87,6 +101,8 @@ export const ExtractionResultSchema = z
     profileId: NonEmptyString.nullable(),
     profileRev: z.int().min(1).nullable(),
     kind: z.enum(['bill', 'tari']).nullable(),
+    /** The profile's `kind`, or `unknown` when no profile recognised the document. */
+    documentKind: DocumentKindSchema,
     category: BillCategorySchema.nullable(),
     fields: z.object({
       supplier: extractedField(NonEmptyString).optional(),
@@ -125,6 +141,27 @@ export const ExtractionResultSchema = z
     /** Pages (from 1, as `source.page`) read with OCR; none when `textSource` is `pdf`. */
     ocrPages: z.array(z.int().min(1)),
   })
+  .refine(
+    (result) =>
+      result.pageRange === null
+        ? result.pages === 0
+        : result.pageRange[0] <= result.pageRange[1] && result.pageRange[1] <= result.pages,
+    { message: 'The page range is null only for an unreadable file and lies inside the file.' },
+  )
+  .refine(
+    (result) =>
+      [
+        ...Object.values(result.fields).map((field) => field?.source),
+        ...result.parts.map((part) => part.source),
+      ].every((source) => !source || inRange(result.pageRange, source.page)) &&
+      result.ocrPages.every((page) => inRange(result.pageRange, page)),
+    { message: 'Every source page and OCR page lies inside the page range.' },
+  )
+  .refine(
+    (result) =>
+      result.documentKind === (result.profileId === null ? 'unknown' : (result.kind ?? 'unknown')),
+    { message: 'The document kind is the profile kind, or unknown without a profile.' },
+  )
   .refine((result) => result.textSource !== 'pdf' || result.ocrPages.length === 0, {
     message: 'A result whose text is all from the PDF has no page read with OCR.',
   })

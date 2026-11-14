@@ -209,10 +209,12 @@ describe('removeSupply and liveSupplies', () => {
       fileHash: 'a'.repeat(64),
       fileName: 'tari.pdf',
       pages: 1,
+      pageRange: [1, 1],
       status: 'riconosciuta',
       profileId: 'prof-1',
       profileRev: 1,
       kind: 'tari',
+      documentKind: 'tari',
       category: null,
       fields: {
         supplier: f('Comune di Esempio'),

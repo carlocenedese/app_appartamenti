@@ -171,6 +171,21 @@ class FixturesTest(unittest.TestCase):
         self.assertIsNone(fields["amount"]["value"])
         self.assertEqual(fields["dueDate"]["value"], "2026-06-22")
 
+    def test_the_range_is_the_whole_file_and_the_kind_comes_from_the_profile(self) -> None:
+        for path in FIXTURES:
+            with self.subTest(fixture=path.stem):
+                fixture = _fixture(path)
+                result = _extract(fixture["dump"])
+                self.assertEqual(result["pageRange"], [1, result["pages"]])
+                self.assertEqual(result["documentKind"], result["kind"])
+        luce = _fixture(next(p for p in FIXTURES if p.stem == "hera-luce-01"))
+        self.assertEqual(_extract(luce["dump"])["documentKind"], "bill")
+
+    def test_a_document_nobody_recognises_is_unknown(self) -> None:
+        luce = _fixture(next(p for p in FIXTURES if p.stem == "hera-luce-01"))
+        result = extract(load_dump(luce["dump"]), [], AT)
+        self.assertEqual((result["status"], result["documentKind"]), ("non-riconosciuta", "unknown"))
+
     def test_two_layouts_of_the_same_supplier(self) -> None:
         profile_ids = {_fixture(path)["profileId"] for path in FIXTURES}
         for supplier in ("hera-luce", "hera-gas", "acegas-acqua", "acegas-tari"):

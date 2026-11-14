@@ -34,10 +34,12 @@ function result(overrides: Record<string, unknown> = {}): ExtractionResult {
     fileHash: 'a'.repeat(64),
     fileName: 'bolletta.pdf',
     pages: 2,
+    pageRange: [1, 2],
     status: 'riconosciuta',
     profileId: 'prof-1',
     profileRev: 1,
     kind: 'bill',
+    documentKind: 'bill',
     category: 'elettricita',
     fields: {
       supplier: field('Fornitore Luce'),
@@ -396,7 +398,11 @@ describe('proposalFromExtraction: bill', () => {
 
   it('gives none for a bill without category or kind', () => {
     expect(proposalFromExtraction(result({ category: null }), context(), ids()).kind).toBe('none');
-    const noKind = proposalFromExtraction(result({ kind: null }), context(), ids());
+    const noKind = proposalFromExtraction(
+      result({ kind: null, documentKind: 'unknown' }),
+      context(),
+      ids(),
+    );
     expect(noKind.kind).toBe('none');
     expect(check(noKind, 'kind')?.severity).toBe('fail');
   });
@@ -422,6 +428,7 @@ describe('proposalFromExtraction: TARI', () => {
   const tariResult = (overrides: Record<string, unknown> = {}) =>
     result({
       kind: 'tari',
+      documentKind: 'tari',
       category: null,
       fields: {
         supplier: field('Comune di Esempio'),

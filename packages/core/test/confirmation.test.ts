@@ -47,10 +47,12 @@ function billResult(fileHash: string, overrides: Record<string, unknown> = {}): 
     fileHash,
     fileName: 'bolletta.pdf',
     pages: 2,
+    pageRange: [1, 2],
     status: 'riconosciuta',
     profileId: 'prof-luce',
     profileRev: 1,
     kind: 'bill',
+    documentKind: 'bill',
     category: 'elettricita',
     fields: {
       supplier: field('Fornitore Luce'),
@@ -76,6 +78,7 @@ function billResult(fileHash: string, overrides: Record<string, unknown> = {}): 
 function tariResult(fileHash: string): ExtractionResult {
   return billResult(fileHash, {
     kind: 'tari',
+    documentKind: 'tari',
     category: null,
     profileId: 'prof-tari',
     fields: {
