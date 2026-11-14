@@ -57,6 +57,11 @@ const MAX_BOUNDED = 40;
  * leave none. Measured on 300 hostile characters (see R102).
  */
 const BOUNDED_CHOICES = [2000, 44, 1] as const;
+/**
+ * Largest `bounded x (1 + fixed)`, `fixed` being the sum of the `{n}` repeats: a fixed repeat is a
+ * longer comparison at every position the unbounded quantifiers try, so it multiplies the rest.
+ */
+const WORK = [10000, 80, 2] as const;
 
 /**
  * Whether `pattern` is in a subset that is cheap by construction, found by parsing it (not by
@@ -69,11 +74,14 @@ const BOUNDED_CHOICES = [2000, 44, 1] as const;
  * 4. no backreference and no lookaround (only `(...)` and `(?:...)`);
  * 5. the product of the choices of `{n,m}`, `?` and `|` stays within `BOUNDED_CHOICES[unbounded]`
  *    (2000, 44 or 1), so alternations stay out of repeated groups and cannot pile up;
- * 6. the pattern is at most 200 characters.
- * The input is at most 300 characters, so the work is bounded by construction, and every pattern
- * accepted measured under 100 ms in the worst case tried (R102). A linear-time engine (RE2) or a
- * worker with a timeout would lift the limits: a future decision, since the patterns come from
- * profiles we write, not from hostile files.
+ * 6. that product times (1 + the sum of the `{n}` repeats) stays within `WORK[unbounded]`
+ *    (10000, 80 or 2);
+ * 7. the pattern is at most 200 characters.
+ * The limits were set by measurement, not by proof: 58575 accepted patterns built on `a`, `\w`,
+ * `.`, `[a-z]`, `\d`, run on four hostile 300-character inputs, took at worst 80 ms with six
+ * processes in parallel and 58 ms alone (R102). A linear-time engine (RE2) or a worker with a
+ * timeout would lift the limits: a future decision, since the patterns come from profiles we
+ * write, not from hostile files.
  */
 export function isSafePattern(pattern: string): boolean {
   if (pattern.length > MAX_PATTERN_LENGTH) return false;
@@ -81,10 +89,16 @@ export function isSafePattern(pattern: string): boolean {
     { quantified: false, alternation: false },
   ];
   let unbounded = 0;
+  let fixed = 0; // sum of the `{n}` repeats
   let bounded = 1; // product of the choices of `{n,m}`, `?` and `|`
   let i = 0;
   const top = (): { quantified: boolean; alternation: boolean } =>
     groups[groups.length - 1] as { quantified: boolean; alternation: boolean };
+
+  const within = (): boolean =>
+    unbounded <= 2 &&
+    bounded <= (BOUNDED_CHOICES[unbounded] as number) &&
+    bounded * (1 + fixed) <= (WORK[unbounded] as number);
 
   /** Reads a quantifier at `i`; `undefined` when none, `false` when it is not allowed. */
   const quantifier = (): boolean | undefined => {
@@ -106,6 +120,7 @@ export function isSafePattern(pattern: string): boolean {
       i += m[0].length;
       if (m[2] === undefined) {
         if (low > MAX_BOUNDED) return false;
+        fixed += low;
         factor = 1;
       } else if (m[3] === undefined) {
         if (low > 1) return false; // `{5,}` repeats five atoms before it loops: measured 3x slower
@@ -119,7 +134,7 @@ export function isSafePattern(pattern: string): boolean {
     } else return undefined;
     if (pattern[i] === '?') i += 1; // lazy
     bounded *= factor;
-    return unbounded <= 2 && bounded <= (BOUNDED_CHOICES[unbounded] as number);
+    return within();
   };
 
   while (i < pattern.length) {
@@ -165,7 +180,7 @@ export function isSafePattern(pattern: string): boolean {
       top().alternation ||= group.alternation;
     }
   }
-  return groups.length === 1 && bounded <= (BOUNDED_CHOICES[unbounded] as number);
+  return groups.length === 1 && within();
 }
 
 function safePattern(pattern: string | undefined): RegExp | undefined {
