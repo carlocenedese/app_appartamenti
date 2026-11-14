@@ -14,9 +14,11 @@ header (account metadata, a data row) prints nothing personal.
 Per visible sheet: size, header row, per column: prevalent type (testo, numero, data, vuoto), counts
 (non-empty, distinct), band of the text length (<=10, <=30, >30), CLASS of the declared format
 (generale, numero, percentuale, data, ora, testo; never the format string), first and last date as
-YYYY-MM. Distinct values are listed ONLY for a column named in `--code-columns` (default «Cod Disp.»,
-«Cod. Disp.», «Segno», «Valuta») with at most 12 distinct values, each of at most 12 letters or
-digits. Rows above the header: cell types, and the YYYY-MM of a date or of a range of dates in a text.
+YYYY-MM. Distinct values are listed ONLY for a column named in `--code-columns` (default «Segno»,
+«Dare», «Avere»), only if every cell is TEXT of at most 3 letters, digits, + or -, and at most 12
+distinct: never numbers or dates. «Cod Disp.» (a reference per instruction) prints only its FORM
+(«11 cifre»). Rows above the header: cell types; a text with a range of two dates prints it as
+YYYY-MM..YYYY-MM (years 2000-2100), any other date only «date: si».
 Hidden sheets are skipped and counted. A bad or oversized file, a member that is not UTF-8, or a
 DOCTYPE/ENTITY in any member read: constant message, exit code 2.
 """
@@ -26,6 +28,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import posixpath
 import re
 import sys
@@ -47,8 +50,9 @@ MAX_CELLS = 2_000_000
 MAX_SHEETS = 50
 HEADER_SCAN_ROWS = 100
 LOW_CARDINALITY = 12
-CODE_PATTERN = re.compile(r"[A-Za-z0-9]{1,12}")
-DEFAULT_CODE_COLUMNS = ("Cod Disp.", "Cod. Disp.", "Segno", "Valuta")
+DEFAULT_CODE_COLUMNS = ("Segno", "Dare", "Avere")
+FORM_COLUMNS = {"cod disp", "codice disposizione"}
+CODE_VALUE = re.compile(r"[A-Za-z0-9+\-]{1,3}")
 KNOWN_LABELS = (
     "data, data contabile, data valuta, data operazione, data registrazione, data movimento, "
     "data e ora, valuta, divisa, descrizione, descrizione operazione, causale, causale abi, "
@@ -61,6 +65,7 @@ KNOWN_LABELS = (
 BAD_FILE = "File non valido o troppo grande: nessun output."
 ARGUMENTS_ERROR = "Argomenti non validi: serve il percorso di un file .xlsx."
 INTERNAL_ERROR = "Errore interno: nessun output."
+HEADER_ERROR = "La riga indicata non è una riga di intestazione di sole etichette: nessun output."
 
 _DATE_TEXT = re.compile(r"(\d{4})-(\d{2})-\d{2}|\d{1,2}[/.-](\d{1,2})[/.-](\d{4})")
 _XML_ENCODING = re.compile(r"""<\?xml[^>]{0,200}?encoding\s*=\s*["']([^"']+)["']""", re.I)
@@ -129,8 +134,6 @@ def _member(zf: zipfile.ZipFile, name: str, budget: list[int]) -> bytes | None:
         info = zf.getinfo(name)
     except KeyError:
         return None
-    if info.file_size > MAX_MEMBER_BYTES:
-        raise _Rejected(BAD_FILE)
     with zf.open(info) as handle:
         data = handle.read(MAX_MEMBER_BYTES + 1)
     budget[0] += len(data)
@@ -274,7 +277,7 @@ def _read_sheet(
         if _tag(row) != "row":
             continue
         last_row = int(row.get("r", last_row + 1))
-        if last_row > MAX_ROWS:
+        if not 1 <= last_row <= MAX_ROWS:
             raise _Rejected(BAD_FILE)
         last_col = 0
         for c in row:
@@ -322,20 +325,25 @@ def _label(cell: Cell, col: int, known: set[str]) -> str:
         name = _normalise(cell[1])
         if name in known:
             return name
-        return f"(colonna {col}, testo di {len(cell[1].strip())} caratteri)"
+        return f"(colonna {col}, testo, lunghezza {_band(len(cell[1].strip()))})"
     return f"(colonna {col}, {cell[0]})"
 
 
+def _is_label_row(cells: dict[int, Cell], known: set[str]) -> bool:
+    """Only text cells, at least 2 known labels and at least half of the cells known."""
+    if not cells or any(c[0] != "testo" for c in cells.values()):
+        return False
+    hits = sum(1 for c in cells.values() if _normalise(c[1]) in known)
+    return hits >= 2 and hits * 2 >= len(cells)
+
+
 def _header_row(rows: dict[int, dict[int, Cell]], known: set[str]) -> int | None:
-    best, best_row = 0, None
-    for r in sorted(rows)[:HEADER_SCAN_ROWS]:
-        score = sum(1 for c in rows[r].values() if c[0] == "testo" and _normalise(c[1]) in known)
-        if score > best:
-            best, best_row = score, r
-    if best >= 2:
-        return best_row
+    numbers = sorted(rows)
+    top = next((r for r in numbers[:HEADER_SCAN_ROWS] if _is_label_row(rows[r], known)), None)
+    if top is not None:
+        return top
     return next(
-        (r for r in sorted(rows) if len(rows[r]) >= 3 and all(c[0] == "testo" for c in rows[r].values())),
+        (r for r in numbers if len(rows[r]) >= 3 and all(c[0] == "testo" for c in rows[r].values())),
         None,
     )
 
@@ -343,19 +351,36 @@ def _header_row(rows: dict[int, dict[int, Cell]], known: set[str]) -> int | None
 def _preamble(cells: dict[int, Cell]) -> list[dict[str, Any]]:
     out = []
     for col in sorted(cells):
-        kind, key, month = cells[col]
+        kind, key, _ = cells[col]
         item: dict[str, Any] = {"cella": _column_letters(col), "tipo": kind}
-        months = _text_months(key) if kind == "testo" else []
-        if len(months) >= 2:
-            item["intervallo"] = f"{min(months)}..{max(months)}"
-        elif kind == "data" and month:
-            item["mese"] = month
+        if kind == "testo":
+            months = _text_months(key)
+            # a period is two dates in one cell, both in plausible years: any other date is only «si»
+            if len(months) == 2 and all("2000" <= m[:4] <= "2100" for m in months):
+                item["intervallo"] = f"{min(months)}..{max(months)}"
+            else:
+                item["date"] = "si" if months else "no"
+        elif kind == "data":
+            item["date"] = "si"
         out.append(item)
     return out
 
 
 def _band(length: int) -> str:
     return "<=10" if length <= 10 else "<=30" if length <= 30 else ">30"
+
+
+def _form(cells: list[Cell]) -> str:
+    keys = [c[1] for c in cells if c[0] in ("testo", "numero")]
+    if not keys or len(keys) != len(cells):
+        return "mista"
+    lengths = sorted({len(k) for k in keys})
+    size = str(lengths[0]) if len(lengths) == 1 else f"{lengths[0]}-{lengths[-1]}"
+    if all(k.isascii() and k.isdigit() for k in keys):
+        return f"{size} cifre"
+    if all(k.isascii() and k.isalnum() for k in keys):
+        return f"{size} caratteri alfanumerici"
+    return "mista"
 
 
 def _column(label: str, cells: list[Cell], code: bool, rows_count: int) -> dict[str, Any]:
@@ -379,7 +404,14 @@ def _column(label: str, cells: list[Cell], code: bool, rows_count: int) -> dict[
         info["date_non_valide"] = sum(1 for c in cells if c[0] == "data" and not c[2])
         if months:
             info["primo_mese"], info["ultimo_mese"] = months[0], months[-1]
-    if code and distinct and len(distinct) <= LOW_CARDINALITY and all(CODE_PATTERN.fullmatch(v) for v in distinct):
+    if label in FORM_COLUMNS and cells:
+        info["forma"] = _form(cells)
+    elif (
+        code
+        and distinct
+        and len(distinct) <= LOW_CARDINALITY
+        and all(c[0] == "testo" and CODE_VALUE.fullmatch(c[1]) for c in cells)
+    ):
         info["valori"] = sorted(distinct)
     return info
 
@@ -400,6 +432,8 @@ def _analyse_sheet(
         "riga_intestazione": header,
     }
     if header is not None and header in rows:
+        if header_row is not None and any(c[0] != "testo" for c in rows[header].values()):
+            raise _Rejected(HEADER_ERROR)
         sheet["sopra_intestazione"] = [
             {"riga": r, "celle": _preamble(rows[r])} for r in numbers if r < header
         ]
@@ -427,8 +461,8 @@ def analyse(
             raise _Rejected(BAD_FILE)
         budget = [0]
         with zipfile.ZipFile(path) as zf:
-            members = zf.infolist()
-            if len(members) > MAX_MEMBERS or sum(m.file_size for m in members) > MAX_TOTAL_BYTES:
+            names = zf.namelist()
+            if len(names) > MAX_MEMBERS or len(set(names)) != len(names):
                 raise _Rejected(BAD_FILE)
             styles = _read_styles(_member(zf, "xl/styles.xml", budget))
             shared = _read_shared(_member(zf, "xl/sharedStrings.xml", budget))
@@ -461,7 +495,7 @@ def render(report: dict[str, Any]) -> str:
             cells = ", ".join(
                 f"{c['cella']}={c['tipo']}"
                 + (f" (intervallo {c['intervallo']})" if "intervallo" in c else "")
-                + (f" ({c['mese']})" if "mese" in c else "")
+                + (f" (date: {c['date']})" if "date" in c else "")
                 for c in above["celle"]
             )
             lines.append(f"  Riga {above['riga']} sopra l'intestazione: {cells}")
@@ -480,6 +514,8 @@ def render(report: dict[str, Any]) -> str:
                 parts.append(f"da {col['primo_mese']} a {col['ultimo_mese']}")
             if col.get("date_non_valide"):
                 parts.append(f"{col['date_non_valide']} data non valida")
+            if "forma" in col:
+                parts.append(f"forma {col['forma']}")
             if "valori" in col:
                 parts.append("valori: " + ", ".join(f"«{v}»" for v in col["valori"]))
             lines.append(f"  Colonna «{col['intestazione']}»: " + "; ".join(parts))
@@ -516,6 +552,11 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
         message = str(rejected)
     except Exception:  # includes a closed pipe: never a traceback
         message = INTERNAL_ERROR
+    if stdout is None:  # a real closed pipe: stop the exit-time flush of stdout from complaining
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except Exception:
+            pass
     try:
         err.write(f"{message}\n")
     except Exception:
