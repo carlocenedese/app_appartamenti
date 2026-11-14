@@ -5,11 +5,13 @@ import {
   PaymentSchema,
   TenantSchema,
   cents,
+  checkConsistency,
   commitChange,
   confirmIncome,
   loadAll,
   readJournal,
   recordPath,
+  repairDiverged,
   runReconcile,
   saveTenant,
   undoOperation,
@@ -17,7 +19,7 @@ import {
 } from '../src/index';
 import type { ConfirmIncomeInput } from '../src/index';
 import { clock, ids, snapshot, year, yearStore } from './helpers/income-year';
-import type { MemoryStore } from './helpers/memory-store';
+import { MemoryStore } from './helpers/memory-store';
 
 const canone = (forMonth: string, amount: number) => ({
   kind: 'canone' as const,
@@ -35,6 +37,23 @@ const brunoIban = (): string =>
   (year.records.transaction as { id: string; counterparty?: { iban?: string } }[]).find(
     (t) => t.id === 'tx-bruno-2026-01',
   )?.counterparty?.iban ?? '';
+const parentIban = (): string =>
+  (year.records.transaction as { id: string; counterparty?: { iban?: string } }[]).find(
+    (t) => t.id === 'tx-carla-2026-01',
+  )?.counterparty?.iban ?? '';
+/** Fails the first write of `failAt` (after the journal), as an interruption would. */
+class FailingStore extends MemoryStore {
+  constructor(private failAt: string | undefined) {
+    super();
+  }
+  override async writeJsonAtomic(path: string, value: unknown): Promise<void> {
+    if (path === this.failAt) {
+      this.failAt = undefined;
+      throw new Error('interrupted');
+    }
+    return super.writeJsonAtomic(path, value);
+  }
+}
 const payers = async (store: MemoryStore) => (await loadAll(store, 'payer', PayerSchema)).records;
 const payments = async (store: MemoryStore) =>
   (await loadAll(store, 'payment', PaymentSchema)).records;
@@ -64,6 +83,28 @@ describe('saveTenant', () => {
     );
     const t = (await loadAll(store, 'tenant', TenantSchema)).records.find((x) => x.id === 't-new');
     expect(t).toEqual({ id: 't-new', v: 1, rev: 2, name: 'Nome Cambiato', language: 'en' });
+  });
+
+  it('brings a deleted tenant back with a new rev', async () => {
+    const store = await yearStore();
+    await saveTenant(store, { id: 't-new', name: 'Nome Inventato' }, 'p1', clock, ids('a'));
+    const saved = (await loadAll(store, 'tenant', TenantSchema)).records.find(
+      (x) => x.id === 't-new',
+    );
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test',
+        summary: 'x',
+        changes: [{ path: recordPath('tenant', 't-new'), before: saved, after: undefined }],
+      },
+      clock,
+      ids('d'),
+    );
+    await saveTenant(store, { id: 't-new', name: 'Nome Inventato' }, 'p1', clock, ids('b'));
+    const t = (await loadAll(store, 'tenant', TenantSchema)).records.find((x) => x.id === 't-new');
+    expect(t).toEqual({ id: 't-new', v: 1, rev: 3, name: 'Nome Inventato' });
   });
 });
 
@@ -244,7 +285,7 @@ describe('confirmIncome', () => {
           tenantId: 't-anna',
           parts: [canone('2026-03', 41000)],
         }),
-        'tenant-not-allowed',
+        'no-presence',
       ],
     ];
     for (const [input, reason] of cases) {
@@ -256,7 +297,7 @@ describe('confirmIncome', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
-  it('refuses a tenant outside the apartment for a new payer, and outside a «cosa»', async () => {
+  it('refuses a tenant without a presence in the apartment, for a new payer and for a «cosa»', async () => {
     const store = await yearStore();
     expect(
       await confirmIncome(store, bruno({ tenantId: 't-carla' }), 'p1', clock, ids('x')),
@@ -264,7 +305,9 @@ describe('confirmIncome', () => {
     await runReconcile(store, 'p1', clock, ids('r'));
     // Anna's February is held by Bruno's open «chi» of January: a «cosa» for Anna only.
     const feb = { proposalId: 'p-cosa-tx-anna-2026-02', parts: [canone('2026-02', 45000)] };
-    expect(await confirmIncome(store, bruno({ ...feb }), 'p1', clock, ids('x'))).toEqual({
+    // Carla has no presence in Anna's apartment: never allowed outside the candidates.
+    const carla = bruno({ ...feb, tenantId: 't-carla' });
+    expect(await confirmIncome(store, carla, 'p1', clock, ids('x'))).toEqual({
       status: 'refused',
       reason: 'tenant-not-allowed',
     });
@@ -315,6 +358,105 @@ describe('confirmIncome', () => {
     expect((await proposalsOf(store)).some((p) => p.transactionId === 'tx-anna-2026-01')).toBe(
       false,
     );
+  });
+
+  it('reassigns an undone automatic payment to another tenant of the apartment: the key then has two payers', async () => {
+    const store = await yearStore();
+    const r = await runReconcile(store, 'p1', clock, ids('op'));
+    if (r.status !== 'reconciled' || r.operationId === undefined) throw new Error('none');
+    await undoOperation(store, r.operationId, 'p1', clock, ids('u'));
+    const toBruno = bruno({
+      proposalId: 'p-cosa-tx-anna-2026-01',
+      parts: [canone('2026-01', 45000)],
+    });
+    expect(await confirmIncome(store, toBruno, 'p1', clock, ids('c'))).toEqual({
+      status: 'confirmed',
+      operationId: 'c-1',
+      paymentIds: ['pay-tx-anna-2026-01-1'],
+      payerId: 'payer-tx-anna-2026-01',
+    });
+    expect((await payers(store)).find((p) => p.id === 'payer-tx-anna-2026-01')).toMatchObject({
+      tenantId: 't-bruno',
+      validFrom: '2026-01-01',
+    });
+    // Anna's key now belongs to two tenants: never automatic again (decision 5).
+    expect(
+      (await proposalsOf(store)).find((p) => p.transactionId === 'tx-anna-2026-02'),
+    ).toMatchObject({ step: 'chi', reason: 'multi-tenant', tenantIds: ['t-anna', 't-bruno'] });
+  });
+
+  it('a payer of several tenants is confirmed only for one present in the apartment', async () => {
+    const store = await yearStore();
+    // The parent's key also names Anna, who lives in the other apartment.
+    const key = `iban:${parentIban()}`;
+    for (const [id, tenantId] of [
+      ['pr-p-anna', 't-anna'],
+      ['pr-p-carla', 't-carla'],
+    ] as const) {
+      await store.writeJsonAtomic(
+        recordPath('payer', id),
+        PayerSchema.parse({
+          id,
+          v: 1,
+          rev: 1,
+          key,
+          tenantId,
+          validFrom: '2026-01-01',
+          source: 'confirmed',
+        }),
+      );
+    }
+    const before = await snapshot(store);
+    const input = {
+      proposalId: 'p-chi-tx-carla-2026-01',
+      parts: [canone('2026-01', 41000)],
+      rememberPayer: true,
+    };
+    expect(
+      await confirmIncome(store, { ...input, tenantId: 't-anna' }, 'p1', clock, ids('x')),
+    ).toEqual({
+      status: 'refused',
+      reason: 'no-presence',
+    });
+    expect(
+      await confirmIncome(store, { ...input, tenantId: 't-bruno' }, 'p1', clock, ids('x')),
+    ).toEqual({
+      status: 'refused',
+      reason: 'tenant-not-allowed',
+    });
+    expect(await snapshot(store)).toEqual(before);
+    // Dario is present in a2 though not a candidate: allowed, and his payer is written.
+    expect(
+      await confirmIncome(store, { ...input, tenantId: 't-dario' }, 'p1', clock, ids('c')),
+    ).toMatchObject({ status: 'confirmed', payerId: 'payer-tx-carla-2026-01' });
+  });
+
+  it('an interrupted confirmation leaves the store diverged, and the next one is refused', async () => {
+    const store = await yearStore(
+      new FailingStore(recordPath('payment', 'pay-tx-bruno-2026-01-2')),
+    );
+    const parts = [canone('2026-01', 40000), canone('2026-01', 3000)];
+    await expect(confirmIncome(store, bruno({ parts }), 'p1', clock, ids('op'))).rejects.toThrow(
+      'interrupted',
+    );
+    // The second part and the payer are missing: the journal is ahead of them.
+    const missing = [
+      recordPath('payer', 'payer-tx-bruno-2026-01'),
+      recordPath('payment', 'pay-tx-bruno-2026-01-2'),
+    ];
+    expect((await checkConsistency(store)).map((p) => p.path)).toEqual(missing);
+    const before = await snapshot(store);
+    expect(await confirmIncome(store, bruno({ parts }), 'p1', clock, ids('op2'))).toEqual({
+      status: 'refused',
+      reason: 'inconsistent-store',
+    });
+    expect(await runReconcile(store, 'p1', clock, ids('r'))).toEqual({
+      status: 'refused',
+      reason: 'inconsistent-store',
+    });
+    expect(await snapshot(store)).toEqual(before);
+    for (const path of missing) await repairDiverged(store, path);
+    expect(await checkConsistency(store)).toEqual([]);
   });
 
   it('never puts names, IBANs, descriptions or amounts in a summary', async () => {

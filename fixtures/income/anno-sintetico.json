@@ -1,5 +1,5 @@
 {
-  "description": "Un anno sintetico (2026) su due conti di due appartamenti: quattro inquilini inventati; Elena Bianchi, genitore, paga per Carla e Dario da un solo IBAN (due payer con la stessa key). Anna ha già un pagante confermato; Bruno no. Bruno paga febbraio l'8 marzo (8 giorni di ritardo, entro i 10). Un giroconto da c2 a c1 e due uscite. Nomi e IBAN inventati (fixtures/README.md).",
+  "description": "Un anno sintetico (2026) su due conti di due appartamenti: quattro inquilini inventati; Elena Bianchi, genitore, paga per Carla e Dario da un solo IBAN: confermata per Carla, il bonifico di Dario diventa una «che cosa» di Carla e si conferma per Dario, così la chiave ha due payer e non è mai automatica. Anna ha già un pagante confermato; Bruno no. Bruno paga febbraio l'8 marzo (8 giorni di ritardo, entro i 10). Un giroconto da c2 a c1 e due uscite. Nomi e IBAN inventati (fixtures/README.md).",
   "records": {
     "apartment": [
       {
@@ -127,24 +127,6 @@
         "id": "pr-anna",
         "key": "iban:IT09X0542811101000000000311",
         "tenantId": "t-anna",
-        "validFrom": "2026-01-01",
-        "source": "confirmed"
-      },
-      {
-        "v": 1,
-        "rev": 1,
-        "id": "pr-elena-carla",
-        "key": "iban:IT52X0542811101000000000313",
-        "tenantId": "t-carla",
-        "validFrom": "2026-01-01",
-        "source": "confirmed"
-      },
-      {
-        "v": 1,
-        "rev": 1,
-        "id": "pr-elena-dario",
-        "key": "iban:IT52X0542811101000000000313",
-        "tenantId": "t-dario",
         "validFrom": "2026-01-01",
         "source": "confirmed"
       }
@@ -1029,7 +1011,7 @@
         "rememberPayer": true
       },
       {
-        "proposalId": "p-chi-tx-dario-2026-01",
+        "proposalId": "p-cosa-tx-dario-2026-01",
         "tenantId": "t-dario",
         "parts": [
           {

@@ -25,8 +25,9 @@ export const year = JSON.parse(
 ) as IncomeYear;
 
 /** A store holding every record of the year, each checked against its schema. */
-export async function yearStore(): Promise<MemoryStore> {
-  const store = new MemoryStore();
+export async function yearStore<S extends MemoryStore>(
+  store: S = new MemoryStore() as S,
+): Promise<S> {
   for (const [kind, records] of Object.entries(year.records) as [RecordKind, { id: string }[]][]) {
     for (const record of records) {
       await store.writeJsonAtomic(recordPath(kind, record.id), recordSchemas[kind].parse(record));

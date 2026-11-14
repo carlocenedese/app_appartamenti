@@ -151,8 +151,10 @@ export type ConfirmIncomeResult =
  * Confirms the proposal `proposalId` as recomputed on the current state (a proposal that no longer
  * exists is `unknown-proposal`): the payments `pay-<transactionId>-<n>` of the parts and, for a
  * «chi» proposal with a key and `rememberPayer`, the payer of the tenant from the first day of its
- * first presence in the apartment (decision A), in one `income.confirm` operation. A «chi» for a
- * payer of several tenants creates no payer: the tenant already has one with that key.
+ * first presence in the apartment (decision A), in one `income.confirm` operation. The tenant
+ * must have a presence in the apartment of the account. For a «cosa» or a payer of several
+ * tenants it is one of the candidates, which already have a payer with that key; or, with a key,
+ * another tenant, who then gets the payer too (`rememberPayer`).
  */
 export async function confirmIncome(
   store: Store,
@@ -173,9 +175,14 @@ export async function confirmIncome(
   }
   const { apartmentId } = account;
   const open = proposal.step === 'cosa' || proposal.reason === 'multi-tenant';
-  if (open && !proposal.tenantIds.includes(input.tenantId)) return refuse('tenant-not-allowed');
   const validFrom = firstPresenceDay(state.tenancies, input.tenantId, apartmentId);
-  if (!open && validFrom === undefined) return refuse('no-presence');
+  // Outside the candidates only with a key and a presence in the apartment (Carlo, 14 Nov 2026):
+  // the key then gets a payer for this tenant too, and is never automatic (decision 5).
+  const outside = open && !proposal.tenantIds.includes(input.tenantId);
+  if (outside && (proposal.key === undefined || validFrom === undefined)) {
+    return refuse('tenant-not-allowed');
+  }
+  if (validFrom === undefined) return refuse('no-presence');
   // A part of zero or less is no part at all.
   if (input.parts.length === 0 || input.parts.some((p) => p.amount <= 0)) {
     return refuse('empty-parts');
@@ -206,11 +213,7 @@ export async function confirmIncome(
     ),
   );
   const payer =
-    proposal.step === 'chi' &&
-    proposal.reason !== 'multi-tenant' &&
-    proposal.key !== undefined &&
-    input.rememberPayer &&
-    validFrom !== undefined
+    (outside || !open) && proposal.key !== undefined && input.rememberPayer
       ? parseOrThrow(
           PayerSchema,
           {
