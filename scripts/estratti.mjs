@@ -5,6 +5,8 @@
 //
 // The output is one JSON line with a status, counts and ids: never a name, an IBAN, an amount, a
 // description or a path, unless `--dettagli` asks for the held rows. Every message is constant.
+// Plan 3b, task 8 adds inquilino, riconcilia, conferma and ripara (repairs what an interrupted
+// operation left: `checkConsistency` blocks every reconciliation until then).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -21,13 +23,22 @@ import {
   ISODateSchema,
   StatementReadError,
   StatementTableSchema,
+  BankTransactionSchema,
+  TenantSchema,
   TimestampSchema,
+  YearMonthSchema,
+  checkConsistency,
+  confirmIncome,
   importStatement,
   loadAll,
   parseCsv,
+  parseEuro,
+  repairDiverged,
   resolveHeld,
+  runReconcile,
   saveAccount,
   saveBankProfile,
+  saveTenant,
   undoImport,
 } from '../packages/core/src/index.ts';
 
@@ -61,6 +72,14 @@ const MESSAGES = {
   'dependent-payments': 'Rifiutato: dei pagamenti dipendono dai movimenti di questo estratto.',
   'later-changes': 'Rifiutato: dopo l’importazione ci sono state altre modifiche.',
   'journal-not-aligned': 'Rifiutato: il registro non è riallineato con i dati.',
+  'inconsistent-store':
+    'Rifiutato: i dati non sono come li lascia il registro: eseguire «pnpm estratti ripara».',
+  'unknown-proposal': 'Rifiutato: proposta sconosciuta o già confermata.',
+  'tenant-not-allowed': 'Rifiutato: inquilino non ammesso per questa proposta.',
+  'empty-parts': 'Rifiutato: nessuna parte, o una parte senza importo positivo.',
+  'sum-mismatch': 'Rifiutato: la somma delle parti non è l’importo del movimento.',
+  'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
+  'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
 };
 
@@ -91,7 +110,31 @@ const OPTIONS = {
   tieni: { type: 'boolean' },
   escludi: { type: 'boolean' },
   dettagli: { type: 'boolean' },
+  id: { type: 'string' },
+  nome: { type: 'string' },
+  lingua: { type: 'string' },
+  prova: { type: 'boolean' },
+  proposta: { type: 'string' },
+  inquilino: { type: 'string' },
+  parte: { type: 'string', multiple: true },
+  'solo-questa-volta': { type: 'boolean' },
 };
+
+const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
+
+/** `<tipo>:<AAAA-MM>:<importo>` (the amount as `parseEuro` reads it, e.g. `850,00`). */
+function parsePart(text) {
+  const pieces = text.split(':');
+  const forMonth = YearMonthSchema.safeParse(pieces[1]);
+  if (pieces.length !== 3 || !PART_KINDS.includes(pieces[0]) || !forMonth.success) {
+    throw invalid('bad-arguments');
+  }
+  try {
+    return { kind: pieces[0], forMonth: forMonth.data, amount: parseEuro(pieces[2]) };
+  } catch {
+    throw invalid('bad-arguments');
+  }
+}
 
 function need(values, ...names) {
   for (const name of names) {
@@ -286,6 +329,102 @@ async function command(name, values, positionals, store, who, clock, newId) {
     return { status: 'decided', statementId: values.estratto, row: Number(values.riga), decision };
   }
 
+  if (name === 'inquilino') {
+    need(values, 'id', 'nome');
+    if (
+      positionals.length > 0 ||
+      !/^[A-Za-z0-9_-]{1,64}$/.test(values.id) ||
+      (values.lingua !== undefined && !['it', 'en'].includes(values.lingua))
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const operation = await saveTenant(
+      store,
+      {
+        id: values.id,
+        name: values.nome,
+        ...(values.lingua === undefined ? {} : { language: values.lingua }),
+      },
+      who,
+      clock,
+      newId,
+    );
+    return { status: 'saved', id: values.id, operationId: operation.id };
+  }
+
+  if (name === 'riconcilia') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await runReconcile(store, who, clock, newId, { dryRun: values.prova === true });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    let extra = () => ({});
+    if (values.dettagli === true) {
+      const all = { includeDeleted: true };
+      const txs = (await loadAll(store, 'transaction', BankTransactionSchema, all)).records;
+      const tenants = (await loadAll(store, 'tenant', TenantSchema, all)).records;
+      extra = (p) => {
+        const tx = txs.find((t) => t.id === p.transactionId);
+        return {
+          date: tx?.date,
+          amount: tx?.amount,
+          description: tx?.description,
+          tenantNames: p.tenantIds.map((id) => tenants.find((t) => t.id === id)?.name ?? id),
+        };
+      };
+    }
+    return {
+      status: 'reconciled',
+      written: result.written,
+      proposals: result.proposals.map((p) => ({
+        id: p.id,
+        step: p.step,
+        reason: p.reason,
+        tenantIds: p.tenantIds,
+        ...(p.month === undefined ? {} : { month: p.month }),
+        ...extra(p),
+      })),
+      skipped: result.skipped,
+      ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
+    };
+  }
+
+  if (name === 'conferma') {
+    need(values, 'proposta', 'inquilino');
+    if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
+    const result = await confirmIncome(
+      store,
+      {
+        proposalId: values.proposta,
+        tenantId: values.inquilino,
+        parts: values.parte.map(parsePart),
+        rememberPayer: values['solo-questa-volta'] !== true,
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: 'confirmed',
+      operationId: result.operationId,
+      paymentIds: result.paymentIds,
+      ...(result.payerId === undefined ? {} : { payerId: result.payerId }),
+    };
+  }
+
+  if (name === 'ripara') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    // Writes each record as its latest operation in the journal says; one that is newer on disk is left.
+    const problems = await checkConsistency(store);
+    for (const problem of problems) {
+      try {
+        await repairDiverged(store, problem.path);
+      } catch {
+        throw new Stop('rejected', 'repair-refused');
+      }
+    }
+    return { status: 'repaired', repaired: problems.length };
+  }
+
   // annulla
   need(values, 'estratto');
   try {
@@ -317,7 +456,19 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
   const done = (code, body) => ({ code, output: `${JSON.stringify(body)}\n` });
   try {
     const [name, ...rest] = argv;
-    if (!['profilo', 'conto', 'importa', 'decidi', 'annulla'].includes(name ?? '')) {
+    if (
+      ![
+        'profilo',
+        'conto',
+        'importa',
+        'decidi',
+        'annulla',
+        'inquilino',
+        'riconcilia',
+        'conferma',
+        'ripara',
+      ].includes(name ?? '')
+    ) {
       throw invalid('bad-arguments');
     }
     let parsed;
