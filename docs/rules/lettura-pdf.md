@@ -150,14 +150,11 @@ con l'OCR per intero (`textSource` `ocr`) è riconosciuto dal profilo se soddisf
 `ocrAnyOf`; `noneOf` esclude comunque. Un PDF di testo (e le pagine di testo di un `mixed`) ignora
 `ocrAnyOf` del tutto, e così le pagine OCR di un `mixed` (correzione della revisione finale, approvata da Carlo: una pagina scansionata con «kWh» rendeva ambiguo un PDF Enel di testo); un profilo senza `ocrAnyOf` non cambia. Ogni testo deve avere una lettera o una
 cifra una volta normalizzato e non ripetersi (JSON Schema, Zod e `check_profile_rules`, casi in
-`profile-cases.json`). I profili seed ne hanno una parola ciascuno, **del fornitore** e non del servizio (Acegas, acqua e
-TARI, «acegas»; Enel «enel»; Fastweb «fastweb»; Hera, luce e gas, «hera»), mai la stessa per fornitori
-diversi (test). Le parole di servizio («kwh», «smc», «idrico», «tari») attribuivano la scansione di un
-altro fornitore a Hera o ad Acegas. Parola condivisa fra profili dello stesso fornitore: vale l'ordine
-di R55; tipi diversi restano segnalati da R73 (comunque `da-confermare`). Tentativo unico: se le scansioni restano
-poco riconosciute, si ripiega su «da rivedere» e inserimento a mano (decisione di Carlo, R90).
+`profile-cases.json`). **Nessun profilo seed lo dichiara (R92, decisione di Carlo del 14 novembre 2026):** le parole di fornitore farebbero riconoscere come bollette conferme di pagamento e note del fornitore, che devono restare `non-riconosciuta`; il campo resta come meccanismo per l'utente. Parola condivisa fra profili dello stesso fornitore: vale l'ordine
+di R55; tipi diversi restano segnalati da R73 (comunque `da-confermare`). Tentativo unico: le scansioni restano
+«da rivedere» e inserimento a mano (decisione di Carlo, R90, R92).
 
-Esito sulle stesse cartelle (solo conteggi): delle 39 scansioni 9 sono riconosciute (tutte `da-confermare`:
+Esito del terzo giro con le parole di fornitore, poi tolte (R92) (solo conteggi): delle 39 scansioni 9 sono riconosciute (tutte `da-confermare`:
 4 Enel, 3 acqua, 1 TARI, 1 gas Hera) e 30 no; ambigue 0; dei campi delle 9 riconosciute non se ne legge quasi nessuno
 (importo, scadenza e numero mancano in 9 su 9). Le altre origini non cambiano (`pdf` 89 e 86, `mixed` 153, 1 e 6).
 Il resto resta a mano: «da rivedere» e inserimento a mano.
