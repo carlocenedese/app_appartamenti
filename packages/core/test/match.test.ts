@@ -15,7 +15,16 @@ import type { BankTransaction, Bill, BillMatch, Instalment } from '../src/index'
 type MatchInput = Parameters<typeof matchToTransactions>[0];
 
 const WINDOW = { daysBefore: 5, daysAfter: 10 };
-const ALL_OF_2026 = [{ from: isoDate('2026-01-01'), to: isoDate('2026-12-31') }];
+// A period covers one account only, so the tests cover the three apartments of the fixtures.
+function covering(from: string, to: string): MatchInput['statementPeriods'] {
+  return ['berchet', 'lovarini', 'pulci'].map((apartmentId) => ({
+    apartmentId,
+    from: isoDate(from),
+    to: isoDate(to),
+  }));
+}
+
+const ALL_OF_2026 = covering('2026-01-01', '2026-12-31');
 
 function bill(id: string, extra: Partial<Bill> = {}): Bill {
   return {
@@ -346,8 +355,8 @@ describe('matchToTransactions: exact matches', () => {
       ],
       window: WINDOW,
       statementPeriods: [
-        { from: isoDate('2026-01-01'), to: isoDate('2026-06-30') },
-        { from: isoDate('2026-06-01'), to: isoDate('2026-12-31') },
+        ...covering('2026-01-01', '2026-06-30'),
+        ...covering('2026-06-01', '2026-12-31'),
       ],
       existing: [
         recorded('b7', 't8', 3000),
@@ -609,7 +618,7 @@ describe('matchToTransactions: existing matches', () => {
 });
 
 describe('matchToTransactions: periods without a statement', () => {
-  const firstHalf = [{ from: isoDate('2026-01-01'), to: isoDate('2026-06-30') }];
+  const firstHalf = covering('2026-01-01', '2026-06-30');
 
   it('keeps a bill due in a covered period without debit in pending', () => {
     const result = run({
@@ -667,8 +676,8 @@ describe('matchToTransactions: periods without a statement', () => {
 
   it('counts a movement only once when two statements overlap', () => {
     const overlapping = [
-      { from: isoDate('2026-10-01'), to: isoDate('2026-11-30') },
-      { from: isoDate('2026-11-01'), to: isoDate('2026-12-31') },
+      ...covering('2026-10-01', '2026-11-30'),
+      ...covering('2026-11-01', '2026-12-31'),
     ];
     const result = run({
       bills: [bill('b1')],
@@ -681,6 +690,35 @@ describe('matchToTransactions: periods without a statement', () => {
     expect(result.matches.map((m) => m.id)).toEqual(['m-bill-b1-amount-t1']);
     expect(result.ambiguous).toEqual([]);
     expect(result.unmatchedTransactions).toEqual([]);
+  });
+});
+
+describe('matchToTransactions: periods per account', () => {
+  const berchetOnly = [
+    { apartmentId: 'berchet', from: isoDate('2026-01-01'), to: isoDate('2026-12-31') },
+  ];
+
+  it("assumes Pulci's bill as paid when only Berchet's account has a statement", () => {
+    const result = run({
+      bills: [
+        bill('b-pulci', { apartmentId: 'pulci' }),
+        bill('b-berchet', { fileHash: 'hash-other' }),
+      ],
+      statementPeriods: berchetOnly,
+    });
+    expect(result.matches.map((m) => [m.itemId, m.by])).toEqual([['b-pulci', 'assumed']]);
+    expect(result.pending).toEqual([{ itemType: 'bill', itemId: 'b-berchet' }]);
+  });
+
+  it('covers an instalment paid from another account with the period of that account', () => {
+    const [berchet, lovarini] = tariShared() as [Instalment, Instalment];
+    const result = run({ instalments: [berchet, lovarini], statementPeriods: berchetOnly });
+    expect(result.matches).toEqual([]);
+    expect(result.pending.map((ref) => ref.itemId)).toEqual(['tari-berchet', 'tari-lovarini']);
+    const lovariniOnly = [{ ...berchetOnly[0], apartmentId: 'lovarini' }] as typeof berchetOnly;
+    expect(
+      run({ instalments: [berchet, lovarini], statementPeriods: lovariniOnly }).matches,
+    ).toHaveLength(2);
   });
 });
 

@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { cents } from './money';
 import type { Cents } from './money';
 import { isoDate, yearMonth } from './period';
+import { normaliseIban } from './iban';
 import { SEMVER_PATTERN } from './version';
 
 // --- Building blocks ------------------------------------------------------------------------
@@ -320,6 +321,12 @@ export const BankTransactionSchema = RecordBaseSchema.extend({
   /** Disposition code, equal on a debit and on its "Commissioni e spese" row. */
   dispCode: z.string().optional(),
   statementHash: NonEmptyString,
+  /** The account the row belongs to; absent on rows written before accounts existed. */
+  accountId: NonEmptyString.optional(),
+  /** Who paid or was paid, when the statement says so. */
+  counterparty: z.object({ name: z.string().optional(), iban: z.string().optional() }).optional(),
+  /** False for a pending row; absent means booked. */
+  booked: z.boolean().optional(),
 });
 export type BankTransaction = z.infer<typeof BankTransactionSchema>;
 
@@ -480,7 +487,7 @@ function hasGroups(pattern: string, minimum: number): boolean {
  * A regular expression that compiles in JavaScript and stays in the subset shared with Python's
  * `re`: numbered groups only, no lookbehind, no inline flags. JSON Schema cannot express this.
  */
-const PatternSchema = NonEmptyString.superRefine((pattern, ctx) => {
+export const PatternSchema = NonEmptyString.superRefine((pattern, ctx) => {
   const problem = patternProblem(pattern);
   if (problem !== undefined) ctx.addIssue({ code: 'custom', message: problem });
 }).meta({
@@ -658,6 +665,124 @@ export const SupplierProfileSchema = RecordBaseSchema.extend({
   });
 export type SupplierProfile = z.infer<typeof SupplierProfileSchema>;
 
+// --- Bank accounts and statements (plan 3a) -----------------------------------------------------
+
+export const AccountSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  label: NonEmptyString,
+  bankProfileId: NonEmptyString,
+  /** Already normalised: no spaces, capitals, valid mod-97 check. */
+  iban: z
+    .string()
+    .refine((iban) => normaliseIban(iban) === iban, {
+      message: 'The IBAN must be normalised (no spaces, capitals) and pass the mod-97 check',
+    })
+    .optional(),
+  holder: z.string().optional(),
+});
+export type Account = z.infer<typeof AccountSchema>;
+
+/** Never empty: a profile with no label to look for would recognise any file. */
+const LabelsSchema = z.array(NonEmptyString).min(1);
+
+export const BankProfileSchema = RecordBaseSchema.extend({
+  bank: NonEmptyString,
+  validFrom: ISODateSchema,
+  validTo: ISODateSchema.optional(),
+  container: z.enum(['xlsx', 'csv']),
+  csvSeparator: z.enum([';', ',']).optional(),
+  /** Labels of the header row, compared with `foldText`. */
+  header: z.object({ allOf: LabelsSchema }),
+  /** Labels of the columns, compared with `foldText`. */
+  columns: z.object({
+    date: NonEmptyString,
+    description: LabelsSchema,
+    amount: NonEmptyString.optional(),
+    debit: NonEmptyString.optional(),
+    credit: NonEmptyString.optional(),
+    sign: NonEmptyString.optional(),
+    dispCode: NonEmptyString.optional(),
+    pending: NonEmptyString.optional(),
+  }),
+  dateFormat: z.enum(['DD/MM/YYYY', 'YYYY-MM-DD']),
+  signValues: z.object({ debit: LabelsSchema, credit: LabelsSchema }).optional(),
+  pendingValues: LabelsSchema.optional(),
+  dispCodePattern: PatternSchema.optional(),
+  counterparty: z
+    .object({ name: PatternSchema.optional(), iban: PatternSchema.optional() })
+    .optional(),
+  /** Two groups: the first and the last day of the statement. */
+  periodPattern: PatternSchema.optional(),
+  /** One group: the account number or IBAN written in the file. */
+  accountPattern: PatternSchema.optional(),
+})
+  .refine(
+    ({ columns: c }) =>
+      c.amount !== undefined
+        ? c.debit === undefined && c.credit === undefined
+        : c.debit !== undefined && c.credit !== undefined,
+    { message: 'Either amount, or debit and credit together', path: ['columns'] },
+  )
+  .refine(
+    ({ columns: c, signValues }) =>
+      c.sign === undefined || (c.amount !== undefined && signValues !== undefined),
+    {
+      message: 'sign needs amount and signValues',
+      path: ['columns', 'sign'],
+    },
+  )
+  .refine(
+    ({ columns: c, pendingValues }) => c.pending === undefined || pendingValues !== undefined,
+    {
+      message: 'pending needs pendingValues',
+      path: ['columns', 'pending'],
+    },
+  )
+  .refine((p) => p.validTo === undefined || notAfter(p.validFrom, p.validTo), {
+    message: 'validTo must not be before validFrom',
+    path: ['validTo'],
+  })
+  .refine((p) => p.periodPattern === undefined || hasGroups(p.periodPattern, 2), {
+    message: 'periodPattern needs two groups',
+    path: ['periodPattern'],
+  })
+  .refine((p) => p.accountPattern === undefined || hasGroups(p.accountPattern, 1), {
+    message: 'accountPattern needs one group',
+    path: ['accountPattern'],
+  })
+  .meta({
+    description:
+      'Either columns.amount, or columns.debit and columns.credit together; columns.sign needs ' +
+      'columns.amount and signValues; columns.pending needs pendingValues; validFrom must not be ' +
+      'after validTo; periodPattern has at least two capture groups, accountPattern at least one.',
+  });
+export type BankProfile = z.infer<typeof BankProfileSchema>;
+
+export const StatementSchema = RecordBaseSchema.extend({
+  accountId: NonEmptyString,
+  bankProfileId: NonEmptyString,
+  fileName: NonEmptyString,
+  suggestedPath: NonEmptyString,
+  from: ISODateSchema,
+  to: ISODateSchema,
+  periodSource: z.enum(['file', 'manual']),
+  rowCount: z.int().min(0),
+  /** Rows written, or already present. */
+  transactionIds: z.array(NonEmptyString),
+  /** Rows waiting for a decision. */
+  held: z.array(
+    z.object({
+      row: z.int().min(1),
+      reason: z.enum(['possible-duplicate', 'pending']),
+      transaction: BankTransactionSchema,
+      decision: z.enum(['keep', 'exclude']).optional(),
+    }),
+  ),
+})
+  .refine((s) => notAfter(s.from, s.to), { message: 'from must not be after to', path: ['from'] })
+  .meta({ description: 'from must not be after to. The id is the fingerprint of the file.' });
+export type Statement = z.infer<typeof StatementSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -675,6 +800,9 @@ export const recordSchemas = {
   note: NoteSchema,
   supplierProfile: SupplierProfileSchema,
   user: UserSchema,
+  account: AccountSchema,
+  bankProfile: BankProfileSchema,
+  statement: StatementSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

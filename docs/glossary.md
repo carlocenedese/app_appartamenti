@@ -45,18 +45,24 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 
 ## Banca e pagamenti
 
-| Italiano              | Inglese          | Note                                        |
-| --------------------- | ---------------- | ------------------------------------------- |
-| addebito              | debit            | movimento in uscita sul conto               |
-| accredito             | credit           | movimento in entrata sul conto              |
-| movimento             | transaction      | riga dell'estratto conto                    |
-| estratto conto        | bank statement   | file CSV della banca                        |
-| bonifico              | bank transfer    |                                             |
-| pagamento, versamento | payment          | versamento di un inquilino                  |
-| riconciliazione       | reconciliation   | abbinamento di bollette e rate ai movimenti |
-| abbinamento           | match            |                                             |
-| da rivedere           | to review        | ogni valore incerto passa da qui            |
-| codice disposizione   | instruction code | lega la commissione all'addebito            |
+| Italiano              | Inglese            | Note                                        |
+| --------------------- | ------------------ | ------------------------------------------- |
+| addebito              | debit              | movimento in uscita sul conto               |
+| accredito             | credit             | movimento in entrata sul conto              |
+| movimento             | transaction        | riga dell'estratto conto                    |
+| estratto conto        | bank statement     | file CSV della banca                        |
+| bonifico              | bank transfer      |                                             |
+| pagamento, versamento | payment            | versamento di un inquilino                  |
+| riconciliazione       | reconciliation     | abbinamento di bollette e rate ai movimenti |
+| abbinamento           | match              |                                             |
+| da rivedere           | to review          | ogni valore incerto passa da qui            |
+| conto                 | account            | conto bancario di un appartamento           |
+| profilo della banca   | bank profile       | come si legge l'estratto di una banca       |
+| estratto              | statement          | file importato su un conto, con il periodo  |
+| movimento in attesa   | held transaction   | riga non contabilizzata, da decidere        |
+| possibile doppione    | possible duplicate | riga forse già presente: da decidere        |
+| periodo coperto       | covered period     | giorni di un conto coperti da un estratto   |
+| codice disposizione   | instruction code   | lega la commissione all'addebito            |
 
 ## Dati e registro
 

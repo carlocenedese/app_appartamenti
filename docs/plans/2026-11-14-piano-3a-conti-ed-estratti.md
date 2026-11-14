@@ -13,7 +13,7 @@
 ## Metodo di esecuzione
 
 - Come nei piani precedenti: un ramo, mai su `main`. Per ogni task: test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm python:test`, `pnpm data:check`, commit. Un revisore distinto per task (piano, disegno, qualità), fino a 5 giri; poi una revisione finale e la PR.
-- Le regole nuove vanno in `docs/progress.md` da **R99** (R98 è lo strumento `xlsx_structure`, PR #30).
+- Le regole nuove vanno in `docs/progress.md` dalla **prossima R libera** di `docs/progress.md` (controllare con `grep` prima di scrivere; il Task 1 ha preso R99).
 - Le regole di calcolo e di confidenza non si decidono da soli: NEEDS_CONTEXT e si chiede a Carlo.
 - **Il profilo della banca è SINTETICO** (`fixtures/bank/profilo-sintetico.json`, colonne e formati ipotizzati da `docs/spec.md` sezione 18 e da `docs/rules/conguaglio-rules.md`). Lo sostituisce il Task 9 (3a-bis), solo dopo l'uscita di `python/tools/xlsx_structure.py` sui file di Carlo.
 
@@ -72,7 +72,7 @@
 
 ## Task 2: conto nell'identità del movimento e periodi coperti per conto
 
-**Files:** Modify `packages/core/src/dedupe.ts`, `packages/core/src/match.ts`, `packages/core/test/match.test.ts` (periodi con il conto), `docs/progress.md` (R99); Test `dedupe.test.ts`, `match.test.ts`.
+**Files:** Modify `packages/core/src/dedupe.ts`, `packages/core/src/match.ts`, `packages/core/test/match.test.ts` (periodi con il conto), `docs/progress.md` (prossima R libera); Test `dedupe.test.ts`, `match.test.ts`.
 
 **Interfaces:**
 
@@ -86,7 +86,7 @@
   - Tre righe identiche nello stesso giorno danno occorrenze 0, 1, 2; la stessa lista con una quarta riga identica dà gli stessi primi tre `id`.
   - `match`: con il solo periodo di `berchet` la bolletta di `pulci` dello stesso mese è `assumed`, quella di `berchet` senza addebito è `pending`; una rata di `lovarini` con `paidFromApartmentId: 'berchet'` è coperta dal periodo di `berchet`.
 - [ ] **Step 2:** `pnpm test -- dedupe match` fallisce.
-- [ ] **Step 3: implementare**; aggiornare i test di `match` esistenti con il conto nei periodi; scrivere R99.
+- [ ] **Step 3: implementare**; aggiornare i test di `match` esistenti con il conto nei periodi; scrivere la prossima R libera.
 - [ ] **Step 4:** lint, typecheck, test con i due `TZ` passano.
 - [ ] **Step 5: commit** `fix(core): periodi coperti per conto e conto nell'impronta del movimento (piano 3a, task 2)`.
 
@@ -110,7 +110,7 @@
 
 ## Task 4: `bollette_pdf table` per l'XLSX
 
-**Files:** Create `python/bollette_pdf/xlsx.py`; Modify `python/bollette_pdf/__main__.py` (comando `table`), `python/README.md`, `docs/progress.md` (R100); Create `python/tests/xlsx_builder.py` (costruisce un XLSX minimo da un dizionario), `python/tests/test_xlsx.py`; Test d'integrazione `packages/core/test/statement-table-python.test.ts`.
+**Files:** Create `python/bollette_pdf/xlsx.py`; Modify `python/bollette_pdf/__main__.py` (comando `table`), `python/README.md`, `docs/progress.md` (prossima R libera); Create `python/tests/xlsx_builder.py` (costruisce un XLSX minimo da un dizionario), `python/tests/test_xlsx.py`; Test d'integrazione `packages/core/test/statement-table-python.test.ts`.
 
 **Interfaces:**
 
@@ -131,7 +131,7 @@
 
   Uscite attese: `{"t":"n","v":"-92.81"}`, `{"t":"n","v":"1234.5"}`, `{"t":"d","v":"2026-10-27"}`, `null` al posto di B. Un file con `<!DOCTYPE`, uno non ZIP e uno oltre il limite di membri danno codice 2, `TABLE_ERROR` su stderr, stdout vuoto. Due corse uguali danno gli stessi byte. Nel core, l'uscita reale passa `StatementTableSchema` (`REQUIRE_PYTHON=1`).
 - [ ] **Step 2:** `PYTHON=<venv> pnpm python:test` fallisce.
-- [ ] **Step 3: implementare**; scrivere R100 (rappresentazione dei numeri e delle date).
+- [ ] **Step 3: implementare**; scrivere la prossima R libera (rappresentazione dei numeri e delle date).
 - [ ] **Step 4:** `pnpm python:test`, `REQUIRE_PYTHON=1 pnpm test`, lint, `pnpm data:check` passano.
 - [ ] **Step 5: commit** `feat(python): tabella degli estratti XLSX con la libreria standard (piano 3a, task 4)`.
 
@@ -142,6 +142,7 @@
 **Interfaces:**
 
 - Consumes: `StatementTable`, `BankProfile`, `parseEuro`, `normaliseIban`, `isoDate`, `foldText`.
+- Proteggere `accountPattern`/`periodPattern` dal ReDoS dove vengono eseguiti (lunghezza massima dell'input, niente quantificatori annidati) con test.
 - Produces:
   - `readStatementTable(table: StatementTable, profile: BankProfile): StatementRead`, con `StatementRead = { rows: StatementRow[]; declaredPeriod?: { from: ISODate; to: ISODate }; declaredAccount?: string }`.
   - `StatementRow = { row: number; date: ISODate; amount: Cents; description: string; dispCode?: string; counterparty?: { name?: string; iban?: string }; booked: boolean }`.
@@ -152,7 +153,7 @@
   - `StatementReadError` con `code` tra `no-header`, `missing-column`, `bad-date`, `bad-amount`, `unknown-sign`, `debit-and-credit`, `no-amount`, `zero-amount`, `bad-period`, e `row`, `column?`. Il messaggio è costante e non porta mai il valore.
 
 - [ ] **Step 1: test che falliscono** (tabelle scritte a mano con il profilo sintetico e le sue varianti):
-  - riga `d 2026-10-27 | s Addebito | s HERA COMM | n -92.81 | s 123` dà `{ date: '2026-10-27', amount: -9281, description: 'Addebito - HERA COMM', dispCode: '123', booked: true }`;
+  - riga `d 2026-10-27 | s Addebito | s HERA COMM | n -92.81 | s A123` dà `{ date: '2026-10-27', amount: -9281, description: 'Addebito - HERA COMM', dispCode: 'A123', booked: true }`;
   - date di testo `27/10/2026`; importo di testo `-1.234,56` dà `-123456`;
   - le celle `n 1.234` e `n 1e5` danno `bad-amount` alla riga giusta;
   - importo `n 92.81` con «Segno» `D` dà `-9281`, con `X` dà `unknown-sign`;
@@ -187,7 +188,7 @@
 
 ## Task 7: importazione dell'estratto, righe in revisione, annullamento
 
-**Files:** Create `packages/core/src/statement-import.ts`; Modify `index.ts`, `docs/progress.md` (R101); Test `packages/core/test/statement-import.test.ts`.
+**Files:** Create `packages/core/src/statement-import.ts`; Modify `index.ts`, `docs/progress.md` (prossima R libera); Test `packages/core/test/statement-import.test.ts`.
 
 **Interfaces:**
 
@@ -219,13 +220,13 @@
   - nessun `summary` contiene una causale o un importo;
   - le occorrenze delle righe identiche seguono l'ordine del file: due file con le stesse righe in ordine diverso, ma con le righe identiche nello stesso ordine relativo, danno gli stessi `id`.
 - [ ] **Step 2:** `pnpm test -- statement-import` fallisce.
-- [ ] **Step 3: implementare**; scrivere R101 (periodo, `held`, `already-imported` su qualunque conto, rifiuto dell'annullamento).
+- [ ] **Step 3: implementare**; scrivere la prossima R libera (periodo, `held`, `already-imported` su qualunque conto, rifiuto dell'annullamento).
 - [ ] **Step 4:** lint, typecheck, test con i due `TZ`, copertura, `pnpm data:check` passano.
 - [ ] **Step 5: commit** `feat(core): importazione degli estratti con revisione di doppioni e non contabilizzati (piano 3a, task 7)`.
 
 ## Task 8: riga di comando `pnpm estratti`
 
-**Files:** Create `scripts/estratti.mjs`, `scripts/estratti.test.mjs`; Modify `package.json` (`"estratti": "tsx scripts/estratti.mjs"`), `docs/progress.md` (R102).
+**Files:** Create `scripts/estratti.mjs`, `scripts/estratti.test.mjs`; Modify `package.json` (`"estratti": "tsx scripts/estratti.mjs"`), `docs/progress.md` (prossima R libera).
 
 **Interfaces:**
 
@@ -238,7 +239,7 @@
 
 - [ ] **Step 1: test che falliscono.** In una cartella temporanea: `profilo`, `conto` e `importa` di un CSV sintetico danno `{"status":"imported","added":5,"alreadyKnown":0,"held":1}` con codice 0. La stessa `importa` di nuovo dà `already-imported` e nessun file nuovo nel registro. Un XLSX costruito dal builder del Task 4 (`REQUIRE_PYTHON=1`) dà lo stesso risultato del CSV equivalente. `--dal` senza `--al` dà codice 2. Senza `--dettagli`, `scanText` sull'uscita non trova nulla e l'uscita non contiene nessuna causale della fixture.
 - [ ] **Step 2:** `pnpm test -- scripts/estratti` (progetto vitest `scripts`) fallisce.
-- [ ] **Step 3: implementare**; scrivere R102.
+- [ ] **Step 3: implementare**; scrivere la prossima R libera.
 - [ ] **Step 4:** lint, typecheck, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check` passano.
 - [ ] **Step 5: commit** `feat(cli): pnpm estratti per conti e importazione (piano 3a, task 8)`.
 
@@ -246,11 +247,11 @@
 
 Parte solo quando Carlo ha incollato l'uscita di `python/tools/xlsx_structure.py` sui file di ottobre 2026: sole intestazioni, tipi e conteggi, nessun valore.
 
-**Files:** Create `python/seed-profiles/<banca>-estratto-<anno>.json` (o la cartella dei seed scelta nel Task 1), Modify `fixtures/bank/` (una fixture sintetica con le intestazioni vere e valori inventati), `packages/core/src/seed-profiles.ts` se i seed della banca si copiano al primo avvio come quelli dei fornitori, `docs/progress.md` (R103).
+**Files:** Create `python/seed-profiles/<banca>-estratto-<anno>.json` (o la cartella dei seed scelta nel Task 1), Modify `fixtures/bank/` (una fixture sintetica con le intestazioni vere e valori inventati), `packages/core/src/seed-profiles.ts` se i seed della banca si copiano al primo avvio come quelli dei fornitori, `docs/progress.md` (prossima R libera).
 
 - [ ] **Step 1: test che falliscono.** La fixture con le intestazioni vere, letta con il profilo nuovo, dà le righe attese: date, segni, codice disposizione, controparte, non contabilizzati e periodo dichiarato, ciascuno se l'uscita dello strumento mostra che esiste.
 - [ ] **Step 2:** fallisce con il profilo sintetico.
-- [ ] **Step 3: scrivere il profilo.** Ogni ipotesi del profilo sintetico smentita dall'uscita (per esempio dove sta «Cod Disp.», colonna unica o dare/avere, date seriali o testo) va in R103. Se serve un campo di profilo nuovo, NEEDS_CONTEXT.
+- [ ] **Step 3: scrivere il profilo.** Ogni ipotesi del profilo sintetico smentita dall'uscita (per esempio dove sta «Cod Disp.», colonna unica o dare/avere, date seriali o testo) va nella prossima R libera. Se serve un campo di profilo nuovo, NEEDS_CONTEXT.
 - [ ] **Step 4:** tutti i controlli passano; Carlo importa i suoi file in locale con `pnpm estratti importa` e riporta solo l'uscita senza `--dettagli`.
 - [ ] **Step 5: commit** `feat(profili): profilo dell'estratto della banca dei tre conti (piano 3a, task 9)`.
 

@@ -3,6 +3,7 @@
     python -I -m bollette_pdf extract --pdf <file> --profiles <directory> --at <ISO date(-time)>
         [--pages a-b]
     python -I -m bollette_pdf build-profile --pdf <file> --spec <file.json> --at <ISO date(-time)>
+    python -I -m bollette_pdf table <file.xlsx>
     python -I -m bollette_pdf --version
 
 Both commands take `--ocr-data <folder>` (folder of ita.traineddata): pages without useful text
@@ -15,6 +16,9 @@ an unreadable path or a result that does not validate. `build-profile` prints, t
 supplierProfile built from the selections of the spec file (see `_read_spec`); a malformed spec,
 an unreadable PDF or a selection that cannot be turned into a profile give code 2 and a constant
 message.
+`table` prints ONE JSON document, the StatementTable of an XLSX bank statement (see `xlsx.py`:
+values as text, never a float); a file that is not valid or is too large gives code 2, the constant
+message `TABLE_ERROR` and an empty stdout, whatever the reason.
 Messages on stderr are generic Italian sentences: they never contain text read from a PDF, a
 profile or a path.
 
@@ -33,7 +37,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NoReturn, TextIO
 
-from . import __version__
+from . import __version__, xlsx
 from .builder import ProfileDataError, Selection, build_profile
 from .extract import extract
 from .parse import valid_iso_at
@@ -103,6 +107,9 @@ def _build_parser(stdout: TextIO, stderr: TextIO) -> argparse.ArgumentParser:
     build.add_argument("--spec", required=True, help="file JSON con il profilo e le selezioni")
     build.add_argument("--at", required=True, help="data o data-ora ISO di riferimento")
     build.add_argument("--ocr-data", help="cartella dei dati della lingua per l'OCR (facoltativa)")
+    table = sub.add_parser("table", help="legge un estratto conto XLSX in una tabella", add_help=False)
+    table.add_argument("-h", "--help", action="help", help="mostra questo aiuto")
+    table.add_argument("file", help="file .xlsx da leggere")
     return parser
 
 
@@ -274,6 +281,14 @@ def _run_extract(
     _print_json(final, stdout)
 
 
+def _run_table(path: str, stdout: TextIO) -> None:
+    try:
+        table = xlsx.read_table(Path(path))
+    except xlsx.TableError:
+        raise _Rejected(xlsx.TABLE_ERROR) from None
+    _print_json(table, stdout)
+
+
 def _selection(raw: Any) -> Selection:
     if not isinstance(raw, dict) or set(raw) != {"page", "box"}:
         raise _Rejected(SPEC_ERROR)
@@ -353,12 +368,14 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
         out.write(f"{__version__}\n")
         out.flush()
         return EXIT_OK
-    if args.command not in ("extract", "build-profile"):
-        err.write("Manca il comando: usare «extract», «build-profile» oppure --version.\n")
+    if args.command not in ("extract", "build-profile", "table"):
+        err.write("Manca il comando: usare «extract», «build-profile», «table» oppure --version.\n")
         return EXIT_ERROR
     try:
         if args.command == "extract":
             _run_extract(args.pdf, args.profiles, args.at, args.ocr_data, out, args.pages)
+        elif args.command == "table":
+            _run_table(args.file, out)
         else:
             _run_build(args.pdf, args.spec, args.at, args.ocr_data, out)
     except _Rejected as rejected:

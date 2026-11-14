@@ -50,8 +50,11 @@ export interface MatchInput {
   transactions: BankTransaction[];
   /** Days the debit may come before and after the reference date, both ends included. */
   window: { daysBefore: number; daysAfter: number };
-  /** Periods covered by a bank statement; an item due outside all of them is assumed paid. */
-  statementPeriods: { from: ISODate; to: ISODate }[];
+  /**
+   * Periods covered by a bank statement, each of one account (`apartmentId`). An item is covered
+   * only by a period of its paying account; due outside all of them it is assumed paid.
+   */
+  statementPeriods: { apartmentId: string; from: ISODate; to: ISODate }[];
   /**
    * Matches already recorded. Confirmed ones (manual or automatic) are kept unchanged and their
    * movements and items are not matched again; unconfirmed and `assumed` ones are dropped and
@@ -323,7 +326,9 @@ export function matchToTransactions(input: MatchInput): MatchResult {
   const { nodes, invalidGroups } = buildNodes(bills, instalments);
   for (const node of nodes) {
     if (node.members.some((member) => covered.has(refKey(member)))) continue;
-    const inStatement = input.statementPeriods.some((p) => p.from <= node.ref && node.ref <= p.to);
+    const inStatement = input.statementPeriods.some(
+      (p) => p.apartmentId === node.account && p.from <= node.ref && node.ref <= p.to,
+    );
     if (inStatement) {
       open.push(node);
       continue;

@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { Cents } from '../src/money';
 import {
+  AccountSchema,
   ApartmentSchema,
+  BankProfileSchema,
+  StatementSchema,
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
@@ -35,7 +40,51 @@ import type { ISODate, YearMonth } from '../src/period';
 // Plain input as it comes out of a JSON file (dates are strings, amounts are numbers).
 const base = { id: 'rec-1', v: 1, rev: 1 };
 
+const bankProfile: Record<string, unknown> = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL('../../../fixtures/bank/profilo-sintetico.json', import.meta.url)),
+    'utf8',
+  ),
+);
+
 const validRecords: Record<RecordKind, Record<string, unknown>> = {
+  account: {
+    ...base,
+    apartmentId: 'apt-1',
+    label: 'Conto principale',
+    bankProfileId: 'profilo-sintetico',
+    iban: 'IT60X0542811101000000123456',
+    holder: 'Mario Rossi',
+  },
+  bankProfile,
+  statement: {
+    ...base,
+    id: 'abc123',
+    accountId: 'acc-1',
+    bankProfileId: 'profilo-sintetico',
+    fileName: 'estratto.csv',
+    suggestedPath: 'Estratti/2026/estratto.csv',
+    from: '2026-01-01',
+    to: '2026-01-31',
+    periodSource: 'file',
+    rowCount: 2,
+    transactionIds: ['tx-1'],
+    held: [
+      {
+        row: 2,
+        reason: 'pending',
+        transaction: {
+          ...base,
+          apartmentId: 'apt-1',
+          date: '2026-01-30',
+          amount: -500,
+          description: 'In attesa',
+          statementHash: 'abc123',
+          booked: false,
+        },
+      },
+    ],
+  },
   apartment: {
     ...base,
     name: 'Appartamento A',
@@ -216,7 +265,10 @@ describe('recordSchemas', () => {
   it('has one schema for each record directory under _app/dati', () => {
     expect(Object.keys(recordSchemas).sort()).toEqual(
       [
+        'account',
         'apartment',
+        'bankProfile',
+        'statement',
         'bill',
         'contract',
         'instalment',
@@ -1110,5 +1162,106 @@ describe('fileDocument', () => {
     expect(BillSchema.safeParse(changed(validRecords.bill, { fileDocument: bad })).success).toBe(
       false,
     );
+  });
+});
+
+describe('accounts, bank profiles and statements (plan 3a)', () => {
+  const ok = (schema: { safeParse: (v: unknown) => { success: boolean } }, v: unknown) =>
+    schema.safeParse(v).success;
+
+  it('rejects an IBAN that is not normalised or fails mod-97', () => {
+    expect(
+      ok(
+        AccountSchema,
+        changed(validRecords.account, { iban: 'it60 x054 2811 1010 0000 0123 456' }),
+      ),
+    ).toBe(false);
+    expect(
+      ok(
+        AccountSchema,
+        changed(validRecords.account, { iban: `${'IT60X0542811101000000123456'.slice(0, -1)}7` }),
+      ),
+    ).toBe(false);
+    expect(ok(AccountSchema, without(validRecords.account, 'iban', 'holder'))).toBe(true);
+  });
+
+  it('accepts the synthetic profile and rejects inconsistent columns', () => {
+    const columns = bankProfile['columns'] as Record<string, unknown>;
+    const withColumns = (c: Record<string, unknown>) => changed(bankProfile, { columns: c });
+    expect(ok(BankProfileSchema, bankProfile)).toBe(true);
+    expect(ok(BankProfileSchema, withColumns({ ...columns, debit: 'Dare', credit: 'Avere' }))).toBe(
+      false,
+    );
+    const split = { ...columns, amount: undefined, sign: undefined, debit: 'Dare' };
+    expect(ok(BankProfileSchema, withColumns(split))).toBe(false);
+    expect(
+      ok(BankProfileSchema, withColumns({ ...split, credit: 'Avere', pending: undefined })),
+    ).toBe(true);
+    expect(ok(BankProfileSchema, changed(bankProfile, { signValues: undefined }))).toBe(false);
+    expect(ok(BankProfileSchema, changed(bankProfile, { pendingValues: undefined }))).toBe(false);
+    expect(ok(BankProfileSchema, changed(bankProfile, { periodPattern: 'dal ([0-9/]+)' }))).toBe(
+      false,
+    );
+    expect(ok(BankProfileSchema, changed(bankProfile, { accountPattern: 'conto [A-Z]+' }))).toBe(
+      false,
+    );
+    expect(ok(BankProfileSchema, changed(bankProfile, { validTo: '2019-12-31' }))).toBe(false);
+  });
+
+  it('rejects a statement that starts after it ends', () => {
+    expect(ok(StatementSchema, changed(validRecords.statement, { from: '2026-02-01' }))).toBe(
+      false,
+    );
+    expect(ok(StatementSchema, changed(validRecords.statement, { periodSource: 'x' }))).toBe(false);
+  });
+
+  it('rejects empty label lists: they would recognise any file', () => {
+    const empty = (changes: Record<string, unknown>) =>
+      ok(BankProfileSchema, changed(bankProfile, changes));
+    expect(empty({ header: { allOf: [] } })).toBe(false);
+    const columns = bankProfile['columns'] as Record<string, unknown>;
+    expect(empty({ columns: { ...columns, description: [] } })).toBe(false);
+    expect(empty({ signValues: { debit: [], credit: ['A'] } })).toBe(false);
+    expect(empty({ signValues: { debit: ['D'], credit: [] } })).toBe(false);
+    expect(empty({ pendingValues: [] })).toBe(false);
+  });
+
+  it('allows one-day ranges and refuses sign without amount', () => {
+    expect(ok(StatementSchema, changed(validRecords.statement, { from: '2026-01-31' }))).toBe(true);
+    expect(ok(BankProfileSchema, changed(bankProfile, { validTo: '2020-01-01' }))).toBe(true);
+    const columns = bankProfile['columns'] as Record<string, unknown>;
+    const split = {
+      ...columns,
+      amount: undefined,
+      debit: 'Dare',
+      credit: 'Avere',
+      pending: undefined,
+    };
+    expect(ok(BankProfileSchema, changed(bankProfile, { columns: split }))).toBe(false); // sign left
+  });
+
+  it('checks the held rows', () => {
+    const held = validRecords.statement['held'] as Record<string, unknown>[];
+    const withHeld = (changes: Record<string, unknown>) =>
+      ok(StatementSchema, changed(validRecords.statement, { held: [{ ...held[0], ...changes }] }));
+    expect(withHeld({ decision: 'keep' })).toBe(true);
+    expect(withHeld({ decision: 'maybe' })).toBe(false);
+    expect(withHeld({ reason: 'other' })).toBe(false);
+    expect(withHeld({ row: 0 })).toBe(false);
+    expect(withHeld({ transaction: { id: 'x' } })).toBe(false);
+  });
+
+  it('keeps a transaction without the new fields valid', () => {
+    expect(ok(BankTransactionSchema, validRecords.transaction)).toBe(true);
+    expect(
+      ok(
+        BankTransactionSchema,
+        changed(validRecords.transaction, {
+          accountId: 'acc-1',
+          counterparty: { name: 'X' },
+          booked: true,
+        }),
+      ),
+    ).toBe(true);
   });
 });

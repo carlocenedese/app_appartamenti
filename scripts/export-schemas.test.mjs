@@ -20,7 +20,9 @@ describe('writeJsonSchemas', () => {
     const outDir = join(root, 'nested', 'schemas');
     const written = writeJsonSchemas(outDir);
     const expected = [
+      'account',
       'apartment',
+      'bankProfile',
       'bill',
       'contract',
       'extractionResult',
@@ -29,6 +31,7 @@ describe('writeJsonSchemas', () => {
       'note',
       'operation',
       'payment',
+      'statement',
       'supplierProfile',
       'supply',
       'tenancy',
