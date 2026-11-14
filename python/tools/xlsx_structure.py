@@ -1,25 +1,35 @@
 """Prints the STRUCTURE of a bank statement `.xlsx`, never its values (development tool).
 
-    python3 -I python/tools/xlsx_structure.py [--json] [--header-row N] [--code-columns "Cod Disp.,Segno"] <file.xlsx>
+    python3 -I python/tools/xlsx_structure.py [--json] [--header-row N] [--known-labels "a,b"]
+        [--code-columns "Cod Disp.,Segno"] <file.xlsx>
 
-Standard library only (`zipfile` + `xml.etree`), read only, no network, no clock. For every sheet:
-name, size, the detected header row (column labels are printed, masked when they look like data),
-and per column: prevalent type (testo, numero, data, vuoto), non-empty count, distinct count (only
-the count), text length min/max, declared number/date format, first and last date as YYYY-MM.
-The distinct values are listed ONLY for columns named like a code (`--code-columns`, default
-«Cod Disp.», «Cod. Disp.», «Segno», «Valuta») with at most 12 distinct values. Rows above the
-header: only the type of each cell, and for a text with two or more dates the range as YYYY-MM.
-Never prints a row, a text, an amount, a day. A bad or oversized file gives a constant message
-and exit code 2. XML with a DOCTYPE or entities is rejected, never parsed.
+Standard library only (no import from `bollette_pdf`), read only, no network, no clock.
+
+Safe by construction, not by heuristic: the only text ever printed from the file is a column label
+that, normalised (lower case, no accents or punctuation), is IN AN ALLOWLIST of bank statement
+column names (`KNOWN_LABELS`, extendable with `--known-labels`). Any other label is printed as
+«colonna N, testo di K caratteri», a sheet as «foglio N»: no content. So even a wrong row picked as
+header (account metadata, a data row) prints nothing personal.
+
+Per visible sheet: size, header row, per column: prevalent type (testo, numero, data, vuoto), counts
+(non-empty, distinct), band of the text length (<=10, <=30, >30), CLASS of the declared format
+(generale, numero, percentuale, data, ora, testo; never the format string), first and last date as
+YYYY-MM. Distinct values are listed ONLY for a column named in `--code-columns` (default «Cod Disp.»,
+«Cod. Disp.», «Segno», «Valuta») with at most 12 distinct values, each of at most 12 letters or
+digits. Rows above the header: cell types, and the YYYY-MM of a date or of a range of dates in a text.
+Hidden sheets are skipped and counted. A bad or oversized file, a member that is not UTF-8, or a
+DOCTYPE/ENTITY in any member read: constant message, exit code 2.
 """
 
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import posixpath
 import re
 import sys
+import unicodedata
 import zipfile
 from collections import Counter
 from datetime import date
@@ -27,26 +37,38 @@ from pathlib import Path
 from typing import Any, NoReturn, TextIO
 from xml.etree import ElementTree as ET
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from bollette_pdf.__main__ import _utf8_lf  # noqa: E402
-
-MAX_FILE_BYTES = 50 * 1024 * 1024
-MAX_MEMBER_BYTES = 64 * 1024 * 1024
-MAX_TOTAL_BYTES = 200 * 1024 * 1024
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_MEMBER_BYTES = 32 * 1024 * 1024
+MAX_TOTAL_BYTES = 100 * 1024 * 1024
 MAX_MEMBERS = 200
-MAX_ROWS = 200_000
+MAX_ROWS = 50_000
 MAX_COLS = 256
+MAX_CELLS = 2_000_000
 MAX_SHEETS = 50
+HEADER_SCAN_ROWS = 100
 LOW_CARDINALITY = 12
+CODE_PATTERN = re.compile(r"[A-Za-z0-9]{1,12}")
 DEFAULT_CODE_COLUMNS = ("Cod Disp.", "Cod. Disp.", "Segno", "Valuta")
+KNOWN_LABELS = (
+    "data, data contabile, data valuta, data operazione, data registrazione, data movimento, "
+    "data e ora, valuta, divisa, descrizione, descrizione operazione, causale, causale abi, "
+    "causale operazione, importo, importo eur, importo in euro, segno, dare, avere, entrate, "
+    "uscite, addebiti, accrediti, saldo, saldo contabile, saldo disponibile, cod disp, codice, "
+    "codice disposizione, iban, intestatario, ordinante, beneficiario, controparte, tipo, "
+    "tipo operazione, tipologia, categoria, note, riferimento, cro, trn, numero, n operazione, "
+    "canale, commissioni, spese, filiale, conto, rapporto, abi, cab"
+)
 BAD_FILE = "File non valido o troppo grande: nessun output."
 ARGUMENTS_ERROR = "Argomenti non validi: serve il percorso di un file .xlsx."
+INTERNAL_ERROR = "Errore interno: nessun output."
 
 _DATE_TEXT = re.compile(r"(\d{4})-(\d{2})-\d{2}|\d{1,2}[/.-](\d{1,2})[/.-](\d{4})")
-_BUILTIN_DATE_IDS = set(range(14, 23)) | {45, 46, 47}
-_BUILTIN_FORMATS = {0: "Generale", 1: "0", 2: "0.00", 3: "#,##0", 4: "#,##0.00", 9: "0%", 10: "0.00%"}
+_XML_ENCODING = re.compile(r"""<\?xml[^>]{0,200}?encoding\s*=\s*["']([^"']+)["']""", re.I)
+_FORBIDDEN_XML = re.compile(r"<!(doctype|entity)", re.I)
 _NS_STRIP = re.compile(r"\{[^}]*\}")
+_BUILTIN_CLASS = {0: "generale", 9: "percentuale", 10: "percentuale", 49: "testo"}
+_BUILTIN_CLASS.update({i: "data" for i in (14, 15, 16, 17, 22)})
+_BUILTIN_CLASS.update({i: "ora" for i in (18, 19, 20, 21, 45, 46, 47)})
 
 
 class _Rejected(Exception):
@@ -58,14 +80,47 @@ class _Parser(argparse.ArgumentParser):
         raise _Rejected(ARGUMENTS_ERROR)
 
 
+def _utf8_lf(stream: TextIO) -> TextIO:
+    """`stream` writing UTF-8 with `\\n` line endings, the same on every system."""
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")
+        except (AttributeError, OSError, ValueError):
+            pass
+    return stream
+
+
+def _normalise(label: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", label)
+    plain = "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", plain).split())
+
+
+def _names(csv: str) -> set[str]:
+    return {n for n in (_normalise(p) for p in csv.split(",")) if n}
+
+
 def _tag(element: ET.Element) -> str:
     return _NS_STRIP.sub("", element.tag)
 
 
-def _xml(data: bytes) -> ET.Element:
-    head = data.lower()
-    if b"<!doctype" in head or b"<!entity" in head:
+def _check_text(data: bytes) -> None:
+    """Rejects any member that is not UTF-8 or has a DOCTYPE/ENTITY. The search is on the DECODED
+    text: in UTF-16 the bytes of «<!DOCTYPE» do not match a byte search."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise _Rejected(BAD_FILE) from None
+    if "\0" in text or _FORBIDDEN_XML.search(text):
         raise _Rejected(BAD_FILE)
+    declared = _XML_ENCODING.search(text[:300])
+    if declared is not None and declared.group(1).lower() not in ("utf-8", "utf8"):
+        raise _Rejected(BAD_FILE)
+
+
+def _xml(data: bytes) -> ET.Element:
+    _check_text(data)
     return ET.fromstring(data)
 
 
@@ -102,44 +157,57 @@ def _column_letters(index: int) -> str:
     return letters
 
 
-def _is_date_format(code: str) -> bool:
-    bare = re.sub(r'"[^"]*"|\[[^\]]*\]|\\.', "", code).lower()
-    return re.search(r"[ymdhs]", bare) is not None
+def _format_class(fmt_id: int, code: str | None) -> str:
+    """Class of a number format; the format string itself is never kept."""
+    if code is None:
+        return _BUILTIN_CLASS.get(fmt_id, "numero")
+    bare = re.sub(r'"[^"]*"|\[[^\]]*\]|\\.|_.|\*.', "", code).lower()
+    if bare in ("general", "generale"):
+        return "generale"
+    if "@" in bare:
+        return "testo"
+    if "%" in bare:
+        return "percentuale"
+    if re.search(r"[yd]", bare) or ("m" in bare and not re.search(r"[hs]", bare)):
+        return "data"
+    if re.search(r"[hs]", bare):
+        return "ora"
+    return "numero"
 
 
-def _read_styles(data: bytes | None) -> list[tuple[str, bool]]:
-    """Per cell style index: (declared format code, is a date format)."""
+def _read_styles(data: bytes | None) -> list[str]:
+    """Per cell style index, the class of its number format."""
     if data is None:
         return []
-    root = _xml(data)
     custom: dict[int, str] = {}
     xfs: list[int] = []
-    for element in root.iter():
+    for element in _xml(data).iter():
         if _tag(element) == "numFmt":
             custom[int(element.get("numFmtId", "0"))] = element.get("formatCode", "")
         elif _tag(element) == "cellXfs":
             xfs = [int(xf.get("numFmtId", "0")) for xf in element if _tag(xf) == "xf"]
-    styles = []
-    for fmt_id in xfs:
-        code = custom.get(fmt_id) or _BUILTIN_FORMATS.get(fmt_id, f"predefinito {fmt_id}")
-        styles.append((code, fmt_id in _BUILTIN_DATE_IDS or (fmt_id in custom and _is_date_format(code))))
-    return styles
+    return [_format_class(i, custom.get(i)) for i in xfs]
 
 
 def _read_shared(data: bytes | None) -> list[str]:
     if data is None:
         return []
-    return [
-        "".join(t.text or "" for t in si.iter() if _tag(t) == "t")
-        for si in _xml(data)
-        if _tag(si) == "si"
-    ]
+
+    def texts(node: ET.Element) -> list[str]:
+        # rPh is phonetic text, not part of the cell value
+        return [
+            (child.text or "") if _tag(child) == "t" else "".join(texts(child))
+            for child in node
+            if _tag(child) in ("t", "r")
+        ]
+
+    return ["".join(texts(si)) for si in _xml(data) if _tag(si) == "si"]
 
 
-def _month(serial: float) -> str | None:
-    """Excel serial day (1900 system) to YYYY-MM with integers only."""
+def _month(serial: float, epoch: int) -> str | None:
+    """Excel serial day to YYYY-MM with integers only; None when it is not a valid date."""
     try:
-        d = date.fromordinal(date(1899, 12, 30).toordinal() + int(serial))
+        d = date.fromordinal(epoch + int(serial))
     except (ValueError, OverflowError):
         return None
     return f"{d.year:04d}-{d.month:02d}"
@@ -157,16 +225,16 @@ def _text_months(text: str) -> list[str]:
     return months
 
 
-# A cell is (kind, key, extra): kind in testo/numero/data/vuoto; key is the raw value (never printed
-# except for code columns); extra is the format code or the YYYY-MM month.
+# A cell is (kind, key, extra): kind in testo/numero/data/vuoto; key is the raw value (counted, never
+# printed except for code columns); extra is the format class (numero) or YYYY-MM ("" if invalid).
 Cell = tuple[str, str, str]
 
 
-def _cell(c: ET.Element, shared: list[str], styles: list[tuple[str, bool]]) -> Cell:
+def _cell(c: ET.Element, shared: list[str], styles: list[str], epoch: int) -> Cell:
     kind = c.get("t", "n")
     value = next((v.text or "" for v in c if _tag(v) == "v"), "")
     if kind == "inlineStr":
-        text = "".join(t.text or "" for t in c.iter() if _tag(t) == "t")
+        text = "".join(t.text or "" for p in c if _tag(p) == "is" for t in p.iter() if _tag(t) == "t")
     elif kind == "s":
         try:
             text = shared[int(value)]
@@ -184,9 +252,10 @@ def _cell(c: ET.Element, shared: list[str], styles: list[tuple[str, bool]]) -> C
         except ValueError:
             raise _Rejected(BAD_FILE) from None
         index = int(c.get("s", "0"))
-        code, is_date = styles[index] if index < len(styles) else ("Generale", False)
-        month = _month(number) if is_date else None
-        return ("data", value, month) if month else ("numero", value, code)
+        cls = styles[index] if index < len(styles) else "generale"
+        if cls == "data" and number >= 1:
+            return ("data", value, _month(number, epoch) or "")
+        return ("numero", value, cls)
     if text.strip() == "":
         return ("vuoto", "", "")
     months = _text_months(text) if len(text) <= 40 else []
@@ -196,11 +265,12 @@ def _cell(c: ET.Element, shared: list[str], styles: list[tuple[str, bool]]) -> C
 
 
 def _read_sheet(
-    data: bytes, shared: list[str], styles: list[tuple[str, bool]]
+    data: bytes, shared: list[str], styles: list[str], epoch: int
 ) -> dict[int, dict[int, Cell]]:
+    _check_text(data)
     rows: dict[int, dict[int, Cell]] = {}
-    last_row = 0
-    for row in _xml(data).iter():
+    last_row = cells = 0
+    for _, row in ET.iterparse(io.BytesIO(data), events=("end",)):
         if _tag(row) != "row":
             continue
         last_row = int(row.get("r", last_row + 1))
@@ -210,65 +280,85 @@ def _read_sheet(
         for c in row:
             if _tag(c) != "c":
                 continue
-            last_col = _column_index(c.get("r")) if c.get("r") else last_col + 1
-            if last_col > MAX_COLS:
+            last_col = _column_index(c.get("r") or "") if c.get("r") else last_col + 1
+            cells += 1
+            if last_col > MAX_COLS or cells > MAX_CELLS:
                 raise _Rejected(BAD_FILE)
-            cell = _cell(c, shared, styles)
+            cell = _cell(c, shared, styles, epoch)
             if cell[0] != "vuoto":
                 rows.setdefault(last_row, {})[last_col] = cell
+        row.clear()
     return rows
 
 
-def _sheet_paths(zf: zipfile.ZipFile, budget: list[int]) -> list[tuple[str, str]]:
+def _workbook(zf: zipfile.ZipFile, budget: list[int]) -> tuple[list[tuple[int, str, bool]], int]:
+    """(position, member path, hidden) of every sheet, and the epoch ordinal of the date system."""
     workbook = _member(zf, "xl/workbook.xml", budget)
     rels = _member(zf, "xl/_rels/workbook.xml.rels", budget)
     if workbook is None or rels is None:
         raise _Rejected(BAD_FILE)
     targets = {r.get("Id"): r.get("Target", "") for r in _xml(rels) if _tag(r) == "Relationship"}
+    epoch = date(1899, 12, 30).toordinal()
     found = []
-    for sheet in _xml(workbook).iter():
-        if _tag(sheet) != "sheet":
+    for node in _xml(workbook).iter():
+        if _tag(node) == "workbookPr" and node.get("date1904", "").lower() in ("1", "true"):
+            epoch = date(1904, 1, 1).toordinal()
+        if _tag(node) != "sheet":
             continue
-        target = next((v for k, v in sheet.attrib.items() if k.endswith("}id")), None)
+        target = next((v for k, v in node.attrib.items() if k.endswith("}id")), None)
         path = targets.get(target or "", "")
         path = path.lstrip("/") if path.startswith("/") else posixpath.normpath(f"xl/{path}")
         if not path or path.startswith(".."):
             raise _Rejected(BAD_FILE)
-        found.append((sheet.get("name", ""), path))
+        found.append((len(found) + 1, path, node.get("state", "visible") != "visible"))
     if not found or len(found) > MAX_SHEETS:
         raise _Rejected(BAD_FILE)
-    return found
+    return found, epoch
 
 
-def _label(cell: Cell) -> str:
-    """A header label, masked when it looks like data rather than a label."""
-    text = cell[1].strip()
-    if len(text) > 40 or re.search(r"\d{5,}", text):
-        return f"(testo di {len(text)} caratteri)"
-    return text
+def _label(cell: Cell, col: int, known: set[str]) -> str:
+    """The label only if it is in the allowlist; otherwise a description without content."""
+    if cell[0] == "testo":
+        name = _normalise(cell[1])
+        if name in known:
+            return name
+        return f"(colonna {col}, testo di {len(cell[1].strip())} caratteri)"
+    return f"(colonna {col}, {cell[0]})"
 
 
-def _is_header(cells: dict[int, Cell]) -> bool:
-    return len(cells) >= 3 and all(c[0] == "testo" for c in cells.values())
+def _header_row(rows: dict[int, dict[int, Cell]], known: set[str]) -> int | None:
+    best, best_row = 0, None
+    for r in sorted(rows)[:HEADER_SCAN_ROWS]:
+        score = sum(1 for c in rows[r].values() if c[0] == "testo" and _normalise(c[1]) in known)
+        if score > best:
+            best, best_row = score, r
+    if best >= 2:
+        return best_row
+    return next(
+        (r for r in sorted(rows) if len(rows[r]) >= 3 and all(c[0] == "testo" for c in rows[r].values())),
+        None,
+    )
 
 
 def _preamble(cells: dict[int, Cell]) -> list[dict[str, Any]]:
     out = []
     for col in sorted(cells):
-        kind, key, _ = cells[col]
+        kind, key, month = cells[col]
         item: dict[str, Any] = {"cella": _column_letters(col), "tipo": kind}
         months = _text_months(key) if kind == "testo" else []
         if len(months) >= 2:
             item["intervallo"] = f"{min(months)}..{max(months)}"
-        elif kind == "data":
-            item["mese"] = cells[col][2]
+        elif kind == "data" and month:
+            item["mese"] = month
         out.append(item)
     return out
 
 
-def _column(
-    label: str, cells: list[Cell], code_names: set[str], rows_count: int
-) -> dict[str, Any]:
+def _band(length: int) -> str:
+    return "<=10" if length <= 10 else "<=30" if length <= 30 else ">30"
+
+
+def _column(label: str, cells: list[Cell], code: bool, rows_count: int) -> dict[str, Any]:
     kinds = Counter(c[0] for c in cells)
     prevalent = kinds.most_common(1)[0][0] if cells else "vuoto"
     distinct = {c[1] for c in cells}
@@ -281,73 +371,88 @@ def _column(
     }
     texts = [len(c[1]) for c in cells if c[0] == "testo"]
     if texts:
-        info["lunghezza_testo"] = [min(texts), max(texts)]
+        info["fascia_lunghezza_testo"] = _band(max(texts))
     if prevalent == "numero":
-        info["formato"] = Counter(c[2] for c in cells if c[0] == "numero").most_common(1)[0][0]
+        info["classe_formato"] = Counter(c[2] for c in cells if c[0] == "numero").most_common(1)[0][0]
     if prevalent == "data":
-        months = sorted(c[2] for c in cells if c[0] == "data")
-        info["primo_mese"], info["ultimo_mese"] = months[0], months[-1]
-    if " ".join(label.casefold().split()) in code_names and len(distinct) <= LOW_CARDINALITY:
-        info["valori"] = sorted(v if len(v) <= 30 else "(lungo)" for v in distinct)
+        months = sorted(c[2] for c in cells if c[0] == "data" and c[2])
+        info["date_non_valide"] = sum(1 for c in cells if c[0] == "data" and not c[2])
+        if months:
+            info["primo_mese"], info["ultimo_mese"] = months[0], months[-1]
+    if code and distinct and len(distinct) <= LOW_CARDINALITY and all(CODE_PATTERN.fullmatch(v) for v in distinct):
+        info["valori"] = sorted(distinct)
     return info
 
 
-def analyse(path: Path, code_columns: tuple[str, ...], header_row: int | None) -> dict[str, Any]:
-    code_names = {" ".join(n.casefold().split()) for n in code_columns}
+def _analyse_sheet(
+    position: int,
+    rows: dict[int, dict[int, Cell]],
+    known: set[str],
+    code_names: set[str],
+    header_row: int | None,
+) -> dict[str, Any]:
+    numbers = sorted(rows)
+    header = header_row if header_row is not None else _header_row(rows, known)
+    sheet: dict[str, Any] = {
+        "foglio": position,
+        "righe": numbers[-1] if numbers else 0,
+        "colonne": max((max(r) for r in rows.values()), default=0),
+        "riga_intestazione": header,
+    }
+    if header is not None and header in rows:
+        sheet["sopra_intestazione"] = [
+            {"riga": r, "celle": _preamble(rows[r])} for r in numbers if r < header
+        ]
+        body = [rows[r] for r in numbers if r > header]
+        sheet["righe_dati"] = len(body)
+        columns = []
+        for col in sorted(rows[header]):
+            label = _label(rows[header][col], col, known)
+            columns.append(
+                _column(label, [r[col] for r in body if col in r], label in code_names, len(body))
+            )
+        sheet["colonne_dettaglio"] = columns
+    return sheet
+
+
+def analyse(
+    path: Path, code_columns: tuple[str, ...], header_row: int | None, extra_labels: str = ""
+) -> dict[str, Any]:
+    code_names = {n for n in (_normalise(c) for c in code_columns) if n}
+    known = _names(KNOWN_LABELS) | _names(extra_labels) | code_names
+    sheets: list[dict[str, Any]] = []
+    hidden = 0
     try:
         if path.stat().st_size > MAX_FILE_BYTES:
             raise _Rejected(BAD_FILE)
         budget = [0]
         with zipfile.ZipFile(path) as zf:
-            if len(zf.infolist()) > MAX_MEMBERS:
+            members = zf.infolist()
+            if len(members) > MAX_MEMBERS or sum(m.file_size for m in members) > MAX_TOTAL_BYTES:
                 raise _Rejected(BAD_FILE)
             styles = _read_styles(_member(zf, "xl/styles.xml", budget))
             shared = _read_shared(_member(zf, "xl/sharedStrings.xml", budget))
-            sheets = []
-            for name, member in _sheet_paths(zf, budget):
+            listed, epoch = _workbook(zf, budget)
+            for position, member, is_hidden in listed:
+                if is_hidden:
+                    hidden += 1
+                    continue
                 data = _member(zf, member, budget)
                 if data is None:
                     raise _Rejected(BAD_FILE)
-                sheets.append((name, _read_sheet(data, shared, styles)))
+                rows = _read_sheet(data, shared, styles, epoch)
+                sheets.append(_analyse_sheet(position, rows, known, code_names, header_row))
     except _Rejected:
         raise
     except Exception:  # BadZipFile, ParseError, OSError, ...: never echo what they quote
         raise _Rejected(BAD_FILE) from None
-    result = []
-    for name, rows in sheets:
-        numbers = sorted(rows)
-        header = header_row if header_row is not None else next(
-            (r for r in numbers if _is_header(rows[r])), None
-        )
-        sheet: dict[str, Any] = {
-            "foglio": _label(("testo", name, "")),
-            "righe": numbers[-1] if numbers else 0,
-            "colonne": max((max(r) for r in rows.values()), default=0),
-            "riga_intestazione": header,
-        }
-        if header is not None and header in rows:
-            sheet["sopra_intestazione"] = [
-                {"riga": r, "celle": _preamble(rows[r])} for r in numbers if r < header
-            ]
-            body = [rows[r] for r in numbers if r > header]
-            sheet["righe_dati"] = len(body)
-            sheet["colonne_dettaglio"] = [
-                _column(
-                    _label(rows[header][col]),
-                    [r[col] for r in body if col in r],
-                    code_names,
-                    len(body),
-                )
-                for col in sorted(rows[header])
-            ]
-        result.append(sheet)
-    return {"fogli": result}
+    return {"fogli": sheets, "fogli_nascosti_ignorati": hidden}
 
 
 def render(report: dict[str, Any]) -> str:
     lines: list[str] = []
     for sheet in report["fogli"]:
-        lines.append(f"Foglio «{sheet['foglio']}»: {sheet['righe']} righe, {sheet['colonne']} colonne")
+        lines.append(f"Foglio {sheet['foglio']}: {sheet['righe']} righe, {sheet['colonne']} colonne")
         if sheet["riga_intestazione"] is None or "colonne_dettaglio" not in sheet:
             lines.append("  Intestazione non individuata.")
             continue
@@ -367,26 +472,32 @@ def render(report: dict[str, Any]) -> str:
                 f"{col['non_vuoti']} non vuoti",
                 f"{col['distinti']} distinti",
             ]
-            if "lunghezza_testo" in col:
-                parts.append("lunghezza testo {}-{}".format(*col["lunghezza_testo"]))
-            if "formato" in col:
-                parts.append(f"formato «{col['formato']}»")
+            if "fascia_lunghezza_testo" in col:
+                parts.append(f"lunghezza testo {col['fascia_lunghezza_testo']}")
+            if "classe_formato" in col:
+                parts.append(f"formato {col['classe_formato']}")
             if "primo_mese" in col:
                 parts.append(f"da {col['primo_mese']} a {col['ultimo_mese']}")
+            if col.get("date_non_valide"):
+                parts.append(f"{col['date_non_valide']} data non valida")
             if "valori" in col:
                 parts.append("valori: " + ", ".join(f"«{v}»" for v in col["valori"]))
             lines.append(f"  Colonna «{col['intestazione']}»: " + "; ".join(parts))
+    if report["fogli_nascosti_ignorati"]:
+        lines.append(f"{report['fogli_nascosti_ignorati']} fogli nascosti ignorati")
     return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:
     out = _utf8_lf(sys.stdout if stdout is None else stdout)
     err = _utf8_lf(sys.stderr if stderr is None else stderr)
+    message = ""
     try:
         parser = _Parser(add_help=False)
         parser.add_argument("--json", action="store_true")
         parser.add_argument("--header-row", type=int)
         parser.add_argument("--code-columns")
+        parser.add_argument("--known-labels", default="")
         parser.add_argument("file")
         args = parser.parse_args(argv)
         names = (
@@ -394,19 +505,22 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
             if args.code_columns is None
             else tuple(n.strip() for n in args.code_columns.split(",") if n.strip())
         )
-        report = analyse(Path(args.file), names, args.header_row)
+        report = analyse(Path(args.file), names, args.header_row, args.known_labels)
         text = (
             json.dumps(report, ensure_ascii=False, indent=2) + "\n" if args.json else render(report)
         )
+        out.write(text)
+        out.flush()
+        return 0
     except _Rejected as rejected:  # only the constant messages above
-        err.write(f"{rejected}\n")
-        return 2
+        message = str(rejected)
+    except Exception:  # includes a closed pipe: never a traceback
+        message = INTERNAL_ERROR
+    try:
+        err.write(f"{message}\n")
     except Exception:
-        err.write("Errore interno: nessun output.\n")
-        return 2
-    out.write(text)
-    out.flush()
-    return 0
+        pass
+    return 2
 
 
 if __name__ == "__main__":
