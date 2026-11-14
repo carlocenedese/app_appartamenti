@@ -162,3 +162,8 @@ if __name__ == "__main__":
         Path(sys.argv[1]) / "lista-operazioni.xlsx",
         [{"name": "Lista", "rows": [*pre, [("i", h) for h in heads], *body]}],
     )
+    pre[8] = pre[9] = []  # the same file without the two period lines
+    build_xlsx(
+        Path(sys.argv[1]) / "lista-senza-periodo.xlsx",
+        [{"name": "Lista", "rows": [*pre, [("i", h) for h in heads], *body]}],
+    )

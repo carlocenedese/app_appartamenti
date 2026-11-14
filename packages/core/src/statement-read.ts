@@ -428,7 +428,7 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
     result.rows.push(entry);
   }
   if (declaredCount !== undefined && declaredCount !== result.rows.length) {
-    throw new StatementReadError('row-count-mismatch', countLine?.row ?? 0);
+    throw new StatementReadError('row-count-mismatch', countLine?.row ?? 0, 'rowCount');
   }
   return result;
 }

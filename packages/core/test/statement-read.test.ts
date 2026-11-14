@@ -135,6 +135,8 @@ describe('readStatementTable', () => {
         base,
       ).rows[0]?.amount,
     ).toBe(-9281);
+    // A positive amount with a debit sign is a debit: the sign says the direction, the number the size.
+    expect(readStatementTable(t(s('D')), base).rows[0]?.amount).toBe(-9281);
     // An empty Segno with a positive amount would be a silent credit: refused; a negative amount is clear.
     const empty = failure(t(null));
     expect([empty.code, empty.row]).toEqual(['unknown-sign', 2]);

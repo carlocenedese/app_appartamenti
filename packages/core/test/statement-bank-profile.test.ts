@@ -54,12 +54,18 @@ const movement = (k: number): StatementCell[] => [
   s('EUR'),
   n(k % 4 === 0 ? `${String(50 + k)}.00` : `-${String(10 + k)}.35`),
 ];
-type Pre = { count?: StatementCell; from?: StatementCell; to?: StatementCell; label?: string };
+type Pre = {
+  account?: string;
+  count?: StatementCell;
+  from?: StatementCell;
+  to?: StatementCell;
+  label?: string;
+};
 /** The shape of the real file: preamble in B/C, header on row 18, 16 movements (or `rows`). */
 function realShape(pre: Pre = {}, rows = 16, tail: StatementCell[][] = []): StatementTable {
   const top: StatementCell[][] = Array.from({ length: 17 }, () => []);
   top[1] = [null, s('Lista operazioni')];
-  top[3] = [null, s('Conti e Carte'), s(`Conto 123456 / ${ACCOUNT}`)];
+  top[3] = [null, s('Conti e Carte'), s(pre.account ?? `Conto 123456 / ${ACCOUNT}`)];
   top[4] = [null, s('Finanziamento'), s('-')];
   top[5] = [null, s('Investimenti e previdenza'), s('-')];
   if (pre.count !== null)
@@ -112,13 +118,13 @@ describe('the profile of the bank list of operations', () => {
   it('matches the label with the same folding as the header (spaces, capitals)', () => {
     // Three spaces, other capitals: a comparison on the raw text would not find the label.
     const odd = realShape({ label: 'I   MOVIMENTI   selezionati   sono', count: n('15') });
-    expect(code(odd)).toEqual(['row-count-mismatch', 8, undefined]);
+    expect(code(odd)).toEqual(['row-count-mismatch', 8, 'rowCount']);
     // The profile may be written with other spaces too.
     const p = withPreamble({
       ...real.preamble,
       rowCount: { label: ' i movimenti  selezionati sono ' },
     });
-    expect(code(odd, p)).toEqual(['row-count-mismatch', 8, undefined]);
+    expect(code(odd, p)).toEqual(['row-count-mismatch', 8, 'rowCount']);
   });
 
   it('refuses a row count that differs from the rows read, with the row of the label only', () => {
@@ -140,6 +146,22 @@ describe('the profile of the bank list of operations', () => {
     const empty = realShape(); // the label is there, its value is not
     (empty.sheets[0]?.rows[7] ?? [])[2] = null;
     expect(code(empty)).toEqual(['bad-row-count', 8, 'rowCount']);
+  });
+
+  it('accepts a row count written 16.0 or 16.00', () => {
+    for (const text of ['16.0', '16.00']) {
+      expect(readStatementTable(realShape({ count: n(text) }), real).rows).toHaveLength(16);
+    }
+  });
+
+  it('trims the account cell before the anchored pattern', () => {
+    for (const text of [
+      'Conto 123456 / 7654321 ',
+      '  Conto 123456 / 7654321',
+      ' \u00a0Conto 123456 / 7654321\t ',
+    ]) {
+      expect(readStatementTable(realShape({ account: text }), real).declaredAccount).toBe(ACCOUNT);
+    }
   });
 
   it('does not check anything when the file has no row count line', () => {
@@ -297,5 +319,59 @@ describe('importing the bank list of operations', () => {
       ),
     ).rejects.toMatchObject({ code: 'row-count-mismatch' });
     expect(await store.list('_app/dati/transaction')).toEqual([]);
+  });
+
+  const tryImport = async (
+    iban: string,
+    table: StatementTable,
+    period?: { from: string; to: string },
+  ) => {
+    const { store, accountId } = await seeded(iban);
+    return importStatement(
+      store,
+      {
+        accountId,
+        fileBytes: bytes,
+        fileName: 'a.xlsx',
+        table,
+        ...(period === undefined
+          ? {}
+          : { period: { from: isoDate(period.from), to: isoDate(period.to) } }),
+      },
+      'p1',
+      clock,
+      ids('op'),
+    );
+  };
+
+  it('compares the end of the IBAN, not any part: ABI/CAB digits do not match', async () => {
+    // 428111 is inside the IBAN (ABI 05428, CAB 11101), not in its account part.
+    const r = await tryImport(ibanEndingWith(ACCOUNT), realShape({ account: 'Conto 1 / 428111' }));
+    expect(r).toEqual({ status: 'rejected', reason: 'wrong-account' });
+  });
+
+  it('refuses a declared number of zeros or of fewer than 6 digits after the zeros', async () => {
+    const iban = ibanEndingWith('123456');
+    for (const text of ['000000', '0000012345', '23456']) {
+      const r = await tryImport(iban, realShape({ account: `Conto 1 / ${text}` }));
+      expect(r).toEqual({ status: 'rejected', reason: 'bad-declared-account' });
+    }
+  });
+
+  it('accepts exactly 6 digits, with or without leading zeros', async () => {
+    const iban = ibanEndingWith('123456');
+    for (const text of ['123456', '000123456']) {
+      const r = await tryImport(iban, realShape({ account: `Conto 1 / ${text}` }));
+      expect(r).toMatchObject({ status: 'imported', added: 16 });
+    }
+  });
+
+  it('a file without the period lines declares no period: needs-period, then the given one', async () => {
+    const t = realShape({ from: null, to: null });
+    expect(readStatementTable(t, real).declaredPeriod).toBeUndefined();
+    const iban = ibanEndingWith(ACCOUNT);
+    expect(await tryImport(iban, t)).toEqual({ status: 'rejected', reason: 'needs-period' });
+    const given = { from: '2026-10-01', to: '2026-10-31' };
+    expect(await tryImport(iban, t, given)).toMatchObject({ status: 'imported', added: 16 });
   });
 });

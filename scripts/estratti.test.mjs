@@ -511,6 +511,29 @@ describe.skipIf(!availability.available)('pnpm estratti con il profilo della ban
       expect(run.code).toBe(0);
       expect(run.json).toMatchObject({ status: 'imported', added: 16, alreadyKnown: 0, held: 0 });
       expect(scanText(run.out)).toEqual([]);
+      // The period is the one of the preamble.
+      const saved = JSON.parse(
+        readFileSync(
+          join(s.dir, '_app', 'dati', 'statement', `${run.json.statementId}.json`),
+          'utf8',
+        ),
+      );
+      expect([saved.from, saved.to, saved.periodSource]).toEqual([
+        '2026-10-01',
+        '2026-10-31',
+        'file',
+      ]);
+      // Without the period lines the file needs --dal and --al.
+      const bare = join(folder, 'lista-senza-periodo.xlsx');
+      const t = await setup({ profile: REAL, iban: ibanEndingWith('7654321') });
+      const needs = importFile(t, bare, []);
+      expect(needs.code).toBe(1);
+      expect(needs.json).toMatchObject({
+        status: 'rejected',
+        reason: 'needs-period',
+        message: 'Rifiutato: serve il periodo (--dal e --al).',
+      });
+      expect(importFile(t, bare).json).toMatchObject({ status: 'imported', added: 16 });
       const other = await setup({ profile: REAL, iban: ibanEndingWith('1234567') });
       const wrong = importFile(other, file, []);
       expect(wrong.code).toBe(1);
