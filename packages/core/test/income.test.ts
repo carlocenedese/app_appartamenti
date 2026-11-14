@@ -502,6 +502,30 @@ describe('reconcileIncome, phase «che cosa»', () => {
     expect(result.proposals).toEqual([cosa('x2', 'undone')]);
   });
 
+  it('an undone transaction blocks the later ones of the same tenant (earlier-open), not other tenants', () => {
+    const t2 = [payer(), payer({ id: 'pr2', key: `iban:${OTHER_IBAN}`, tenantId: 't2' })];
+    const result = reconcileIncome(
+      input({
+        payers: t2,
+        tenancies: [tenancy({}), tenancy({ id: 'ten2', tenantId: 't2', room: 'B' })],
+        payments: [payment({ ...auto('x2', '2026-02-03', '2026-02'), rev: 2, deleted: true })],
+        transactions: [
+          tx('x1', '2026-01-05'),
+          tx('x2', '2026-02-03'),
+          tx('x3', '2026-03-03'),
+          tx('y1', '2026-01-05', 45000, OTHER_IBAN),
+          tx('y2', '2026-02-03', 45000, OTHER_IBAN),
+          tx('y3', '2026-03-03', 45000, OTHER_IBAN),
+        ],
+      }),
+    );
+    expect(result.payments.map((p) => p.id)).toEqual(['pay-x1', 'pay-y1', 'pay-y2', 'pay-y3']);
+    expect(result.proposals.map((p) => [p.id, p.reason])).toEqual([
+      ['p-cosa-x2', 'undone'],
+      ['p-cosa-x3', 'earlier-open'],
+    ]);
+  });
+
   it('shuffled input gives the same result, and rerunning with the drafts adds nothing', () => {
     const tenancies = [
       tenancy({ id: 'ten1', to: '2026-03' }),

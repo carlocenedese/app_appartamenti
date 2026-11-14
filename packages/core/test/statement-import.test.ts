@@ -504,7 +504,13 @@ describe('importStatement', () => {
 
 describe('undoImport with payments', () => {
   const payIds = ids('pay');
-  const pay = async (store: MemoryStore, id: string, transactionId: string, deleted?: true) => {
+  const pay = async (
+    store: MemoryStore,
+    id: string,
+    transactionId: string,
+    deleted?: true,
+    source: 'csv' | 'manual' | 'excel' = 'csv',
+  ) => {
     const after = PaymentSchema.parse({
       id,
       v: 1,
@@ -516,7 +522,7 @@ describe('undoImport with payments', () => {
       amount: 1000,
       confirmed: true,
       kind: 'canone',
-      source: 'csv',
+      source,
       transactionId,
     });
     const op = await commitChange(
@@ -564,6 +570,19 @@ describe('undoImport with payments', () => {
       paymentIds: ['pay-a', 'pay-b'],
     });
     expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('a live payment of any source on a movement blocks (manual, excel)', async () => {
+    const { store, newId, r, txs } = await imported();
+    const [a, b] = txs.map((t) => t.id).sort();
+    if (a === undefined || b === undefined) throw new Error('x');
+    await pay(store, 'pay-m', a, undefined, 'manual');
+    await pay(store, 'pay-x', b, undefined, 'excel');
+    expect(await undoImport(store, r.statement.id, 'p1', clock, newId)).toEqual({
+      status: 'refused',
+      reason: 'dependent-payments',
+      paymentIds: ['pay-m', 'pay-x'],
+    });
   });
 
   it('undoes once the payments are gone, and a payment on an already-known movement does not block', async () => {

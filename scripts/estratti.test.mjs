@@ -866,4 +866,54 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
     },
     TIMEOUT,
   );
+
+  it(
+    'annulla-incassi: dependent-payments si risolve (incassi, poi estratto); altre operazioni rifiutate; --prova = 2',
+    async () => {
+      const s = await incomeSetup();
+      const imp = month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const conf = cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't1',
+        '--parte',
+        'canone:2026-10:850,00',
+      ]);
+      const blocked = cli(['annulla', ...s.common, '--estratto', imp.json.statementId]);
+      expect(blocked.code).toBe(1);
+      expect(blocked.json.reason).toBe('dependent-payments');
+
+      const undo = (args) => cli(['annulla-incassi', ...s.common, ...args]);
+      expect(undo([]).code).toBe(2);
+      expect(undo(['--operazione', conf.json.operationId, '--prova']).code).toBe(2);
+      const unknown = undo(['--operazione', 'nessuna']);
+      expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-operation']);
+      const other = undo(['--operazione', blocked.json.operationId ?? 'x']);
+      expect(other.code).toBe(1);
+      const imported = readdirSync(join(s.dir, '_app', 'journal'))
+        .map((f) => JSON.parse(readFileSync(join(s.dir, '_app', 'journal', f), 'utf8')))
+        .find((o) => o.kind === 'statement.import');
+      const refused = undo(['--operazione', imported.id]);
+      expect(refused.json).toMatchObject({ status: 'rejected', reason: 'not-income-operation' });
+      expect(refused.code).toBe(1);
+
+      const snap = snapshot(s.dir);
+      const done = undo(['--operazione', conf.json.operationId]);
+      expect(done.code).toBe(0);
+      expect(done.json).toMatchObject({ status: 'undone' });
+      expect(snapshot(s.dir)).not.toEqual(snap);
+      const again = undo(['--operazione', conf.json.operationId]);
+      expect([again.code, again.json.reason]).toEqual([1, 'already-undone']);
+      // The payment is deleted and the payer with it: the statement can be undone now.
+      const gone = cli(['annulla', ...s.common, '--estratto', imp.json.statementId]);
+      expect(gone.code).toBe(0);
+      const all = [done.out, refused.out, again.out].join('');
+      for (const secret of [NAME, CAUSALE, IBAN, '850']) expect(all).not.toContain(secret);
+    },
+    TIMEOUT,
+  );
 });

@@ -33,6 +33,7 @@ import {
   loadAll,
   parseCsv,
   parseEuro,
+  readJournal,
   repairDiverged,
   resolveHeld,
   runReconcile,
@@ -40,6 +41,7 @@ import {
   saveBankProfile,
   saveTenant,
   undoImport,
+  undoOperation,
 } from '../packages/core/src/index.ts';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -80,6 +82,11 @@ const MESSAGES = {
   'sum-mismatch': 'Rifiutato: la somma delle parti non è l’importo del movimento.',
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
+  'not-income-operation':
+    'Rifiutato: si annullano solo le operazioni degli incassi (riconciliazione o conferma).',
+  'unknown-operation': 'Rifiutato: operazione sconosciuta.',
+  'already-undone': 'Rifiutato: l’operazione è già stata annullata.',
+  'has-dependents': 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
 };
 
@@ -116,6 +123,7 @@ const OPTIONS = {
   prova: { type: 'boolean' },
   proposta: { type: 'string' },
   inquilino: { type: 'string' },
+  operazione: { type: 'string' },
   parte: { type: 'string', multiple: true },
   'solo-questa-volta': { type: 'boolean' },
 };
@@ -420,6 +428,27 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'annulla-incassi') {
+    need(values, 'operazione');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const { operations } = await readJournal(store);
+    const target = operations.find((o) => o.id === values.operazione);
+    if (target === undefined) throw new Stop('rejected', 'unknown-operation');
+    if (!['income.reconcile', 'income.confirm'].includes(target.kind)) {
+      throw new Stop('rejected', 'not-income-operation');
+    }
+    try {
+      const undone = await undoOperation(store, target.id, who, clock, newId);
+      return { status: 'undone', operationId: undone.id };
+    } catch (error) {
+      const text = error instanceof Error ? error.message : '';
+      if (text.includes('was already undone')) throw new Stop('rejected', 'already-undone');
+      if (text.includes('depend on it')) throw new Stop('rejected', 'has-dependents');
+      if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
+      throw error;
+    }
+  }
+
   if (name === 'ripara') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     // Writes each record as its latest operation in the journal says; one that is newer on disk is left.
@@ -476,6 +505,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'riconcilia',
         'conferma',
         'ripara',
+        'annulla-incassi',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
