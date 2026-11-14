@@ -226,18 +226,11 @@ class OcrAnyOfTest(unittest.TestCase):
         self.assertEqual(matching_profiles(doc, [profile(recognise={
             "allOf": ["frase lunga"], "noneOf": []})]), [])
 
-    def test_seed_profiles_have_one_supplier_word_never_shared_between_suppliers(self) -> None:
+    def test_no_seed_profile_declares_ocr_any_of(self) -> None:
+        # Carlo's decision (R92): scans are not recognised by supplier words.
         profiles, warnings = load_profiles(SEED_DIR)
         self.assertEqual(warnings, [])
-        owners: dict[str, set[str]] = {}
-        for item in profiles:
-            words = item["recognise"].get("ocrAnyOf", [])
-            self.assertEqual(len(words), 1, item["id"])
-            word = normalize_ocr(words[0])
-            self.assertEqual(word, words[0], item["id"])
-            owners.setdefault(word, set()).add(item["supplier"])
-        self.assertTrue(all(len(suppliers) == 1 for suppliers in owners.values()), owners)
-        self.assertFalse({"kwh", "smc", "idrico", "tari"} & set(owners), owners)
+        self.assertEqual([p["id"] for p in profiles if "ocrAnyOf" in p["recognise"]], [])
 
     def test_scan_of_another_supplier_with_a_service_word_matches_no_seed_profile(self) -> None:
         profiles, _ = load_profiles(SEED_DIR)
@@ -250,10 +243,10 @@ class OcrAnyOfTest(unittest.TestCase):
         doc = fake_doc({1: ["Enel Energia", "luce"], 2: ["Allegato", "HERA 120 kWh"]}, "mixed", (2,))
         self.assertEqual([p["id"] for p in matching_profiles(doc, profiles)], ["enel-luce-2020"])
 
-    def test_scan_with_a_supplier_word_is_recognised_by_that_supplier_only(self) -> None:
+    def test_scan_with_a_supplier_word_matches_no_seed_profile(self) -> None:
         profiles, _ = load_profiles(SEED_DIR)
         doc = fake_doc({1: ["HERA Comm", "1200 kWh"]}, "ocr", (1,))
-        self.assertEqual({p["supplier"] for p in matching_profiles(doc, profiles)}, {"Hera Comm"})
+        self.assertEqual(matching_profiles(doc, profiles), [])
 
 
 if __name__ == "__main__":

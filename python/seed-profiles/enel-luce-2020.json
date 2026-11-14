@@ -10,8 +10,7 @@
   "validFrom": "2020-01-01",
   "recognise": {
     "allOf": ["enel energia"],
-    "noneOf": [],
-    "ocrAnyOf": ["enel"]
+    "noneOf": []
   },
   "fields": {
     "number": {
