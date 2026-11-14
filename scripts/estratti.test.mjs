@@ -12,11 +12,15 @@ import {
   pythonInterpreter,
 } from '../packages/core/test/helpers/python-extract.ts';
 import { scanText } from './check-personal-data.mjs';
+import { ibanEndingWith } from '../packages/core/test/helpers/iban-build.ts';
 import { main } from './estratti.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FIXTURE = JSON.parse(
   readFileSync(join(ROOT, 'fixtures', 'bank', 'profilo-sintetico.json'), 'utf8'),
+);
+const REAL = JSON.parse(
+  readFileSync(join(ROOT, 'fixtures', 'bank', 'profilo-banca-lista-operazioni.json'), 'utf8'),
 );
 const IBAN = 'IT60X0542' + '811101000000123456';
 const LABEL = 'Etichetta-segreta';
@@ -484,6 +488,33 @@ describe.skipIf(!availability.available)('pnpm estratti con un XLSX', () => {
       );
       expect(run.status).toBe(2);
       expect(run.stdout + run.stderr).not.toContain('privato');
+    },
+    TIMEOUT,
+  );
+});
+
+describe.skipIf(!availability.available)('pnpm estratti con il profilo della banca', () => {
+  it(
+    'importa il file sintetico della stessa forma: 16 righe, periodo dal preambolo, conto riconosciuto',
+    async () => {
+      const folder = join(root, 'lista');
+      mkdirSync(folder);
+      const built = spawnSync(
+        pythonInterpreter(),
+        ['-I', join(ROOT, 'python', 'tests', 'xlsx_builder.py'), folder],
+        { encoding: 'utf8' },
+      );
+      expect(built.status).toBe(0);
+      const file = join(folder, 'lista-operazioni.xlsx');
+      const s = await setup({ profile: REAL, iban: ibanEndingWith('7654321') });
+      const run = importFile(s, file, []); // no --dal/--al: the period is in the file
+      expect(run.code).toBe(0);
+      expect(run.json).toMatchObject({ status: 'imported', added: 16, alreadyKnown: 0, held: 0 });
+      expect(scanText(run.out)).toEqual([]);
+      const other = await setup({ profile: REAL, iban: ibanEndingWith('1234567') });
+      const wrong = importFile(other, file, []);
+      expect(wrong.code).toBe(1);
+      expect(wrong.json.reason).toBe('wrong-account');
     },
     TIMEOUT,
   );

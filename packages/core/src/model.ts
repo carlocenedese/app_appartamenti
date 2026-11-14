@@ -685,6 +685,8 @@ export type Account = z.infer<typeof AccountSchema>;
 /** Never empty: a profile with no label to look for would recognise any file. */
 const LabelsSchema = z.array(NonEmptyString).min(1);
 
+const PreambleLabelSchema = z.object({ label: NonEmptyString });
+
 export const BankProfileSchema = RecordBaseSchema.extend({
   bank: NonEmptyString,
   validFrom: ISODateSchema,
@@ -715,6 +717,19 @@ export const BankProfileSchema = RecordBaseSchema.extend({
   periodPattern: PatternSchema.optional(),
   /** One group: the account number or IBAN written in the file. */
   accountPattern: PatternSchema.optional(),
+  /**
+   * Lines above the header written as "label, value to its right" (the label is compared with
+   * `foldText`, the value is the first non-empty cell to its right): the period, the account (one
+   * capture group) and the number of movement rows, a completeness check.
+   */
+  preamble: z
+    .object({
+      periodFrom: PreambleLabelSchema.optional(),
+      periodTo: PreambleLabelSchema.optional(),
+      account: z.object({ label: NonEmptyString, pattern: PatternSchema }).optional(),
+      rowCount: PreambleLabelSchema.optional(),
+    })
+    .optional(),
 })
   .refine(
     ({ columns: c }) =>
@@ -750,11 +765,29 @@ export const BankProfileSchema = RecordBaseSchema.extend({
     message: 'accountPattern needs one group',
     path: ['accountPattern'],
   })
+  .refine((p) => (p.preamble?.periodFrom === undefined) === (p.preamble?.periodTo === undefined), {
+    message: 'preamble needs periodFrom and periodTo together',
+    path: ['preamble'],
+  })
+  .refine((p) => p.preamble?.account === undefined || hasGroups(p.preamble.account.pattern, 1), {
+    message: 'preamble.account.pattern needs one group',
+    path: ['preamble', 'account', 'pattern'],
+  })
+  .refine((p) => p.periodPattern === undefined || p.preamble?.periodFrom === undefined, {
+    message: 'ambiguous-profile: periodPattern and preamble.periodFrom/periodTo, choose one',
+    path: ['periodPattern'],
+  })
+  .refine((p) => p.accountPattern === undefined || p.preamble?.account === undefined, {
+    message: 'ambiguous-profile: accountPattern and preamble.account, choose one',
+    path: ['accountPattern'],
+  })
   .meta({
     description:
       'Either columns.amount, or columns.debit and columns.credit together; columns.sign needs ' +
       'columns.amount and signValues; columns.pending needs pendingValues; validFrom must not be ' +
-      'after validTo; periodPattern has at least two capture groups, accountPattern at least one.',
+      'after validTo; periodPattern has at least two capture groups, accountPattern at least one; ' +
+      'preamble has periodFrom and periodTo together, its account pattern one group, and it does not ' +
+      'coexist with periodPattern (period) or accountPattern (account).',
   });
 export type BankProfile = z.infer<typeof BankProfileSchema>;
 

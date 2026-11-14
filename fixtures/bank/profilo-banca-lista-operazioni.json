@@ -1,0 +1,32 @@
+{
+  "id": "profilo-banca-lista-operazioni",
+  "v": 1,
+  "rev": 1,
+  "bank": "Banca (lista operazioni)",
+  "validFrom": "2020-01-01",
+  "container": "xlsx",
+  "header": {
+    "allOf": [
+      "Data",
+      "Operazione",
+      "Dettagli",
+      "Conto o carta",
+      "Contabilizzazione",
+      "Categoria",
+      "Valuta",
+      "Importo"
+    ]
+  },
+  "columns": {
+    "date": "Data",
+    "description": ["Operazione", "Dettagli"],
+    "amount": "Importo"
+  },
+  "dateFormat": "DD/MM/YYYY",
+  "preamble": {
+    "periodFrom": { "label": "Data inizio periodo" },
+    "periodTo": { "label": "Data fine periodo" },
+    "account": { "label": "Conti e Carte", "pattern": "^Conto\\s\\d{1,12}\\s?/\\s?(\\d{1,20})$" },
+    "rowCount": { "label": "I  movimenti selezionati sono" }
+  }
+}

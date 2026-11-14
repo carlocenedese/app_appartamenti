@@ -66,6 +66,9 @@ function importSummary(added: number, held: number): string {
  * part of the IBAN), the period, and every row inside the period. A rejection writes nothing.
  * Errors of `readStatementTable` are thrown.
  */
+/** Shortest declared account number that is compared with the IBAN (`includes`). */
+const MIN_DECLARED_ACCOUNT = 6;
+
 export async function importStatement(
   store: Store,
   input: {
@@ -108,10 +111,13 @@ export async function importStatement(
 
   const read = readStatementTable(input.table, bankProfile);
   const dec = read.declaredAccount;
-  // An empty capture would be contained in any IBAN; a masked number cannot be compared (R106).
-  if (dec === '') return { status: 'rejected', reason: 'bad-declared-account' };
+  // A masked number cannot be compared; an empty or short capture (`IT60`) would be contained in
+  // almost any IBAN (R106, R108).
   if (dec !== undefined && /[*•#]/.test(dec)) {
     return { status: 'rejected', reason: 'masked-account' };
+  }
+  if (dec !== undefined && dec.length < MIN_DECLARED_ACCOUNT) {
+    return { status: 'rejected', reason: 'bad-declared-account' };
   }
   if (dec !== undefined && (account.iban === undefined || !account.iban.includes(dec))) {
     return { status: 'rejected', reason: 'wrong-account' };
