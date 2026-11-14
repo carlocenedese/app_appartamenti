@@ -380,6 +380,19 @@ describe('readStatementTable', () => {
       '.*.*.*.*x',
       'a{0,41}',
       'a*a*a?a?b',
+      'a*a*a?b',
+      '\\w{0,40}\\w{0,40}\\w{0,40}\\w?b',
+      '.{0,40}.{0,40}.{0,40}.?b',
+      'a{1,40}a{1,40}a{1,40}b',
+      'a{00000000000000,}a{00000000000000,}a{00000000000000,}a{00000000000000,}b',
+      'a{00040}b',
+      'a{0,0040}b',
+      'a{1, }b',
+      'a{5,}b',
+      'a{5,}a{5,}a{5,}b',
+      'a{5,}a{0,40}a?b',
+      'a{1,2000}b',
+      'a{ 2}b',
       'a{0,40}a{0,40}a*a*b',
       '(a)\\1',
       '(?=a)b',
@@ -402,7 +415,9 @@ describe('readStatementTable', () => {
       'a{0,40}b',
       '(a{2})b',
       'a*a*b',
-      'a*a*a?b',
+      'a{1,}a{0,}b',
+      'a*\\w{1,40}b',
+      '.*a{0,40}b',
       'a{0,40}a{0,40}b',
       '(a|a)(a|a)(a|a)(a|a)b',
       '(a+)b(c+)',
@@ -425,6 +440,17 @@ describe('readStatementTable', () => {
           expect(performance.now() - t0, pattern).toBeLessThan(100);
         }
       }
+    });
+    it('refuses a pattern that does not compile, and trims the cell before matching', () => {
+      for (const bad of ['*a', 'a**', 'a{2}{3}', 'a+*']) {
+        const p = { ...base, accountPattern: bad } as BankProfile;
+        const e = failure(table([s('x')], HEADER), p);
+        expect([e.code, e.row]).toEqual(['unsafe-pattern', 0]);
+      }
+      const p = { ...base, accountPattern: '^conto (\\w+)$' } as BankProfile;
+      expect(readStatementTable(table([s('  conto ABC \u00a0')], HEADER), p).declaredAccount).toBe(
+        'ABC',
+      );
     });
     it('readStatementTable refuses a rejected pattern without running it', () => {
       for (const bad of ['(a|aa)+$', '.*.*.*.*x', 'a*a*a*a*a*a*b']) {

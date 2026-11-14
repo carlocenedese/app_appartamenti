@@ -51,22 +51,29 @@ const MAX_PATTERN_INPUT = 300;
 const MAX_PATTERN_LENGTH = 200;
 /** Largest `m` of a `{n,m}` quantifier. */
 const MAX_BOUNDED = 40;
-/** Largest product of the choices the quantifiers and alternations can make (see `isSafePattern`). */
-const MAX_CHOICES = MAX_PATTERN_INPUT * MAX_PATTERN_INPUT * 2;
+/**
+ * Largest product of the choices of `{n,m}` (m-n+1), `?` (2) and `|` (2), by the number of
+ * unbounded quantifiers: they multiply, so one unbounded quantifier leaves little room and two
+ * leave none. Measured on 300 hostile characters (see R102).
+ */
+const BOUNDED_CHOICES = [2000, 44, 1] as const;
 
 /**
  * Whether `pattern` is in a subset that is cheap by construction, found by parsing it (not by
  * matching text against it); everything else is refused. The rules:
  * 1. at most two unbounded quantifiers (`*`, `+`, `{n,}`) in the whole pattern;
  * 2. no quantifier of any kind on a group that holds a quantifier or an alternation `|`;
- * 3. `{n,m}` only with m <= 40;
+ * 3. `{n,m}` only with m <= 40, and only the canonical writing of a brace quantifier (no leading
+ *    zero, no space, at most three digits): anything else that starts like one is refused; `{n,}`
+ *    only with n <= 1;
  * 4. no backreference and no lookaround (only `(...)` and `(?:...)`);
- * 5. the product of the choices (an unbounded quantifier counts 300, `{n,m}` m-n+1, `?` 2, each
- *    `|` 2) is at most 300 x 300 x 2, so alternations stay out of repeated groups and cannot pile up.
- * Backtracking then takes at most 300 (start positions) x that product steps on an input of at
- * most 300 characters, and the typical patterns of a bank profile are well inside. The measured
- * worst cases are under 100 ms. A linear-time engine (RE2) or a worker with a timeout would lift
- * the limits: a future decision, since the patterns come from profiles we write, not from files.
+ * 5. the product of the choices of `{n,m}`, `?` and `|` stays within `BOUNDED_CHOICES[unbounded]`
+ *    (2000, 44 or 1), so alternations stay out of repeated groups and cannot pile up;
+ * 6. the pattern is at most 200 characters.
+ * The input is at most 300 characters, so the work is bounded by construction, and every pattern
+ * accepted measured under 100 ms in the worst case tried (R102). A linear-time engine (RE2) or a
+ * worker with a timeout would lift the limits: a future decision, since the patterns come from
+ * profiles we write, not from hostile files.
  */
 export function isSafePattern(pattern: string): boolean {
   if (pattern.length > MAX_PATTERN_LENGTH) return false;
@@ -74,7 +81,7 @@ export function isSafePattern(pattern: string): boolean {
     { quantified: false, alternation: false },
   ];
   let unbounded = 0;
-  let choices = 1;
+  let bounded = 1; // product of the choices of `{n,m}`, `?` and `|`
   let i = 0;
   const top = (): { quantified: boolean; alternation: boolean } =>
     groups[groups.length - 1] as { quantified: boolean; alternation: boolean };
@@ -85,22 +92,25 @@ export function isSafePattern(pattern: string): boolean {
     let factor: number;
     if (c === '*' || c === '+') {
       unbounded += 1;
-      factor = MAX_PATTERN_INPUT;
+      factor = 1;
       i += 1;
     } else if (c === '?') {
       factor = 2;
       i += 1;
     } else if (c === '{') {
-      const m = /^\{(\d+)(?:(,)(\d*))?\}/.exec(pattern.slice(i, i + 12));
-      if (m === null) return undefined; // not a quantifier: a literal brace
+      // Only the canonical forms {n}, {n,} and {n,m} (no leading zero, at most 3 digits, no space);
+      // anything else that starts like a quantifier is refused, never read leniently.
+      const m = /^\{(0|[1-9]\d{0,2})(?:(,)([1-9]\d{0,2})?)?\}/.exec(pattern.slice(i, i + 12));
+      if (m === null) return /^\{[\d, ]/.test(pattern.slice(i, i + 2)) ? false : undefined; // else a literal brace
       const low = Number(m[1]);
       i += m[0].length;
       if (m[2] === undefined) {
         if (low > MAX_BOUNDED) return false;
         factor = 1;
-      } else if (m[3] === '') {
+      } else if (m[3] === undefined) {
+        if (low > 1) return false; // `{5,}` repeats five atoms before it loops: measured 3x slower
         unbounded += 1;
-        factor = MAX_PATTERN_INPUT;
+        factor = 1;
       } else {
         const high = Number(m[3]);
         if (high > MAX_BOUNDED || high < low) return false;
@@ -108,8 +118,8 @@ export function isSafePattern(pattern: string): boolean {
       }
     } else return undefined;
     if (pattern[i] === '?') i += 1; // lazy
-    choices *= factor;
-    return unbounded <= 2 && choices <= MAX_CHOICES;
+    bounded *= factor;
+    return unbounded <= 2 && bounded <= (BOUNDED_CHOICES[unbounded] as number);
   };
 
   while (i < pattern.length) {
@@ -138,8 +148,8 @@ export function isSafePattern(pattern: string): boolean {
       i += 1;
     } else if (c === '|') {
       top().alternation = true;
-      choices *= 2;
-      if (choices > MAX_CHOICES) return false;
+      bounded *= 2;
+      if (bounded > BOUNDED_CHOICES[0]) return false;
       i += 1;
       continue;
     } else i += 1;
@@ -155,18 +165,24 @@ export function isSafePattern(pattern: string): boolean {
       top().alternation ||= group.alternation;
     }
   }
-  return groups.length === 1;
+  return groups.length === 1 && bounded <= (BOUNDED_CHOICES[unbounded] as number);
 }
 
 function safePattern(pattern: string | undefined): RegExp | undefined {
   if (pattern === undefined) return undefined;
   // Row 0: the profile is at fault, not a row of the file.
   if (!isSafePattern(pattern)) throw new StatementReadError('unsafe-pattern', 0);
-  return new RegExp(pattern);
+  try {
+    return new RegExp(pattern);
+  } catch {
+    throw new StatementReadError('unsafe-pattern', 0); // e.g. `*a`, `a**`, `a{2}{3}`
+  }
 }
 
 function exec(re: RegExp | undefined, text: string): RegExpExecArray | null {
-  return re === undefined || text.length > MAX_PATTERN_INPUT ? null : re.exec(text);
+  // The cell is trimmed first: a profile writes `(\\d+)`, not `^\\s*(\\d+)\\s*$`.
+  const input = text.trim();
+  return re === undefined || input.length > MAX_PATTERN_INPUT ? null : re.exec(input);
 }
 
 const text = (cell: StatementCell | undefined): string =>
