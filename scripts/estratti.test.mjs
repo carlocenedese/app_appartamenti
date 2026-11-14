@@ -26,13 +26,21 @@ const ORA = '2026-11-14T09:00:00.000Z';
 const availability = pythonAvailability();
 const requiredPython = process.env.REQUIRE_PYTHON === '1';
 
-/** Runs `pnpm estratti` for real; the output is parsed JSON. */
-function cli(args) {
-  const run = spawnSync('pnpm', ['--silent', 'estratti', ...args], {
+// The script as `pnpm estratti` runs it (tsx), but through node itself: `pnpm` is `pnpm.cmd` on
+// Windows and does not start without a shell.
+const TSX = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+const SCRIPT = join(ROOT, 'scripts', 'estratti.mjs');
+const run_ = (args, env = process.env) =>
+  spawnSync(process.execPath, [TSX, SCRIPT, ...args], {
     cwd: ROOT,
     encoding: 'utf8',
     timeout: 60_000,
+    env,
   });
+
+/** Runs the command line for real; the output is parsed JSON. */
+function cli(args) {
+  const run = run_(args);
   return { code: run.status, out: run.stdout, err: run.stderr, json: parse(run.stdout) };
 }
 function parse(text) {
@@ -460,11 +468,8 @@ describe.skipIf(!availability.available)('pnpm estratti con un XLSX', () => {
       const s = await setup({ profile: xlsxProfile });
       const file = join(root, 'e-privato.xlsx');
       buildXlsx(file);
-      const run = spawnSync(
-        'pnpm',
+      const run = run_(
         [
-          '--silent',
-          'estratti',
           'importa',
           ...s.common,
           '--conto',
@@ -475,11 +480,7 @@ describe.skipIf(!availability.available)('pnpm estratti con un XLSX', () => {
           '2026-10-31',
           file,
         ],
-        {
-          cwd: ROOT,
-          encoding: 'utf8',
-          env: { ...process.env, PYTHON: join(root, 'nessun-python-privato') },
-        },
+        { ...process.env, PYTHON: join(root, 'nessun-python-privato') },
       );
       expect(run.status).toBe(2);
       expect(run.stdout + run.stderr).not.toContain('privato');
