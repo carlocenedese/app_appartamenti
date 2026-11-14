@@ -14,7 +14,7 @@
  */
 import { commitChange } from './journal';
 import { BankTransactionSchema, BillSchema } from './model';
-import type { BankTransaction, Bill } from './model';
+import type { BankTransaction, Bill, FileDocument } from './model';
 import type { Cents } from './money';
 import { parseOrThrow } from './parse';
 import type { ISODate } from './period';
@@ -31,6 +31,20 @@ export async function hashBytes(bytes: Uint8Array): Promise<string> {
   // ArrayBuffer, and `bytes` may sit on a SharedArrayBuffer. The copy covers just the viewed bytes.
   const digest = await globalThis.crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// --- Documents of a file ---------------------------------------------------------------------
+
+/**
+ * How the pages of two records of one file compare. A record without `fileDocument` covers the
+ * whole file: two of them are the `same`, one of them against a range `overlap`s (never silent).
+ */
+export function samePages(a?: FileDocument, b?: FileDocument): 'same' | 'overlap' | 'disjoint' {
+  if (a === undefined || b === undefined) return a === b ? 'same' : 'overlap';
+  const [a0, a1] = a.pages;
+  const [b0, b1] = b.pages;
+  if (a0 === b0 && a1 === b1) return 'same';
+  return a0 <= b1 && b0 <= a1 ? 'overlap' : 'disjoint';
 }
 
 // --- Bills -----------------------------------------------------------------------------------
@@ -67,8 +81,16 @@ export async function findBillDuplicate(
 ): Promise<{ status: 'duplicate' | 'possible-duplicate'; existingId: string } | undefined> {
   // `loadAll` sorts by id, so `find` gives the smallest id among the matches.
   const { records } = await loadAll(store, 'bill', BillSchema);
-  const sameFile = records.find((existing) => existing.fileHash === bill.fileHash);
+  const pages = records
+    .filter((existing) => existing.fileHash === bill.fileHash)
+    .map((existing) => ({
+      id: existing.id,
+      how: samePages(existing.fileDocument, bill.fileDocument),
+    }));
+  const sameFile = pages.find((p) => p.how === 'same');
   if (sameFile !== undefined) return { status: 'duplicate', existingId: sameFile.id };
+  const overlap = pages.find((p) => p.how === 'overlap');
+  if (overlap !== undefined) return { status: 'possible-duplicate', existingId: overlap.id };
   const sameDetails = records.find((existing) => sameBill(existing, bill));
   if (sameDetails !== undefined) {
     return { status: 'possible-duplicate', existingId: sameDetails.id };
@@ -85,7 +107,9 @@ export async function findBillDuplicate(
  *
  * Before it writes, it looks at the bills that are not deleted. In this order:
  *
- * 1. a bill with the same `fileHash` is the same document: `duplicate`;
+ * 1. a bill with the same `fileHash` and the same pages (`samePages`) is the same document:
+ *    `duplicate`; with pages that overlap, `possible-duplicate`; with disjoint pages (another
+ *    document of the file) it goes on to 2;
  * 2. a bill of the same apartment with the same supplier (NFC, spaces and capitals do not count),
  *    number (none equals none), period and amount, in other bytes, is `possible-duplicate`: the
  *    same bill downloaded again, or a bill that only looks like another one. A person decides, so

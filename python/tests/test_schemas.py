@@ -84,12 +84,19 @@ class ValidateTests(unittest.TestCase):
         for name in required:
             self.assertTrue(any(name in e for e in errors), (name, errors))
 
+    def test_extraction_result_cases_match_the_json_schema(self):
+        cases = json.loads((Path(__file__).parent / "data" / "extraction-cases.json").read_text("utf-8"))
+        for case in cases["cases"]:
+            with self.subTest(case=case["name"]):
+                errors = schemas.validate("extractionResult", case["result"])
+                self.assertEqual(errors == [], case["jsonSchema"], errors)
+
     def test_extraction_result_valid_documents(self):
         source = {"page": 1, "box": [10, 20, 110.5, 40], "text": "Totale 98,46"}
         full = {
             "v": 1, "engineVersion": "0.1.0", "fileHash": "a" * 64, "fileName": "bolletta.pdf",
-            "pages": 3, "status": "riconosciuta", "profileId": "prof-1", "profileRev": 2,
-            "kind": "bill", "category": "elettricita",
+            "pages": 3, "pageRange": [1, 3], "status": "riconosciuta", "profileId": "prof-1", "profileRev": 2,
+            "kind": "bill", "documentKind": "bill", "category": "elettricita",
             "fields": {"amount": {"value": 9846, "confidence": "high", "source": source}},
             "parts": [{"label": "Quota fissa", "amount": 1200, "source": source}],
             "identifiers": [{"kind": "pod", "value": "IT001E12345678"}],
@@ -104,8 +111,8 @@ class ValidateTests(unittest.TestCase):
         self.assertTrue(schemas.validate("extractionResult", {k: v for k, v in full.items() if k != "ocrPages"}))
         self.assertTrue(schemas.validate("extractionResult", {**full, "textSource": "scan"}))
         empty = {**full, "status": "senza-testo", "profileId": None, "profileRev": None,
-                 "kind": None, "category": None, "fields": {}, "parts": [], "identifiers": [],
-                 "checks": []}
+                 "kind": None, "documentKind": "unknown", "category": None, "fields": {},
+                 "parts": [], "identifiers": [], "checks": []}
         self.assertEqual(schemas.validate("extractionResult", empty), [])
         self.assertTrue(schemas.validate("extractionResult", {**full, "fileHash": "xyz"}))
 

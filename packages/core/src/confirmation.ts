@@ -14,7 +14,7 @@
  * of each operation is derived from them and from the time of the attempt (see `operationId`),
  * so the functions take no `newId`.
  */
-import { findBillDuplicate, hashBytes, registerBill } from './dedupe';
+import { findBillDuplicate, hashBytes, registerBill, samePages } from './dedupe';
 import { hasOcrReading } from './extraction';
 import type { ExtractedField, ExtractionResult } from './extraction';
 import { commitChange } from './journal';
@@ -136,13 +136,20 @@ async function findInstalmentDuplicate(
 ): Promise<{ status: 'duplicate' | 'possible-duplicate'; existingId: string } | undefined> {
   // `loadAll` sorts by id, so `find` gives the smallest id among the matches.
   const { records: existing } = await loadAll(store, 'instalment', InstalmentSchema);
-  const sameFile = existing.find((e) =>
-    records.some(
-      (r) =>
-        e.fileHash === r.fileHash && e.apartmentId === r.apartmentId && e.rateIndex === r.rateIndex,
-    ),
-  );
+  const pagesOf = (e: Instalment) =>
+    records
+      .filter(
+        (r) =>
+          e.fileHash === r.fileHash &&
+          e.apartmentId === r.apartmentId &&
+          e.rateIndex === r.rateIndex,
+      )
+      .map((r) => samePages(e.fileDocument, r.fileDocument));
+  const sameFile = existing.find((e) => pagesOf(e).includes('same'));
   if (sameFile !== undefined) return { status: 'duplicate', existingId: sameFile.id };
+  // Pages that overlap without being the same: a person decides (an old record has no range).
+  const overlap = existing.find((e) => pagesOf(e).includes('overlap'));
+  if (overlap !== undefined) return { status: 'possible-duplicate', existingId: overlap.id };
   const sameRate = existing.find((e) =>
     records.some(
       (r) =>
@@ -261,6 +268,12 @@ export async function registerProposal(
   if (fileHash !== result.fileHash) {
     return { status: 'rejected', reason: 'Il file non è quello letto: va letto di nuovo.' };
   }
+  // Only a part of the file gets a `fileDocument`; the whole file stays as before.
+  const fileDocument =
+    result.pageRange !== null &&
+    !(result.pageRange[0] === 1 && result.pageRange[1] === result.pages)
+      ? { pages: result.pageRange, documentKind: result.documentKind }
+      : undefined;
   const suffix = mode === 'auto' ? '-auto' : '';
   const autoReasons =
     mode === 'auto'
@@ -270,7 +283,11 @@ export async function registerProposal(
 
   if (proposal.kind === 'tari') {
     const records = proposal.instalments.map((instalment) =>
-      parseOrThrow(InstalmentSchema, { ...instalment, v: 1, rev: 1, fileHash }, 'instalment'),
+      parseOrThrow(
+        InstalmentSchema,
+        { ...instalment, v: 1, rev: 1, fileHash, ...(fileDocument && { fileDocument }) },
+        'instalment',
+      ),
     );
     const [first, ...rest] = records;
     if (first === undefined) return { status: 'rejected', reason: 'Nessuna rata da registrare.' };
@@ -286,14 +303,15 @@ export async function registerProposal(
     );
   }
 
-  const record = parseOrThrow(BillSchema, { ...proposal.bill, v: 1, rev: 1, fileHash }, 'bill');
+  const bill = { ...proposal.bill, ...(fileDocument && { fileDocument }) };
+  const record = parseOrThrow(BillSchema, { ...bill, v: 1, rev: 1, fileHash }, 'bill');
   const known = await findBillDuplicate(store, record);
   if (known !== undefined) return known;
   if (autoReasons.length > 0) return { status: 'rejected', reason: autoReasons.join(' ') };
   const at = clock();
   const registered = await registerBill(
     store,
-    proposal.bill,
+    bill,
     bytes,
     profileId,
     () => at,

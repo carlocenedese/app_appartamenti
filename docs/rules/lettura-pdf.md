@@ -159,6 +159,25 @@ Esito del terzo giro con le parole di fornitore, poi tolte (R92) (solo conteggi)
 (importo, scadenza e numero mancano in 9 su 9). Le altre origini non cambiano (`pdf` 89 e 86, `mixed` 153, 1 e 6).
 Il resto resta a mano: «da rivedere» e inserimento a mano.
 
+## Avviso «più documenti» sui PDF reali (14 novembre 2026)
+
+Con `python/tools/pdf_report.py` (che ora conta anche i file con l'avviso «Il file potrebbe contenere
+più documenti», in totale e per profilo), profili `python/seed-profiles/`, data `2026-11-14`, OCR
+attivo, in sola lettura sulle cartelle in Dropbox. Solo conteggi: nessun nome, importo o testo.
+
+| Appartamento | PDF | Con l'avviso | Per profilo              |
+| ------------ | --- | ------------ | ------------------------ |
+| Lovarini     | 86  | 1            | `hera-luce-2024` 1       |
+| Pulci 2a     | 224 | 1            | `enel-luce-2020` 1       |
+| Berchet 3    | 150 | 2            | `acegas-tari-2024-b` 2   |
+| Totale       | 460 | 4            | nessuno «nessun profilo» |
+
+Gli altri conteggi (stati, origine del testo) sono invariati rispetto alla sezione delle scansioni.
+**L'avviso scatta anche su un documento solo con una tabella di storico** (stessi campi letti con
+valori diversi nello stesso file): i 4 casi non sono stati guardati e **vanno guardati da Carlo**,
+che decide se il file contiene davvero più documenti. Le 18 fixture si leggono uguali con o senza
+`--pages 1-<pagine>` e nessuna ha l'avviso.
+
 ## Casi dubbi
 
 - **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il

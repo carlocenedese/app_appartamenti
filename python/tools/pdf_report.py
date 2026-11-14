@@ -5,7 +5,7 @@
 Walks the folders recursively (sorted), reads every `*.pdf` in place (read only: nothing is
 copied or written) and runs `extract` with the profiles of `--profiles`. Prints ONLY counts: per
 supplier (`profileId`, or «(nessun profilo)»), per status, per origin of the text (`textSource`: pdf, ocr, mixed), how many results carry the
-«OCR non disponibile» warning, how many fields of the recognised
+«OCR non disponibile» warning, how many the «più documenti» warning (in total and per supplier), how many fields of the recognised
 documents have confidence `high` (the `supplier` field, always high, is not counted), and a
 total. It never prints a file name, a path, an amount, a text read from a PDF or an exception
 message: any of them can quote the PDFs, which are real. File names starting with `.` are skipped
@@ -28,7 +28,7 @@ from typing import Any, NoReturn, TextIO
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bollette_pdf.__main__ import _utf8_lf  # noqa: E402
-from bollette_pdf.extract import extract  # noqa: E402
+from bollette_pdf.extract import WARNING_MANY_DOCUMENTS, extract  # noqa: E402
 from bollette_pdf.parse import valid_iso_at  # noqa: E402
 from bollette_pdf.profiles import load_profiles  # noqa: E402
 from bollette_pdf.reader import OCR_UNAVAILABLE_WARNING, read_pdf  # noqa: E402
@@ -90,6 +90,7 @@ def report(
     by_source: Counter[tuple[str, str]] = Counter()
     unavailable = 0
     suppliers: Counter[str] = Counter()
+    many: Counter[str] = Counter()
     high = total_fields = 0
     unreadable = [0]
     seen: set[Path] = set()
@@ -112,6 +113,7 @@ def report(
             elif not (isinstance(profile_id, str) and _PLAIN_ID.fullmatch(profile_id)):
                 profile_id = OTHER
             suppliers[profile_id] += 1
+            many[profile_id] += WARNING_MANY_DOCUMENTS in (result or {}).get("warnings", [])
             if result is not None and status == "riconosciuta":
                 # `supplier` is always high (it comes from the profile): not a reading.
                 confidences = [
@@ -132,6 +134,9 @@ def report(
     lines.append(f"Con avviso OCR non disponibile: {unavailable}")
     lines.append("Per fornitore:")
     lines += [f"  {name}: {suppliers[name]}" for name in sorted(suppliers)]
+    lines.append(f"Con avviso più documenti: {sum(many.values())}")
+    lines.append("Con avviso più documenti per fornitore:")
+    lines += [f"  {name}: {many[name]}" for name in sorted(suppliers)]
     lines.append(
         f"Campi con confidenza high nelle riconosciute (senza supplier): {high} su {total_fields}"
     )

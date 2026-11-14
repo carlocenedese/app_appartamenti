@@ -209,6 +209,30 @@ class FakeEngineTest(unittest.TestCase):
         self.assertIn("20", doc.warnings[0])
         self.assertNotIn("Totale", doc.warnings[0])
 
+    def run_pages(self, pages: str) -> dict:
+        out, err = io.StringIO(), io.StringIO()
+        args = ["--pdf", str(self.pdf([[] for _ in range(25)])), "--profiles", str(self.dir)]
+        args += ["--at", "2026-01-01", "--ocr-data", str(self.dir / "dati"), "--pages", pages]
+        self.assertEqual((main(["extract", *args], stdout=out, stderr=err), err.getvalue()), (0, ""))
+        return json.loads(out.getvalue())
+
+    def test_the_limit_of_ocr_pages_counts_the_pages_of_the_range(self) -> None:
+        result = self.run_pages("22-25")
+        self.assertEqual(self.engine.calls, [[22, 23, 24, 25]])
+        self.assertEqual((result["textSource"], result["ocrPages"]), ("ocr", [22, 23, 24, 25]))
+        self.assertNotEqual(result["status"], "senza-testo")
+        self.assertFalse([w for w in result["warnings"] if "20" in w])  # no limit warning
+
+    def test_a_short_range_does_not_pay_for_twenty_pages(self) -> None:
+        self.run_pages("1-1")
+        self.assertEqual(self.engine.calls, [[1]])
+
+    def test_a_range_of_more_than_twenty_pages_is_still_limited(self) -> None:
+        result = self.run_pages("3-25")
+        self.assertEqual(self.engine.calls, [list(range(3, 23))])
+        self.assertEqual(result["ocrPages"], list(range(3, 23)))
+        self.assertEqual(len([w for w in result["warnings"] if "20" in w]), 1)
+
     def test_command_line_passes_the_data_folder(self) -> None:
         out, err = io.StringIO(), io.StringIO()
         args = ["--pdf", str(self.pdf([[]])), "--profiles", str(self.dir), "--at", "2026-01-01"]

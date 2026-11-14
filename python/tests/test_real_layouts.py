@@ -19,9 +19,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "python"))
 
-from bollette_pdf.extract import extract  # noqa: E402
+from bollette_pdf.extract import WARNING_MANY_DOCUMENTS, extract  # noqa: E402
 from bollette_pdf.profiles import load_profiles, matching_profiles  # noqa: E402
-from bollette_pdf.reader import load_dump  # noqa: E402
+from bollette_pdf.reader import load_dump, restrict  # noqa: E402
 
 AT = "2026-11-12"
 SEED = REPO / "python" / "seed-profiles"
@@ -170,6 +170,35 @@ class FixturesTest(unittest.TestCase):
         fields = _extract(fixture["dump"])["fields"]
         self.assertIsNone(fields["amount"]["value"])
         self.assertEqual(fields["dueDate"]["value"], "2026-06-22")
+
+    def test_the_range_is_the_whole_file_and_the_kind_comes_from_the_profile(self) -> None:
+        for path in FIXTURES:
+            with self.subTest(fixture=path.stem):
+                fixture = _fixture(path)
+                result = _extract(fixture["dump"])
+                self.assertEqual(result["pageRange"], [1, result["pages"]])
+                self.assertEqual(result["documentKind"], result["kind"])
+        luce = _fixture(next(p for p in FIXTURES if p.stem == "hera-luce-01"))
+        self.assertEqual(_extract(luce["dump"])["documentKind"], "bill")
+
+    def test_reading_pages_1_to_n_is_the_same_as_reading_the_whole_file(self) -> None:
+        # What `--pages 1-<pages>` does on the file (restrict, then extract): same result.
+        self.assertEqual(len(FIXTURES), 18)
+        for path in FIXTURES:
+            with self.subTest(fixture=path.stem):
+                dump = _fixture(path)["dump"]
+                if dump.get("textSource") == "ocr":  # legacy dump: every page with text is OCR
+                    dump["ocrPages"] = sorted({line["page"] for line in dump["lines"]})
+                doc = load_dump(dump)
+                whole = extract(doc, _profiles(), AT)
+                self.assertEqual(extract(restrict(doc, 1, doc.pages), _profiles(), AT), whole)
+                self.assertEqual(whole["pageRange"], [1, doc.pages])
+                self.assertNotIn(WARNING_MANY_DOCUMENTS, whole["warnings"])
+
+    def test_a_document_nobody_recognises_is_unknown(self) -> None:
+        luce = _fixture(next(p for p in FIXTURES if p.stem == "hera-luce-01"))
+        result = extract(load_dump(luce["dump"]), [], AT)
+        self.assertEqual((result["status"], result["documentKind"]), ("non-riconosciuta", "unknown"))
 
     def test_two_layouts_of_the_same_supplier(self) -> None:
         profile_ids = {_fixture(path)["profileId"] for path in FIXTURES}

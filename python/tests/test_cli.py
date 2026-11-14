@@ -141,6 +141,8 @@ class ExtractTest(CliTestCase):
         result = self.document(self.extract(pdf=corrupt))
         self.assertEqual(result["status"], "illeggibile")
         self.assertEqual(result["pages"], 0)
+        self.assertIsNone(result["pageRange"])
+        self.assertEqual(result["documentKind"], "unknown")
         self.assertEqual(result["fields"], {})
         self.assertEqual(result["parts"], [])
         self.assertEqual(result["identifiers"], [])

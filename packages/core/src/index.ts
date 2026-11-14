@@ -13,6 +13,8 @@ export * from './dedupe';
 export * from './match';
 export * from './split';
 export * from './tari-note';
+export * from './file-document-note';
+export * from './undo-file';
 export * from './interest';
 export * from './caparra';
 export * from './conguaglio';

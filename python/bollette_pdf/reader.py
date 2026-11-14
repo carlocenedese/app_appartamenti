@@ -12,6 +12,7 @@ No network, no clock, no randomness.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import io
 import logging
@@ -108,6 +109,8 @@ class Document:
     # Pages (from 1, sorted) whose lines were read with OCR; empty when `text_source` is 'pdf'.
     ocr_pages: tuple[int, ...] = ()
     warnings: tuple[str, ...] = ()
+    # (first, last) pages read by `restrict`; None when the whole file is read.
+    page_range: tuple[int, int] | None = None
 
     @property
     def text(self) -> str:
@@ -208,12 +211,18 @@ def _needs_ocr(lines: list[Line]) -> bool:
 
 
 def read_pdf(
-    path: Path, *, ocr_data: str | Path | None = None, max_ocr_pages: int = MAX_OCR_PAGES
+    path: Path,
+    *,
+    ocr_data: str | Path | None = None,
+    max_ocr_pages: int = MAX_OCR_PAGES,
+    page_range: tuple[int, int] | None = None,
 ) -> Document:
     """Reads the PDF at `path`; raises PdfReadError if it cannot be read.
 
     With `ocr_data` (folder of ita.traineddata), pages without useful text are read with OCR,
-    at most `max_ocr_pages`; without the engine or the data they stay as they are."""
+    at most `max_ocr_pages`; without the engine or the data they stay as they are. With
+    `page_range` (first, last) only the pages of the range are candidates for OCR, and the limit
+    counts them alone (the call is for those pages; the caller then applies `restrict`)."""
     path = Path(path)
     try:
         data = path.read_bytes()
@@ -244,7 +253,9 @@ def read_pdf(
     pages = len(by_page)
     if pages == 0:
         raise PdfReadError("Il file non contiene pagine leggibili.")
-    text_source, ocr_pages, warnings = _read_with_ocr(data, by_page, ocr_data, max_ocr_pages)
+    text_source, ocr_pages, warnings = _read_with_ocr(
+        data, by_page, ocr_data, max_ocr_pages, page_range=page_range
+    )
     lines = [line for page_lines in by_page for line in page_lines]
     non_blank = sum(1 for line in lines for ch in line.text if not ch.isspace())
     return Document(
@@ -291,10 +302,16 @@ def _read_with_ocr(
     data_dir: str | Path | None,
     limit: int,
     dpi: int | None = None,
+    page_range: tuple[int, int] | None = None,
 ) -> tuple[str, tuple[int, ...], tuple[str, ...]]:
     """Replaces in `by_page` the lines of the pages read with OCR; gives text_source, the pages
     read with OCR and the warnings."""
-    wanted = [number for number, lines in enumerate(by_page, start=1) if _needs_ocr(lines)]
+    first, last = page_range if page_range is not None else (1, len(by_page))
+    wanted = [
+        number
+        for number, lines in enumerate(by_page, start=1)
+        if first <= number <= last and _needs_ocr(lines)
+    ]
     if not wanted:
         return "pdf", (), ()
     read = None
@@ -324,6 +341,27 @@ def _read_with_ocr(
     if not done:
         return "pdf", (), warnings
     return ("mixed" if pdf_text else "ocr"), tuple(sorted(done)), warnings
+
+
+def restrict(doc: Document, first: int, last: int) -> Document:
+    """The document reduced to pages `first..last` (from 1): lines and OCR pages of those pages
+    only; `pages` stays that of the file. `has_text` and `text_source` are worked out again on
+    the pages kept (as R86). Raises ValueError unless 1 <= first <= last <= doc.pages."""
+    if not 1 <= first <= last <= doc.pages:
+        raise ValueError("Intervallo di pagine non valido.")
+    lines = tuple(line for line in doc.lines if first <= line.page <= last)
+    ocr_pages = tuple(n for n in doc.ocr_pages if first <= n <= last)
+    non_blank = sum(1 for line in lines for ch in line.text if not ch.isspace())
+    pdf_text = any(line.page not in ocr_pages for line in lines)
+    source = "pdf" if not ocr_pages else ("mixed" if pdf_text else "ocr")
+    return dataclasses.replace(
+        doc,
+        lines=lines,
+        has_text=non_blank >= MIN_TEXT_CHARS,
+        text_source=source,
+        ocr_pages=ocr_pages,
+        page_range=(first, last),
+    )
 
 
 def dump_document(doc: Document) -> dict[str, Any]:

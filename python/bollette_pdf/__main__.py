@@ -1,6 +1,7 @@
 """Command line of bollette_pdf.
 
     python -I -m bollette_pdf extract --pdf <file> --profiles <directory> --at <ISO date(-time)>
+        [--pages a-b]
     python -I -m bollette_pdf build-profile --pdf <file> --spec <file.json> --at <ISO date(-time)>
     python -I -m bollette_pdf --version
 
@@ -25,6 +26,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import unicodedata
 from collections.abc import Callable
@@ -36,12 +38,14 @@ from .builder import ProfileDataError, Selection, build_profile
 from .extract import extract
 from .parse import valid_iso_at
 from .profiles import load_profiles
-from .reader import PdfReadError, read_pdf
+from .reader import PdfReadError, read_pdf, restrict
 from .schemas import validate
 
 EXIT_OK = 0
 EXIT_ERROR = 2
 INTERNAL_ERROR = "Errore interno: nessun output."
+PAGES_ERROR = "Intervallo di pagine non valido: nessun output."
+_PAGES = re.compile(r"([0-9]+)-([0-9]+)", re.ASCII)
 SPEC_ERROR = "Specifica non valida: nessun profilo costruito."
 SELECTION_ERROR = "Selezione non valida: nessun profilo costruito."
 _SPEC_KEYS = frozenset(
@@ -90,6 +94,7 @@ def _build_parser(stdout: TextIO, stderr: TextIO) -> argparse.ArgumentParser:
     command.add_argument("--profiles", required=True, help="cartella dei profili dei fornitori")
     command.add_argument("--at", required=True, help="data o data-ora ISO di riferimento")
     command.add_argument("--ocr-data", help="cartella dei dati della lingua per l'OCR (facoltativa)")
+    command.add_argument("--pages", help="intervallo di pagine da leggere, per esempio 3-4 (facoltativo)")
     build = sub.add_parser(
         "build-profile", help="costruisce un profilo da selezioni di testo", add_help=False
     )
@@ -146,10 +151,12 @@ def _unreadable(file_hash: str, file_name: str, message: str) -> dict[str, Any]:
         "v": 1,
         "fileHash": file_hash,
         "pages": 0,
+        "pageRange": None,
         "status": "illeggibile",
         "profileId": None,
         "profileRev": None,
         "kind": None,
+        "documentKind": "unknown",
         "category": None,
         "fields": {},
         "parts": [],
@@ -216,9 +223,25 @@ def _print_json(document: dict[str, Any], stdout: TextIO) -> None:
     stdout.flush()
 
 
+def _parse_pages(value: str | None) -> tuple[int, int] | None:
+    """`a-b` as (a, b), with 1 <= a <= b; None when `--pages` is not given."""
+    if value is None:
+        return None
+    match = _PAGES.fullmatch(value) if len(value) <= 20 else None  # int() refuses 4300+ digits
+    if match is None or not 1 <= int(match[1]) <= int(match[2]):
+        raise _Rejected(PAGES_ERROR)
+    return int(match[1]), int(match[2])
+
+
 def _run_extract(
-    pdf: str, profiles: str, at: str, ocr_data: str | None, stdout: TextIO
+    pdf: str,
+    profiles: str,
+    at: str,
+    ocr_data: str | None,
+    stdout: TextIO,
+    pages: str | None = None,
 ) -> None:
+    page_range = _parse_pages(pages)
     if not _is_file(pdf):
         raise _Rejected("Il file indicato con --pdf non esiste o non è un file.")
     if not _is_dir(profiles):
@@ -233,11 +256,15 @@ def _run_extract(
         raise _Rejected("Impossibile leggere il file indicato con --pdf.") from None
     loaded, warnings = load_profiles(Path(profiles))
     try:
-        doc = read_pdf(path, ocr_data=ocr_data)
+        doc = read_pdf(path, ocr_data=ocr_data, page_range=page_range)
     except PdfReadError as error:
         result = _unreadable(hashlib.sha256(data).hexdigest(), file_name, str(error))
         warnings = []
     else:
+        if page_range is not None:
+            if page_range[1] > doc.pages:
+                raise _Rejected(PAGES_ERROR)
+            doc = restrict(doc, *page_range)
         result = extract(doc, loaded, at)
     final = _complete(result, file_name)
     final["warnings"] = [*warnings, *result["warnings"]]
@@ -331,7 +358,7 @@ def main(argv: list[str], stdout: TextIO | None = None, stderr: TextIO | None = 
         return EXIT_ERROR
     try:
         if args.command == "extract":
-            _run_extract(args.pdf, args.profiles, args.at, args.ocr_data, out)
+            _run_extract(args.pdf, args.profiles, args.at, args.ocr_data, out, args.pages)
         else:
             _run_build(args.pdf, args.spec, args.at, args.ocr_data, out)
     except _Rejected as rejected:

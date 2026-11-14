@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { ExtractionResultSchema } from '../src/extraction';
+import { DocumentKindSchema } from '../src/model';
 import type { ExtractedField, ExtractionResult } from '../src/extraction';
 import type { Cents } from '../src/money';
 
@@ -12,10 +14,12 @@ const full: Record<string, unknown> = {
   fileHash: 'a'.repeat(64),
   fileName: 'bolletta.pdf',
   pages: 3,
+  pageRange: [1, 3],
   status: 'riconosciuta',
   profileId: 'prof-1',
   profileRev: 2,
   kind: 'bill',
+  documentKind: 'bill',
   category: 'elettricita',
   fields: {
     supplier: field('Fornitore Luce'),
@@ -41,10 +45,12 @@ const empty: Record<string, unknown> = {
   fileHash: 'b'.repeat(64),
   fileName: 'scansione.pdf',
   pages: 2,
+  pageRange: [1, 2],
   status: 'senza-testo',
   profileId: null,
   profileRev: null,
   kind: null,
+  documentKind: 'unknown',
   category: null,
   fields: {},
   parts: [],
@@ -62,6 +68,35 @@ const changed = (base: Record<string, unknown>, changes: Record<string, unknown>
 const ok = (value: unknown): boolean => ExtractionResultSchema.safeParse(value).success;
 
 describe('ExtractionResultSchema', () => {
+  it('reads the page range and the document kind', () => {
+    expect(DocumentKindSchema.options).toEqual(['bill', 'tari', 'unknown']);
+    expect(ok(changed(full, { pageRange: [1, 3] }))).toBe(true);
+    expect(ok(changed(full, { pageRange: [2, 3], fields: { amount: field(1, 'high') } }))).toBe(
+      false,
+    );
+    expect(ok(changed(empty, { pages: 0, pageRange: null }))).toBe(true);
+    expect(ok(changed(full, { documentKind: 'tari', kind: 'tari', category: null }))).toBe(true);
+  });
+
+  it('agrees with the cases shared with the Python tests', () => {
+    const file = new URL('../../../python/tests/data/extraction-cases.json', import.meta.url);
+    const { cases } = JSON.parse(readFileSync(file, 'utf8')) as {
+      cases: { name: string; result: unknown; zod: boolean; reason?: string }[];
+    };
+    expect(cases.length).toBeGreaterThan(10);
+    for (const { name, result, zod, reason } of cases) {
+      const parsed = ExtractionResultSchema.safeParse(result);
+      expect([name, parsed.success]).toEqual([name, zod]);
+      // A refusal by a refine says why: its message names the reason.
+      if (reason !== undefined && !parsed.success) {
+        expect([name, parsed.error.issues.map((issue) => issue.message).join(' ')]).toEqual([
+          name,
+          expect.stringContaining(reason),
+        ]);
+      }
+    }
+  });
+
   it('reads a complete result and parses amounts to cents', () => {
     const parsed = ExtractionResultSchema.parse(full);
     expect(parsed.fields.amount?.value).toBe(9846);

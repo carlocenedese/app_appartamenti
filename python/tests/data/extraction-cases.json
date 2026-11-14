@@ -1,0 +1,786 @@
+{
+  "cases": [
+    {
+      "name": "whole file",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "inner range",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 2,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "unreadable file has no range",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 0,
+        "pageRange": null,
+        "status": "illeggibile",
+        "profileId": null,
+        "profileRev": null,
+        "kind": null,
+        "documentKind": "unknown",
+        "category": null,
+        "fields": {},
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "unrecognised document",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "non-riconosciuta",
+        "profileId": null,
+        "profileRev": null,
+        "kind": null,
+        "documentKind": "unknown",
+        "category": null,
+        "fields": {},
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "tari document",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "tari",
+        "documentKind": "tari",
+        "category": null,
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "source on the last page of the range",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 1,
+            "confidence": "high",
+            "source": {
+              "page": 3,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "part and ocr page inside the range",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "da-confermare",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {},
+        "parts": [
+          {
+            "label": "Quota",
+            "amount": 1200,
+            "source": {
+              "page": 2,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        ],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "mixed",
+        "ocrPages": [2, 3]
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "field without a source",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": null,
+            "confidence": "missing",
+            "source": null
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": true,
+      "jsonSchema": true
+    },
+    {
+      "name": "range reversed",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 1],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "page range"
+    },
+    {
+      "name": "range beyond the file",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 4],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "page range"
+    },
+    {
+      "name": "range from page 0",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [0, 1],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": false
+    },
+    {
+      "name": "no range with pages",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": null,
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "page range"
+    },
+    {
+      "name": "range with no pages",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 0,
+        "pageRange": [1, 1],
+        "status": "illeggibile",
+        "profileId": null,
+        "profileRev": null,
+        "kind": null,
+        "documentKind": "unknown",
+        "category": null,
+        "fields": {},
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "page range"
+    },
+    {
+      "name": "range missing",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": false
+    },
+    {
+      "name": "range with three numbers",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 2, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": false
+    },
+    {
+      "name": "field source beyond the file",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 1,
+            "confidence": "high",
+            "source": {
+              "page": 4,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "inside the page range"
+    },
+    {
+      "name": "part source before the range",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {},
+        "parts": [
+          {
+            "label": "Quota",
+            "amount": 1200,
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        ],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "inside the page range"
+    },
+    {
+      "name": "ocr page before the range",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [2, 3],
+        "status": "da-confermare",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "bill",
+        "category": "elettricita",
+        "fields": {},
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "mixed",
+        "ocrPages": [1]
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "inside the page range"
+    },
+    {
+      "name": "unknown kind with a profile",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "unknown",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "document kind"
+    },
+    {
+      "name": "bill kind without a profile",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "non-riconosciuta",
+        "profileId": null,
+        "profileRev": null,
+        "kind": null,
+        "documentKind": "bill",
+        "category": null,
+        "fields": {},
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "document kind"
+    },
+    {
+      "name": "tari kind on a bill profile",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "tari",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": true,
+      "reason": "document kind"
+    },
+    {
+      "name": "kind not in the enum",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "documentKind": "other",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": false
+    },
+    {
+      "name": "kind missing",
+      "result": {
+        "v": 1,
+        "engineVersion": "0.1.0",
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fileName": "bolletta.pdf",
+        "pages": 3,
+        "pageRange": [1, 3],
+        "status": "riconosciuta",
+        "profileId": "prof-1",
+        "profileRev": 2,
+        "kind": "bill",
+        "category": "elettricita",
+        "fields": {
+          "amount": {
+            "value": 9846,
+            "confidence": "high",
+            "source": {
+              "page": 1,
+              "box": [10, 20, 110.5, 40],
+              "text": "Totale 98,46"
+            }
+          }
+        },
+        "parts": [],
+        "identifiers": [],
+        "checks": [],
+        "warnings": [],
+        "textSource": "pdf",
+        "ocrPages": []
+      },
+      "zod": false,
+      "jsonSchema": false
+    }
+  ]
+}
