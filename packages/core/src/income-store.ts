@@ -176,12 +176,12 @@ export async function confirmIncome(
   const { apartmentId } = account;
   const open = proposal.step === 'cosa' || proposal.reason === 'multi-tenant';
   const validFrom = firstPresenceDay(state.tenancies, input.tenantId, apartmentId);
-  // Outside the candidates only with a key and a presence in the apartment (Carlo, 14 Nov 2026):
-  // the key then gets a payer for this tenant too, and is never automatic (decision 5).
+  // Outside the candidates only with a presence in the apartment (Carlo, 14 Nov 2026): the key
+  // (a «cosa» or a payer of several tenants always has one) then gets a payer for this tenant
+  // too, and is never automatic (decision 5). A deleted tenant is never allowed.
   const outside = open && !proposal.tenantIds.includes(input.tenantId);
-  if (outside && (proposal.key === undefined || validFrom === undefined)) {
-    return refuse('tenant-not-allowed');
-  }
+  const deleted = state.tenants.some((t) => t.id === input.tenantId && t.deleted === true);
+  if (deleted || (outside && validFrom === undefined)) return refuse('tenant-not-allowed');
   if (validFrom === undefined) return refuse('no-presence');
   // A part of zero or less is no part at all.
   if (input.parts.length === 0 || input.parts.some((p) => p.amount <= 0)) {

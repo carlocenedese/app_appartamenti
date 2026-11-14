@@ -3,6 +3,7 @@ import {
   BankTransactionSchema,
   PayerSchema,
   PaymentSchema,
+  TenancySchema,
   TenantSchema,
   cents,
   checkConsistency,
@@ -383,6 +384,55 @@ describe('confirmIncome', () => {
     expect(
       (await proposalsOf(store)).find((p) => p.transactionId === 'tx-anna-2026-02'),
     ).toMatchObject({ step: 'chi', reason: 'multi-tenant', tenantIds: ['t-anna', 't-bruno'] });
+  });
+
+  it('refuses a deleted tenant, even with a live presence, and a tenant whose only presence is deleted', async () => {
+    const store = await yearStore();
+    const r = await runReconcile(store, 'p1', clock, ids('op'));
+    if (r.status !== 'reconciled' || r.operationId === undefined) throw new Error('none');
+    await undoOperation(store, r.operationId, 'p1', clock, ids('u'));
+    const tenants = (await loadAll(store, 'tenant', TenantSchema)).records;
+    const bruno0 = tenants.find((t) => t.id === 't-bruno');
+    await store.writeJsonAtomic(recordPath('tenant', 't-bruno'), { ...bruno0, deleted: true });
+    // Carla gets a presence in Anna's apartment, deleted.
+    await store.writeJsonAtomic(
+      recordPath('tenancy', 'ten-carla-a1'),
+      TenancySchema.parse({
+        id: 'ten-carla-a1',
+        v: 1,
+        rev: 2,
+        deleted: true,
+        apartmentId: 'a1',
+        tenantId: 't-carla',
+        from: '2026-01',
+        monthlyRent: 40000,
+        monthlyForfait: 5000,
+      }),
+    );
+    const before = await snapshot(store);
+    const anna = { proposalId: 'p-cosa-tx-anna-2026-01', parts: [canone('2026-01', 45000)] };
+    for (const tenantId of ['t-bruno', 't-carla']) {
+      expect(
+        await confirmIncome(store, bruno({ ...anna, tenantId }), 'p1', clock, ids('x')),
+      ).toEqual({
+        status: 'refused',
+        reason: 'tenant-not-allowed',
+      });
+    }
+    // A deleted tenant is refused among the candidates too.
+    expect(
+      await confirmIncome(
+        store,
+        bruno({ proposalId: 'p-chi-tx-bruno-2026-01' }),
+        'p1',
+        clock,
+        ids('x'),
+      ),
+    ).toEqual({
+      status: 'refused',
+      reason: 'tenant-not-allowed',
+    });
+    expect(await snapshot(store)).toEqual(before);
   });
 
   it('a payer of several tenants is confirmed only for one present in the apartment', async () => {
