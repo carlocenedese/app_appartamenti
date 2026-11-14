@@ -12,6 +12,7 @@ import {
   pythonInterpreter,
 } from '../packages/core/test/helpers/python-extract.ts';
 import { scanText } from './check-personal-data.mjs';
+import { main } from './estratti.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FIXTURE = JSON.parse(
@@ -338,6 +339,46 @@ describe('pnpm estratti con un CSV', () => {
     },
     TIMEOUT,
   );
+
+  it(
+    'una directory o una FIFO al posto del file dà 2 con messaggio costante, senza bloccarsi',
+    async () => {
+      const s = await setup();
+      const dir = join(root, 'una-cartella-privata');
+      mkdirSync(dir);
+      const run = importFile(s, dir);
+      expect(run.code).toBe(2);
+      expect(run.json).toMatchObject({ status: 'invalid', reason: 'bad-file' });
+      expect(run.out + run.err).not.toMatch(/privata/);
+      const fifo = join(root, 'fifo-privata');
+      // Where mkfifo is missing (Windows) the FIFO case is skipped; the directory case stays.
+      if (spawnSync('mkfifo', [fifo]).status === 0) {
+        const run2 = importFile(s, fifo);
+        expect(run2.code).toBe(2);
+        expect(run2.json).toMatchObject({ status: 'invalid', reason: 'bad-file' });
+      }
+      expect(journalCount(s.dir)).toBe(3); // seed, profile, account: nothing imported
+    },
+    TIMEOUT,
+  );
+
+  it('un errore inatteso dà 3 e dice di ripetere «importa», senza il testo dell’errore', async () => {
+    const dir = join(root, 'd-failed');
+    mkdirSync(dir);
+    const file = join(dir, 'profilo.json');
+    writeFileSync(file, JSON.stringify(FIXTURE));
+    const failed = await main(['profilo', '--cartella', dir, '--ora', ORA, file], {
+      now: () => ORA,
+      newId: () => {
+        throw new Error('segreto-nel-messaggio');
+      },
+    });
+    expect(failed.code).toBe(3);
+    const body = JSON.parse(failed.output);
+    expect(body).toMatchObject({ status: 'failed', reason: 'failed' });
+    expect(body.message).toMatch(/ripetere/);
+    expect(failed.output).not.toMatch(/segreto/);
+  });
 });
 
 if (!availability.available && requiredPython) {

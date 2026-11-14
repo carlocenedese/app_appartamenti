@@ -5,7 +5,8 @@
 //
 // The output is one JSON line with a status, counts and ids: never a name, an IBAN, an amount, a
 // description or a path, unless `--dettagli` asks for the held rows. Every message is constant.
-// Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid.
+// Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
+// unexpected failure (an interrupted import is resumed by repeating `importa`).
 
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -59,7 +60,7 @@ const MESSAGES = {
   'held-duplicates': 'Rifiutato: un altro estratto ha righe da rivedere che ne dipendono.',
   'later-changes': 'Rifiutato: dopo l’importazione ci sono state altre modifiche.',
   'journal-not-aligned': 'Rifiutato: il registro non è riallineato con i dati.',
-  failed: 'Operazione non riuscita.',
+  failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
 };
 
 /** Thrown to stop with a status; `invalid` is exit 2, `rejected` exit 1. */
@@ -100,7 +101,9 @@ function need(values, ...names) {
 /** The text of a JSON file or of a statement, read only; never longer than `MAX_FILE_BYTES`. */
 function readBytes(file) {
   try {
-    if (statSync(file).size > MAX_FILE_BYTES) throw invalid('bad-file');
+    // A directory, a FIFO or /dev/zero has size 0 but never ends: only a regular file is read.
+    const info = statSync(file);
+    if (!info.isFile() || info.size > MAX_FILE_BYTES) throw invalid('bad-file');
     return readFileSync(file);
   } catch (error) {
     throw error instanceof Stop ? error : invalid('bad-file');
@@ -197,8 +200,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
     const file = positionals[0];
     const bytes = readBytes(file);
-    const table =
-      profile.container === 'xlsx' ? xlsxTable(file) : csvTable(bytes, profile.csvSeparator ?? ';');
+    let table;
+    if (profile.container === 'xlsx') {
+      table = xlsxTable(file);
+      // Python reads the file itself: if it changed since `bytes` (the hash), the table is not the file's.
+      if (!readBytes(file).equals(bytes)) throw invalid('unreadable-statement');
+    } else {
+      table = csvTable(bytes, profile.csvSeparator ?? ';');
+    }
     let result;
     try {
       result = await importStatement(
@@ -340,7 +349,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       });
     }
     // Never the message or the stack: they could hold a path or a value.
-    return done(1, { status: 'rejected', reason: 'failed', message: MESSAGES.failed });
+    return done(3, { status: 'failed', reason: 'failed', message: MESSAGES.failed });
   }
 }
 
