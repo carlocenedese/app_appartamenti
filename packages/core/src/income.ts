@@ -17,7 +17,7 @@ import type {
   Tenant,
 } from './model';
 import { nameInText, nameKeyOf, payerKeyOf, validPayers } from './payers';
-import { addMonths, monthsInPeriod } from './period';
+import { addDays, addMonths, daysBetween, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { chooseRentMonth } from './rent-month';
 import { compareText } from './text';
@@ -152,7 +152,9 @@ export type IncomeReason =
   | 'late'
   | 'month-paid'
   | 'not-present'
-  | 'earlier-open';
+  | 'earlier-open'
+  | 'not-covered'
+  | 'undone';
 
 /** Only ids, a constant reason and the month: never names, descriptions or IBANs. */
 export interface IncomeProposal {
@@ -174,8 +176,8 @@ export interface IncomeResult {
 }
 
 /**
- * The months with at least one day inside a live statement of a live account of the apartment
- * (R112): only these can be «to pay». Before the first statement imported, rent counts as paid.
+ * The months covered from the first to the last day by the live statements of the live accounts
+ * of the apartment, together (R112, Carlo 14 Nov 2026): only these can be «to pay».
  */
 export function coveredMonths(
   ctx: { accounts: Account[]; statements: Statement[] },
@@ -186,10 +188,16 @@ export function coveredMonths(
       .filter((a) => a.deleted !== true && a.apartmentId === apartmentId)
       .map((a) => a.id),
   );
+  const live = ctx.statements.filter((s) => s.deleted !== true && accounts.has(s.accountId));
+  const inside = (day: string): boolean => live.some((s) => s.from <= day && day <= s.to);
   const months = new Set<YearMonth>();
-  for (const s of ctx.statements) {
-    if (s.deleted === true || !accounts.has(s.accountId)) continue;
-    for (const m of monthsInPeriod(s.from as ISODate, s.to as ISODate)) months.add(m);
+  for (const s of live) {
+    for (const m of monthsInPeriod(s.from as ISODate, s.to as ISODate)) {
+      const last = lastDayOfMonth(m);
+      let day = `${m}-01` as ISODate;
+      while (day <= last && inside(day)) day = addDays(day, 1);
+      if (day > last) months.add(m);
+    }
   }
   return months;
 }
@@ -198,16 +206,21 @@ export function coveredMonths(
  * Turns the live credits without a live payment into automatic rent payments (R4 strict: one
  * payer, the oldest month to pay, exact rent plus flat charge) or proposals, in order of date
  * then id. Earlier automatic payments of the run count as paid; an earlier «che cosa» proposal
- * of the same tenant blocks the later ones (`earlier-open`, decision C). Everything sorted by id.
+ * of the same tenant, or an earlier «chi» proposal listing the tenant in the same apartment,
+ * blocks the later ones (`earlier-open`, decision C). A transaction whose automatic payment was
+ * undone (a deleted `csv` payment for it) is never automatic again (`undone`). Everything sorted
+ * by id.
  */
 export function reconcileIncome(
   input: IncomeContext & { transactions: BankTransaction[]; statements: Statement[] },
 ): IncomeResult {
-  const handled = new Set(
-    input.payments.flatMap((p) =>
-      p.deleted !== true && p.transactionId !== undefined ? [p.transactionId] : [],
-    ),
-  );
+  const handled = new Set<string>();
+  const undone = new Set<string>();
+  for (const p of input.payments) {
+    if (p.transactionId === undefined) continue;
+    if (p.deleted !== true) handled.add(p.transactionId);
+    else if (p.source === 'csv') undone.add(p.transactionId);
+  }
   const credits = input.transactions
     .filter((t) => t.deleted !== true && t.amount > 0 && !handled.has(t.id))
     .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
@@ -215,6 +228,7 @@ export function reconcileIncome(
   const proposals: IncomeProposal[] = [];
   const skipped: IncomeResult['skipped'] = [];
   const open = new Set<string>();
+  const openChi = new Set<string>();
   const covered = new Map<string, Set<YearMonth>>();
 
   for (const tx of credits) {
@@ -222,16 +236,19 @@ export function reconcileIncome(
       ...input,
       payments: [...input.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
     };
-    const who = whoPaid(tx, ctx);
     const account = input.accounts.find((a) => a.deleted !== true && a.id === tx.accountId);
-    if (who.kind === 'skip' || account === undefined) {
-      skipped.push({
-        transactionId: tx.id,
-        reason: who.kind === 'skip' ? who.reason : 'no-account',
-      });
+    if (account === undefined) {
+      skipped.push({ transactionId: tx.id, reason: 'no-account' });
+      continue;
+    }
+    const { apartmentId } = account;
+    const who = whoPaid(tx, ctx);
+    if (who.kind === 'skip') {
+      skipped.push({ transactionId: tx.id, reason: who.reason });
       continue;
     }
     if (who.kind === 'ask') {
+      for (const id of who.tenantIds) openChi.add(`${apartmentId}\u0000${id}`);
       proposals.push({
         id: `p-chi-${tx.id}`,
         transactionId: tx.id,
@@ -243,7 +260,6 @@ export function reconcileIncome(
       continue;
     }
     const { tenantId, key } = who;
-    const { apartmentId } = account;
     const ask = (reason: IncomeReason, month?: YearMonth): void => {
       open.add(tenantId);
       proposals.push({
@@ -256,7 +272,11 @@ export function reconcileIncome(
         ...(month === undefined ? {} : { month }),
       });
     };
-    if (open.has(tenantId)) {
+    if (undone.has(tx.id)) {
+      ask('undone');
+      continue;
+    }
+    if (open.has(tenantId) || openChi.has(`${apartmentId}\u0000${tenantId}`)) {
       ask('earlier-open');
       continue;
     }
@@ -301,13 +321,17 @@ export function reconcileIncome(
     );
     const unpaid = presentMonths.filter((m) => cov.has(m) && !paid.has(m));
     const apartment = input.apartments.find((a) => a.deleted !== true && a.id === apartmentId);
-    const choice = chooseRentMonth({
-      date: tx.date as ISODate,
-      unpaid,
-      lateDays: apartment?.rentLateDays ?? DEFAULT_RENT_LATE_DAYS,
-    });
+    const lateDays = apartment?.rentLateDays ?? DEFAULT_RENT_LATE_DAYS;
+    const choice = chooseRentMonth({ date: tx.date as ISODate, unpaid, lateDays });
     if (choice.status === 'review') {
-      ask(choice.reason);
+      // A month the transfer may pay but not covered in full goes to review, never assumed (R112).
+      const partial = (m: YearMonth): boolean =>
+        presentMonths.includes(m) && !paid.has(m) && !cov.has(m);
+      const before = addMonths(dateMonth, -1);
+      const inLate = daysBetween(tx.date as ISODate, lastDayOfMonth(before)) <= lateDays;
+      const month = inLate && partial(before) ? before : partial(dateMonth) ? dateMonth : undefined;
+      if (month === undefined) ask(choice.reason);
+      else ask('not-covered', month);
       continue;
     }
     const presence = mine.find((t) => isPresent(t, choice.month));
