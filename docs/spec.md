@@ -99,12 +99,12 @@ Ogni scheda appartamento nella Home mostra a colpo d'occhio se ci sono azioni da
 
 L'app incrocia tre fonti: bollette, pagamenti degli inquilini e movimenti dell'estratto conto. Ogni appartamento ha un conto bancario dedicato, usato solo per le spese di quell'appartamento; l'abbinamento è quindi automatico per appartamento.
 
-- **Importazione**: l'estratto conto viene scaricato dalla banca (preferibilmente CSV, in alternativa PDF) e salvato nella cartella degli estratti indicata nelle impostazioni dell'appartamento.
+- **Importazione**: l'estratto conto viene scaricato dalla banca e salvato nella cartella degli estratti indicata nelle impostazioni dell'appartamento. La banca dei tre conti lo dà oggi in XLSX («Lista operazioni»), che l'app legge direttamente; legge anche i CSV (decisione del 14 novembre 2026).
 - **Abbinamento bollette**: cerca un addebito con importo uguale, data compatibile e, quando presente, il nome del fornitore nella causale.
 - **Abbinamento inquilini**: cerca un bonifico in entrata con il nome dell'inquilino e l'importo atteso (quota forfettaria o affitto).
 - **Grado di certezza**: ogni abbinamento ha un livello di confidenza; quelli dubbi finiscono in una schermata di conferma, come per la revisione delle bollette.
 - **Esiti mostrati**: bolletta pagata, bolletta senza addebito corrispondente, importo diverso dal previsto, inquilino in ritardo.
-- **Sicurezza**: l'estratto conto è il dato più sensibile. Non va lasciato in chiaro nella cartella Dropbox condivisa. Opzioni: cartella cifrata separata, oppure importazione con salvataggio cifrato dei soli campi necessari (data, importo, causale, controparte), con la chiave nel portachiavi del sistema operativo.
+- **Sicurezza** (decisione del 14 novembre 2026): gli estratti conto non sono cifrati, perché Nicola è cointestatario e ha già tutti gli accessi. I movimenti si salvano con i soli campi necessari (data, importo, causale, codice disposizione, controparte) in `_app/dati/transaction/` e il file originale in `Riservato_proprietari/`. La cartella `App Bollette` non si condivide con gli inquilini, che ricevono solo i link alle sottocartelle di tipologia (sezione 27).
 - **Accesso**: il fratello di Carlo è cointestatario dei conti e vede già tutti i movimenti, quindi non servono permessi diversi tra i due utenti.
 
 ## 12. Riconciliazione delle spese condominiali e foglio riservato
@@ -237,7 +237,7 @@ App Bollette/                     (cartella condivisa tra Carlo e Nicola)
     2026-27/ ...
   Lovarini_5/                     stessa struttura, con la sua Da_smistare
   Pulci_2a/                       stessa struttura, con la sua Da_smistare
-  Riservato_proprietari/          estratti conto (cifrati), Excel dei proprietari per annualità
+  Riservato_proprietari/          Estratti_conto/<appartamento>/<annualità>/ (non cifrati), Excel dei proprietari per annualità
   _app/                           dati, configurazione, registro; non toccare
     dati/  config/  journal/  excel_versioni/  CHANGELOG.md
 ```
@@ -281,7 +281,7 @@ Lo Scadenziario diventa "Scadenze e pagamenti" e include una schermata per impos
 - **Voci gestibili:** IMU, imposta di registro e bollo, cedolare secca, TARI pagata al Comune, rate condominiali (dal piano rate del preventivo), F24 in generale. Ogni voce ha appartamento, intestatario (Via Pulci a Nicola), scadenza, importo atteso, stato (da pagare, in scadenza, pagata, in ritardo) e, se c'è, ricevuta allegata. Le voci ricorrenti si ripetono ogni anno. L'app tiene traccia dei pagamenti e non compila l'F24.
 - **Imposta di registro:** tutti i contratti sono a canone concordato. Secondo Carlo l'imposta di registro si applica solo al subentro o alla firma di un nuovo contratto, e per il subentro l'importo è di 67 euro. Verificato sul sito dell'Agenzia delle Entrate: cessione o subentro senza corrispettivo = imposta fissa di 67 euro, termine 30 giorni, tramite servizi telematici o F24 Elementi identificativi (con comunicazione all'ufficio se si usa l'F24). Da verificare: registrazione di un nuovo contratto (importo, termini). La scheda degli appartamenti indica la cedolare secca per tutti e tre i contratti (canone concordato e cedolare secca sono due cose distinte); con la cedolare non sono dovuti imposta di registro né bollo sul canone. Per cessione e subentro l'imposta fissa di 67 euro è dovuta (confermato da Carlo il 5 novembre 2026) e, in caso di cessione, viene detratta dalla caparra restituita all'inquilino uscente: l'app la inserisce tra le detrazioni nel passo 3 del subentro.
 - **Controllo sul CSV:** dopo la scadenza l'app cerca nei movimenti in uscita un pagamento compatibile (importo, data vicina, causale F24, IMU, condominio). La prima volta chiede conferma e salva la regola; poi segna "pagata" da sola, con Annulla. Se non trova nulla la voce resta in rosso sulla Home e nello Scadenziario. Si può anche segnare "pagata" a mano con la ricevuta.
-- **Da chiarire:** se IMU, F24 e rate condominiali escono dallo stesso conto Intesa degli estratti forniti o da altri conti (anche di Nicola); in quel caso servono più CSV.
+- **Conti (chiarito il 14 novembre 2026):** IMU, F24 e rate condominiali escono dai tre conti degli appartamenti, tutti della stessa banca; non ci sono altri conti da importare.
 
 ## 24. Compensazioni tra conti (5 novembre 2026)
 
@@ -473,7 +473,7 @@ Dalla cartella "99.Modulistica aggiornata" di Berchet risultano gli stessi modul
 - **Ambito:** app per telefono di sola consultazione, accanto all'app desktop: chi ha pagato, scadenze, stato dei conguagli, note, elenco inquilini e documenti mancanti, copia di un messaggio negli appunti. Non modifica dati e non carica bollette: lettura dei documenti, conferme, Excel e ogni scrittura restano sul computer.
 - **Notifiche:** solo notifiche programmate sul telefono (per esempio una scadenza), senza server.
 - **Accesso ai dati:** il telefono legge la stessa cartella di lavoro condivisa tramite i file del telefono (Dropbox come cartella, disponibile offline), senza usare le API di Dropbox e senza chiamate di rete dell'app (sezione 28).
-- **Scelte di architettura da prendere nel piano:** (1) il formato dei file JSON con versione e regole di unione (sezione 36) è il contratto tra desktop e telefono e si scrive come specifica a sé; (2) calcoli e regole (interessi, ripartizioni, conguagli, stato dei pagamenti, scadenze) in un componente portabile condiviso (TypeScript o Rust), con Python solo per la lettura dei PDF su desktop; (3) interfaccia web adattabile, già prevista dal layout stretto. Framework per il telefono da scegliere dopo una verifica (Tauri 2 mobile, Capacitor o React Native).
+- **Scelte di architettura da prendere nel piano:** (1) il formato dei file JSON con versione e regole di unione (sezione 36) è il contratto tra desktop e telefono e si scrive come specifica a sé; (2) calcoli e regole (interessi, ripartizioni, conguagli, stato dei pagamenti, scadenze) in un componente portabile condiviso (TypeScript o Rust), con Python solo per la lettura dei PDF e degli estratti conto XLSX su desktop (decisione del 14 novembre 2026); (3) interfaccia web adattabile, già prevista dal layout stretto. Framework per il telefono da scegliere dopo una verifica (Tauri 2 mobile, Capacitor o React Native).
 - **Distribuzione:** iOS con account sviluppatore Apple e TestFlight; Android con file di installazione. Rimandata a dopo la versione desktop.
 
 ## 42. Regole di calcolo e verifica (consolidate il 10 novembre 2026)
