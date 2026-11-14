@@ -1,6 +1,6 @@
 # Piano 3: estratti conto della banca (disegno)
 
-Stato: **bozza da approvare da Carlo.** Solo disegno, nessun codice. Il piano copre il core
+Stato: **approvato da Carlo il 14 novembre 2026 (tranne il punto 11, IMU).** Solo disegno, nessun codice. Il piano copre il core
 (`packages/core`), la lettura dei file (core e, per l'XLSX, Python) e la riga di comando; **niente
 schermate e niente veste grafica**, che si fanno con Carlo. Specifica di riferimento: `docs/spec.md`,
 sezioni 11, 12, 13, 15, 18, 20, 23, 24, 28, 36, 40 e 42 (R1-R8, che prevalgono); registro
@@ -21,8 +21,8 @@ saldo tra conti.
 
 1. **Estratti non cifrati.** Nicola ha già tutti gli accessi ai conti (è cointestatario, sezione 11,
    «Accesso»): movimenti in chiaro in `_app/dati/`, come gli altri record, e file originali in
-   `Riservato_proprietari/`. Cambia la sezione 11 («Sicurezza») e la sezione 20 («estratti conto
-   (cifrati)»): vedi «Modifiche alla specifica».
+   `Riservato_proprietari/`. Sezioni 11 e 20 della specifica già corrette (commit «spec: …» su
+   questo ramo).
 2. **Struttura dei file della sezione 20:** `<Appartamento>/<annualità>/<Tipo>/`, periodo come mese.
    Qui vale per il percorso proposto dell'estratto (sotto, «Estratto»); il codice di oggi
    (`suggestedFilePath`, sezione 22) va allineato dal piano dello smistamento, non da questo.
@@ -32,6 +32,40 @@ saldo tra conti.
    associazione** (apprendimento supervisionato, sezione 15).
 4. **IMU di Berchet e Lovarini:** Carlo risponde il 15 novembre su come ripartirla. Domanda aperta,
    parte isolata nel sotto-piano 3d, l'ultimo.
+
+### Risposte alle domande del disegno (14 novembre 2026)
+
+I numeri sono quelli delle domande della bozza.
+
+1. **Contenitore:** «come preferisci»: vale la raccomandazione, **A1 + B2**. L'XLSX si legge in
+   Python con la sola libreria standard; il core legge anche i CSV.
+2. **Conti:** IMU, F24 e rate condominiali «si riconoscono da soli» ed escono dai tre conti degli
+   appartamenti, **tutti della stessa banca**. *Interpretazione:* non ci sono altri conti da
+   importare; si richiede conferma solo se ne compare un altro. Sezione 23 corretta.
+3. **Periodo coperto da un estratto:** dal file, se lo dichiara; altrimenti lo indica Carlo
+   all'importazione. **Mai dalle date dei movimenti.**
+4. **Mese di un canone automatico:** si abbina da solo al mese della data, se quel mese non è già
+   pagato. Un pagamento in ritardo va in revisione **solo se il ritardo supera 10 giorni**. La soglia è
+   un parametro di configurazione dell'appartamento, con 10 come valore predefinito (come lo misuro:
+   «Mie scelte», 8).
+5. **Ordine delle proposte «chi è», senza punteggio:** nome nella causale, poi importo atteso, poi
+   presenza nel mese senza pagamento, poi alfabetico.
+6. **Pagante di più inquilini:** mai automatico.
+7. **Chiave del pagante:** l'IBAN prevale sul nome.
+8. **F24:** sempre da confermare.
+9. **Giroconti:** solo i movimenti **tra i conti propri**. La prima volta si conferma lo scopo
+   (restituzione del saldo, mutuo, altro) e nel saldo tra conti entra solo la restituzione, con il suo
+   segno. Un bonifico verso terzi o un versamento ad altri (fornitori, per esempio) **non è un
+   giroconto**: è un'uscita e segue il percorso delle uscite.
+10. **Regole apprese per le uscite:** si applicano da sole dopo la prima conferma, con Annulla.
+11. **IMU:** aperta fino al 15 novembre (sotto «Aperto con Carlo»).
+12. **Movimenti non contabilizzati:** si escludono **solo dopo una conferma**, mai in automatico.
+13. **Possibile doppione tra estratti:** va in revisione e non si scrive prima che una persona decida.
+14. **Modifiche alla specifica:** approvate quelle delle sezioni 11, 20 (nessuna cifratura) e 41
+    (Python legge anche gli XLSX); applicate in un commit a parte su questo ramo, con la sezione 23
+    chiusa dalla risposta 2. **R3 (IMU) non si tocca** finché non arriva la risposta al punto 11.
+15. **Strumento che stampa solo la struttura dei file:** approvato. Lo costruisce l'orchestratore a
+    parte e lo lancia Carlo sui suoi file; il profilo seed della banca si scrive dalla sua uscita.
 
 ## Obiettivi
 
@@ -142,7 +176,7 @@ Disposizione delle colonne:
 - **B3. Colonne scelte dall'utente alla prima importazione** e salvate come profilo. Pro:
   qualunque banca. Contro: è interfaccia; usa comunque lo schema di B2.
 
-**Raccomandazione: A1 + B2**, con lo schema di B2 pronto per B3 quando si farà l'interfaccia. Il
+**Scelta (risposta 1): A1 + B2**, con lo schema di B2 pronto per B3 quando si farà l'interfaccia. Il
 core ha due funzioni pure: `parseCsv(text)` (per A3 o per una banca che dà CSV) e
 `readStatementTable(rows, profile)` che vale per tutti e due i contenitori. A2 resta la riserva se
 Carlo non vuole Python per gli estratti.
@@ -161,7 +195,7 @@ Carlo non vuole Python per gli estratti.
   niente record nuovi. Contro: annullare un pagamento cambia il riconoscimento dei successivi; la data
   di validità è implicita; non si può «spegnere» un alias senza toccare i pagamenti.
 
-**Raccomandazione: C2.** La scheda dell'inquilino mostrerà i suoi paganti leggendo i `payer`.
+**Scelta: C2** (approvata con il disegno). La scheda dell'inquilino mostrerà i suoi paganti leggendo i `payer`.
 
 ### C. Abbinamento a due fasi
 
@@ -181,7 +215,7 @@ proprio, regola appresa) e **a che cosa** si abbina (mese dovuto, voce, F24, gir
   mese) e la regola uno a uno di R15. Pro: un solo meccanismo. Contro: canoni uguali tra inquilini
   rendono ambigua quasi ogni entrata; R4 chiede un pagante confermato, che il grafo non sa.
 
-**Raccomandazione: D2.**
+**Scelta: D2** (approvata con il disegno).
 
 ## Disegno
 
@@ -193,7 +227,7 @@ proprio, regola appresa) e **a che cosa** si abbina (mese dovuto, voce, F24, gir
 - **`bankProfile`**: come in B2; `validFrom`/`validTo` come `SupplierProfile`. Seed in
   `python/seed-profiles/` o accanto, copiato al primo avvio come gli altri (piano 6).
 - **`statement`** (estratto importato): `id` = impronta del file, `accountId`, `from`, `to`
-  (periodo coperto, domanda 3), `fileName` originale, `suggestedPath`, `rowCount`, `bankProfileId`.
+  (periodo coperto, dal file o da Carlo, risposta 3), `periodSource` (`file` o `manual`), `fileName` originale, `suggestedPath`, `rowCount`, `bankProfileId`.
 - **`tenant`** (inquilino): `name`, `language` facoltativa. Solo ciò che serve a questo piano; il
   resto della scheda (sezione 26) si aggiunge quando serve.
 - **`payer`**: come in C2.
@@ -227,15 +261,21 @@ proprio, regola appresa) e **a che cosa** si abbina (mese dovuto, voce, F24, gir
    riga che non si legge ferma l'importazione con il numero di riga e il campo, mai il valore.
 2. **Impronta del file:** già importato con la stessa impronta → esito `already-imported`, nessuna
    scrittura.
-3. **Movimenti:** `keyTransactions` sulla lista del file; un `id` già presente si salta (stesso
+3. **Periodo coperto** (risposta 3): dal file se il profilo lo sa leggere, altrimenti dalle date
+   che Carlo dà all'importazione (`--dal`, `--al` nella riga di comando). Senza nessuna delle due
+   l'importazione si ferma e chiede le date: non le ricava mai dalle date dei movimenti.
+4. **Movimenti:** `keyTransactions` sulla lista del file; un `id` già presente si salta (stesso
    movimento da un estratto che si sovrappone). Sui giorni già coperti da un altro estratto dello
    stesso conto, un movimento nuovo con stessa data e importo di uno esistente ma causale diversa è
-   `possible-duplicate` (domanda 13): non si scrive finché una persona non decide.
-4. **Scrittura:** una sola operazione `import-statement` con il record `statement` e i movimenti
+   `possible-duplicate` (risposta 13): non si scrive finché una persona non decide.
+5. **Movimenti non contabilizzati** (risposta 12), se il profilo li riconosce: l'app propone di
+   escluderli e li esclude **solo dopo una conferma**. Finché non c'è risposta restano in revisione e
+   non si scrivono; se la persona li tiene, si scrivono come gli altri.
+6. **Scrittura:** una sola operazione `import-statement` con il record `statement` e i movimenti
    nuovi. Annullarla segna `deleted` i movimenti di quell'estratto che nessun altro estratto contiene;
    ciò che ne dipende (abbinamenti, pagamenti) si mostra prima, come per ogni annullamento (sezione
-   35).
-5. **Percorso proposto** (decisione 2):
+   35). Le decisioni sui doppioni e sui non contabilizzati sono operazioni a sé.
+7. **Percorso proposto** (decisione 2):
    `Riservato_proprietari/Estratti_conto/<Appartamento>/<annualità>/AAAA-MM-GG_Estratto_<Banca>_AAAA-MM.<ext>`
    con la data dell'ultimo giorno coperto e il mese di fine periodo; annualità dell'appartamento che
    contiene quel giorno; stesse regole di nome sicuro di `suggestedFilePath`. Il file non si sposta
@@ -250,21 +290,32 @@ separata** dall'importazione (`reconcile`), così gli automatismi si annullano s
 l'estratto. Rieseguirla su uno stato già riconciliato non scrive nulla.
 
 1. **Uscite verso voci note:** `matchToTransactions` com'è, con i periodi per conto.
-2. **Entrate, fase «chi»:** chiave del pagante dalla controparte (IBAN se c'è, altrimenti nome
-   normalizzato; domanda 7). `payer` valido alla data del movimento → inquilino noto. Altrimenti
-   proposta «chi è» con gli inquilini dell'appartamento del conto in ordine (domanda 5), senza
-   punteggio. **Una conferma crea il `payer`** e non si chiede più per quel pagante (decisione 3).
-3. **Entrate, fase «che cosa»:** automatico (`Payment` `canone`, `confirmed: true`, `source:
-   'csv'`) solo con R4 stretto: pagante confermato per **un solo** inquilino (domanda 6) e importo
-   esattamente `monthlyRent + monthlyForfait` del mese (domanda 4). Tutto il resto è una proposta «che
-   cosa è» (canone, caparra, saldo di conguaglio, altro; mese) con l'inquilino già scritto: 500 €,
-   importi parziali, più mesi, compensazioni (R4). Le categorie della banca non contano.
-4. **Uscite rimaste:** regola appresa valida → `movementClass` confermata (domanda 10); un F24
-   registrato → proposta di abbinamento, mai automatica (domanda 8); controparte = IBAN di un conto
-   proprio → proposta di giroconto (domanda 9); il resto «da classificare» (rimborso a un
-   inquilino, proprietà, imposta di subentro, privato, ignora).
+2. **Entrate, fase «chi»:** chiave del pagante dalla controparte: l'IBAN se c'è, il nome
+   normalizzato solo se manca; lo stesso IBAN con un nome diverso è lo stesso pagante (risposta 7).
+   Un `payer` valido alla data del movimento dà l'inquilino. Altrimenti c'è una proposta «chi è» con
+   gli inquilini dell'appartamento del conto, senza punteggio, in quest'ordine (risposta 5): chi ha
+   nella causale il nome intero (tutte le parole), poi chi ha l'importo atteso uguale, poi chi è
+   presente nel mese senza pagamento, poi in ordine alfabetico. **Una conferma crea il `payer`** e
+   per quel pagante la domanda non si ripete (decisione 3).
+3. **Entrate, fase «che cosa»:** si registra da solo (`Payment` `canone`, `confirmed: true`,
+   `source: 'csv'`) solo con R4 stretto: pagante confermato per **un solo** inquilino (risposta 6:
+   chi paga per più inquilini non è mai automatico) e importo esattamente `monthlyRent +
+   monthlyForfait` del mese abbinato. Il mese si sceglie così (risposta 4, misura in «Mie scelte»,
+   8): il mese della data, se l'inquilino c'è ed è ancora da pagare; se c'è un mese precedente
+   ancora da pagare, quel mese, purché il ritardo non superi `rentLateDays` (impostazione
+   dell'appartamento, 10 se non indicata); oltre la soglia va in revisione. Tutto il resto è una
+   proposta «che cosa è» (canone, caparra, saldo di conguaglio, altro; mese) con l'inquilino già
+   scritto: 500 €, importi parziali, più mesi, compensazioni (R4). Le categorie della banca non
+   contano.
+4. **Uscite rimaste:** una regola appresa valida dà una `movementClass` confermata, che si applica
+   da sola con Annulla (risposta 10). Un F24 registrato dà una proposta di abbinamento, **sempre da
+   confermare** (risposta 8). Una controparte con l'IBAN di uno dei conti propri dà una proposta di
+   giroconto (risposta 9). Un bonifico verso terzi o un versamento ad altri (fornitori, per
+   esempio) **non è un giroconto** e resta in questo percorso. Il resto è «da classificare»
+   (rimborso a un inquilino, proprietà, imposta di subentro, privato, ignora).
 5. **Entrate rimaste che non vengono da inquilini** (rimborsi dei fornitori, giroconti in entrata):
-   stesse regole del punto 4, nel verso dell'entrata.
+   stesse regole del punto 4, nel verso dell'entrata. Le regole apprese non valgono mai per le
+   entrate da inquilini, per le quali vale R4.
 
 ### F24 e saldo tra conti (sotto-piano 3c)
 
@@ -275,8 +326,11 @@ l'estratto. Rieseguirla su uno stato già riconciliato non scrive nulla.
   somma delle quote pagate da un conto per un altro appartamento, ognuna con data, descrizione,
   quota e documento: avvisi TARI comuni (`splitSharedDebit`, già nella nota TARI R3), rate con
   `paidFromApartmentId`, righe F24 di un altro appartamento, uscite classificate «proprietà» con
-  destinazione diversa dal conto; meno i `transfer` con scopo `saldo`, ciascuno col suo segno
-  (domanda 9). Risultato netto per coppia («Lovarini deve a Berchet X»), mai una percentuale fissa.
+  destinazione diversa dal conto; meno i `transfer` con scopo `saldo`, ciascuno col suo segno: un
+  giroconto nel verso opposto aumenta il debito (risposta 9). Un `transfer` lega solo movimenti
+  tra conti propri; la proposta dei due movimenti (stesso importo, segni opposti, entro 5 giorni) si
+  conferma, con lo scopo, la prima volta. Risultato netto per coppia («Lovarini deve a Berchet X»),
+  mai una percentuale fissa.
 - **IMU di Berchet e Lovarini:** fino al sotto-piano 3d un F24 IMU con una riga sola resta tutto sul
   conto che l'ha pagato e porta l'avviso «da ripartire»; il saldo tra conti lo elenca a parte, senza
   importo, così nessun saldo appare giusto quando non lo è.
@@ -286,7 +340,8 @@ l'estratto. Rieseguirla su uno stato già riconciliato non scrive nulla.
 Script `tsx` con `@bollette/store-fs`, come `golden:report`. Comandi (nomi in italiano, lasciati al
 costruttore nei dettagli): `estratti importa --cartella <workspace> --conto <id> <file>`,
 `estratti riconcilia --cartella <workspace> [--prova]`, `estratti conferma <idProposta> [scelte]`,
-`estratti saldi`. Uscita JSON con **soli conteggi, esiti e `id`**; `--dettagli` aggiunge date,
+`estratti saldi`. `importa` accetta `--dal` e `--al` per un estratto che non dichiara il periodo.
+Uscita JSON con **soli conteggi, esiti e `id`**; `--dettagli` aggiunge date,
 importi e causali per chi lavora sul proprio computer, ed è vietato nei test e nella CI. Orologio
 e profilo utente passati come opzioni (come il core).
 
@@ -294,26 +349,38 @@ e profilo utente passati come opzioni (come il core).
 
 | Sotto-piano | Contenuto | Obiettivo verificabile |
 | --- | --- | --- |
-| **3a. Conti ed estratti** | strumento di struttura per il campione; `account`, `bankProfile` seed, `statement`; tabella da CSV (core) e XLSX (Python); `accountId` e nuova identità; importazione con duplicati e sovrapposizioni; `statementPeriods` per conto; comando `importa` | lo stesso file sintetico importato due volte lascia l'archivio identico byte per byte e la seconda volta non scrive nulla; due file sovrapposti danno l'unione senza doppioni; un estratto di un conto non cambia le voci presunte di un altro conto |
-| **3b. Inquilini, paganti e incassi** | `tenant`, `payer`; fasi «chi» e «che cosa» delle entrate; R4 stretto; proposte ordinate; `Payment` da movimento; comandi `riconcilia` e `conferma` | su una fixture di un anno: gli automatici sono esattamente quelli attesi; dopo **una** conferma del pagante i mesi successivi con importo esatto sono automatici e nessuna domanda «chi è» si ripete; `collectedForfait` sui pagamenti creati dà i valori attesi; ordine dell'ingresso mescolato, stesso risultato |
-| **3c. Uscite, F24 e saldo tra conti** | `movementClass`, `movementRule`, `f24`, `transfer`; uscite e entrate rimaste; `accountBalances`; comando `saldi` | fixture con TARI comune, rata di Lovarini pagata da Berchet, F24 a due righe e un giroconto: saldo netto della coppia uguale al valore atteso, con l'elenco delle voci; ogni movimento è in una sola categoria (abbinato, pagamento, classificato, da rivedere) |
+| **3a. Conti ed estratti** | `account`, `bankProfile` seed (dall'uscita dello strumento di struttura, risposta 15), `statement`; tabella da CSV (core) e XLSX (Python, sola libreria standard); `accountId` e nuova identità; periodo dal file o da Carlo; importazione con doppioni, sovrapposizioni e non contabilizzati in revisione; `statementPeriods` per conto; comando `importa` | lo stesso file sintetico importato due volte lascia l'archivio identico byte per byte e la seconda volta non scrive nulla; due file sovrapposti danno l'unione senza doppioni; un estratto senza periodo dichiarato e senza `--dal`/`--al` non scrive nulla; un non contabilizzato non si esclude senza conferma; un estratto di un conto non cambia le voci presunte di un altro conto |
+| **3b. Inquilini, paganti e incassi** | `tenant`, `payer`; fasi «chi» e «che cosa» delle entrate; R4 stretto con `rentLateDays`; proposte ordinate; `Payment` da movimento; comandi `riconcilia` e `conferma` | su una fixture di un anno: gli automatici sono esattamente quelli attesi; dopo **una** conferma del pagante i mesi successivi con importo esatto sono automatici e nessuna domanda «chi è» si ripete; un ritardo di 10 giorni è automatico, uno di 11 va in revisione (e con la soglia cambiata cambia il confine); un pagante di due inquilini non è mai automatico; `collectedForfait` sui pagamenti creati dà i valori attesi; ordine dell'ingresso mescolato, stesso risultato |
+| **3c. Uscite, F24 e saldo tra conti** | `movementClass`, `movementRule`, `f24`, `transfer`; uscite e entrate rimaste; `accountBalances`; comando `saldi` | fixture con TARI comune, rata di Lovarini pagata da Berchet, F24 a due righe, un giroconto e un bonifico a un fornitore: saldo netto della coppia uguale al valore atteso, con l'elenco delle voci; il bonifico al fornitore non entra nel saldo; ogni movimento è in una sola categoria (abbinato, pagamento, classificato, da rivedere) |
 | **3d. IMU di Berchet e Lovarini** | solo la ripartizione dell'F24 IMU tra i due appartamenti, secondo la risposta di Carlo del 15 novembre; correzione di R3 nella sezione 42 | l'esempio di Carlo (inventato) ripartito come lui indica, resti con la regola già in uso (R3 dei Ruling); nessun avviso «da ripartire» rimasto |
 
-3a e 3b sono il minimo per l'uso reale (R2 e R4). 3d tocca solo una funzione e i suoi test.
+Ordine: 3a, 3b, 3c, 3d. **3a si può eseguire subito**: non dipende dalla domanda IMU. Il profilo
+seed della banca aspetta solo l'uscita dello strumento di struttura, che Carlo lancia; fino ad
+allora i task di 3a lavorano su un profilo sintetico. 3a e 3b sono il minimo per l'uso reale (R2 e
+R4). 3d parte solo dopo la risposta di Carlo e tocca una funzione e i suoi test.
 
 ## Rischi
 
 - **Movimento attribuito all'inquilino sbagliato** con un pagante comune a due inquilini: mai
-  automatico (domanda 6).
-- **Periodo coperto sbagliato:** se si ricavasse dalle date dei movimenti, i giorni senza movimenti
-  ai bordi farebbero «assumere» pagamenti che l'estratto copre (R2). Domanda 3.
+  automatico (risposta 6).
+- **Ritardo entro la soglia preso per il mese sbagliato:** un bonifico esatto nei primi 10 giorni
+  del mese, con il mese prima ancora da pagare, va al mese prima. Se in realtà era il canone del mese
+  in corso, il mese prima risulta pagato e quello in corso no; si corregge annullando il pagamento.
+  Il caso è visibile nell'elenco «registrati automaticamente».
+- **Periodo coperto sbagliato:** viene dal file o da Carlo (risposta 3); un periodo dato a mano
+  troppo largo farebbe aspettare addebiti che non ci sono. Il periodo dato a mano si scrive nel
+  `statement` e si vede nel riepilogo dell'importazione.
 - **Movimenti non ancora contabilizzati** che cambiano causale o data quando vengono contabilizzati:
-  doppioni. Esclusi dall'importazione (domanda 12), da verificare sul campione.
+  doppioni se la persona li tiene. Si escludono solo con una conferma (risposta 12); un doppione
+  rimasto lo prende la regola dei possibili doppioni (risposta 13).
+- **Giroconto confuso con un bonifico a terzi:** si riconosce solo dall'IBAN di un conto proprio
+  (risposta 9). Un conto senza `iban` nel record non produce proposte di giroconto e i suoi
+  movimenti vanno «da classificare».
 - **Profilo che legge male la controparte:** chiave del pagante sbagliata, quindi domande ripetute.
   Una correzione del profilo è una versione nuova più un'operazione esplicita «rileggi i movimenti»
   dell'estratto (rev + 1), mai una riscrittura silenziosa.
 - **Privacy:** i movimenti in chiaro nella cartella condivisa (decisione 1) si vedono da chiunque
-  abbia la cartella intera: va detto nella specifica che la cartella `App Bollette` non si condivide
+  abbia la cartella intera. La sezione 11 ora lo dice: la cartella `App Bollette` non si condivide
   mai con gli inquilini, solo le sottocartelle di tipologia (sezione 27).
 - **XLSX come confine di fiducia** (A1): limiti di dimensione e di righe, nessuna formula valutata,
   solo valori delle celle.
@@ -326,29 +393,32 @@ e profilo utente passati come opzioni (come il core).
   illeggibile (errore con riga e campo, senza valore).
 - **Ripetibilità:** importazione e riconciliazione due volte con orologio e generatore fissi, archivio
   confrontato byte per byte; ingresso mescolato; movimenti identici nello stesso giorno; file
-  sovrapposti; `possible-duplicate`.
+  sovrapposti; `possible-duplicate`; non contabilizzati tenuti ed esclusi; periodo dal file, da
+  `--dal`/`--al` e mancante (nessuna scrittura).
 - **Riconciliazione:** ogni caso di R4 (esatto, 500 €, parziale, più mesi, pagante di due
-  inquilini, pagante nuovo); commissione che segue la bolletta (R7, già provata, qui con l'estratto
+  inquilini, pagante nuovo); mese del canone: data nel mese, ritardo di 10 e di 11 giorni, soglia
+  cambiata nell'appartamento, due mesi arretrati; chiave del pagante con stesso IBAN e nome diverso;
+  ordine delle proposte «chi è» su ogni criterio; giroconto tra conti propri contro bonifico a un
+  fornitore; commissione che segue la bolletta (R7, già provata, qui con l'estratto
   vero); regole apprese; F24 con somme che non tornano (`validateMatches`); saldi tra conti.
 - **Riga di comando:** l'uscita predefinita non contiene causali, nomi né IBAN (controllo con
   `scanText` di `check-personal-data.mjs` sui risultati).
 - **Python** (A1): `table` su XLSX sintetici, file troppo grande, foglio vuoto, celle con stringhe
   condivise e numeri; uscita UTF-8; nessuna rete.
 
-## Modifiche alla specifica necessarie (da approvare con il disegno)
+## Modifiche alla specifica
 
-1. **Sezione 11, «Sicurezza»:** sostituire con «Gli estratti conto non sono cifrati (decisione del 14
-   novembre 2026): Nicola è cointestatario e ha già tutti gli accessi. I movimenti si salvano con i
-   soli campi necessari (data, importo, causale, codice disposizione, controparte) in
-   `_app/dati/transaction/` e il file originale in `Riservato_proprietari/`. La cartella `App
-   Bollette` non si condivide con gli inquilini, che ricevono solo i link alle sottocartelle di
-   tipologia (sezione 27).» Sezione 11, «Importazione»: il file della banca è oggi un XLSX («Lista
-   operazioni»), letto direttamente.
-2. **Sezione 20:** «estratti conto (cifrati)» diventa «estratti conto, in `Estratti_conto/<Appartamento>/<annualità>/`».
-3. **Sezione 41** (solo con A1): Python legge anche gli estratti XLSX, sul desktop.
-4. **Sezione 42, R3 (IMU):** dopo la risposta del 15 novembre (domanda 11), il testo «in parti
-   proporzionali» si allinea alla sezione 24 o viceversa.
-5. **Sezione 23, «Da chiarire»:** chiusa con la risposta alla domanda 2.
+Già applicate su questo ramo, in un commit a parte (risposta 14):
+
+1. **Sezione 11:** «Importazione» (XLSX della banca letto direttamente, anche CSV) e «Sicurezza»
+   (estratti non cifrati, soli campi necessari, cartella `App Bollette` mai condivisa con gli
+   inquilini).
+2. **Sezione 20:** `Riservato_proprietari/Estratti_conto/<appartamento>/<annualità>/`, non cifrati.
+3. **Sezione 23:** «Da chiarire» chiuso con la risposta 2.
+4. **Sezione 41:** Python legge anche gli estratti XLSX, sul desktop.
+
+Da fare dopo la risposta al punto 11: **sezione 42, R3 (IMU)**. Il testo «in parti proporzionali»
+si allinea alla sezione 24, o il contrario; fino ad allora non si tocca.
 
 ## Mie scelte (da controllare)
 
@@ -365,6 +435,19 @@ e profilo utente passati come opzioni (come il core).
    bollette.
 7. **Uscita della riga di comando senza dati personali di default**, perché le prove sui file veri le
    fa Carlo e i risultati possono finire in una conversazione con Claude (sezione 28).
+8. **Misura del ritardo del canone (risposta 4, interpretazione da riconfermare).** Il ritardo è il
+   numero di giorni tra l'ultimo giorno del mese da pagare e la data del bonifico; un bonifico dentro
+   il mese ha ritardo 0. Si abbina in automatico al mese più vecchio ancora da pagare (con
+   l'inquilino presente), se il ritardo è al massimo `rentLateDays`. Due mesi arretrati superano
+   sempre la soglia e vanno in revisione. Se Carlo intende un altro giorno di partenza (per esempio
+   il 5 del mese, come «non incassato dopo il 5» della sezione 27), cambia solo la data da cui si
+   contano i giorni, e i test di confine.
+9. **Conti (risposta 2, interpretazione).** «Si riconoscono da soli» vuol dire che IMU, F24 e rate
+   si trovano tra i movimenti dei tre conti senza importare altri conti; non che si abbinano senza
+   conferma (la risposta 8 vuole l'F24 sempre confermato). Il modello ammette comunque più conti per
+   appartamento (sezione 13): se ne compare un altro, si chiede a Carlo.
+10. **Giroconti solo tra conti propri** (risposta 9): la proposta di giroconto nasce solo quando la
+    controparte ha l'IBAN di un `account`, mai dal testo della causale («giroconto», «bonifico»).
 
 ## Lasciato al costruttore
 
@@ -378,57 +461,24 @@ seed della banca (cartella dei seed esistente o una nuova); ordine dei campi nei
   importo, colonna unica o dare/avere, dove sta «Cod Disp.» (colonna o testo della causale), se c'è
   una data valuta oltre alla contabile e quale usava il confronto del punto (h) di
   `docs/rules/conguaglio-rules.md`, se il file dichiara il periodo, se elenca movimenti non
-  contabilizzati, se la banca offre anche un CSV. Primo task di 3a: uno strumento locale (come
-  `python/tools/pdf_report.py`) che Carlo lancia sui suoi file e che stampa **solo** le
-  intestazioni, i tipi delle colonne e i conteggi, mai i valori.
-- Che i tre conti siano della stessa banca (il nome «Lista_Operazioni» lo suggerisce).
+  contabilizzati, se la banca offre anche un CSV. Lo strumento che stampa **solo** intestazioni,
+  tipi delle colonne e conteggi, mai i valori, è approvato (risposta 15). Lo costruisce
+  l'orchestratore a parte e lo lancia Carlo; dalla sua uscita si scrive il profilo seed di 3a.
 - Protezione di `expat` di Python 3.13 dall'espansione delle entità (A1); disponibilità di
   `DecompressionStream('deflate-raw')` in Node 20, WebView2 e WKWebView (A2).
 - Se nel modello F24 l'IMU di due immobili dello stesso comune sta su righe separate o su una riga
-  sola con «numero immobili» 2: decide se «righe dell'F24 per immobile» è possibile (domanda 11).
+  sola con «numero immobili» 2. Da questo dipende se le «righe dell'F24 per immobile» esistono
+  davvero (punto 11).
 - Formato della causale dei bonifici in entrata (dove stanno nome e IBAN di chi paga).
 
 ## Aperto con Carlo
 
-Domande chiuse, ognuna con la mia raccomandazione. Le 3, 4, 5, 6, 8, 9 e 11 sono regole di calcolo o
-di confidenza: decide Carlo.
-
-1. **Contenitore:** si leggono direttamente gli XLSX della banca, in Python con la libreria standard
-   (A1)? **Raccomando sì.** In alternativa A2 (tutto nel core) o A3 (Nicola salva in CSV).
-2. **Conti (fatto, sezione 23 «da chiarire»):** IMU, F24 e rate condominiali escono solo dai tre conti
-   degli appartamenti, o anche da altri conti (per esempio di Nicola)? E i tre conti sono della stessa
-   banca? Serve la risposta, non una raccomandazione; l'app ammette comunque più conti.
-3. **Periodo coperto da un estratto (R2, voci «assunte»):** si prende dal file, o lo indica l'utente
-   all'importazione, e mai dalle date dei movimenti? **Raccomando sì**: un estratto senza periodo
-   dichiarato chiede le date.
-4. **Mese di un canone automatico (R4):** il mese della data del bonifico, solo se l'inquilino è
-   presente in quel mese e il mese non è già pagato; un bonifico di fine mese per il mese dopo va «da
-   rivedere»? **Raccomando sì.**
-5. **Ordine delle proposte «chi è», senza punteggio:** prima chi ha il nome (tutte le parole) nella
-   causale, poi chi ha importo atteso uguale, poi chi è presente nel mese senza pagamento, poi
-   alfabetico? **Raccomando sì.**
-6. **Pagante di più inquilini** (un genitore per due figli): mai automatico, sempre «da rivedere» con
-   gli inquilini di quel pagante in cima? **Raccomando sì.**
-7. **Chiave del pagante:** l'IBAN quando c'è, il nome normalizzato solo quando manca; lo stesso IBAN
-   con un nome diverso resta lo stesso pagante? **Raccomando sì.**
-8. **F24:** sempre proposta da confermare, anche con un solo addebito «F24» di pari importo nella
-   finestra (R2: abbinamento manuale)? **Raccomando sì.**
-9. **Giroconti tra conti propri:** la prima volta si conferma lo scopo (restituzione del saldo, mutuo,
-   altro) e solo «restituzione» entra nel saldo tra conti, col suo segno (un giroconto nel verso
-   opposto aumenta il debito)? Abbinamento automatico dei due movimenti (stesso importo, segni
-   opposti, entro 5 giorni) come proposta? **Raccomando sì a entrambe.**
-10. **Regole apprese per le uscite** (bollo, SUNIA, mutuo, commissioni senza bolletta): dopo la prima
-    conferma si applicano da sole, con Annulla, come dice la sezione 23 per le scadenze?
-    **Raccomando sì**, mai per entrate da inquilini (lì vale R4).
-11. **IMU di Berchet e Lovarini (risposta attesa il 15 novembre, sotto-piano 3d):** si ripartisce
-    dalle righe dell'F24 per immobile quando sono separate e, se l'F24 ha una riga sola per i due
-    immobili, con le quote del prospetto di calcolo del commercialista inserite una volta (in punti
-    base, come i pesi delle utenze, R80)? **Raccomando sì**; R3 («in parti proporzionali») si corregge
-    di conseguenza.
-12. **Movimenti non contabilizzati:** esclusi dall'importazione? **Raccomando sì.**
-13. **Possibile doppione tra estratti** (stessa data e importo, causale diversa, giorni già coperti):
-    «da rivedere», non scritto finché una persona non decide? **Raccomando sì.**
-14. **Modifiche alla specifica** delle sezioni 11, 20 e (con A1) 41 come scritte sopra: si approvano?
-15. **Campione di struttura:** Carlo lancia lo strumento del primo task di 3a sui file di ottobre 2026
-    e incolla solo l'uscita (intestazioni e conteggi)? **Raccomando sì**: senza questo il profilo
-    seed della banca non si può scrivere.
+1. **IMU di Berchet e Lovarini** (risposta attesa il 15 novembre; regola di calcolo, decide Carlo;
+   sotto-piano 3d, l'ultimo, l'unico che ne dipende). La mia raccomandazione: si ripartisce dalle
+   righe dell'F24 per immobile quando sono separate. Se l'F24 ha una riga sola per i due immobili,
+   si usano le quote del prospetto di calcolo del commercialista, inserite una volta in punti base
+   come i pesi delle utenze (R80). La sezione 42, R3 («in parti proporzionali») si corregge solo
+   dopo la risposta.
+2. **Da riconfermare solo se serve:** la misura del ritardo del canone («Mie scelte», 8: si contano
+   i giorni dall'ultimo del mese da pagare) e, se compare un conto diverso dai tre, la risposta 2
+   («Mie scelte», 9). Nessuno dei due blocca 3a.
