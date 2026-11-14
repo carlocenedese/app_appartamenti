@@ -22,6 +22,11 @@ const BUILDER = join(REPO, 'python', 'tests', 'xlsx_builder.py');
 const PROFILE = BankProfileSchema.parse(
   JSON.parse(readFileSync(join(REPO, 'fixtures', 'bank', 'profilo-sintetico.json'), 'utf8')),
 );
+const REAL = BankProfileSchema.parse(
+  JSON.parse(
+    readFileSync(join(REPO, 'fixtures', 'bank', 'profilo-banca-lista-operazioni.json'), 'utf8'),
+  ),
+);
 const TIMEOUT = 60_000;
 const TABLE_ERROR = 'File non valido o troppo grande: nessun output.';
 
@@ -130,6 +135,21 @@ describe.skipIf(!availability.available)('core and the Python XLSX reader', () =
         'ambiguous-number',
         7,
       ]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'reads the synthetic list of operations with the profile of the bank: 16 rows, period, account',
+    async () => {
+      const parsed = StatementTableSchema.parse(JSON.parse(await table('lista-operazioni.xlsx')));
+      expect(parsed.sheets[0]?.rows[17]?.[0]).toEqual({ t: 's', v: 'Data' }); // header on row 18
+      const read = readStatementTable(parsed, REAL);
+      expect(read.rows).toHaveLength(16);
+      expect(read.rows[0]).toMatchObject({ row: 19, date: '2026-10-01', amount: 5000 });
+      expect(read.rows[1]?.amount).toBe(-1735);
+      expect(read.declaredPeriod).toEqual({ from: '2026-10-01', to: '2026-10-31' });
+      expect(read.declaredAccount).toBe('7654321');
     },
     TIMEOUT,
   );

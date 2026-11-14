@@ -126,6 +126,17 @@ describe('readStatementTable', () => {
     expect(readStatementTable(t(s('D')), base).rows[0]?.amount).toBe(-9281);
     expect(readStatementTable(t(s('A')), base).rows[0]?.amount).toBe(9281);
     expect(failure(t(s('X'))).code).toBe('unknown-sign');
+    // A negative amount with a credit sign contradicts itself: refused, never read as a credit.
+    const clash = failure(table(HEADER, line(d('2026-10-27'), s('a'), null, n('-92.81'), s('A'))));
+    expect([clash.code, clash.row, clash.column]).toEqual(['sign-conflict', 2, 'sign']);
+    expect(
+      readStatementTable(
+        table(HEADER, line(d('2026-10-27'), s('a'), null, n('-92.81'), s('D'))),
+        base,
+      ).rows[0]?.amount,
+    ).toBe(-9281);
+    // A positive amount with a debit sign is a debit: the sign says the direction, the number the size.
+    expect(readStatementTable(t(s('D')), base).rows[0]?.amount).toBe(-9281);
     // An empty Segno with a positive amount would be a silent credit: refused; a negative amount is clear.
     const empty = failure(t(null));
     expect([empty.code, empty.row]).toEqual(['unknown-sign', 2]);

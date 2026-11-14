@@ -129,3 +129,41 @@ if __name__ == "__main__":
             [("d", "46323"), ("i", "Addebito"), ("i", "ACQUA"), ("n", amount)],
         ]
         build_xlsx(Path(sys.argv[1]) / name, [{"name": "Movimenti", "rows": profile_rows}])
+
+    # The shape of a real "list of operations": preamble with labels in column B and values in C, the
+    # header on row 18, signed amounts, date cells (invented account, dates and amounts).
+    def money(cents: int) -> str:
+        return f"{'-' if cents < 0 else ''}{abs(cents) // 100}.{abs(cents) % 100:02d}"
+
+    first = 46296  # 2026-10-01
+    pre = [[] for _ in range(17)]
+    pre[1] = [None, ("i", "Lista operazioni")]
+    pre[3] = [None, ("i", "Conti e Carte"), ("i", "Conto 123456 / 7654321")]
+    pre[4] = [None, ("i", "Finanziamento"), ("i", "-")]
+    pre[5] = [None, ("i", "Investimenti e previdenza"), ("i", "-")]
+    pre[7] = [None, ("i", "I  movimenti selezionati sono"), ("n", "16")]
+    pre[8] = [None, ("i", "Data inizio periodo"), ("d", str(first))]
+    pre[9] = [None, ("i", "Data fine periodo"), ("d", str(first + 30))]
+    heads = ["Data", "Operazione", "Dettagli", "Conto o carta", "Contabilizzazione", "Categoria", "Valuta", "Importo"]
+    body = [
+        [
+            ("d", str(first + 2 * k)),
+            ("i", "Bonifico" if k % 4 else "Accredito"),
+            ("i", f"Dettaglio inventato {k}"),
+            ("i", "Conto di prova"),
+            ("i", "Contabilizzato"),
+            ("i", f"Categoria {k % 6}"),
+            ("i", "EUR"),
+            ("n", money(-(1000 + 735 * k) if k % 4 else 5000 + 100 * k)),
+        ]
+        for k in range(16)
+    ]
+    build_xlsx(
+        Path(sys.argv[1]) / "lista-operazioni.xlsx",
+        [{"name": "Lista", "rows": [*pre, [("i", h) for h in heads], *body]}],
+    )
+    pre[8] = pre[9] = []  # the same file without the two period lines
+    build_xlsx(
+        Path(sys.argv[1]) / "lista-senza-periodo.xlsx",
+        [{"name": "Lista", "rows": [*pre, [("i", h) for h in heads], *body]}],
+    )

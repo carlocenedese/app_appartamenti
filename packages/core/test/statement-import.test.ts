@@ -880,6 +880,12 @@ describe('after review: interruptions, hidden twins, masked accounts', () => {
     };
     const before = await snapshot(store);
     expect(await run('conto', 'a')).toEqual({ status: 'rejected', reason: 'bad-declared-account' });
+    // A short capture is contained in almost any IBAN: refused like an empty one.
+    expect(await run('conto IT60', 'e')).toEqual({
+      status: 'rejected',
+      reason: 'bad-declared-account',
+    });
+    expect(await run('conto 12345', 'f')).toMatchObject({ reason: 'bad-declared-account' });
     expect(await run('conto ****3456', 'b')).toEqual({
       status: 'rejected',
       reason: 'masked-account',

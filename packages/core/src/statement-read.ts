@@ -32,7 +32,12 @@ type ErrorCode =
   | 'zero-amount'
   | 'bad-period'
   | 'unsafe-pattern'
-  | 'bad-disp-code';
+  | 'bad-disp-code'
+  | 'sign-conflict'
+  | 'bad-account'
+  | 'bad-row-count'
+  | 'row-count-mismatch'
+  | 'ambiguous-profile';
 
 /** Never carries the cell value: statements hold personal data. `column` is a profile field name. */
 export class StatementReadError extends Error {
@@ -202,6 +207,7 @@ function exec(re: RegExp | undefined, text: string): RegExpExecArray | null {
 
 const text = (cell: StatementCell | undefined): string =>
   cell === null || cell === undefined ? '' : cell.v;
+const empty = (cell: StatementCell | undefined): boolean => text(cell).trim() === '';
 
 function toDate(value: string, format: BankProfile['dateFormat']): ISODate | undefined {
   const m = (
@@ -248,6 +254,63 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
   const pendingCol = col(c.pending, 'pending');
 
   const result: StatementRead = { rows: [] };
+  const pre = profile.preamble;
+  if (
+    profile.periodPattern !== undefined &&
+    (pre?.periodFrom !== undefined || pre?.periodTo !== undefined)
+  ) {
+    throw new StatementReadError('ambiguous-profile', 0, 'periodPattern');
+  }
+  if (profile.accountPattern !== undefined && pre?.account !== undefined) {
+    throw new StatementReadError('ambiguous-profile', 0, 'accountPattern');
+  }
+  const preambleAccountRe = safePattern(pre?.account?.pattern);
+  // The cell to the right of the first label `label` above the header: its text, its row (1-based).
+  const afterLabel = (
+    label: string | undefined,
+  ): { cell: StatementCell; row: number } | undefined => {
+    if (label === undefined) return undefined;
+    const wanted = foldText(label);
+    for (let r = 0; r < headerAt; r += 1) {
+      const cells = rows[r] ?? [];
+      const at = cells.findIndex((cell) => cell?.t === 's' && foldText(cell.v) === wanted);
+      if (at >= 0) return { cell: cells.slice(at + 1).find((x) => !empty(x)) ?? null, row: r + 1 };
+    }
+    return undefined;
+  };
+  const periodFrom = afterLabel(pre?.periodFrom?.label);
+  const periodTo = afterLabel(pre?.periodTo?.label);
+  if (periodFrom !== undefined || periodTo !== undefined) {
+    const day = (found: typeof periodFrom, column: string): ISODate => {
+      const cell = found?.cell;
+      const date =
+        cell?.t === 'd' ? cell.v : cell?.t === 's' ? toDate(cell.v, profile.dateFormat) : undefined;
+      if (date === undefined) throw new StatementReadError('bad-period', found?.row ?? 0, column);
+      return date;
+    };
+    const from = day(periodFrom, 'periodFrom');
+    const to = day(periodTo, 'periodTo');
+    if (from > to) throw new StatementReadError('bad-period', periodTo?.row ?? 0, 'periodTo');
+    result.declaredPeriod = { from, to };
+  }
+  const accountLine = afterLabel(pre?.account?.label);
+  if (accountLine !== undefined) {
+    const a = accountLine.cell?.t === 's' ? exec(preambleAccountRe, accountLine.cell.v) : null;
+    if (a?.[1] === undefined)
+      throw new StatementReadError('bad-account', accountLine.row, 'account');
+    result.declaredAccount = normaliseIban(a[1]) ?? a[1].trim();
+  }
+  const countLine = afterLabel(pre?.rowCount?.label);
+  let declaredCount: number | undefined;
+  if (countLine !== undefined) {
+    const raw =
+      countLine.cell?.t === 'n' || countLine.cell?.t === 's' ? countLine.cell.v.trim() : '';
+    // A number cell comes as `16` or `16.0`; anything else (a decimal, a sign, a word) is not a count.
+    if (!/^[0-9]{1,9}(\.0+)?$/.test(raw)) {
+      throw new StatementReadError('bad-row-count', countLine.row, 'rowCount');
+    }
+    declaredCount = Number(raw);
+  }
   for (let r = 0; r < headerAt; r += 1) {
     for (const cell of rows[r] ?? []) {
       if (cell?.t !== 's') continue;
@@ -289,7 +352,6 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
       throw new StatementReadError('bad-amount', row, column);
     }
   };
-  const empty = (cell: StatementCell | undefined): boolean => text(cell).trim() === '';
   const among = (cell: StatementCell | undefined, values: string[] | undefined): boolean =>
     values?.map(foldText).includes(foldText(text(cell))) ?? false;
 
@@ -323,8 +385,11 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
       else {
         const sign = cells[signCol];
         if (among(sign, profile.signValues?.debit)) amount = -Math.abs(value);
-        else if (among(sign, profile.signValues?.credit)) amount = Math.abs(value);
-        else throw new StatementReadError('unknown-sign', row, 'sign');
+        else if (among(sign, profile.signValues?.credit)) {
+          // A negative amount with a credit sign contradicts itself: never read it as a credit.
+          if (value < 0) throw new StatementReadError('sign-conflict', row, 'sign');
+          amount = value;
+        } else throw new StatementReadError('unknown-sign', row, 'sign');
       }
     } else {
       const debit = cells[debitCol as number];
@@ -361,6 +426,9 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
     if (name !== undefined && name !== '') entry.counterparty = { name };
     if (iban !== undefined) entry.counterparty = { ...entry.counterparty, iban };
     result.rows.push(entry);
+  }
+  if (declaredCount !== undefined && declaredCount !== result.rows.length) {
+    throw new StatementReadError('row-count-mismatch', countLine?.row ?? 0, 'rowCount');
   }
   return result;
 }
