@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "bank": {
+      "type": "string",
+      "minLength": 1
+    },
+    "validFrom": {
+      "format": "date",
+      "description": "Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists in the month needs a \"format\": \"date\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
+    },
+    "validTo": {
+      "format": "date",
+      "description": "Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists in the month needs a \"format\": \"date\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
+    },
+    "container": {
+      "type": "string",
+      "enum": [
+        "xlsx",
+        "csv"
+      ]
+    },
+    "csvSeparator": {
+      "type": "string",
+      "enum": [
+        ";",
+        ","
+      ]
+    },
+    "header": {
+      "type": "object",
+      "properties": {
+        "allOf": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "allOf"
+      ]
+    },
+    "columns": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "amount": {
+          "type": "string",
+          "minLength": 1
+        },
+        "debit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "credit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sign": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pending": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "date",
+        "description"
+      ]
+    },
+    "dateFormat": {
+      "type": "string",
+      "enum": [
+        "DD/MM/YYYY",
+        "YYYY-MM-DD"
+      ]
+    },
+    "signValues": {
+      "type": "object",
+      "properties": {
+        "debit": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "credit": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "debit",
+        "credit"
+      ]
+    },
+    "pendingValues": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "dispCodePattern": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+    },
+    "counterparty": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+        },
+        "iban": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+        }
+      }
+    },
+    "periodPattern": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+    },
+    "accountPattern": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "bank",
+    "validFrom",
+    "container",
+    "header",
+    "columns",
+    "dateFormat"
+  ],
+  "description": "Either columns.amount, or columns.debit and columns.credit together; columns.sign needs columns.amount and signValues; columns.pending needs pendingValues; validFrom must not be after validTo; periodPattern has at least two capture groups, accountPattern at least one."
+}

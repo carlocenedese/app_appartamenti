@@ -60,3 +60,9 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 - `python/seed-profiles/` (fuori da `fixtures/`): profili dei fornitori (`SupplierProfile`) che
   riconoscono per parole chiave, senza codici cliente, POD, PDR o indirizzi; quelli dell'utente
   stanno nei suoi dati, in `_app/dati/supplierProfile/`.
+
+## Conti ed estratti (piano 3a)
+
+- `fixtures/bank/profilo-sintetico.json`: profilo della banca **ipotetico** (colonne, formati ed
+  espressioni inventati, nessuna banca reale), per provare lo schema `BankProfile`. Gli IBAN dei
+  test sono inventati con il controllo mod-97 valido (per esempio `IT60X0542811101000000123456`).

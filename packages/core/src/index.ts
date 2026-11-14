@@ -1,4 +1,5 @@
 export * from './model';
+export * from './iban';
 export * from './money';
 export * from './period';
 export * from './version';
