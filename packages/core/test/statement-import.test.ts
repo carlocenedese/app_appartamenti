@@ -607,7 +607,10 @@ describe('undoImport', () => {
       ids('e'),
     );
     const before = await snapshot(store);
-    await expect(undoImport(store, rb.statement.id, 'p1', clock, newId)).rejects.toThrow();
+    expect(await undoImport(store, rb.statement.id, 'p1', clock, newId)).toEqual({
+      status: 'refused',
+      reason: 'later-changes',
+    });
     expect(await snapshot(store)).toEqual(before);
   });
 
@@ -618,5 +621,268 @@ describe('undoImport', () => {
     await expect(undoImport(store, rb.statement.id, 'p1', clock, newId)).rejects.toThrow(
       RangeError,
     );
+  });
+});
+
+/** A store that stops writing after `limit` files: an interruption halfway through an operation. */
+class FlakyStore extends MemoryStore {
+  limit = Infinity;
+  override async writeJsonAtomic(path: string, value: unknown): Promise<void> {
+    if (this.limit <= 0) throw new Error('interrupted');
+    this.limit -= 1;
+    await super.writeJsonAtomic(path, value);
+  }
+}
+
+describe('after review: interruptions, hidden twins, masked accounts', () => {
+  const flaky = async () => {
+    const { store: plain, accountId, newId } = await seeded();
+    // same folder, flaky writes: copy what the seed wrote
+    const store = new FlakyStore();
+    for (const dir of [
+      '_app/dati/apartment',
+      '_app/dati/bankProfile',
+      '_app/dati/account',
+      '_app/journal',
+    ]) {
+      for (const name of await plain.list(dir))
+        store.putRaw(`${dir}/${name}`, plain.getRaw(`${dir}/${name}`) ?? '');
+    }
+    return { store, accountId, newId };
+  };
+
+  it('resumes an import that stopped after some movements: no loss, no double', async () => {
+    const { store, accountId, newId } = await flaky();
+    const f = file([
+      ['2026-10-05', 'Alfa', '-1.00'],
+      ['2026-10-06', 'Beta', '-2.00'],
+      ['2026-10-07', 'Gamma', '-3.00'],
+    ]);
+    const input = { accountId, fileBytes: f.bytes, fileName: 'a', table: f.table, period: OCT };
+    store.limit = 3; // the journal file and two movements
+    await expect(importStatement(store, input, 'p1', clock, newId)).rejects.toThrow('interrupted');
+    expect(await statementsOf(store)).toHaveLength(0);
+    store.limit = Infinity;
+    const r = await importStatement(store, input, 'p1', clock, newId);
+    expect(r).toMatchObject({ status: 'imported', added: 1, alreadyKnown: 2 });
+    expect(await live(store)).toHaveLength(3);
+    const [stmt] = await statementsOf(store);
+    expect(stmt?.transactionIds).toHaveLength(3);
+  });
+
+  it('resumes a keep that stopped before the decision was recorded', async () => {
+    const { store, accountId, newId } = await flaky();
+    const f = file([['2026-10-05', 'Alfa', '-1.00', 'Prenotato']]);
+    const r = await importStatement(
+      store,
+      { accountId, fileBytes: f.bytes, fileName: 'a', table: f.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    if (r.status !== 'imported') throw new Error('x');
+    store.limit = 2; // the journal file and the movement, not the statement
+    await expect(resolveHeld(store, r.statement.id, 2, 'keep', 'p1', clock, newId)).rejects.toThrow(
+      'interrupted',
+    );
+    expect((await statementsOf(store))[0]?.held[0]?.decision).toBeUndefined();
+    store.limit = Infinity;
+    await resolveHeld(store, r.statement.id, 2, 'keep', 'p1', clock, newId);
+    expect(await live(store)).toHaveLength(1);
+    expect((await statementsOf(store))[0]?.held[0]?.decision).toBe('keep');
+  });
+
+  it('refuses to undo A when B holds a possible twin of a movement A wrote', async () => {
+    const { store, accountId, newId } = await seeded();
+    const a = file([['2026-10-10', 'Bonifico Rossi', '-10.00']]);
+    const ra = await importStatement(
+      store,
+      { accountId, fileBytes: a.bytes, fileName: 'a', table: a.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    const b = file([['2026-10-10', 'BON. ROSSI', '-10.00']]);
+    const rb = await importStatement(
+      store,
+      { accountId, fileBytes: b.bytes, fileName: 'b', table: b.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    if (ra.status !== 'imported' || rb.status !== 'imported') throw new Error('x');
+    const expected = { status: 'refused', reason: 'held-duplicates' };
+    expect(await undoImport(store, ra.statement.id, 'p1', clock, newId)).toEqual(expected);
+    await resolveHeld(store, rb.statement.id, 2, 'exclude', 'p1', clock, newId);
+    const before = await snapshot(store);
+    expect(await undoImport(store, ra.statement.id, 'p1', clock, newId)).toEqual(expected);
+    expect(await snapshot(store)).toEqual(before);
+    expect(await live(store)).toHaveLength(1);
+    // another day or amount is no twin
+    const c = file([['2026-10-12', 'Altro', '-10.00']]);
+    const rc = await importStatement(
+      store,
+      { accountId, fileBytes: c.bytes, fileName: 'c', table: c.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    if (rc.status !== 'imported') throw new Error('x');
+    expect((await undoImport(store, rc.statement.id, 'p1', clock, newId)).status).toBe('undone');
+  });
+
+  it('a twin of another amount does not block, nor does a twin that was kept', async () => {
+    const { store, accountId, newId } = await seeded();
+    const imp = async (movements: Mv[], name: string) => {
+      const f = file(movements);
+      const r = await importStatement(
+        store,
+        { accountId, fileBytes: f.bytes, fileName: name, table: f.table, period: OCT },
+        'p1',
+        clock,
+        newId,
+      );
+      if (r.status !== 'imported') throw new Error('x');
+      return r.statement.id;
+    };
+    const a = await imp([['2026-10-10', 'Bonifico Rossi', '-10.00']], 'a');
+    const b = await imp([['2026-10-10', 'BON. ROSSI', '-10.00']], 'b');
+    const c = await imp([['2026-10-10', 'Gamma', '-30.00']], 'c');
+    expect((await undoImport(store, c, 'p1', clock, newId)).status).toBe('undone');
+    await resolveHeld(store, b, 2, 'keep', 'p1', clock, newId);
+    expect((await undoImport(store, a, 'p1', clock, newId)).status).toBe('undone');
+    expect((await live(store)).map((t) => t.description)).toEqual(['BON. ROSSI']);
+  });
+
+  it('a row of the same day and another amount is not a possible duplicate', async () => {
+    const { store, accountId, newId } = await seeded();
+    const a = file([['2026-10-10', 'Alfa', '-10.00']]);
+    await importStatement(
+      store,
+      { accountId, fileBytes: a.bytes, fileName: 'a', table: a.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    const b = file([['2026-10-10', 'Beta', '-11.00']]);
+    expect(
+      await importStatement(
+        store,
+        { accountId, fileBytes: b.bytes, fileName: 'b', table: b.table, period: OCT },
+        'p1',
+        clock,
+        newId,
+      ),
+    ).toMatchObject({ added: 1, held: 0 });
+  });
+
+  it('period-mismatch also on `from`; a manual period is recorded as manual', async () => {
+    const { store, accountId, newId } = await seeded();
+    const f = file([['2026-10-05', 'Alfa', '-10.00']], declared('01/10/2026', '31/10/2026'));
+    expect(
+      await importStatement(
+        store,
+        {
+          accountId,
+          fileBytes: f.bytes,
+          fileName: 'a',
+          table: f.table,
+          period: { from: isoDate('2026-10-02'), to: OCT.to },
+        },
+        'p1',
+        clock,
+        newId,
+      ),
+    ).toEqual({ status: 'rejected', reason: 'period-mismatch' });
+    const g = file([['2026-10-05', 'Alfa', '-10.00']]);
+    const r = await importStatement(
+      store,
+      { accountId, fileBytes: g.bytes, fileName: 'g', table: g.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    expect(r.status === 'imported' && r.statement.periodSource).toBe('manual');
+  });
+
+  it('an account without IBAN cannot confirm an account written in the file', async () => {
+    const { store, newId } = await seeded();
+    const saved = await saveAccount(
+      store,
+      { apartmentId: 'apt', label: 'Senza', bankProfileId: profile.id },
+      'p1',
+      clock,
+      ids('n'),
+    );
+    if (saved.status !== 'saved') throw new Error('x');
+    const f = file([['2026-10-05', 'Alfa', '-10.00']], declared('01/10/2026', '31/10/2026', IBAN));
+    expect(
+      await importStatement(
+        store,
+        { accountId: saved.account.id, fileBytes: f.bytes, fileName: 'a', table: f.table },
+        'p1',
+        clock,
+        newId,
+      ),
+    ).toEqual({ status: 'rejected', reason: 'wrong-account' });
+  });
+
+  it('a deleted bank profile of the account is wrong-profile', async () => {
+    const { store, accountId, newId } = await seeded();
+    const stored = (await loadAll(store, 'bankProfile', BankProfileSchema)).records[0];
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'x',
+        summary: 'x',
+        changes: [
+          { path: recordPath('bankProfile', profile.id), before: stored, after: undefined },
+        ],
+      },
+      clock,
+      ids('d'),
+    );
+    const f = file([['2026-10-05', 'Alfa', '-10.00']]);
+    expect(
+      await importStatement(
+        store,
+        { accountId, fileBytes: f.bytes, fileName: 'a', table: f.table, period: OCT },
+        'p1',
+        clock,
+        newId,
+      ),
+    ).toEqual({ status: 'rejected', reason: 'wrong-profile' });
+  });
+
+  it('an empty or masked account in the file is refused with its own code', async () => {
+    const { store, accountId, newId } = await seeded();
+    await saveBankProfile(
+      store,
+      { ...profile, accountPattern: 'conto ?([A-Z0-9*]*)' },
+      'p1',
+      clock,
+      ids('q'),
+    );
+    const run = (text: string, n: string) => {
+      const f = file(
+        [['2026-10-05', n, '-10.00']],
+        [[s('Estratto dal 01/10/2026 al 31/10/2026')], [s(text)]],
+      );
+      return importStatement(
+        store,
+        { accountId, fileBytes: f.bytes, fileName: n, table: f.table },
+        'p1',
+        clock,
+        newId,
+      );
+    };
+    const before = await snapshot(store);
+    expect(await run('conto', 'a')).toEqual({ status: 'rejected', reason: 'bad-declared-account' });
+    expect(await run('conto ****3456', 'b')).toEqual({
+      status: 'rejected',
+      reason: 'masked-account',
+    });
+    expect(await snapshot(store)).toEqual(before);
   });
 });

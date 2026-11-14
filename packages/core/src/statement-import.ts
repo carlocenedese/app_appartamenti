@@ -42,6 +42,8 @@ export type ImportResult =
         | 'unknown-account'
         | 'wrong-profile'
         | 'wrong-account'
+        | 'bad-declared-account'
+        | 'masked-account'
         | 'needs-period'
         | 'period-mismatch'
         | 'row-outside-period';
@@ -105,10 +107,13 @@ export async function importStatement(
   }
 
   const read = readStatementTable(input.table, bankProfile);
-  if (
-    read.declaredAccount !== undefined &&
-    (account.iban === undefined || !account.iban.includes(read.declaredAccount))
-  ) {
+  const dec = read.declaredAccount;
+  // An empty capture would be contained in any IBAN; a masked number cannot be compared (R106).
+  if (dec === '') return { status: 'rejected', reason: 'bad-declared-account' };
+  if (dec !== undefined && /[*•#]/.test(dec)) {
+    return { status: 'rejected', reason: 'masked-account' };
+  }
+  if (dec !== undefined && (account.iban === undefined || !account.iban.includes(dec))) {
     return { status: 'rejected', reason: 'wrong-account' };
   }
   const declared = read.declaredPeriod;
@@ -212,12 +217,14 @@ export async function importStatement(
       apartmentId: apartment.id,
       summary: importSummary(written.length, held.length),
       changes: [
-        { path: recordPath('statement', statement.id), before: known, after: statement },
+        // The statement goes last: an interruption leaves movements without it, and repeating
+        // the import finds them already known and completes it.
         ...written.map((t) => ({
           path: recordPath('transaction', t.id),
           before: stored.get(t.id),
           after: t,
         })),
+        { path: recordPath('statement', statement.id), before: known, after: statement },
       ],
     },
     clock,
@@ -225,7 +232,7 @@ export async function importStatement(
   );
   return {
     status: 'imported',
-    statement: parseOrThrow(StatementSchema, operation.changes[0]?.after, 'statement'),
+    statement: parseOrThrow(StatementSchema, operation.changes.at(-1)?.after, 'statement'),
     added: written.length,
     alreadyKnown,
     held: held.length,
@@ -280,10 +287,11 @@ export async function resolveHeld(
       summary:
         decision === 'keep' ? 'Movimento dell’estratto tenuto' : 'Movimento dell’estratto escluso',
       changes: [
-        { path: recordPath('statement', statement.id), before: statement, after: updated },
+        // The movement first, the decision last: repeating an interrupted keep completes it.
         ...(write
           ? [{ path: recordPath('transaction', id), before: existing, after: entry.transaction }]
           : []),
+        { path: recordPath('statement', statement.id), before: statement, after: updated },
       ],
     },
     clock,
@@ -303,7 +311,8 @@ export async function undoImport(
   clock: () => string,
   newId: () => string,
 ): Promise<
-  { status: 'undone'; operation: Operation } | { status: 'refused'; reason: 'shared-transactions' }
+  | { status: 'undone'; operation: Operation }
+  | { status: 'refused'; reason: 'shared-transactions' | 'held-duplicates' | 'later-changes' }
 > {
   const path = recordPath('statement', statementId);
   const { operations } = await readJournal(store);
@@ -328,9 +337,31 @@ export async function undoImport(
   );
   if (shared) return { status: 'refused', reason: 'shared-transactions' };
 
+  // A held row of another statement of the same account that looks like a movement going away
+  // (waiting, or excluded) leans on it: deleting it would lose the payment.
+  const account = (await loadAll(store, 'statement', StatementSchema)).records.find(
+    (x) => x.id === statementId,
+  )?.accountId;
+  const goingTx = (await loadAll(store, 'transaction', BankTransactionSchema)).records.filter((t) =>
+    going.has(recordPath('transaction', t.id)),
+  );
+  const twinned = statements.records.some(
+    (x) =>
+      x.id !== statementId &&
+      x.accountId === account &&
+      x.held.some(
+        (h) =>
+          h.reason === 'possible-duplicate' &&
+          h.decision !== 'keep' &&
+          goingTx.some((t) => t.date === h.transaction.date && t.amount === h.transaction.amount),
+      ),
+  );
+  if (twinned) return { status: 'refused', reason: 'held-duplicates' };
+  if (dependents.length !== decisions.length) return { status: 'refused', reason: 'later-changes' };
+
   // Later decisions on this statement go first; any other dependent makes `undoOperation` throw.
   const operation = await undoOperation(store, target.id, profileId, clock, newId, {
-    cascade: decisions.length > 0 && decisions.length === dependents.length,
+    cascade: decisions.length > 0,
   });
   return { status: 'undone', operation };
 }
