@@ -1088,3 +1088,27 @@ describe('SupplierProfile', () => {
     }
   });
 });
+
+describe('fileDocument', () => {
+  const fileDocument = { pages: [3, 4], documentKind: 'bill' };
+  it('is optional on Bill and Instalment: records without it stay valid', () => {
+    expect(BillSchema.safeParse(validRecords.bill).success).toBe(true);
+    expect(InstalmentSchema.safeParse(validRecords.instalment).success).toBe(true);
+    expect(BillSchema.parse(changed(validRecords.bill, { fileDocument })).fileDocument).toEqual(
+      fileDocument,
+    );
+    expect(
+      InstalmentSchema.safeParse(changed(validRecords.instalment, { fileDocument })).success,
+    ).toBe(true);
+  });
+  it.each([
+    { pages: [4, 3], documentKind: 'bill' },
+    { pages: [0, 3], documentKind: 'bill' },
+    { pages: [1, 2], documentKind: 'other' },
+    { pages: [1, 2] },
+  ])('rejects %j', (bad) => {
+    expect(BillSchema.safeParse(changed(validRecords.bill, { fileDocument: bad })).success).toBe(
+      false,
+    );
+  });
+});

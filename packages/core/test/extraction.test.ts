@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { DocumentKindSchema, ExtractionResultSchema } from '../src/extraction';
+import { ExtractionResultSchema } from '../src/extraction';
+import { DocumentKindSchema } from '../src/model';
 import type { ExtractedField, ExtractionResult } from '../src/extraction';
 import type { Cents } from '../src/money';
 

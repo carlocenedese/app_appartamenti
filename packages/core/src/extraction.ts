@@ -10,6 +10,7 @@ import {
   BillCategorySchema,
   CentsSchema,
   ConsumptionSchema,
+  DocumentKindSchema,
   IdentifierKindSchema,
   ISODateSchema,
 } from './model';
@@ -68,10 +69,6 @@ export function hasOcrReading(result: {
     result.parts.some((part) => readWithOcr(result, part))
   );
 }
-
-/** What a document is: a bill, a TARI notice, or something no profile recognises. */
-export const DocumentKindSchema = z.enum(['bill', 'tari', 'unknown']);
-export type DocumentKind = z.infer<typeof DocumentKindSchema>;
 
 /** Whether `page` lies in the result's page range (a result with no range has no page). */
 function inRange(range: [number, number] | null, page: number): boolean {

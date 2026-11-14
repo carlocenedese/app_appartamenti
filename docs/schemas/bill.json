@@ -100,6 +100,42 @@
     "filePath": {
       "type": "string",
       "minLength": 1
+    },
+    "fileDocument": {
+      "type": "object",
+      "properties": {
+        "pages": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "documentKind": {
+          "type": "string",
+          "enum": [
+            "bill",
+            "tari",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "pages",
+        "documentKind"
+      ],
+      "description": "pages[0] must not be after pages[1]."
     }
   },
   "required": [

@@ -11,6 +11,7 @@ import {
   readJournal,
   recordPath,
   registerBill,
+  samePages,
   transactionKey,
 } from '../src/index';
 import type { Bill } from '../src/index';
@@ -622,5 +623,20 @@ describe('keyTransactions', () => {
     await expect(
       keyTransactions([row('2026-03-05', -6300, 'Addebito SDD Luce', { statementHash: '' })]),
     ).rejects.toThrow(/statementHash/);
+  });
+});
+
+describe('samePages', () => {
+  const doc = (a: number, b: number) => ({
+    pages: [a, b] as [number, number],
+    documentKind: 'bill' as const,
+  });
+  it('compares page ranges; a record without one covers the whole file', () => {
+    expect(samePages(doc(1, 2), doc(1, 2))).toBe('same');
+    expect(samePages(doc(1, 2), doc(2, 3))).toBe('overlap');
+    expect(samePages(doc(1, 2), doc(3, 4))).toBe('disjoint');
+    expect(samePages(undefined, doc(3, 4))).toBe('overlap');
+    expect(samePages(doc(3, 4), undefined)).toBe('overlap');
+    expect(samePages(undefined, undefined)).toBe('same');
   });
 });

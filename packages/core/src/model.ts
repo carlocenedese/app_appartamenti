@@ -245,6 +245,27 @@ export const ConsumptionSchema = z
   .meta({ description: 'Quantity consumed and its unit, e.g. 123.4 kWh.' });
 export type Consumption = z.infer<typeof ConsumptionSchema>;
 
+/** What a document is: a bill, a TARI notice, or something no profile recognises. */
+export const DocumentKindSchema = z.enum(['bill', 'tari', 'unknown']);
+export type DocumentKind = z.infer<typeof DocumentKindSchema>;
+
+/**
+ * The part of a PDF a record was read from, when the file holds more than one document: pages
+ * `[first, last]` (1-based, inclusive). A record without it covers the whole file (records written
+ * before plan 2b-2 stay valid, so `v` does not change).
+ */
+export const FileDocumentSchema = z
+  .object({
+    pages: z.tuple([z.int().min(1), z.int().min(1)]),
+    documentKind: DocumentKindSchema,
+  })
+  .refine((doc) => doc.pages[0] <= doc.pages[1], {
+    message: 'The page range ends before it starts',
+    path: ['pages'],
+  })
+  .meta({ description: 'pages[0] must not be after pages[1].' });
+export type FileDocument = z.infer<typeof FileDocumentSchema>;
+
 export const BillSchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,
   /** Condominium and TARI are instalments, IMU is the owner's tax: none of them is a bill. */
@@ -264,6 +285,7 @@ export const BillSchema = RecordBaseSchema.extend({
   sharedWithTenants: z.boolean(),
   fileHash: NonEmptyString,
   filePath: NonEmptyString,
+  fileDocument: FileDocumentSchema.optional(),
 })
   .refine((bill) => notAfter(bill.periodStart, bill.periodEnd), {
     message: 'The billing period ends before it starts',
@@ -351,6 +373,7 @@ export const InstalmentSchema = RecordBaseSchema.extend({
   coversFrom: YearMonthSchema,
   coversTo: YearMonthSchema,
   fileHash: NonEmptyString.optional(),
+  fileDocument: FileDocumentSchema.optional(),
 })
   .refine((instalment) => instalment.rateIndex <= instalment.rateCount, {
     message: 'The instalment index is beyond the number of instalments',

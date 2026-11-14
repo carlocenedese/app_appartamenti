@@ -810,3 +810,112 @@ describe('confirmProfile and setProfileAutoRegister', () => {
     expect(operations).toHaveLength(3);
   });
 });
+
+describe('registerProposal: documents of one file by page range', () => {
+  /** The same reading, claimed to come from pages `first`-`last` of a 4-page file. */
+  const at = (result: ExtractionResult, first: number, last: number): ExtractionResult => ({
+    ...result,
+    pages: 4,
+    pageRange: [first, last],
+  });
+  async function register(store: MemoryStore, first: number, last: number, prefix: string) {
+    const result = at((await billCase()).result, first, last);
+    const again = proposalFromExtraction(result, context(), ids(prefix));
+    return registerProposal(
+      store,
+      { proposal: again, result, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      tickingClock(),
+    );
+  }
+
+  it('registers two bills of one file from disjoint ranges, with their fileDocument', async () => {
+    const store = new MemoryStore();
+    expect((await register(store, 1, 2, 'a')).status).toBe('registered');
+    // Different amount: the data rule does not apply, the pages are disjoint.
+    const result = at((await billCase(PDF, { fields: { amount: field(5000) } })).result, 3, 4);
+    const second = await registerProposal(
+      store,
+      {
+        proposal: proposalFromExtraction(result, context(), ids('b')),
+        result,
+        bytes: PDF,
+        profileId: 'carlo',
+        mode: 'manual',
+      },
+      tickingClock(),
+    );
+    expect(second.status).toBe('registered');
+    const { records } = await loadAll(store, 'bill', BillSchema);
+    expect(records.map((b) => b.fileDocument)).toEqual([
+      { pages: [1, 2], documentKind: 'bill' },
+      { pages: [3, 4], documentKind: 'bill' },
+    ]);
+  });
+
+  it('reports the same range as duplicate and an overlapping one as possible-duplicate', async () => {
+    const store = new MemoryStore();
+    await register(store, 1, 2, 'a');
+    expect(await register(store, 1, 2, 'b')).toEqual({ status: 'duplicate', existingId: 'a-1' });
+    expect(await register(store, 2, 3, 'c')).toEqual({
+      status: 'possible-duplicate',
+      existingId: 'a-1',
+    });
+    expect((await loadAll(store, 'bill', BillSchema)).records).toHaveLength(1);
+  });
+
+  it('an old record without fileDocument against a partial range is a possible-duplicate', async () => {
+    const store = new MemoryStore();
+    const old = await billCase(PDF, { pages: 4, pageRange: [1, 4] });
+    await registerProposal(
+      store,
+      { ...old, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      tickingClock(),
+    );
+    const [stored] = (await loadAll(store, 'bill', BillSchema)).records;
+    expect(stored?.fileDocument).toBeUndefined(); // the whole file: no fileDocument
+    expect(await register(store, 3, 4, 'n')).toEqual({
+      status: 'possible-duplicate',
+      existingId: 'bill-1',
+    });
+    expect((await loadAll(store, 'bill', BillSchema)).records).toHaveLength(1);
+  });
+
+  it('writes the TARI instalments with fileDocument; disjoint ranges do not clash, overlaps do', async () => {
+    const store = new MemoryStore();
+    const run = async (first: number, last: number, prefix: string, year: string) => {
+      const base = tariResult(await hashBytes(PDF));
+      const result = at(
+        {
+          ...base,
+          fields: {
+            ...base.fields,
+            periodStart: field(`${year}-01-01`) as never,
+            periodEnd: field(`${year}-04-30`) as never,
+            dueDate: field(`${year}-03-16`) as never,
+          },
+        },
+        first,
+        last,
+      );
+      const proposal = proposalFromExtraction(result, tariContext(), ids(prefix));
+      return registerProposal(
+        store,
+        { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+        tickingClock(),
+      );
+    };
+    expect((await run(1, 2, 'a', '2026')).status).toBe('registered');
+    expect((await run(3, 4, 'b', '2027')).status).toBe('registered');
+    expect((await run(1, 2, 'c', '2026')).status).toBe('duplicate');
+    expect((await run(2, 3, 'd', '2027')).status).toBe('possible-duplicate');
+    const { records } = await loadAll(store, 'instalment', InstalmentSchema);
+    expect(records).toHaveLength(4);
+    expect(records.map((i) => i.fileDocument?.pages)).toEqual([
+      [1, 2],
+      [1, 2],
+      [3, 4],
+      [3, 4],
+    ]);
+    expect(records[0]?.fileDocument?.documentKind).toBe('tari');
+  });
+});
