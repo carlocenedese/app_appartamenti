@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+<rect width="1440" height="900" fill="#F4F0E6"/>
+<text x="46" y="60" font-family="'Source Serif 4', Charter, Georgia, serif" font-size="34" font-weight="500" fill="#1E1C19">Stati e timbro</text>
+<text x="48" y="86" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#5A544A">La mascotte passiva compare solo qui: stato vuoto, attesa, conguaglio saldato. Mai in tabelle, righe o vicino agli importi.</text>
+<rect x="48" y="108" width="408" height="284" fill="#FBF9F3" stroke="#D6CEBE" stroke-width="1" rx="4"/><text x="72" y="138" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#5A544A" letter-spacing="1.4">(A) DA RIVEDERE · STATO VUOTO</text>
+<g transform="translate(252 196) scale(1 1)" opacity="1"><circle cx="0" cy="0" r="30.22222222222222" fill="none" stroke="#1E1C19" stroke-width="3.56"/><circle cx="-9.60" cy="-2.56" r="4.27" fill="#1E1C19"/><circle cx="9.60" cy="-2.56" r="4.27" fill="#1E1C19"/></g>
+<line x1="204" y1="238" x2="300" y2="238" stroke="#D6CEBE" stroke-width="1.5"/>
+<text x="252" y="280" font-family="'Source Serif 4', Charter, Georgia, serif" font-size="26" font-weight="500" fill="#1E1C19" text-anchor="middle">Niente da rivedere.</text>
+<text x="252" y="306" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#5A544A" text-anchor="middle">Le voci nuove arrivano con il prossimo</text>
+<text x="252" y="326" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#5A544A" text-anchor="middle">estratto conto. Il quaderno è in ordine.</text>
+<rect x="150" y="342" width="204" height="36" fill="none" stroke="#1E1C19" stroke-width="1.4" rx="4"/>
+<text x="252" y="365" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1E1C19" text-anchor="middle">Importa estratto conto</text>
+<rect x="480" y="108" width="456" height="284" fill="#FBF9F3" stroke="#D6CEBE" stroke-width="1" rx="4"/><text x="504" y="138" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#5A544A" letter-spacing="1.4">(B) ATTESA · IL TIMBRO SI INCHIOSTRA (4 FOTOGRAMMI)</text>
+<g transform="translate(548 192) scale(1 1)" opacity="1"><circle cx="0" cy="0" r="22.666666666666668" fill="none" stroke="#1E1C19" stroke-width="2.67"/><circle cx="-7.20" cy="-1.92" r="3.20" fill="#1E1C19"/><circle cx="7.20" cy="-1.92" r="3.20" fill="#1E1C19"/></g>
+<text x="548" y="240" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A" text-anchor="middle">1 · 0 ms</text>
+<path d="M582 192 L616 192 M611 187 L616 192 L611 197" fill="none" stroke="#D6CEBE" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(654 192) scale(1 1)" opacity="1"><clipPath id="clb1"><rect x="-24.0" y="7.68" width="48" height="16.32"/></clipPath><circle cx="0" cy="0" r="22.666666666666668" fill="#1E1C19" fill-opacity="0.18" clip-path="url(#clb1)"/><circle cx="0" cy="0" r="22.666666666666668" fill="none" stroke="#1E1C19" stroke-width="2.67"/><circle cx="-7.20" cy="-1.92" r="3.20" fill="#1E1C19"/><circle cx="7.20" cy="-1.92" r="3.20" fill="#1E1C19"/></g>
+<text x="654" y="240" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A" text-anchor="middle">2 · 400 ms</text>
+<path d="M688 192 L722 192 M717 187 L722 192 L717 197" fill="none" stroke="#D6CEBE" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(760 192) scale(1 1)" opacity="1"><clipPath id="clb2"><rect x="-24.0" y="-8.160000000000004" width="48" height="32.160000000000004"/></clipPath><circle cx="0" cy="0" r="22.666666666666668" fill="#1E1C19" fill-opacity="0.18" clip-path="url(#clb2)"/><circle cx="0" cy="0" r="22.666666666666668" fill="none" stroke="#1E1C19" stroke-width="2.67"/><circle cx="-7.20" cy="-1.92" r="3.20" fill="#1E1C19"/><circle cx="7.20" cy="-1.92" r="3.20" fill="#1E1C19"/></g>
+<text x="760" y="240" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A" text-anchor="middle">3 · 800 ms</text>
+<path d="M794 192 L828 192 M823 187 L828 192 L823 197" fill="none" stroke="#D6CEBE" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<g transform="translate(866 192) scale(1 1)" opacity="1"><circle cx="0" cy="0" r="22.666666666666668" fill="#1E1C19" fill-opacity="0.18"/><circle cx="0" cy="0" r="22.666666666666668" fill="none" stroke="#1E1C19" stroke-width="2.67"/><circle cx="-7.20" cy="-1.92" r="3.20" fill="#1E1C19"/><circle cx="7.20" cy="-1.92" r="3.20" fill="#1E1C19"/></g>
+<text x="866" y="240" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A" text-anchor="middle">4 · 1200 ms</text>
+<text x="504" y="290" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="600" fill="#1E1C19">Sto leggendo l'estratto conto…</text>
+<text x="504" y="312" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#5A544A">Riga 214 di 380 · movimenti di ottobre 2026</text>
+<rect x="504" y="328" width="408" height="4" fill="#D6CEBE" rx="2"/><rect x="504" y="328" width="230" height="4" fill="#1E1C19" rx="2"/>
+<text x="504" y="366" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A">Ciclo di 1,6 s. Con «riduci movimento» resta fermo</text>
+<text x="504" y="382" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A">sul fotogramma 4 e conta solo la barra.</text>
+<rect x="960" y="108" width="432" height="284" fill="#FBF9F3" stroke="#D6CEBE" stroke-width="1" rx="4"/><text x="984" y="138" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#5A544A" letter-spacing="1.4">(F) SALDATO · IL TIMBRO SI POSA (3 FOTOGRAMMI)</text>
+<ellipse cx="1016" cy="226" rx="16" ry="3" fill="#1E1C19" opacity="0.12"/>
+<g transform="translate(1016 178) scale(1 1)" opacity="0.55"><circle cx="0" cy="0" r="18.88888888888889" fill="none" stroke="#2F5130" stroke-width="2.22"/><circle cx="-6.00" cy="-1.60" r="2.67" fill="#2F5130"/><circle cx="6.00" cy="-1.60" r="2.67" fill="#2F5130"/></g>
+<ellipse cx="1104" cy="226" rx="24" ry="3.5" fill="#1E1C19" opacity="0.18"/>
+<g transform="translate(1104 208) scale(1.22 0.78)" opacity="1"><circle cx="0" cy="0" r="18.88888888888889" fill="#2F5130" fill-opacity="0.18"/><circle cx="0" cy="0" r="18.88888888888889" fill="none" stroke="#2F5130" stroke-width="2.22"/><circle cx="-6.00" cy="-1.60" r="2.67" fill="#2F5130"/><circle cx="6.00" cy="-1.60" r="2.67" fill="#2F5130"/></g>
+<g transform="rotate(-4 1270 196)">
+<rect x="1196" y="172" width="148" height="48" fill="none" stroke="#2F5130" stroke-width="2" rx="4"/><rect x="1200" y="176" width="140" height="40" fill="none" stroke="#2F5130" stroke-width="1" rx="2"/>
+<g transform="translate(1222 196) scale(1 1)" opacity="1"><circle cx="0" cy="0" r="13.222222222222221" fill="#2F5130" fill-opacity="0.18"/><circle cx="0" cy="0" r="13.222222222222221" fill="none" stroke="#2F5130" stroke-width="1.56"/><circle cx="-4.20" cy="-1.12" r="1.87" fill="#2F5130"/><circle cx="4.20" cy="-1.12" r="1.87" fill="#2F5130"/></g>
+<text x="1244" y="202" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="700" fill="#2F5130" letter-spacing="1.6">SALDATO</text>
+</g>
+<text x="1016" y="254" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A" text-anchor="middle">1 · si alza</text>
+<text x="1104" y="254" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A" text-anchor="middle">2 · preme</text>
+<text x="1270" y="254" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A" text-anchor="middle">3 · resta il segno</text>
+<text x="984" y="290" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1E1C19">Solo nella conferma, una volta. Durata 360 ms.</text>
+<text x="984" y="310" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#5A544A">Verde muschio, mai rosso: il rosso resta allo scaduto.</text>
+<line x1="984" y1="326" x2="1368" y2="326" stroke="#D6CEBE" stroke-width="1"/>
+<g transform="translate(1000.0 358) scale(1 1)" opacity="1"><circle cx="0" cy="0" r="7.25" fill="none" stroke="#1E1C19" stroke-width="1.50"/><circle cx="-2.40" cy="-0.64" r="1.30" fill="#1E1C19"/><circle cx="2.40" cy="-0.64" r="1.30" fill="#1E1C19"/></g>
+<g transform="translate(1036.0 358) scale(1 1)" opacity="1"><circle cx="0" cy="0" r="11.25" fill="none" stroke="#1E1C19" stroke-width="1.50"/><circle cx="-3.60" cy="-0.96" r="1.60" fill="#1E1C19"/><circle cx="3.60" cy="-0.96" r="1.60" fill="#1E1C19"/></g>
+<g transform="translate(1080.0 358) scale(1 1)" opacity="1"><circle cx="0" cy="0" r="15.11111111111111" fill="none" stroke="#1E1C19" stroke-width="1.78"/><circle cx="-4.80" cy="-1.28" r="2.13" fill="#1E1C19"/><circle cx="4.80" cy="-1.28" r="2.13" fill="#1E1C19"/></g>
+<g transform="translate(1136.0 358) scale(1 1)" opacity="1"><circle cx="0" cy="0" r="22.666666666666668" fill="none" stroke="#1E1C19" stroke-width="2.67"/><circle cx="-7.20" cy="-1.92" r="3.20" fill="#1E1C19"/><circle cx="7.20" cy="-1.92" r="3.20" fill="#1E1C19"/></g>
+<text x="1196" y="350" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1E1C19">Taglie 16 · 24 · 32 · 48 px</text>
+<circle cx="1203" cy="369" r="6" fill="none" stroke="#2F5130" stroke-width="1.6"/><circle cx="1203" cy="369" r="3.7199999999999998" fill="#2F5130"/><path d="M1201.2 369 L1202.7 370.5 L1204.98 367.68" fill="none" stroke="#FBF9F3" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1216" y="374" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A">spenta: solo il segno di stato</text>
+<rect x="48" y="416" width="408" height="136" fill="#FBF9F3" stroke="#D6CEBE" stroke-width="1" rx="4"/><text x="72" y="446" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#5A544A" letter-spacing="1.4">(C) CONFERMA CON ANNULLA</text>
+<rect x="72" y="458" width="360" height="52" fill="#F4F0E6" stroke="#D6CEBE" stroke-width="1" rx="4"/>
+<circle cx="96" cy="484" r="8" fill="#2F5130"/><path d="M92.4 484.16 L95.2 487.04 L100.0 481.2" fill="none" stroke="#FBF9F3" stroke-width="2.24" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="116" y="489" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1E1C19">Bolletta confermata</text>
+<text x="412" y="489" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1E1C19" text-anchor="end">Annulla</text>
+<line x1="358" y1="493" x2="412" y2="493" stroke="#1E1C19" stroke-width="1"/>
+<rect x="72" y="509" width="360" height="1.5" fill="#D6CEBE"/><rect x="72" y="509" width="250" height="1.5" fill="#1E1C19"/>
+<text x="72" y="536" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A">Si chiude da sola in 8 s. Nessuna mascotte qui.</text>
+<rect x="48" y="576" width="408" height="292" fill="#FBF9F3" stroke="#D6CEBE" stroke-width="1" rx="4"/><text x="72" y="606" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#5A544A" letter-spacing="1.4">(D) ERRORE</text>
+<rect x="71" y="617" width="18" height="18" fill="#8E2F1E"/><rect x="79.0685" y="620.825" width="1.8629999999999998" height="6.21" fill="#FBF9F3"/><rect x="79.0685" y="628.5875" width="1.8629999999999998" height="1.8629999999999998" fill="#FBF9F3"/>
+<text x="100" y="632" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="600" fill="#1E1C19">Il file non sembra un estratto conto</text>
+<rect x="72" y="652" width="230" height="28" fill="#F4F0E6" stroke="#D6CEBE" stroke-width="1" rx="3"/>
+<text x="84" y="671" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#5A544A">scontrino_hera_ottobre.pdf</text>
+<text x="72" y="708" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1E1C19">Mancano le colonne Data e Importo. Scarica dalla</text>
+<text x="72" y="728" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1E1C19">banca il file CSV dei movimenti e riprova:</text>
+<text x="72" y="748" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1E1C19">non è stato salvato niente.</text>
+<rect x="72" y="772" width="240" height="48" fill="#1E1C19" rx="4"/><text x="96" y="802.0" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="600" fill="#F4F0E6">Scegli un altro file</text><path d="M272 796.0 L288 796.0 M283 791.0 L288 796.0 L283 801.0" fill="none" stroke="#F4F0E6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="332" y="802" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1E1C19">Come si esporta</text>
+<line x1="332" y1="806" x2="440.0" y2="806" stroke="#1E1C19" stroke-width="1"/>
+<text x="72" y="848" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#5A544A">Nessuna mascotte: sugli errori parla solo il testo.</text>
+<rect x="480" y="416" width="912" height="452" fill="#1A1916" stroke="#3A3631" stroke-width="1" rx="4"/><text x="504" y="446" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#A9A194" letter-spacing="1.4">(E) TEMA SCURO · CARTA DI NOTTE</text>
+<text x="512" y="484" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#A9A194" letter-spacing="1.4">MERCOLEDÌ 11 NOVEMBRE 2026</text>
+<text x="510" y="522" font-family="'Source Serif 4', Charter, Georgia, serif" font-size="38" font-weight="500" fill="#ECE6DA">Buongiorno, Carlo.</text>
+<text x="512" y="548" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="400" fill="#A9A194">Tre cose aspettano una conferma. Il resto è in ordine.</text>
+<rect x="1176" y="474" width="184" height="48" fill="#ECE6DA" rx="4"/><text x="1200" y="504.0" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="600" fill="#1A1916">Rivedi (3)</text><path d="M1320 498.0 L1336 498.0 M1331 493.0 L1336 498.0 L1331 503.0" fill="none" stroke="#1A1916" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="512" y1="576" x2="1360" y2="576" stroke="#ECE6DA" stroke-width="2"/>
+<text x="512" y="616" font-family="'Source Serif 4', Charter, Georgia, serif" font-size="26" font-weight="500" fill="#ECE6DA">Berchet</text>
+<circle cx="520" cy="640" r="7" fill="#A3BC8E"/><path d="M516.85 640.14 L519.3 642.66 L523.5 637.55" fill="none" stroke="#24221E" stroke-width="1.96" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="536" y="645" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#A3BC8E">Tutto a posto</text>
+<text x="510" y="700" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="38" font-weight="700" fill="#ECE6DA" letter-spacing="-1">€ 412,30</text>
+<text x="512" y="722" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#A9A194">Saldo di cassa</text>
+<line x1="512" y1="738" x2="776" y2="738" stroke="#3A3631" stroke-width="1"/>
+<text x="512" y="762" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#ECE6DA">5 su 5 in regola</text>
+<rect x="706" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="721" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="736" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="751" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="766" y="752" width="10" height="10" fill="#ECE6DA"/>
+<text x="804" y="616" font-family="'Source Serif 4', Charter, Georgia, serif" font-size="26" font-weight="500" fill="#ECE6DA">Lovarini</text>
+<path d="M812 631.915 L820.05 646.615 L803.95 646.615 Z" fill="#DDB65E" stroke="#DDB65E" stroke-width="1" stroke-linejoin="round"/><rect x="811.3385" y="637.725" width="1.323" height="4.41" fill="#24221E"/><rect x="811.3385" y="643.2375" width="1.323" height="1.323" fill="#24221E"/>
+<text x="828" y="645" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#DDB65E">2 cose da fare</text>
+<text x="802" y="700" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="38" font-weight="700" fill="#ECE6DA" letter-spacing="-1">€ 188,75</text>
+<text x="804" y="722" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#A9A194">Saldo di cassa</text>
+<line x1="804" y1="738" x2="1068" y2="738" stroke="#3A3631" stroke-width="1"/>
+<text x="804" y="762" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#ECE6DA">4 su 4 in regola</text>
+<rect x="1013" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="1028" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="1043" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="1058" y="752" width="10" height="10" fill="#ECE6DA"/>
+<text x="1096" y="616" font-family="'Source Serif 4', Charter, Georgia, serif" font-size="26" font-weight="500" fill="#ECE6DA">Pulci</text>
+<rect x="1097" y="633" width="14" height="14" fill="#F19E85"/><rect x="1103.2755" y="635.975" width="1.4489999999999998" height="4.829999999999999" fill="#24221E"/><rect x="1103.2755" y="642.0125" width="1.4489999999999998" height="1.4489999999999998" fill="#24221E"/>
+<text x="1120" y="645" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F19E85">1 scadenza passata</text>
+<text x="1094" y="700" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="38" font-weight="700" fill="#ECE6DA" letter-spacing="-1">- € 63,00</text>
+<text x="1096" y="722" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#A9A194">Saldo di cassa</text>
+<line x1="1096" y1="738" x2="1360" y2="738" stroke="#3A3631" stroke-width="1"/>
+<text x="1096" y="762" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#ECE6DA">3 su 4 in regola</text>
+<rect x="1305" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="1320" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="1335" y="752" width="10" height="10" fill="#ECE6DA"/><rect x="1350.75" y="752.75" width="8.5" height="8.5" fill="none" stroke="#F19E85" stroke-width="1.5"/>
+<line x1="512" y1="788" x2="1360" y2="788" stroke="#3A3631" stroke-width="1"/>
+<text x="512" y="812" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#A9A194" letter-spacing="1.4">SEGNI DI STATO · OGNUNO HA LA SUA FORMA</text>
+<circle cx="520" cy="841" r="7" fill="#A3BC8E"/><path d="M516.85 841.14 L519.3 843.66 L523.5 838.55" fill="none" stroke="#24221E" stroke-width="1.96" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="534" y="846" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#ECE6DA">in regola</text>
+<path d="M617.0 832.915 L625.05 847.615 L608.95 847.615 Z" fill="#DDB65E" stroke="#DDB65E" stroke-width="1" stroke-linejoin="round"/><rect x="616.3385" y="838.725" width="1.323" height="4.41" fill="#24221E"/><rect x="616.3385" y="844.2375" width="1.323" height="1.323" fill="#24221E"/>
+<text x="631.0" y="846" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#ECE6DA">da fare</text>
+<rect x="697.0" y="834" width="14" height="14" fill="#F19E85"/><rect x="703.2755" y="836.975" width="1.4489999999999998" height="4.829999999999999" fill="#24221E"/><rect x="703.2755" y="843.0125" width="1.4489999999999998" height="1.4489999999999998" fill="#24221E"/>
+<text x="718.0" y="846" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#ECE6DA">scaduto</text>
+<circle cx="797.0" cy="841" r="7" fill="none" stroke="#A3BC8E" stroke-width="1.6"/><circle cx="797.0" cy="841" r="4.34" fill="#A3BC8E"/><path d="M794.9 841 L796.65 842.75 L799.31 839.46" fill="none" stroke="#24221E" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="811.0" y="846" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#ECE6DA">saldato</text>
+<circle cx="885.0" cy="841" r="6.2" fill="none" stroke="#DDB65E" stroke-width="1.6"/><path d="M885.0 834.8 A6.2 6.2 0 0 0 885.0 847.2 Z" fill="#DDB65E"/>
+<text x="899.0" y="846" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#ECE6DA">parziale</text>
+<path d="M976.0 833 L984.0 841 L976.0 849 L968.0 841 Z" fill="none" stroke="#F19E85" stroke-width="1.8" stroke-linejoin="round"/>
+<text x="990.0" y="846" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#ECE6DA">da pagare</text>
+<circle cx="1081.0" cy="841" r="6.2" fill="none" stroke="#A9BDD6" stroke-width="1.6"/><path d="M1083.8 841 L1078.2 841 M1080.3 838.76 L1078.06 841 L1080.3 843.24" fill="none" stroke="#A9BDD6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1095.0" y="846" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#ECE6DA">da rimborsare</text>
+</svg>
