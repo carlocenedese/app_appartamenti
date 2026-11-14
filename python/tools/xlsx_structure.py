@@ -14,11 +14,11 @@ header (account metadata, a data row) prints nothing personal.
 Per visible sheet: size, header row, per column: prevalent type (testo, numero, data, vuoto), counts
 (non-empty, distinct), band of the text length (<=10, <=30, >30), CLASS of the declared format
 (generale, numero, percentuale, data, ora, testo; never the format string), first and last date as
-YYYY-MM. Distinct values are listed ONLY for a column named in `--code-columns` (default «Segno»,
-«Dare», «Avere»), only if every cell is TEXT of at most 3 letters, digits, + or -, and at most 12
-distinct: never numbers or dates. «Cod Disp.» (a reference per instruction) prints only its FORM
-(«11 cifre»). Rows above the header: cell types; a text with a range of two dates prints it as
-YYYY-MM..YYYY-MM (years 2000-2100), any other date only «date: si».
+YYYY-MM. NO cell value is printed by default. Only if the user passes `--code-columns "Segno"` those
+columns list their distinct values, and only if every cell is TEXT of 1-3 characters from A-Z, a-z,
++ and - with at least one letter, at most 12 distinct: never digits, numbers or dates. «Cod Disp.»
+(a reference per instruction) prints only its FORM («11 cifre»). Rows above the header: cell types
+and, for a cell with dates, only their FORM («due date nel formato GG/MM/AAAA»), never a date.
 Hidden sheets are skipped and counted. A bad or oversized file, a member that is not UTF-8, or a
 DOCTYPE/ENTITY in any member read: constant message, exit code 2.
 """
@@ -50,9 +50,9 @@ MAX_CELLS = 2_000_000
 MAX_SHEETS = 50
 HEADER_SCAN_ROWS = 100
 LOW_CARDINALITY = 12
-DEFAULT_CODE_COLUMNS = ("Segno", "Dare", "Avere")
+DEFAULT_CODE_COLUMNS: tuple[str, ...] = ()
 FORM_COLUMNS = {"cod disp", "codice disposizione"}
-CODE_VALUE = re.compile(r"[A-Za-z0-9+\-]{1,3}")
+CODE_VALUE = re.compile(r"(?=[+\-]*[A-Za-z])[A-Za-z+\-]{1,3}")
 KNOWN_LABELS = (
     "data, data contabile, data valuta, data operazione, data registrazione, data movimento, "
     "data e ora, valuta, divisa, descrizione, descrizione operazione, causale, causale abi, "
@@ -67,7 +67,7 @@ ARGUMENTS_ERROR = "Argomenti non validi: serve il percorso di un file .xlsx."
 INTERNAL_ERROR = "Errore interno: nessun output."
 HEADER_ERROR = "La riga indicata non è una riga di intestazione di sole etichette: nessun output."
 
-_DATE_TEXT = re.compile(r"(\d{4})-(\d{2})-\d{2}|\d{1,2}[/.-](\d{1,2})[/.-](\d{4})")
+_DATE_TEXT = re.compile(r"(?<!\d)(?:(\d{4})-(\d{2})-\d{2}|\d{1,2}([/.-])(\d{1,2})[/.-](\d{4}))(?!\d)")
 _XML_ENCODING = re.compile(r"""<\?xml[^>]{0,200}?encoding\s*=\s*["']([^"']+)["']""", re.I)
 _FORBIDDEN_XML = re.compile(r"<!(doctype|entity)", re.I)
 _NS_STRIP = re.compile(r"\{[^}]*\}")
@@ -216,16 +216,22 @@ def _month(serial: float, epoch: int) -> str | None:
     return f"{d.year:04d}-{d.month:02d}"
 
 
-def _text_months(text: str) -> list[str]:
-    months = []
+def _date_matches(text: str) -> list[tuple[str, str]]:
+    """(YYYY-MM, shape) of every valid date-like text; the shape has no digits, e.g. GG/MM/AAAA."""
+    found = []
     for m in _DATE_TEXT.finditer(text):
         if m.group(1):
-            year, month = m.group(1), m.group(2)
+            year, month, shape = m.group(1), m.group(2), "AAAA-MM-GG"
         else:
-            year, month = m.group(4), m.group(3).zfill(2)
+            sep = m.group(3)
+            year, month, shape = m.group(5), m.group(4).zfill(2), f"GG{sep}MM{sep}AAAA"
         if 1 <= int(month) <= 12:
-            months.append(f"{year}-{month}")
-    return months
+            found.append((f"{year}-{month}", shape))
+    return found
+
+
+def _text_months(text: str) -> list[str]:
+    return [month for month, _ in _date_matches(text)]
 
 
 # A cell is (kind, key, extra): kind in testo/numero/data/vuoto; key is the raw value (counted, never
@@ -261,7 +267,7 @@ def _cell(c: ET.Element, shared: list[str], styles: list[str], epoch: int) -> Ce
         return ("numero", value, cls)
     if text.strip() == "":
         return ("vuoto", "", "")
-    months = _text_months(text) if len(text) <= 40 else []
+    months = _text_months(text)
     if len(months) == 1 and _DATE_TEXT.fullmatch(text.strip()):
         return ("data", text, months[0])
     return ("testo", text, "")
@@ -353,15 +359,15 @@ def _preamble(cells: dict[int, Cell]) -> list[dict[str, Any]]:
     for col in sorted(cells):
         kind, key, _ = cells[col]
         item: dict[str, Any] = {"cella": _column_letters(col), "tipo": kind}
-        if kind == "testo":
-            months = _text_months(key)
-            # a period is two dates in one cell, both in plausible years: any other date is only «si»
-            if len(months) == 2 and all("2000" <= m[:4] <= "2100" for m in months):
-                item["intervallo"] = f"{min(months)}..{max(months)}"
-            else:
-                item["date"] = "si" if months else "no"
+        shapes = [shape for _, shape in _date_matches(key)] if kind == "testo" else []
+        if shapes:
+            count = {1: "una data", 2: "due date"}.get(len(shapes), f"{len(shapes)} date")
+            item["forma_date"] = f"{count} nel formato {' e '.join(sorted(set(shapes)))}"
+        elif kind == "data" and not _DATE_TEXT.fullmatch(key.strip()):
+            item["forma_date"] = "serial numerico di data"
         elif kind == "data":
-            item["date"] = "si"
+            shape = _date_matches(key)[0][1]
+            item["forma_date"] = f"una data nel formato {shape}"
         out.append(item)
     return out
 
@@ -437,6 +443,9 @@ def _analyse_sheet(
         sheet["sopra_intestazione"] = [
             {"riga": r, "celle": _preamble(rows[r])} for r in numbers if r < header
         ]
+        sheet["celle_con_date_sopra_intestazione"] = sum(
+            1 for above in sheet["sopra_intestazione"] for c in above["celle"] if "forma_date" in c
+        )
         body = [rows[r] for r in numbers if r > header]
         sheet["righe_dati"] = len(body)
         columns = []
@@ -494,11 +503,14 @@ def render(report: dict[str, Any]) -> str:
         for above in sheet["sopra_intestazione"]:
             cells = ", ".join(
                 f"{c['cella']}={c['tipo']}"
-                + (f" (intervallo {c['intervallo']})" if "intervallo" in c else "")
-                + (f" (date: {c['date']})" if "date" in c else "")
+                + (f" (forma: {c['forma_date']})" if "forma_date" in c else "")
                 for c in above["celle"]
             )
             lines.append(f"  Riga {above['riga']} sopra l'intestazione: {cells}")
+        if sheet["celle_con_date_sopra_intestazione"]:
+            lines.append(
+                f"  Celle con date sopra l'intestazione: {sheet['celle_con_date_sopra_intestazione']}"
+            )
         lines.append(f"  Righe di dati: {sheet['righe_dati']}")
         for col in sheet["colonne_dettaglio"]:
             parts = [

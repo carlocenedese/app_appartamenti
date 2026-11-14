@@ -33,7 +33,7 @@ FMT_LITERAL = "SENTINELFMT"
 SENTINELS = [
     NAME, "Zorbaldo", "Inventato", "Rossi", "Mario", IBAN, IBAN_SPACED, "0542811101", "Bonifico",
     "1234,56", "1.234,56", "1234.56", "-63,00", "2026-03-17", "17/03", "12/03/24", "12/03/2024", "46098",
-    "LEAKSENT", "Segreto", FMT_LITERAL, "1899", "Caffe", "12345678901", "1985", "01/02/2001", "46303", "RSSMRA85C12",
+    "LEAKSENT", "Segreto", FMT_LITERAL, "1899", "Caffe", "12345678901", "1985", "01/02/2001", "46303", "RSSMRA85C12", "14/03/2001", "02/05/2003", "06-12-2005", "333-04-2011", "2001-03", "2003-05", "2005-12", "2011-04", "PHONSENT",
 ]
 HEADERS = ["Data", "Importo", "Cod Disp.", "Descrizione"]
 NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
@@ -161,6 +161,10 @@ class XlsxStructureTest(unittest.TestCase):
         self.assertEqual(run([str(self.file)]), (2, "", xlsx_structure.BAD_FILE + "\n"))
         self.assertEqual(run(["--json", str(self.file)]), (2, "", xlsx_structure.BAD_FILE + "\n"))
 
+    @staticmethod
+    def preamble(out: str) -> str:
+        return "\n".join(line for line in out.splitlines() if "sopra l'intestazione" in line)
+
     def normal(self) -> None:
         build(self.file, sheet_xml([header_row(1), *data_rows(2)]))
 
@@ -183,34 +187,54 @@ class XlsxStructureTest(unittest.TestCase):
         body = [[inline(f"A{i + 2}", "x"), inline(f"B{i + 2}", "y"), c] for i, c in enumerate(cells)]
         build(self.file, sheet_xml([head, *body]))
 
-    def test_code_values_only_for_short_text_cells_of_code_columns(self) -> None:
-        self.segno_file([inline("C2", "D"), inline("C3", "A"), inline("C4", "+"), inline("C5", "EUR")])
-        out = self.clean()
-        self.assertIn("valori: «+», «A», «D», «EUR»", out)
-        for bad in (["Zorb", "Zorb"], ["Rossi Mario"], ["IT60X054", "x"], ["RSSMRA85C12"]):
+    def test_default_prints_no_cell_values_at_all(self) -> None:
+        self.segno_file([inline("C2", "D"), inline("C3", "A")])
+        self.assertNotIn("valori:", self.clean())
+        self.assertIn("valori: «A», «D»", self.clean("--code-columns", "Segno"))
+        self.assertEqual(xlsx_structure.DEFAULT_CODE_COLUMNS, ())
+
+    def test_code_values_only_for_short_text_with_a_letter(self) -> None:
+        self.segno_file([inline("C2", "D"), inline("C3", "A"), inline("C4", "EUR")])
+        self.assertIn("valori: «A», «D», «EUR»", self.clean("--code-columns", "Segno"))
+        for bad in (["Zorb", "Zorb"], ["Rossi Mario"], ["IT60X054", "x"], ["RSSMRA85C12"], ["40", "500", "650", "85"],
+                    ["+", "-"], ["D", "+"], ["A1", "B2"], ["12", "99"]):
             self.segno_file([inline(f"C{i + 2}", v) for i, v in enumerate(bad)])
-            self.assertNotIn("valori:", self.clean(), bad)
+            self.assertNotIn("valori:", self.clean("--code-columns", "Segno"), bad)
+
+    def test_amounts_of_one_to_three_digits_as_text_in_dare_avere_never_print(self) -> None:
+        head = [inline(f"{c}1", h) for c, h in zip("ABC", ["Data", "Dare", "Avere"])]
+        rows = [[inline("A2", "x"), inline("B2", "500"), inline("C2", "40")],
+                [inline("A3", "x"), inline("B3", "650"), inline("C3", "85")]]
+        build(self.file, sheet_xml([head, *rows]))
+        for args in ([], ["--code-columns", "Dare,Avere"]):
+            out = self.clean(*args)
+            self.assertNotIn("valori:", out)
+            for amount in ("500", "650", "«40»", "«85»"):
+                self.assertNotIn(amount, out)
 
     def test_dates_and_numbers_in_code_columns_never_list_values(self) -> None:
+        args = ["--code-columns", "Segno,Valuta"]
         self.segno_file([num("C2", "46303", 1), num("C3", "46304", 1)], "Segno")
-        self.assertNotIn("valori:", self.clean())
+        self.assertNotIn("valori:", self.clean(*args))
         self.segno_file([num("C2", "123"), num("C3", "124")], "Segno")
-        self.assertNotIn("valori:", self.clean())
+        self.assertNotIn("valori:", self.clean(*args))
         self.segno_file([inline("C2", "12/03/24"), inline("C3", "14/03/24")], "Segno")
-        self.assertNotIn("valori:", self.clean())
+        self.assertNotIn("valori:", self.clean(*args))
         self.segno_file([num("C2", "46303", 1), num("C3", "46304", 1)], "Valuta")  # data valuta
-        out = self.clean("--code-columns", "Valuta")
+        out = self.clean(*args)
         self.assertNotIn("valori:", out)
         self.assertIn("da 2026-", out)
         self.segno_file([inline("C2", "EUR"), num("C3", "5")], "Segno")  # mixed: not all text
-        self.assertNotIn("valori:", self.clean())
+        self.assertNotIn("valori:", self.clean(*args))
 
-    def test_valuta_is_not_a_default_code_column_but_can_be_asked(self) -> None:
+    def test_not_a_number_cells_are_not_code_values(self) -> None:
+        self.segno_file([num("C2", "NaN"), num("C3", "Inf")], "Segno")
+        self.assertNotIn("valori:", self.clean("--code-columns", "Segno"))
+
+    def test_valuta_can_be_asked_but_is_not_default(self) -> None:
         self.segno_file([inline("C2", "EUR"), inline("C3", "EUR")], "Valuta")
         self.assertNotIn("valori:", self.clean())
         self.assertIn("valori: «EUR»", run(["--code-columns", "Valuta", str(self.file)])[1])
-        self.segno_file([inline("C2", "D"), inline("C3", "A")])
-        self.assertNotIn("valori:", self.clean("--code-columns", ""))
 
     def test_cod_disp_prints_only_the_form(self) -> None:
         for cells, form in [
@@ -225,7 +249,7 @@ class XlsxStructureTest(unittest.TestCase):
 
     def test_code_column_with_many_values_is_not_listed(self) -> None:
         self.segno_file([inline(f"C{i + 2}", chr(97 + i)) for i in range(14)])
-        out = self.clean()
+        out = self.clean("--code-columns", "Segno")
         self.assertIn("14 distinti", out)
         self.assertNotIn("valori:", out)
 
@@ -257,10 +281,12 @@ class XlsxStructureTest(unittest.TestCase):
         build(self.file, sheet_xml([*meta, header_row(5), *data_rows(6)]))
         out = self.clean()
         self.assertIn("Riga delle intestazioni: 5\n", out)
-        self.assertIn("Riga 1 sopra l'intestazione: A=testo (date: no), B=testo (date: no), C=testo (date: no)", out)
-        self.assertIn("Riga 3 sopra l'intestazione: A=testo (intervallo 2026-01..2026-03)", out)
-        self.assertIn("Riga 4 sopra l'intestazione: A=testo (date: no), B=numero", out)
+        self.assertIn("Riga 1 sopra l'intestazione: A=testo, B=testo, C=testo", out)
+        self.assertIn("Riga 3 sopra l'intestazione: A=testo (forma: due date nel formato GG/MM/AAAA)", out)
+        self.assertIn("Riga 4 sopra l'intestazione: A=testo, B=numero", out)
         self.assertNotIn("Periodo", out)
+        self.assertNotIn("intervallo", out)
+        self.assertEqual(self.preamble(out).count("2026"), 0)
 
     def test_wrongly_chosen_header_rows_print_nothing_personal(self) -> None:
         build(self.file, sheet_xml([
@@ -317,10 +343,61 @@ class XlsxStructureTest(unittest.TestCase):
         build(self.file, sheet_xml(rows))
         self.assertIn("Riga delle intestazioni: 2\n", self.clean())
 
-    def test_half_of_the_cells_must_be_known_labels(self) -> None:
-        rows = [[inline(f"{c}1", t) for c, t in zip("ABCDE", ["Data", "Saldo", "Mario Rossi", "Altro", "Ancora"])], header_row(2)]
+    def test_at_least_two_known_labels_are_needed(self) -> None:
+        build(self.file, sheet_xml([[inline("A1", "Data"), inline("B1", "Mario")], header_row(2)]))
+        self.assertIn("Riga delle intestazioni: 2\n", self.clean())
+
+    def test_fallback_header_needs_three_text_cells(self) -> None:
+        rows = [[inline("A1", "Uno"), inline("B1", "Due")], [inline("A2", "Tre"), inline("B2", "Quattro"), inline("C2", "Cinque")]]
         build(self.file, sheet_xml(rows))
         self.assertIn("Riga delle intestazioni: 2\n", self.clean())
+
+    def test_unicode_labels_are_normalised(self) -> None:
+        build(self.file, sheet_xml([header_row(1, ["\uff24\uff41\uff54\uff41", "Importo", "Valùta", "Descrizióne"]), *data_rows(2)]))
+        out = self.clean()
+        for label in ("«data»", "«valuta»", "«descrizione»"):
+            self.assertIn(label, out)
+
+    def test_phonetic_text_of_rich_strings_is_not_part_of_the_value(self) -> None:
+        shared = ('<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                  '<si><r><t>Seg</t></r><r><t>no</t></r><rPh sb="0" eb="1"><t>PHONSENT</t></rPh></si>'
+                  '<si><t>Data</t></si><si><t>Importo</t></si></sst>')
+        sheet = sheet_xml([['<c r="A1" t="s"><v>0</v></c>', '<c r="B1" t="s"><v>1</v></c>', '<c r="C1" t="s"><v>2</v></c>']])
+        build(self.file, sheet, extra={"xl/sharedStrings.xml": shared})
+        self.assertIn("Colonna «segno»", self.clean())
+
+    def test_invalid_shared_string_index_is_rejected(self) -> None:
+        build(self.file, sheet_xml([['<c r="A1" t="s"><v>99</v></c>']]), shared=["Data"])
+        self.rejected()
+        build(self.file, sheet_xml([['<c r="A1" t="s"><v>x</v></c>']]), shared=["Data"])
+        self.rejected()
+
+    def test_text_months_must_be_1_to_12(self) -> None:
+        self.assertEqual(xlsx_structure._text_months("12/13/2020 e 31/12/2020"), ["2020-12"])
+
+    def test_member_size_limit_is_enforced_by_the_reader(self) -> None:
+        build(self.file, sheet_xml([header_row(1)]))
+        with zipfile.ZipFile(self.file) as zf, mock.patch.object(xlsx_structure, "MAX_MEMBER_BYTES", 100):
+            with self.assertRaises(xlsx_structure._Rejected):
+                xlsx_structure._member(zf, "xl/styles.xml", [0])
+
+    def test_relationship_targets_cannot_leave_the_package(self) -> None:
+        sheet = sheet_xml([header_row(1)])
+        build(self.file, sheet, targets=["../../evil.xml"], extra={"../evil.xml": sheet})
+        self.rejected()
+
+    def test_output_is_utf8_with_lf_even_on_another_stream(self) -> None:
+        self.normal()
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="latin-1", newline="\r\n")
+        self.assertEqual(xlsx_structure.main([str(self.file)], stream, io.StringIO()), 0)
+        stream.flush()
+        self.assertIn("«".encode(), raw.getvalue())
+        self.assertNotIn(b"\r", raw.getvalue())
+
+    def test_form_of_cod_disp_uses_ascii_digits_only(self) -> None:
+        self.segno_file([inline("C2", "\u0661\u0662\u0663\u0664"), inline("C3", "\u0661\u0662\u0663\u0665")], "Cod Disp.")
+        self.assertIn("forma mista", self.clean())
 
     def test_header_scan_is_limited_to_the_first_rows(self) -> None:
         rows = [[inline("A1", "Uno"), inline("B1", "Due"), inline("C1", "Tre")]]
@@ -329,26 +406,34 @@ class XlsxStructureTest(unittest.TestCase):
         build(self.file, sheet_xml(rows))
         self.assertIn("Riga delle intestazioni: 1\n", self.clean())
 
-    def test_preamble_dates(self) -> None:
+    def test_preamble_dates_print_only_their_form(self) -> None:
         rows = [
-            [inline("A1", "Intestatario nato il 12/03/1985, cliente dal 01/02/2001")],
-            [inline("A2", "Nato il 12/03/1985")],
-            [inline("A2", "Aperto il 05/06/2020")],
-            [inline("A3", "12/03/1985")],
-            [inline("A4", "Periodo dal 01/01/2026 al 31/03/2026")],
-            [num("A5", "46098", 1)],
-            header_row(7),
+            [inline("A1", "Intestatario nato il 14/03/2001, cliente dal 02/05/2003")],
+            [inline("A2", "Nato il 12/03/2005")],
+            [inline("A3", "Aperto il 2020-06-05")],
+            [inline("A4", "12.03.1985")],
+            [inline("A5", "Tel 06-12-2005 e 333-04-2011")],
+            [num("A6", "46098", 1)],
+            [inline("A7", "Rif 45/45/2020")],
+            [inline("A8", "Rif 06-12-20055")],
+            header_row(9),
         ]
         build(self.file, sheet_xml(rows))
         out = self.clean()
-        self.assertIn("Riga 1 sopra l'intestazione: A=testo (date: si)", out)
-        self.assertIn("Riga 2 sopra l'intestazione: A=testo (date: si)", out)
-        self.assertIn("Riga 3 sopra l'intestazione: A=testo (date: si)", out)
-        self.assertIn("Riga 4 sopra l'intestazione: A=data (date: si)", out)
-        self.assertIn("Riga 5 sopra l'intestazione: A=testo (intervallo 2026-01..2026-03)", out)
-        self.assertIn("Riga 6 sopra l'intestazione: A=data (date: si)", out)
-        self.assertEqual(out.count("intervallo"), 1)
-        self.assertNotIn("2020", out)
+        pre = self.preamble(out)
+        self.assertIn("Riga 1 sopra l'intestazione: A=testo (forma: due date nel formato GG/MM/AAAA)", out)
+        self.assertIn("Riga 2 sopra l'intestazione: A=testo (forma: una data nel formato GG/MM/AAAA)", out)
+        self.assertIn("Riga 3 sopra l'intestazione: A=testo (forma: una data nel formato AAAA-MM-GG)", out)
+        self.assertIn("Riga 4 sopra l'intestazione: A=data (forma: una data nel formato GG.MM.AAAA)", out)
+        self.assertIn("Riga 5 sopra l'intestazione: A=testo (forma: una data nel formato GG-MM-AAAA)", out)  # not two: word boundaries
+        self.assertIn("Riga 6 sopra l'intestazione: A=data (forma: serial numerico di data)", out)
+        self.assertIn("Riga 7 sopra l'intestazione: A=testo\n", out + "\n")  # month 45 is not a date
+        self.assertIn("Riga 8 sopra l'intestazione: A=testo\n", out + "\n")  # digits after the year: not a date
+        self.assertIn("Celle con date sopra l'intestazione: 6", out)
+        for digits in ("2001", "2003", "2005", "2011", "2020", "1985", "2026", "-03", "-05", "intervallo", "date: "):
+            self.assertNotIn(digits, pre)
+        report = json.loads(run(["--json", str(self.file)])[1])
+        self.assertEqual(report["fogli"][0]["celle_con_date_sopra_intestazione"], 6)
 
     # --- sheets, formats, dates --------------------------------------------------------------
 
