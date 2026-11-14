@@ -553,7 +553,7 @@ const MAX_SUPPLIER_LENGTH = 30;
  * `'`, spaces, the `_` that separates the parts of the name) a separator. Such a name is NFC, has
  * none of the characters Windows forbids and never ends in a dot or a space.
  */
-function safeWord(text: string, fallback: string, maxLength: number): string {
+export function safeWord(text: string, fallback: string, maxLength: number): string {
   const word = text
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')

@@ -21,6 +21,7 @@ export * from './caparra';
 export * from './conguaglio';
 export * from './extraction';
 export * from './suggest';
+export * from './accounts';
 export * from './proposal';
 export * from './confirmation';
 export * from './supply-link';
