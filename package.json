@@ -21,7 +21,8 @@
     "python:licenses": "node scripts/python.mjs -I python/tools/check_licenses.py",
     "python:dev-install": "node scripts/python.mjs -I python/tools/dev_install.py",
     "schemas:export": "tsx scripts/export-schemas.mjs",
-    "golden:report": "tsx scripts/golden-report.mjs"
+    "golden:report": "tsx scripts/golden-report.mjs",
+    "estratti": "tsx scripts/estratti.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
