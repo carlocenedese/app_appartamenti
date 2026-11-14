@@ -5,6 +5,7 @@ import {
   AccountSchema,
   BankProfileSchema,
   BankTransactionSchema,
+  PaymentSchema,
   StatementReadError,
   StatementSchema,
   checkConsistency,
@@ -18,6 +19,7 @@ import {
   saveAccount,
   saveBankProfile,
   undoImport,
+  undoOperation,
 } from '../src/index';
 import type { StatementCell, StatementTable } from '../src/index';
 import { apartment } from './helpers/conguaglio-builders';
@@ -497,6 +499,118 @@ describe('importStatement', () => {
     expect(sums).toHaveLength(2);
     expect(sums[0]).toBe('Importato un estratto conto: 1 movimento nuovo, 1 da rivedere.');
     for (const t of sums) expect(t).not.toMatch(/Rossi|Verdi|1234|77|segreto|IT60/);
+  });
+});
+
+describe('undoImport with payments', () => {
+  const payIds = ids('pay');
+  const pay = async (
+    store: MemoryStore,
+    id: string,
+    transactionId: string,
+    deleted?: true,
+    source: 'csv' | 'manual' | 'excel' = 'csv',
+  ) => {
+    const after = PaymentSchema.parse({
+      id,
+      v: 1,
+      rev: 1,
+      ...(deleted === undefined ? {} : { deleted }),
+      apartmentId: apartment().id,
+      tenantId: 't1',
+      date: '2026-10-05',
+      amount: 1000,
+      confirmed: true,
+      kind: 'canone',
+      source,
+      transactionId,
+    });
+    const op = await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'income.confirm',
+        summary: 'x',
+        changes: [{ path: recordPath('payment', id), before: undefined, after }],
+      },
+      clock,
+      payIds,
+    );
+    return op;
+  };
+  const imported = async () => {
+    const { store, accountId, newId } = await seeded();
+    const f = file([
+      ['2026-10-05', 'Prima', '-1.00'],
+      ['2026-10-06', 'Seconda', '-2.00'],
+    ]);
+    const r = await importStatement(
+      store,
+      { accountId, fileBytes: f.bytes, fileName: 'a', table: f.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    if (r.status !== 'imported') throw new Error('x');
+    const txs = await live(store);
+    return { store, newId, r, txs, accountId, f };
+  };
+
+  it('refuses with the ids of the live payments, writing nothing; a deleted one does not count', async () => {
+    const { store, newId, r, txs } = await imported();
+    const [a, b] = txs.map((t) => t.id).sort();
+    if (a === undefined || b === undefined) throw new Error('x');
+    await pay(store, 'pay-b', b);
+    await pay(store, 'pay-a', a);
+    await pay(store, 'pay-gone', a, true);
+    const before = await snapshot(store);
+    expect(await undoImport(store, r.statement.id, 'p1', clock, newId)).toEqual({
+      status: 'refused',
+      reason: 'dependent-payments',
+      paymentIds: ['pay-a', 'pay-b'],
+    });
+    expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('a live payment of any source on a movement blocks (manual, excel)', async () => {
+    const { store, newId, r, txs } = await imported();
+    const [a, b] = txs.map((t) => t.id).sort();
+    if (a === undefined || b === undefined) throw new Error('x');
+    await pay(store, 'pay-m', a, undefined, 'manual');
+    await pay(store, 'pay-x', b, undefined, 'excel');
+    expect(await undoImport(store, r.statement.id, 'p1', clock, newId)).toEqual({
+      status: 'refused',
+      reason: 'dependent-payments',
+      paymentIds: ['pay-m', 'pay-x'],
+    });
+  });
+
+  it('undoes once the payments are gone, and a payment on an already-known movement does not block', async () => {
+    const { store, newId, r, txs, accountId, f } = await imported();
+    const first = txs[0];
+    if (first === undefined) throw new Error('x');
+    // A second statement that only finds the same movements: it writes none of them.
+    const again = await importStatement(
+      store,
+      {
+        accountId,
+        fileBytes: new TextEncoder().encode('other'),
+        fileName: 'b',
+        table: f.table,
+        period: OCT,
+      },
+      'p1',
+      clock,
+      newId,
+    );
+    if (again.status !== 'imported') throw new Error('x');
+    const op = await pay(store, 'pay-1', first.id);
+    expect((await undoImport(store, again.statement.id, 'p1', clock, newId)).status).toBe('undone');
+    expect(await undoImport(store, r.statement.id, 'p1', clock, newId)).toMatchObject({
+      reason: 'dependent-payments',
+    });
+    await undoOperation(store, op.id, 'p1', clock, newId);
+    expect((await undoImport(store, r.statement.id, 'p1', clock, newId)).status).toBe('undone');
   });
 });
 

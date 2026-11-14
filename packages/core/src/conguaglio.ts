@@ -138,7 +138,7 @@ const total = (values: readonly number[]): Cents =>
 const monthRange = (from: YearMonth, to: YearMonth): YearMonth[] =>
   monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`));
 
-const isPresent = (tenancy: Tenancy, month: YearMonth): boolean =>
+export const isPresent = (tenancy: Tenancy, month: YearMonth): boolean =>
   tenancy.from <= month && (tenancy.to === undefined || month <= tenancy.to);
 
 const byTenancy = (a: Tenancy, b: Tenancy): number =>
@@ -191,7 +191,10 @@ const live = <T extends { deleted?: boolean }>(records: readonly T[]): T[] =>
  * Throws `tenant-overlap` when a tenant has two tenancies present in the same month of `months`
  * (a room change must end one month and start the next: months are whole and inclusive).
  */
-function checkTenantOverlaps(tenancies: readonly Tenancy[], months: readonly YearMonth[]): void {
+export function checkTenantOverlaps(
+  tenancies: readonly Tenancy[],
+  months: readonly YearMonth[],
+): void {
   for (const month of months) {
     const byTenant = new Map<string, Tenancy[]>();
     for (const tenancy of tenancies) {

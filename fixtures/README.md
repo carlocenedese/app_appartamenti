@@ -39,6 +39,13 @@ qui tra apici inversi, con una nota: la revisione deve verificare che sia davver
 | Tipo                        | Codice                              |
 | --------------------------- | ----------------------------------- |
 | IBAN (esempio pubblico)     | `IT60 X054 2811 1010 0000 0123 456` |
+| IBAN di prova (inventato)   | `IT52A9999999999000000000001`       |
+| IBAN di prova (inventato)   | `IT29B9999999999000000000002`       |
+| IBAN di prova (inventato)   | `IT85X0542811101000000000301`       |
+| IBAN di prova (inventato)   | `IT58X0542811101000000000302`       |
+| IBAN di prova (inventato)   | `IT09X0542811101000000000311`       |
+| IBAN di prova (inventato)   | `IT79X0542811101000000000312`       |
+| IBAN di prova (inventato)   | `IT52X0542811101000000000313`       |
 | Codice fiscale (esempio)    | `RSSMRA80A01H501U`                  |
 | POD                         | `IT001E12345678`                    |
 | PDR                         | `12345678901234`                    |
@@ -66,3 +73,12 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 - `fixtures/bank/profilo-sintetico.json`: profilo della banca **ipotetico** (colonne, formati ed
   espressioni inventati, nessuna banca reale), per provare lo schema `BankProfile`. Gli IBAN dei
   test sono inventati con il controllo mod-97 valido (per esempio `IT60X0542811101000000123456`).
+
+## Incassi (piano 3b)
+
+- `fixtures/income/anno-sintetico.json`: un anno inventato (2026) su due conti di due appartamenti,
+  quattro inquilini con nomi inventati e un genitore che paga per due figli dallo stesso IBAN (due
+  `payer` con la stessa chiave). `records` sono i record per tipo, `expected` gli automatici della
+  prima riconciliazione, le conferme (una per pagante) e gli automatici e le proposte dopo. Gli IBAN
+  sono quelli di prova `…0301`-`…0313` della tabella sopra (costruiti con `ibanEndingWith`). La
+  legge `packages/core/test/income-year.test.ts`.

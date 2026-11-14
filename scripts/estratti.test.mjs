@@ -214,6 +214,52 @@ describe('pnpm estratti con un CSV', () => {
   );
 
   it(
+    'annulla con un pagamento dipendente rifiuta con id e conteggi, senza dati personali',
+    async () => {
+      const s = await setup();
+      const id = importFile(s, write('e.csv', csvText())).json.statementId;
+      const store = new FsStore(s.dir);
+      const tx = readdirSync(join(s.dir, '_app', 'dati', 'transaction'))[0].replace('.json', '');
+      const payment = {
+        id: 'pay-dip',
+        v: 1,
+        rev: 1,
+        apartmentId: apartment().id,
+        tenantId: 't1',
+        date: '2026-10-05',
+        amount: 1000,
+        confirmed: true,
+        kind: 'canone',
+        source: 'csv',
+        transactionId: tx,
+      };
+      await commitChange(
+        store,
+        {
+          profileId: 'p1',
+          kind: 'income.confirm',
+          summary: 'x',
+          changes: [{ path: recordPath('payment', 'pay-dip'), before: undefined, after: payment }],
+        },
+        () => ORA,
+        () => 'op-pay',
+      );
+      const journal = journalCount(s.dir);
+      const undone = cli(['annulla', ...s.common, '--estratto', id]);
+      expect(undone.code).toBe(1);
+      expect(undone.json).toEqual({
+        status: 'rejected',
+        reason: 'dependent-payments',
+        message: 'Rifiutato: dei pagamenti dipendono dai movimenti di questo estratto.',
+        paymentIds: ['pay-dip'],
+      });
+      expect(scanText(undone.out)).toEqual([]);
+      expect(journalCount(s.dir)).toBe(journal);
+    },
+    TIMEOUT,
+  );
+
+  it(
     'annulla con il registro non riallineato dà un rifiuto con messaggio costante',
     async () => {
       const s = await setup();
@@ -538,6 +584,335 @@ describe.skipIf(!availability.available)('pnpm estratti con il profilo della ban
       const wrong = importFile(other, file, []);
       expect(wrong.code).toBe(1);
       expect(wrong.json.reason).toBe('wrong-account');
+    },
+    TIMEOUT,
+  );
+});
+
+// Piano 3b, task 8: inquilino, riconcilia, conferma, ripara.
+const NAME = 'Tizio Fittizio';
+const CAUSALE = 'Causale-inventata-AFFITTO';
+const incomeHeader = 'Data contabile;Descrizione;Causale;Importo;Segno;Codice;Stato';
+const incomeCsv = (rows) =>
+  [incomeHeader, ...rows.map(([d, amount]) => `${d};Bonifico da ${NAME};${CAUSALE};${amount};A;;`)]
+    .join('\n')
+    .concat('\n');
+
+/** An apartment with a tenant `t1` (rent 850,00, no flat charge) present from October 2026. */
+async function incomeSetup() {
+  const s = await setup();
+  let n = 0;
+  await commitChange(
+    new FsStore(s.dir),
+    {
+      profileId: 'p1',
+      kind: 'tenancy.create',
+      summary: 'x',
+      changes: [
+        {
+          path: recordPath('tenancy', 'tcy-t1'),
+          before: undefined,
+          after: {
+            id: 'tcy-t1',
+            v: 1,
+            rev: 1,
+            apartmentId: 'apt',
+            tenantId: 't1',
+            from: '2026-10',
+            monthlyRent: 85000,
+            monthlyForfait: 0,
+          },
+        },
+      ],
+    },
+    () => ORA,
+    () => `seed-t-${String((n += 1))}`,
+  );
+  const t = cli(['inquilino', ...s.common, '--id', 't1', '--nome', NAME, '--lingua', 'it']);
+  expect(t.code).toBe(0);
+  return { ...s, outputs: [...s.outputs, t.out] };
+}
+const month = (s, name, rows, from, to) =>
+  importFile(s, write(name, incomeCsv(rows)), ['--dal', from, '--al', to]);
+/** Every file of the data folder with its bytes: nothing may change when nothing is written. */
+const snapshot = (dir) => {
+  const out = {};
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const f = join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else out[f] = readFileSync(f, 'utf8');
+    }
+  };
+  walk(dir);
+  return out;
+};
+const registerSize = (dir) => {
+  try {
+    return readdirSync(join(dir, '_app', 'dati', 'payment')).length;
+  } catch {
+    return 0; // no payment written yet: no folder
+  }
+};
+
+describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
+  it(
+    'riconcilia propone, conferma scrive, poi un automatico: --prova non scrive, senza non dà dati',
+    async () => {
+      const s = await incomeSetup();
+      expect(month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31').code).toBe(
+        0,
+      );
+      const first = cli(['riconcilia', ...s.common]);
+      expect(first.code).toBe(0);
+      expect(first.json).toMatchObject({ status: 'reconciled', written: 0, skipped: 0 });
+      expect(first.json.proposals).toHaveLength(1);
+      const [proposal] = first.json.proposals;
+      expect(proposal).toMatchObject({ step: 'chi', reason: 'new-payer', tenantCount: 1 });
+      expect(proposal.tenantIds).toBeUndefined();
+      expect(registerSize(s.dir)).toBe(0);
+
+      const ok = cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't1',
+        '--parte',
+        'canone:2026-10:850,00',
+      ]);
+      expect(ok.code).toBe(0);
+      expect(ok.json.payerId).toBe(proposal.id.replace('p-chi-', 'payer-'));
+      expect(ok.json).toMatchObject({
+        status: 'confirmed',
+        paymentIds: [`${proposal.id.replace('p-chi-', 'pay-')}-1`],
+      });
+      expect(registerSize(s.dir)).toBe(1);
+
+      expect(month(s, 'nov.csv', [['05/11/2026', '850,00']], '2026-11-01', '2026-11-30').code).toBe(
+        0,
+      );
+      const before = journalCount(s.dir);
+      const snap = snapshot(s.dir);
+      const dry = cli(['riconcilia', ...s.common, '--prova']);
+      expect(snapshot(s.dir)).toEqual(snap);
+      expect(dry.json).toMatchObject({ status: 'reconciled', written: 1, proposals: [] });
+      expect(journalCount(s.dir)).toBe(before);
+      expect(registerSize(s.dir)).toBe(1);
+      const real = cli(['riconcilia', ...s.common]);
+      expect(real.json).toMatchObject({ written: 1 });
+      expect(registerSize(s.dir)).toBe(2);
+      expect(journalCount(s.dir)).toBe(before + 1);
+
+      const all = [...s.outputs, first.out, ok.out, dry.out, real.out].join('');
+      for (const secret of [NAME, CAUSALE, LABEL, IBAN, '850']) expect(all).not.toContain(secret);
+      expect(scanText(all)).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '--dettagli aggiunge data, importo, causale e nomi',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const run = cli(['riconcilia', ...s.common, '--dettagli']);
+      expect(run.code).toBe(0);
+      expect(run.json.proposals[0]).toMatchObject({
+        date: '2026-10-05',
+        amount: 85000,
+        tenantNames: [NAME],
+        tenantIds: ['t1'],
+      });
+      expect(run.json.proposals[0].description).toContain(CAUSALE);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'conferma: parte malformata, tipo o mese non validi = 2; somma sbagliata = 1; solo questa volta',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const confirm = (...parts) =>
+        cli(['conferma', ...s.common, '--proposta', proposal.id, '--inquilino', 't1', ...parts]);
+      for (const bad of [
+        'canone:2026-13:850,00',
+        'affitto:2026-10:850,00',
+        'canone:2026-10',
+        'canone:2026-10:abc',
+        'canone:2026-10:850,00:x',
+      ]) {
+        const r = confirm('--parte', bad);
+        expect([bad, r.code]).toEqual([bad, 2]);
+        expect(r.json).toMatchObject({ status: 'invalid', reason: 'bad-arguments' });
+      }
+      expect(confirm().code).toBe(2);
+      const sum = confirm('--parte', 'canone:2026-10:800,00');
+      expect(sum.code).toBe(1);
+      expect(sum.json).toMatchObject({ status: 'rejected', reason: 'sum-mismatch' });
+      const unknown = cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        'nessuna',
+        '--inquilino',
+        't1',
+        '--parte',
+        'canone:2026-10:850,00',
+      ]);
+      expect(unknown.json).toMatchObject({ status: 'rejected', reason: 'unknown-proposal' });
+      expect(registerSize(s.dir)).toBe(0);
+
+      const once = confirm(
+        '--solo-questa-volta',
+        '--parte',
+        'canone:2026-10:500,00',
+        '--parte',
+        'altro:2026-10:350,00',
+      );
+      expect(once.code).toBe(0);
+      expect(once.json.paymentIds).toHaveLength(2);
+      expect(once.json.payerId).toBeUndefined();
+      expect(registerSize(s.dir)).toBe(2);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'argomenti mancanti o --lingua non valida = 2; un registro non coerente rifiuta e ripara si ripara',
+    async () => {
+      const s = await incomeSetup();
+      expect(cli(['inquilino', ...s.common, '--id', 't2']).code).toBe(2);
+      expect(
+        cli(['inquilino', ...s.common, '--id', 't2', '--nome', 'X', '--lingua', 'fr']).code,
+      ).toBe(2);
+      expect(cli(['riconcilia', ...s.common, '--prova', 'x']).code).toBe(2);
+
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't1',
+        '--parte',
+        'canone:2026-10:850,00',
+      ]);
+      const file = join(
+        s.dir,
+        '_app',
+        'dati',
+        'payment',
+        readdirSync(join(s.dir, '_app', 'dati', 'payment'))[0],
+      );
+      const record = JSON.parse(readFileSync(file, 'utf8'));
+      writeFileSync(file, JSON.stringify({ ...record, amount: record.amount + 1 }));
+
+      const refused = cli(['riconcilia', ...s.common]);
+      expect(refused.code).toBe(1);
+      expect(refused.json).toMatchObject({ status: 'rejected', reason: 'inconsistent-store' });
+      const repaired = cli(['ripara', ...s.common]);
+      expect(repaired.code).toBe(0);
+      expect(repaired.json).toMatchObject({ status: 'repaired', repaired: 1 });
+      expect(JSON.parse(readFileSync(file, 'utf8')).amount).toBe(record.amount);
+      expect(cli(['ripara', ...s.common]).json).toMatchObject({ repaired: 0 });
+      expect(cli(['riconcilia', ...s.common]).code).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'le opzioni di un altro comando sono rifiutate (2, nulla scritto); --id non valido = 2; errore inatteso = 3',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const snap = snapshot(s.dir);
+      const part = ['--parte', 'canone:2026-10:850,00'];
+      for (const args of [
+        ['conferma', '--proposta', proposal.id, '--inquilino', 't1', ...part, '--prova'],
+        ['inquilino', '--id', 't2', '--nome', 'X', '--prova'],
+        ['ripara', '--prova'],
+        ['riconcilia', '--solo-questa-volta'],
+        ['riconcilia', ...part],
+        ['inquilino', '--id', 't2', '--nome', 'X', '--dettagli'],
+      ]) {
+        const r = cli([args[0], ...s.common, ...args.slice(1)]);
+        expect([args, r.code]).toEqual([args, 2]);
+        expect(r.json).toMatchObject({ status: 'invalid', reason: 'bad-arguments' });
+      }
+      for (const id of ['../x', 'a b', 'x'.repeat(65), 'CON', 'nul', 'COM1', 'a/b', 'a.']) {
+        const r = cli(['inquilino', ...s.common, '--id', id, '--nome', 'X']);
+        expect([id, r.code]).toEqual([id, 2]);
+      }
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const failed = await main(
+        ['inquilino', '--cartella', s.dir, '--ora', ORA, '--id', 't9', '--nome', 'Y'],
+        {
+          now: () => ORA,
+          newId: () => {
+            throw new Error('segreto-nel-messaggio');
+          },
+        },
+      );
+      expect(failed.code).toBe(3);
+      expect(failed.output).not.toMatch(/segreto/);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'annulla-incassi: dependent-payments si risolve (incassi, poi estratto); altre operazioni rifiutate; --prova = 2',
+    async () => {
+      const s = await incomeSetup();
+      const imp = month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const conf = cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't1',
+        '--parte',
+        'canone:2026-10:850,00',
+      ]);
+      const blocked = cli(['annulla', ...s.common, '--estratto', imp.json.statementId]);
+      expect(blocked.code).toBe(1);
+      expect(blocked.json.reason).toBe('dependent-payments');
+
+      const undo = (args) => cli(['annulla-incassi', ...s.common, ...args]);
+      expect(undo([]).code).toBe(2);
+      expect(undo(['--operazione', conf.json.operationId, '--prova']).code).toBe(2);
+      const unknown = undo(['--operazione', 'nessuna']);
+      expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-operation']);
+      const other = undo(['--operazione', blocked.json.operationId ?? 'x']);
+      expect(other.code).toBe(1);
+      const imported = readdirSync(join(s.dir, '_app', 'journal'))
+        .map((f) => JSON.parse(readFileSync(join(s.dir, '_app', 'journal', f), 'utf8')))
+        .find((o) => o.kind === 'statement.import');
+      const refused = undo(['--operazione', imported.id]);
+      expect(refused.json).toMatchObject({ status: 'rejected', reason: 'not-income-operation' });
+      expect(refused.code).toBe(1);
+
+      const snap = snapshot(s.dir);
+      const done = undo(['--operazione', conf.json.operationId]);
+      expect(done.code).toBe(0);
+      expect(done.json).toMatchObject({ status: 'undone' });
+      expect(snapshot(s.dir)).not.toEqual(snap);
+      const again = undo(['--operazione', conf.json.operationId]);
+      expect([again.code, again.json.reason]).toEqual([1, 'already-undone']);
+      // The payment is deleted and the payer with it: the statement can be undone now.
+      const gone = cli(['annulla', ...s.common, '--estratto', imp.json.statementId]);
+      expect(gone.code).toBe(0);
+      const all = [done.out, refused.out, again.out].join('');
+      for (const secret of [NAME, CAUSALE, IBAN, '850']) expect(all).not.toContain(secret);
     },
     TIMEOUT,
   );

@@ -7,6 +7,7 @@
  * wrote.
  */
 import { hashBytes, keyTransactions } from './dedupe';
+import { compareText } from './text';
 import { commitChange, dependentsOf, readJournal, undoOperation, undoTargetOf } from './journal';
 import type { Operation } from './journal';
 import {
@@ -14,6 +15,7 @@ import {
   ApartmentSchema,
   BankProfileSchema,
   BankTransactionSchema,
+  PaymentSchema,
   StatementSchema,
 } from './model';
 import type { BankTransaction, Statement } from './model';
@@ -321,7 +323,9 @@ export async function resolveHeld(
 /**
  * Takes back an import: the statement and the movements it wrote (and the ones kept from its
  * held rows), never the movements it only found already there. Refused, writing nothing, when
- * another statement that is not deleted lists one of the movements that would be deleted.
+ * another statement that is not deleted lists one of the movements that would be deleted, or
+ * (`dependent-payments`, with the ids) when a live payment of any source points to one of them:
+ * the payments are undone first (R114).
  */
 export async function undoImport(
   store: Store,
@@ -332,6 +336,7 @@ export async function undoImport(
 ): Promise<
   | { status: 'undone'; operation: Operation }
   | { status: 'refused'; reason: 'shared-transactions' | 'held-duplicates' | 'later-changes' }
+  | { status: 'refused'; reason: 'dependent-payments'; paymentIds: string[] }
 > {
   const path = recordPath('statement', statementId);
   const { operations } = await readJournal(store);
@@ -361,6 +366,15 @@ export async function undoImport(
       s.transactionIds.some((id) => going.has(recordPath('transaction', id))),
   );
   if (shared) return { status: 'refused', reason: 'shared-transactions' };
+
+  // Decision E: a live payment (any source) on a movement going away blocks the undo (no cascade).
+  const paymentIds = (await loadAll(store, 'payment', PaymentSchema)).records
+    .filter(
+      (p) => p.transactionId !== undefined && going.has(recordPath('transaction', p.transactionId)),
+    )
+    .map((p) => p.id)
+    .sort(compareText);
+  if (paymentIds.length > 0) return { status: 'refused', reason: 'dependent-payments', paymentIds };
 
   // A held row of another statement of the same account that looks like a movement going away
   // (waiting, or excluded) leans on it: deleting it would lose the payment.

@@ -24,6 +24,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import { isoDate, yearMonth } from './period';
 import { normaliseIban } from './iban';
+import { foldText } from './text';
 import { SEMVER_PATTERN } from './version';
 
 // --- Building blocks ------------------------------------------------------------------------
@@ -126,6 +127,8 @@ const notAfter = (earlier: string, later: string): boolean => earlier <= later;
 
 // --- Records ---------------------------------------------------------------------------------
 
+export const DEFAULT_RENT_LATE_DAYS = 10;
+
 export const ApartmentSchema = RecordBaseSchema.extend({
   name: NonEmptyString,
   locatore: NonEmptyString,
@@ -142,6 +145,8 @@ export const ApartmentSchema = RecordBaseSchema.extend({
   annualitaStart: AnnualitaStartSchema,
   /** Start of the condominium fiscal year, when the apartment has one. */
   condominioStart: AnnualitaStartSchema.optional(),
+  /** Days of grace before a rent payment counts as late (R109); `DEFAULT_RENT_LATE_DAYS` if absent. */
+  rentLateDays: z.int().min(0).max(31).optional(),
   /** Street address, as written on the notices. */
   address: NonEmptyString.optional(),
   /** Cadastral identifiers (foglio, particella, subalterno), one entry per unit. */
@@ -230,6 +235,42 @@ export const TenancySchema = RecordBaseSchema.extend({
   })
   .meta({ description: 'When to is present, from must not be after to.' });
 export type Tenancy = z.infer<typeof TenancySchema>;
+
+// --- Tenants and payers (plan 3b) ---------------------------------------------------------------
+
+export const TenantSchema = RecordBaseSchema.extend({
+  name: NonEmptyString,
+  language: z.enum(['it', 'en']).optional(),
+});
+export type Tenant = z.infer<typeof TenantSchema>;
+
+/** `iban:<normalised IBAN>` or `name:<folded name>`: the same form the matcher compares. */
+export const PayerKeySchema = z.string().refine(
+  (key) => {
+    if (key.startsWith('iban:')) return normaliseIban(key.slice(5)) === key.slice(5);
+    if (key.startsWith('name:')) {
+      const name = key.slice(5);
+      return name !== '' && foldText(name) === name;
+    }
+    return false;
+  },
+  { message: 'The key must be iban:<normalised IBAN> or name:<folded name>' },
+);
+export type PayerKey = z.infer<typeof PayerKeySchema>;
+
+export const PayerSchema = RecordBaseSchema.extend({
+  key: PayerKeySchema,
+  tenantId: NonEmptyString,
+  validFrom: ISODateSchema,
+  validTo: ISODateSchema.optional(),
+  source: z.enum(['confirmed', 'manual']),
+})
+  .refine((payer) => payer.validTo === undefined || notAfter(payer.validFrom, payer.validTo), {
+    message: 'The payer ends before it starts',
+    path: ['validTo'],
+  })
+  .meta({ description: 'When validTo is present, validFrom must not be after validTo.' });
+export type Payer = z.infer<typeof PayerSchema>;
 
 /** The categories of a bill; a supplier profile of kind `bill` names one. */
 export const BillCategorySchema = z.enum(['elettricita', 'gas', 'acqua', 'internet', 'altro']);
@@ -836,6 +877,8 @@ export const recordSchemas = {
   account: AccountSchema,
   bankProfile: BankProfileSchema,
   statement: StatementSchema,
+  tenant: TenantSchema,
+  payer: PayerSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

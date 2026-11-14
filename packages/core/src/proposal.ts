@@ -11,7 +11,7 @@ import type { ExtractedField, ExtractionResult } from './extraction';
 import type { Bill, Consumption, Instalment, Supply, Tenancy } from './model';
 import { splitCents } from './money';
 import type { Cents } from './money';
-import { addDays, addMonths, monthsInPeriod } from './period';
+import { lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { MONTH_NAMES } from './tari-note';
 import { foldText } from './text';
@@ -342,11 +342,6 @@ function tariRate(dueDate: ISODate): {
   };
 }
 
-/** The last day of a month. */
-function lastDay(month: YearMonth): ISODate {
-  return addDays(`${addMonths(month, 1)}-01` as ISODate, -1);
-}
-
 /** The supplies the caller gave that are not deleted. */
 function liveSupplies(ctx: ProposalContext): NonNullable<ProposalContext['supplies']> {
   return (ctx.supplies ?? []).filter((supply) => supply.deleted !== true);
@@ -371,7 +366,7 @@ function tariProposal(
   const declaredStart = valueOf(fields.periodStart);
   const declaredEnd = valueOf(fields.periodEnd);
   const months = `${monthLabel(rate.coversFrom)} – ${monthLabel(rate.coversTo)}`;
-  if (declaredStart !== `${rate.coversFrom}-01` || declaredEnd !== lastDay(rate.coversTo)) {
+  if (declaredStart !== `${rate.coversFrom}-01` || declaredEnd !== lastDayOfMonth(rate.coversTo)) {
     checks.push(
       warn(
         'tari-months',
@@ -479,7 +474,7 @@ function tariProposal(
     }
   }
 
-  const months4 = monthsInPeriod(`${rate.coversFrom}-01` as ISODate, lastDay(rate.coversTo));
+  const months4 = monthsInPeriod(`${rate.coversFrom}-01` as ISODate, lastDayOfMonth(rate.coversTo));
   for (const instalment of instalments) {
     const duplicate = ctx.instalments.some(
       (i) =>

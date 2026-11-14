@@ -1,0 +1,1147 @@
+{
+  "description": "Un anno sintetico (2026) su due conti di due appartamenti: quattro inquilini inventati; Elena Bianchi, genitore, paga per Carla e Dario da un solo IBAN: confermata per Carla, il bonifico di Dario diventa una «che cosa» di Carla e si conferma per Dario, così la chiave ha due payer e non è mai automatica. Anna ha già un pagante confermato; Bruno no. Bruno paga febbraio l'8 marzo (8 giorni di ritardo, entro i 10). Un giroconto da c2 a c1 e due uscite. Nomi e IBAN inventati (fixtures/README.md).",
+  "records": {
+    "apartment": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "a1",
+        "name": "Appartamento Uno",
+        "locatore": "Locatore fittizio",
+        "posti": 2,
+        "annualitaStart": {
+          "month": 1,
+          "day": 1
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "a2",
+        "name": "Appartamento Due",
+        "locatore": "Locatore fittizio",
+        "posti": 2,
+        "annualitaStart": {
+          "month": 1,
+          "day": 1
+        }
+      }
+    ],
+    "account": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "c1",
+        "apartmentId": "a1",
+        "label": "Conto Uno",
+        "bankProfileId": "bp-sintetico",
+        "iban": "IT85X0542811101000000000301"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "c2",
+        "apartmentId": "a2",
+        "label": "Conto Due",
+        "bankProfileId": "bp-sintetico",
+        "iban": "IT58X0542811101000000000302"
+      }
+    ],
+    "tenant": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "t-anna",
+        "name": "Anna Verdi"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "t-bruno",
+        "name": "Bruno Neri"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "t-carla",
+        "name": "Carla Bianchi"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "t-dario",
+        "name": "Dario Bianchi",
+        "language": "en"
+      }
+    ],
+    "tenancy": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-anna",
+        "apartmentId": "a1",
+        "tenantId": "t-anna",
+        "from": "2026-01",
+        "to": "2026-12",
+        "monthlyRent": 40000,
+        "monthlyForfait": 5000
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-bruno",
+        "apartmentId": "a1",
+        "tenantId": "t-bruno",
+        "from": "2026-01",
+        "to": "2026-12",
+        "monthlyRent": 38000,
+        "monthlyForfait": 5000
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-carla",
+        "apartmentId": "a2",
+        "tenantId": "t-carla",
+        "from": "2026-01",
+        "to": "2026-12",
+        "monthlyRent": 35000,
+        "monthlyForfait": 6000
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-dario",
+        "apartmentId": "a2",
+        "tenantId": "t-dario",
+        "from": "2026-01",
+        "to": "2026-12",
+        "monthlyRent": 33000,
+        "monthlyForfait": 6000
+      }
+    ],
+    "payer": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "pr-anna",
+        "key": "iban:IT09X0542811101000000000311",
+        "tenantId": "t-anna",
+        "validFrom": "2026-01-01",
+        "source": "confirmed"
+      }
+    ],
+    "statement": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "s-c1",
+        "accountId": "c1",
+        "bankProfileId": "bp-sintetico",
+        "fileName": "estratto-c1.csv",
+        "suggestedPath": "estratti/estratto-c1.csv",
+        "from": "2026-01-01",
+        "to": "2026-12-31",
+        "periodSource": "file",
+        "rowCount": 26,
+        "transactionIds": [
+          "tx-anna-2026-01",
+          "tx-anna-2026-02",
+          "tx-anna-2026-03",
+          "tx-anna-2026-04",
+          "tx-anna-2026-05",
+          "tx-anna-2026-06",
+          "tx-anna-2026-07",
+          "tx-anna-2026-08",
+          "tx-anna-2026-09",
+          "tx-anna-2026-10",
+          "tx-anna-2026-11",
+          "tx-anna-2026-12",
+          "tx-bruno-2026-01",
+          "tx-bruno-2026-02",
+          "tx-bruno-2026-03",
+          "tx-bruno-2026-04",
+          "tx-bruno-2026-05",
+          "tx-bruno-2026-06",
+          "tx-bruno-2026-07",
+          "tx-bruno-2026-08",
+          "tx-bruno-2026-09",
+          "tx-bruno-2026-10",
+          "tx-bruno-2026-11",
+          "tx-bruno-2026-12",
+          "tx-giro-in",
+          "tx-spese-c1"
+        ],
+        "held": []
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "s-c2",
+        "accountId": "c2",
+        "bankProfileId": "bp-sintetico",
+        "fileName": "estratto-c2.csv",
+        "suggestedPath": "estratti/estratto-c2.csv",
+        "from": "2026-01-01",
+        "to": "2026-12-31",
+        "periodSource": "file",
+        "rowCount": 25,
+        "transactionIds": [
+          "tx-carla-2026-01",
+          "tx-carla-2026-02",
+          "tx-carla-2026-03",
+          "tx-carla-2026-04",
+          "tx-carla-2026-05",
+          "tx-carla-2026-06",
+          "tx-carla-2026-07",
+          "tx-carla-2026-08",
+          "tx-carla-2026-09",
+          "tx-carla-2026-10",
+          "tx-carla-2026-11",
+          "tx-carla-2026-12",
+          "tx-dario-2026-01",
+          "tx-dario-2026-02",
+          "tx-dario-2026-03",
+          "tx-dario-2026-04",
+          "tx-dario-2026-05",
+          "tx-dario-2026-06",
+          "tx-dario-2026-07",
+          "tx-dario-2026-08",
+          "tx-dario-2026-09",
+          "tx-dario-2026-10",
+          "tx-dario-2026-11",
+          "tx-dario-2026-12",
+          "tx-giro-out"
+        ],
+        "held": []
+      }
+    ],
+    "transaction": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-01",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-01-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-02",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-02-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-03",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-03-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-04",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-04-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-05",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-05-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-06",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-06-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-07",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-07-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-08",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-08-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-09",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-09-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-10",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-10-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-11",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-11-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-anna-2026-12",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-12-03",
+        "amount": 45000,
+        "description": "Bonifico affitto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Anna Verdi",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-01",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-01-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-02",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-03-08",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-03",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-03-28",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-04",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-04-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-05",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-05-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-06",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-06-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-07",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-07-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-08",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-08-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-09",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-09-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-10",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-10-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-11",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-11-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-bruno-2026-12",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-12-05",
+        "amount": 43000,
+        "description": "Canone mese",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "name": "Bruno Neri",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-01",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-01-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-02",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-02-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-03",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-03-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-04",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-04-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-05",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-05-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-06",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-06-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-07",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-07-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-08",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-08-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-09",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-09-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-10",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-10-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-11",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-11-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-carla-2026-12",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-12-02",
+        "amount": 41000,
+        "description": "Affitto Carla",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-01",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-01-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-02",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-02-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-03",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-03-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-04",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-04-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-05",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-05-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-06",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-06-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-07",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-07-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-08",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-08-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-09",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-09-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-10",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-10-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-11",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-11-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-dario-2026-12",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-12-02",
+        "amount": 39000,
+        "description": "Affitto Dario",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "name": "Elena Bianchi",
+          "iban": "IT52X0542811101000000000313"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-giro-in",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-06-15",
+        "amount": 10000,
+        "description": "Giroconto",
+        "statementHash": "s-c1",
+        "counterparty": {
+          "iban": "IT58X0542811101000000000302"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-giro-out",
+        "apartmentId": "a2",
+        "accountId": "c2",
+        "date": "2026-06-15",
+        "amount": -10000,
+        "description": "Giroconto",
+        "statementHash": "s-c2",
+        "counterparty": {
+          "iban": "IT85X0542811101000000000301"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-spese-c1",
+        "apartmentId": "a1",
+        "accountId": "c1",
+        "date": "2026-01-31",
+        "amount": -500,
+        "description": "Commissioni",
+        "statementHash": "s-c1"
+      }
+    ]
+  },
+  "expected": {
+    "initialAutomatic": [
+      {
+        "transactionId": "tx-anna-2026-01",
+        "forMonth": "2026-01"
+      }
+    ],
+    "confirmations": [
+      {
+        "proposalId": "p-chi-tx-bruno-2026-01",
+        "tenantId": "t-bruno",
+        "parts": [
+          {
+            "kind": "canone",
+            "forMonth": "2026-01",
+            "amount": 43000
+          }
+        ],
+        "rememberPayer": true
+      },
+      {
+        "proposalId": "p-chi-tx-carla-2026-01",
+        "tenantId": "t-carla",
+        "parts": [
+          {
+            "kind": "canone",
+            "forMonth": "2026-01",
+            "amount": 41000
+          }
+        ],
+        "rememberPayer": true
+      },
+      {
+        "proposalId": "p-cosa-tx-dario-2026-01",
+        "tenantId": "t-dario",
+        "parts": [
+          {
+            "kind": "canone",
+            "forMonth": "2026-01",
+            "amount": 39000
+          }
+        ],
+        "rememberPayer": true
+      }
+    ],
+    "afterAutomatic": [
+      {
+        "transactionId": "tx-anna-2026-02",
+        "forMonth": "2026-02"
+      },
+      {
+        "transactionId": "tx-anna-2026-03",
+        "forMonth": "2026-03"
+      },
+      {
+        "transactionId": "tx-anna-2026-04",
+        "forMonth": "2026-04"
+      },
+      {
+        "transactionId": "tx-anna-2026-05",
+        "forMonth": "2026-05"
+      },
+      {
+        "transactionId": "tx-anna-2026-06",
+        "forMonth": "2026-06"
+      },
+      {
+        "transactionId": "tx-anna-2026-07",
+        "forMonth": "2026-07"
+      },
+      {
+        "transactionId": "tx-anna-2026-08",
+        "forMonth": "2026-08"
+      },
+      {
+        "transactionId": "tx-anna-2026-09",
+        "forMonth": "2026-09"
+      },
+      {
+        "transactionId": "tx-anna-2026-10",
+        "forMonth": "2026-10"
+      },
+      {
+        "transactionId": "tx-anna-2026-11",
+        "forMonth": "2026-11"
+      },
+      {
+        "transactionId": "tx-anna-2026-12",
+        "forMonth": "2026-12"
+      },
+      {
+        "transactionId": "tx-bruno-2026-02",
+        "forMonth": "2026-02"
+      },
+      {
+        "transactionId": "tx-bruno-2026-03",
+        "forMonth": "2026-03"
+      },
+      {
+        "transactionId": "tx-bruno-2026-04",
+        "forMonth": "2026-04"
+      },
+      {
+        "transactionId": "tx-bruno-2026-05",
+        "forMonth": "2026-05"
+      },
+      {
+        "transactionId": "tx-bruno-2026-06",
+        "forMonth": "2026-06"
+      },
+      {
+        "transactionId": "tx-bruno-2026-07",
+        "forMonth": "2026-07"
+      },
+      {
+        "transactionId": "tx-bruno-2026-08",
+        "forMonth": "2026-08"
+      },
+      {
+        "transactionId": "tx-bruno-2026-09",
+        "forMonth": "2026-09"
+      },
+      {
+        "transactionId": "tx-bruno-2026-10",
+        "forMonth": "2026-10"
+      },
+      {
+        "transactionId": "tx-bruno-2026-11",
+        "forMonth": "2026-11"
+      },
+      {
+        "transactionId": "tx-bruno-2026-12",
+        "forMonth": "2026-12"
+      }
+    ],
+    "afterProposals": [
+      "p-chi-tx-carla-2026-02",
+      "p-chi-tx-carla-2026-03",
+      "p-chi-tx-carla-2026-04",
+      "p-chi-tx-carla-2026-05",
+      "p-chi-tx-carla-2026-06",
+      "p-chi-tx-carla-2026-07",
+      "p-chi-tx-carla-2026-08",
+      "p-chi-tx-carla-2026-09",
+      "p-chi-tx-carla-2026-10",
+      "p-chi-tx-carla-2026-11",
+      "p-chi-tx-carla-2026-12",
+      "p-chi-tx-dario-2026-02",
+      "p-chi-tx-dario-2026-03",
+      "p-chi-tx-dario-2026-04",
+      "p-chi-tx-dario-2026-05",
+      "p-chi-tx-dario-2026-06",
+      "p-chi-tx-dario-2026-07",
+      "p-chi-tx-dario-2026-08",
+      "p-chi-tx-dario-2026-09",
+      "p-chi-tx-dario-2026-10",
+      "p-chi-tx-dario-2026-11",
+      "p-chi-tx-dario-2026-12"
+    ],
+    "skipped": [
+      {
+        "transactionId": "tx-giro-in",
+        "reason": "own-account"
+      }
+    ]
+  }
+}

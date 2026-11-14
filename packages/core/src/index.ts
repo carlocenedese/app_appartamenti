@@ -34,3 +34,7 @@ export * from './presence';
 export * from './statement-table';
 export * from './statement-read';
 export * from './statement-import';
+export * from './payers';
+export * from './rent-month';
+export * from './income';
+export * from './income-store';
