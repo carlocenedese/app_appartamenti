@@ -39,6 +39,8 @@ qui tra apici inversi, con una nota: la revisione deve verificare che sia davver
 | Tipo                        | Codice                              |
 | --------------------------- | ----------------------------------- |
 | IBAN (esempio pubblico)     | `IT60 X054 2811 1010 0000 0123 456` |
+| IBAN di prova (inventato)   | `IT52A9999999999000000000001`       |
+| IBAN di prova (inventato)   | `IT29B9999999999000000000002`       |
 | Codice fiscale (esempio)    | `RSSMRA80A01H501U`                  |
 | POD                         | `IT001E12345678`                    |
 | PDR                         | `12345678901234`                    |
