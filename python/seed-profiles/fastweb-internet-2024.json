@@ -10,8 +10,7 @@
   "validFrom": "2020-01-01",
   "recognise": {
     "allOf": ["fastweb s.p.a."],
-    "noneOf": [],
-    "ocrAnyOf": ["fastweb"]
+    "noneOf": []
   },
   "fields": {
     "number": {

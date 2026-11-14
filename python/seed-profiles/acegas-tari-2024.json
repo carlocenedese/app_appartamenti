@@ -9,8 +9,7 @@
   "validFrom": "2020-01-01",
   "recognise": {
     "allOf": ["gestore della tassa sui rifiuti (tari)"],
-    "noneOf": ["pagare:*", "bolletta nr."],
-    "ocrAnyOf": ["acegas"]
+    "noneOf": ["pagare:*", "bolletta nr."]
   },
   "fields": {
     "number": {

@@ -10,8 +10,7 @@
   "validFrom": "2020-01-01",
   "recognise": {
     "allOf": ["servizio idrico"],
-    "noneOf": ["gestore della tassa sui rifiuti"],
-    "ocrAnyOf": ["acegas"]
+    "noneOf": ["gestore della tassa sui rifiuti"]
   },
   "fields": {
     "number": {
