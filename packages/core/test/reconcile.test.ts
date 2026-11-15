@@ -2,24 +2,42 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  AccountSchema,
+  ApartmentSchema,
+  BankTransactionSchema,
   BillMatchSchema,
+  BillSchema,
+  InstalmentSchema,
+  MATCH_WINDOW,
   MovementClassSchema,
+  MovementRuleSchema,
+  PayerSchema,
+  StatementSchema,
+  SupplierProfileSchema,
+  TenancySchema,
+  TenantSchema,
   PaymentSchema,
   TransferSchema,
   cents,
   commitChange,
   confirmIncome,
   confirmMatch,
+  confirmOutgoing,
   confirmTransfer,
   excludeMovement,
   loadAll,
+  matchToTransactions,
   movementUses,
   readJournal,
+  reconcileIncome,
+  reconcileOutgoing,
+  reconcileTransfers,
   recordPath,
   recordSchemas,
   runReconcile,
   runReconciliation,
   saveTenant,
+  statementPeriodsOf,
   yearMonth,
 } from '../src/index';
 import type { RecordKind } from '../src/index';
@@ -56,6 +74,79 @@ async function usesOf(store: MemoryStore) {
     matches: (await loadAll(store, 'match', BillMatchSchema)).records,
     transfers: (await loadAll(store, 'transfer', TransferSchema)).records,
   });
+}
+
+/** A debit to the invented supplier on the account of Pulci, with its name in the description. */
+const enel = {
+  id: 'tx-p-enel',
+  v: 1,
+  rev: 1,
+  apartmentId: 'pulci',
+  accountId: 'acc-pulci',
+  date: '2027-03-20',
+  amount: -4820,
+  description: 'ADDEBITO DIRETTO ENEL',
+  statementHash: 's-p',
+  counterparty: { name: 'Fornitore Inventato', iban: 'IT04X0542811101000000000401' },
+};
+
+/** Every record the phases read, deleted ones included, and the journal. */
+async function pureState(store: MemoryStore) {
+  const all = { includeDeleted: true };
+  return {
+    accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
+    apartments: (await loadAll(store, 'apartment', ApartmentSchema, all)).records,
+    tenancies: (await loadAll(store, 'tenancy', TenancySchema, all)).records,
+    tenants: (await loadAll(store, 'tenant', TenantSchema, all)).records,
+    payers: (await loadAll(store, 'payer', PayerSchema, all)).records,
+    payments: (await loadAll(store, 'payment', PaymentSchema, all)).records,
+    transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
+    statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
+    bills: (await loadAll(store, 'bill', BillSchema, all)).records,
+    instalments: (await loadAll(store, 'instalment', InstalmentSchema, all)).records,
+    matches: (await loadAll(store, 'match', BillMatchSchema, all)).records,
+    classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
+    rules: (await loadAll(store, 'movementRule', MovementRuleSchema, all)).records,
+    supplierProfiles: (await loadAll(store, 'supplierProfile', SupplierProfileSchema, all)).records,
+    transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,
+    // The journal is a history: its order is never shuffled.
+    operations: (await readJournal(store)).operations,
+  };
+}
+type PureState = Awaited<ReturnType<typeof pureState>>;
+
+/** The same state with every array of records in another order (the journal kept as it is). */
+function reorder(state: PureState, how: <T>(list: T[]) => T[]): PureState {
+  const out = { ...state } as Record<string, unknown>;
+  for (const [k, v] of Object.entries(state)) {
+    if (k !== 'operations' && Array.isArray(v)) out[k] = how(v as unknown[]);
+  }
+  return out as PureState;
+}
+
+/** The pure functions of the phases on `s`, each fed the uses of the records (as the stores do). */
+function phases(s: PureState) {
+  const uses = movementUses(s);
+  const used = new Set(uses.keys());
+  return {
+    uses,
+    match: matchToTransactions({
+      bills: s.bills,
+      instalments: s.instalments,
+      transactions: s.transactions.filter((t) => !used.has(t.id)),
+      window: MATCH_WINDOW,
+      statementPeriods: statementPeriodsOf(s.accounts, s.statements),
+      existing: s.matches,
+    }),
+    income: reconcileIncome({
+      ...s,
+      usedTransactionIds: new Set(
+        [...uses].filter(([, list]) => list.some((u) => u !== 'pagamento')).map(([id]) => id),
+      ),
+    }),
+    transfers: reconcileTransfers({ ...s, used }),
+    outgoing: reconcileOutgoing({ ...s, used }),
+  };
 }
 
 describe('movementUses (plan 3c, task 4)', () => {
@@ -182,6 +273,20 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
         },
       ],
     });
+    expect(result.outgoing).toEqual({
+      status: 'reconciled',
+      written: 0,
+      classified: [],
+      proposals: [
+        {
+          id: 'p-uscita-tx-p-fornitore-feb',
+          transactionId: 'tx-p-fornitore-feb',
+          step: 'uscita',
+          reason: 'new-counterparty',
+        },
+      ],
+      missingDocument: [],
+    });
     expect(result.match).toMatchObject({ status: 'matched', written: 3, yielded: 0 });
     expect(result.match.status === 'matched' && result.match.assumed).toEqual([
       { itemType: 'bill', itemId: 'bill-hera-feb' },
@@ -217,24 +322,104 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     });
   });
 
-  it('gives the same writes and proposals in any order; the second run writes nothing', async () => {
-    const plain = await treConti();
-    const shuffled = await treConti(true);
-    const a = await reconcile(plain);
-    const b = await reconcile(shuffled);
-    expect(b).toEqual(a);
-    expect(await snapshot(shuffled)).toEqual(await snapshot(plain));
+  it('every phase gives the same result in any order of its arrays (ledger)', async () => {
+    const store = await treConti();
+    // A rule for the supplier on the account of Pulci and a new debit it classifies.
+    expect(
+      await confirmOutgoing(
+        store,
+        {
+          proposalId: 'p-uscita-tx-p-fornitore-feb',
+          kind: 'altro',
+          apartmentId: 'pulci',
+          rememberRule: true,
+        },
+        'p1',
+        clock,
+        ids('o'),
+      ),
+    ).toMatchObject({ status: 'confirmed', ruleId: 'rule-tx-p-fornitore-feb' });
+    await store.writeJsonAtomic(
+      recordPath('transaction', enel.id),
+      recordSchemas.transaction.parse(enel),
+    );
+    const before = await pureState(store);
+    const reversed = reorder(before, (list) => [...list].reverse());
+    const rotated = reorder(before, (list) => [...list.slice(1), ...list.slice(0, 1)]);
+    expect(phases(reversed)).toEqual(phases(before));
+    expect(phases(rotated)).toEqual(phases(before));
+    expect(phases(before).outgoing.classes.map((c) => c.id)).toEqual(['mc-tx-p-enel']);
 
+    await reconcile(store);
+    const after = await pureState(store);
+    expect(phases(reorder(after, (list) => [...list].reverse()))).toEqual(phases(after));
+    for (const list of phases(after).uses.values()) expect(list).toHaveLength(1);
+  });
+
+  it('the second run writes nothing', async () => {
+    const plain = await treConti();
+    await reconcile(plain);
     const once = await snapshot(plain);
     const again = await reconcile(plain, 's');
     expect(again).toMatchObject({
       status: 'reconciled',
       match: { written: 0 },
       income: { written: 0 },
+      transfers: { written: 0 },
+      outgoing: { written: 0 },
     });
     expect(again.status === 'reconciled' && again.match).not.toHaveProperty('operationId');
     expect(again.status === 'reconciled' && again.income).not.toHaveProperty('operationId');
+    expect(again.status === 'reconciled' && again.outgoing).not.toHaveProperty('operationId');
     expect(await snapshot(plain)).toEqual(once);
+  });
+
+  it('a debit classified by a rule, then its bill: one use per run, the rule yields (focus 1)', async () => {
+    const store = await treConti();
+    await confirmOutgoing(
+      store,
+      {
+        proposalId: 'p-uscita-tx-p-fornitore-feb',
+        kind: 'altro',
+        apartmentId: 'pulci',
+        rememberRule: true,
+      },
+      'p1',
+      clock,
+      ids('o'),
+    );
+    await store.writeJsonAtomic(
+      recordPath('transaction', enel.id),
+      recordSchemas.transaction.parse(enel),
+    );
+    const first = await reconcile(store);
+    expect(first).toMatchObject({ outgoing: { written: 1, classified: ['tx-p-enel'] } });
+    expect((await usesOf(store)).get('tx-p-enel')).toEqual(['classificato']);
+
+    const bill = recordSchemas.bill.parse({
+      id: 'bill-enel',
+      v: 1,
+      rev: 1,
+      apartmentId: 'pulci',
+      category: 'elettricita',
+      supplier: 'Enel',
+      dueDate: '2027-03-18',
+      periodStart: '2027-01-01',
+      periodEnd: '2027-02-28',
+      amount: 4820,
+      includedInConguaglio: true,
+      sharedWithTenants: true,
+      fileHash: 'hash-bill-enel',
+      filePath: 'bollette/bill-enel.pdf',
+    });
+    await store.writeJsonAtomic(recordPath('bill', bill.id), bill);
+    const second = await reconcile(store, 's');
+    expect(second).toMatchObject({ match: { yielded: 1 }, outgoing: { written: 0 } });
+    expect((await usesOf(store)).get('tx-p-enel')).toEqual(['abbinato']);
+    for (const list of (await usesOf(store)).values()) expect(list).toHaveLength(1);
+    const once = await snapshot(store);
+    await reconcile(store, 't');
+    expect(await snapshot(store)).toEqual(once);
   });
 
   it('a dry run of the transfers skips the movements the income would take (fix round 1)', async () => {
@@ -275,6 +460,7 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     expect({ ...dry.match, operationId: real.match.operationId }).toEqual(real.match);
     expect({ ...dry.income, operationId: real.income.operationId }).toEqual(real.income);
     expect(dry.transfers).toEqual(real.transfers);
+    expect(dry.outgoing).toEqual(real.outgoing);
   });
 
   it('refuses a diverged store and writes nothing: no phase runs', async () => {

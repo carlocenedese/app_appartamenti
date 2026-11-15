@@ -2,7 +2,7 @@
  * The reconciliation in phases (plan 3c, task 4; order D2 of plan 3): exclusions (proposals only,
  * never written), matching of bills and instalments, income. Each phase writes its own operation,
  * undone by itself, and skips the movements the phases before used (`movementUses`): a movement
- * has one use at most, across runs too. Then the transfers (task 5); task 6 adds the outgoings.
+ * has one use at most, across runs too. Then the transfers (task 5) and the outgoings (task 6).
  */
 import type { ReconcileRunResult } from './income-store';
 import { planIncome, runReconcile } from './income-store';
@@ -10,10 +10,12 @@ import { checkConsistency } from './journal';
 import type { MatchRunResult } from './match-store';
 import { planMatch, runMatch } from './match-store';
 import type { ExclusionProposal } from './movements';
-import { listExclusionProposals } from './movements';
+import { legsOf, listExclusionProposals } from './movements';
+import type { OutgoingRunResult } from './outgoing-store';
+import { runOutgoing } from './outgoing-store';
 import type { Store } from './store/store';
 import type { TransferRunResult } from './transfer-store';
-import { runTransfers } from './transfer-store';
+import { planTransfers, runTransfers } from './transfer-store';
 
 type Matched = Extract<MatchRunResult, { status: 'matched' }>;
 
@@ -24,6 +26,7 @@ export type ReconciliationResult =
       match: Matched;
       income: Extract<ReconcileRunResult, { status: 'reconciled' }>;
       transfers: Extract<TransferRunResult, { status: 'reconciled' }>;
+      outgoing: Extract<OutgoingRunResult, { status: 'reconciled' }>;
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
 
@@ -64,7 +67,19 @@ export async function runReconciliation(
     if (written.status === 'refused') return refused;
     income = written;
   }
+  if (dryRun) {
+    const plan = await planTransfers(store, alsoUsed);
+    alsoUsed = new Set([...alsoUsed, ...[...plan.transfers, ...plan.completed].flatMap(legsOf)]);
+  }
   const transfers = await runTransfers(store, profileId, clock, newId, { dryRun, alsoUsed });
   if (transfers.status === 'refused') return refused;
-  return { status: 'reconciled', exclusions, match, income, transfers };
+  const outgoing = await runOutgoing(store, profileId, clock, newId, { dryRun, alsoUsed });
+  if (outgoing.status === 'refused') return refused;
+  // An incoming movement the outgoings classified is no «chi» of the income any more.
+  const classified = new Set(outgoing.classified);
+  income = {
+    ...income,
+    proposals: income.proposals.filter((p) => !classified.has(p.transactionId)),
+  };
+  return { status: 'reconciled', exclusions, match, income, transfers, outgoing };
 }

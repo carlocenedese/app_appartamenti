@@ -43,3 +43,5 @@ export * from './match-store';
 export * from './reconcile';
 export * from './transfers';
 export * from './transfer-store';
+export * from './outgoing';
+export * from './outgoing-store';

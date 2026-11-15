@@ -49,6 +49,14 @@ async function loadTransferState(store: Store, alsoUsed: ReadonlySet<string> = n
   return { ...state, result: reconcileTransfers(state) };
 }
 
+/**
+ * What `runTransfers` would write on the current state, without checking it or writing (the
+ * automatic transfers and the completed ones). `runReconciliation` reads it for a dry run.
+ */
+export async function planTransfers(store: Store, alsoUsed?: ReadonlySet<string>) {
+  return (await loadTransferState(store, alsoUsed)).result;
+}
+
 const changeOf = (stored: { id: string }[], draft: TransferDraft) => {
   const after = parseOrThrow(TransferSchema, { ...draft, v: 1, rev: 1 }, 'transfer');
   return {

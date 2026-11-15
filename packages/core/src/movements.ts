@@ -36,7 +36,7 @@ export function excludedIds(classes: MovementClass[]): Set<string> {
 }
 
 /** The movements of a transfer: its outgoing and incoming legs, when there. */
-export const legsOf = (t: Transfer): string[] =>
+export const legsOf = (t: Pick<Transfer, 'outTransactionId' | 'inTransactionId'>): string[] =>
   [t.outTransactionId, t.inTransactionId].filter((id) => id !== undefined);
 
 /** What a movement is used for: one use at most per movement (plan 3c, «Mie scelte» 1, D2). */

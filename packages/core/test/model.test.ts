@@ -15,6 +15,7 @@ import {
   ContractSchema,
   InstalmentSchema,
   MovementClassSchema,
+  MovementRuleSchema,
   NoteSchema,
   PaymentSchema,
   SupplierProfileSchema,
@@ -207,6 +208,15 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     kind: 'escluso',
     excludeReason: 'doppione',
   },
+  movementRule: {
+    ...base,
+    id: 'rule-t1',
+    direction: 'out',
+    accountId: 'acc-1',
+    key: 'iban:IT60X0542811101000000123456',
+    kind: 'altro',
+    apartmentId: 'apt-1',
+  },
   transfer: {
     ...base,
     id: 'tr-t1',
@@ -304,6 +314,7 @@ describe('recordSchemas', () => {
         'instalment',
         'match',
         'movementClass',
+        'movementRule',
         'note',
         'payment',
         'supplierProfile',
@@ -332,6 +343,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.note).toBe(NoteSchema);
     expect(recordSchemas.supplierProfile).toBe(SupplierProfileSchema);
     expect(recordSchemas.movementClass).toBe(MovementClassSchema);
+    expect(recordSchemas.movementRule).toBe(MovementRuleSchema);
   });
 });
 

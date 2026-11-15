@@ -497,6 +497,26 @@ export const MovementClassSchema = RecordBaseSchema.extend({
   });
 export type MovementClass = z.infer<typeof MovementClassSchema>;
 
+/**
+ * A rule learnt from a confirmation (`rule-<transactionId>`, plan 3c, question 1): the movements
+ * of `accountId` in `direction` whose counterparty has `key` get `kind` and `apartmentId`, up to
+ * `validTo`; the amount does not count. Incoming only by IBAN (question 2).
+ */
+export const MovementRuleSchema = RecordBaseSchema.extend({
+  direction: z.enum(['in', 'out']),
+  accountId: NonEmptyString,
+  key: PayerKeySchema,
+  kind: OutgoingKindSchema,
+  apartmentId: NonEmptyString,
+  validTo: ISODateSchema.optional(),
+})
+  .refine((r) => r.direction === 'out' || r.key.startsWith('iban:'), {
+    message: 'An incoming rule needs an iban key',
+    path: ['key'],
+  })
+  .meta({ description: 'With direction in, key must be an iban: key.' });
+export type MovementRule = z.infer<typeof MovementRuleSchema>;
+
 /** A note written by a person (not the automatic notes of the app). */
 export const NoteSchema = RecordBaseSchema.extend({
   targetType: z.enum([
@@ -969,6 +989,7 @@ export const recordSchemas = {
   tenant: TenantSchema,
   payer: PayerSchema,
   movementClass: MovementClassSchema,
+  movementRule: MovementRuleSchema,
   transfer: TransferSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
