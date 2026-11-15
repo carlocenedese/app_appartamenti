@@ -140,9 +140,24 @@ describe('whoPaid: known payers', () => {
     });
     const row = tx({ counterparty: { iban: PAYER_IBAN } });
     expect(whoPaid(row, c)).toEqual({ kind: 'ask', reason: 'new-payer', tenantIds: ['t1'], key });
-    // With a second payer of a live tenant it is that one, not multi-tenant.
+    // A payer of a deleted tenant still keeps the key from being automatic: only the live ones
+    // are candidates (Carlo, 15 Nov 2026).
     const two = { ...c, payers: [...c.payers, payer({ id: 'p2', key, tenantId: 't2' })] };
-    expect(whoPaid(row, two)).toEqual({ kind: 'known', tenantId: 't2', key });
+    expect(whoPaid(row, two)).toEqual({
+      kind: 'ask',
+      reason: 'multi-tenant',
+      tenantIds: ['t2'],
+      key,
+    });
+    // An expired payer of the deleted tenant does not block.
+    const expired = {
+      ...two,
+      payers: [
+        payer({ id: 'p1', key, tenantId: 't1', validTo: '2026-01-31' }),
+        payer({ id: 'p2', key, tenantId: 't2' }),
+      ],
+    };
+    expect(whoPaid(row, expired)).toEqual({ kind: 'known', tenantId: 't2', key });
   });
 
   it('an invalid IBAN never falls back on the name payer: invalid-iban (Carlo, 15 Nov 2026)', () => {

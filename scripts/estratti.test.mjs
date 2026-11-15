@@ -1023,4 +1023,65 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
     },
     TIMEOUT,
   );
+
+  it(
+    'annulla-pagamento: un solo automatico, il movimento resta da rivedere (undone); rifiuti 1, argomenti 2',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const part = ['--parte', 'canone:2026-10:850,00'];
+      const conf = cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't1',
+        ...part,
+      ]);
+      month(s, 'nov.csv', [['03/11/2026', '850,00']], '2026-11-01', '2026-11-30');
+      const run = cli(['riconcilia', ...s.common]);
+      expect(run.json).toMatchObject({ written: 1, proposals: [] });
+      // The automatic one is the payment that the confirmation did not write.
+      const paymentId = readdirSync(join(s.dir, '_app', 'dati', 'payment'))
+        .map((f) => f.replace(/\.json$/, ''))
+        .find((id) => !conf.json.paymentIds.includes(id));
+      const cancel = (args) => cli(['annulla-pagamento', ...s.common, ...args]);
+
+      const snap = snapshot(s.dir);
+      expect(cancel([]).code).toBe(2);
+      expect(cancel(['--pagamento', paymentId, '--prova']).code).toBe(2);
+      expect(cancel(['--pagamento', paymentId, 'x']).code).toBe(2);
+      const unknown = cancel(['--pagamento', 'nessuno']);
+      expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-payment']);
+      const manual = cancel(['--pagamento', conf.json.paymentIds[0]]);
+      expect(manual.code).toBe(1);
+      expect(manual.json).toEqual({
+        status: 'rejected',
+        reason: 'not-automatic',
+        message: 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
+      });
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const done = cancel(['--pagamento', paymentId]);
+      expect(done.code).toBe(0);
+      expect(done.json).toEqual({ status: 'cancelled', operationId: done.json.operationId });
+      const after = cli(['riconcilia', ...s.common]);
+      expect(after.json).toMatchObject({
+        written: 0,
+        proposals: [{ step: 'cosa', reason: 'undone' }],
+      });
+      expect([cancel(['--pagamento', paymentId]).json.reason]).toEqual(['unknown-payment']);
+      // The cancellation is an income operation: annulla-incassi takes it back.
+      const back = cli(['annulla-incassi', ...s.common, '--operazione', done.json.operationId]);
+      expect(back.code).toBe(0);
+      expect(cli(['riconcilia', ...s.common]).json).toMatchObject({ written: 0, proposals: [] });
+
+      const all = [unknown.out, manual.out, done.out, after.out, back.out].join('');
+      for (const secret of [NAME, CAUSALE, IBAN, LABEL, '850']) expect(all).not.toContain(secret);
+      expect(scanText(all)).toEqual([]);
+    },
+    TIMEOUT,
+  );
 });

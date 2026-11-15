@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { collectedForfait, SettlementInputError } from '../src/conguaglio';
 import { coveredMonths, reconcileIncome, rentArrears } from '../src/income';
+import { OperationSchema } from '../src/journal';
+import { recordPath } from '../src/store/records';
 import type { IncomeContext } from '../src/income';
 import {
   AccountSchema,
@@ -105,8 +107,25 @@ const input = (over: Partial<Input> = {}): Input => ({
   payments: [],
   transactions: [],
   statements: [statement()],
+  operations: [],
   ...over,
 });
+
+/** A journal operation that leaves each payment as given (the `after` of its change). */
+const op = (id: string, kind: string, after: object[], undoes?: string) =>
+  OperationSchema.parse({
+    id,
+    v: 1,
+    at: '2026-11-14T09:00:00.000Z',
+    profileId: 'p1',
+    kind,
+    summary: 'x',
+    changes: after.map((a) => ({
+      path: recordPath('payment', (a as { id: string }).id),
+      after: a,
+    })),
+    ...(undoes === undefined ? {} : { undoes }),
+  });
 
 const auto = (transactionId: string, date: string, forMonth: string, amount = 45000) => ({
   id: `pay-${transactionId}`,
@@ -541,13 +560,52 @@ describe('reconcileIncome, phase «che cosa»', () => {
     ]);
   });
 
-  it('the automatic payments of an undone reconciliation come back automatic, never undone (Carlo, 15 Nov 2026)', () => {
+  describe('which deletion makes a transaction undone (R118, Carlo, 15 Nov 2026)', () => {
     const transactions = [tx('x1', '2026-01-05'), tx('x2', '2026-02-03'), tx('x3', '2026-03-03')];
     const first = reconcileIncome(input({ transactions }));
-    expect(first.payments.map((p) => p.id)).toEqual(['pay-x1', 'pay-x2', 'pay-x3']);
-    // Undoing the whole `income.reconcile` leaves its automatic payments `pay-<tx>` deleted.
-    const undone = first.payments.map((p) => payment({ ...p, rev: 2, deleted: true }));
-    expect(reconcileIncome(input({ transactions, payments: undone }))).toEqual(first);
+    const live = first.payments.map((p) => payment({ ...p }));
+    const gone = live.map((p) => payment({ ...p, rev: 2, deleted: true }));
+    const reconcile = op('r1', 'income.reconcile', live);
+
+    it('undoing the whole reconciliation: back to automatic, never undone', () => {
+      expect(first.payments.map((p) => p.id)).toEqual(['pay-x1', 'pay-x2', 'pay-x3']);
+      const operations = [reconcile, op('u1', 'undo', gone, 'r1')];
+      expect(reconcileIncome(input({ transactions, payments: gone, operations }))).toEqual(first);
+    });
+
+    it('a reconciliation of one payment undone whole: back to automatic', () => {
+      const one = [tx('x1', '2026-01-05')];
+      const [p1] = reconcileIncome(input({ transactions: one })).payments;
+      if (p1 === undefined) throw new Error('none');
+      const deleted = payment({ ...p1, rev: 2, deleted: true });
+      const operations = [
+        op('r1', 'income.reconcile', [payment({ ...p1 })]),
+        op('u1', 'undo', [deleted], 'r1'),
+      ];
+      expect(
+        reconcileIncome(input({ transactions: one, payments: [deleted], operations })).payments,
+      ).toEqual([p1]);
+    });
+
+    it('one automatic payment cancelled by itself: undone, the others stay', () => {
+      const [, x2] = gone;
+      if (x2 === undefined) throw new Error('none');
+      const payments = [live[0], x2, live[2]].filter((p) => p !== undefined);
+      const operations = [reconcile, op('c1', 'income.cancel-payment', [x2])];
+      const result = reconcileIncome(input({ transactions, payments, operations }));
+      expect(result.payments).toEqual([]);
+      expect(result.proposals).toEqual([cosa('x2', 'undone')]);
+    });
+
+    it('a deleted csv payment that no operation explains is undone (the safe side)', () => {
+      const result = reconcileIncome(input({ transactions, payments: gone }));
+      expect(result.payments).toEqual([]);
+      expect(result.proposals.map((p) => [p.id, p.reason])).toEqual([
+        ['p-cosa-x1', 'undone'],
+        ['p-cosa-x2', 'undone'],
+        ['p-cosa-x3', 'undone'],
+      ]);
+    });
   });
 
   it('a payer of a deleted tenant does not count: once automatic, now a «chi» (Carlo, 15 Nov 2026)', () => {
@@ -662,6 +720,18 @@ describe('rentArrears (Carlo, 15 Nov 2026)', () => {
     expect(reconcileIncome(input({ statements: all, transactions, payments })).payments).toEqual(
       [],
     );
+  });
+
+  it('skips a tenant whose record is deleted, even with a live presence (Carlo, 15 Nov 2026)', () => {
+    const tenants = [
+      TenantSchema.parse({ ...base, id: 't1', name: 'Nome Inventato', rev: 2, deleted: true }),
+      TenantSchema.parse({ ...base, id: 't2', name: 'Altro Nome' }),
+    ];
+    const tenancies = [tenancy({}), tenancy({ id: 'ten2', tenantId: 't2', room: 'B' })];
+    const statements = [statement({ from: '2026-01-01', to: '2026-01-31' })];
+    expect(rentArrears(input({ tenants, tenancies, statements }))).toEqual([
+      { apartmentId: 'a1', tenantId: 't2', month: '2026-01' },
+    ]);
   });
 
   it('skips partial months, deleted presences and statements, other rent, months outside a presence', () => {

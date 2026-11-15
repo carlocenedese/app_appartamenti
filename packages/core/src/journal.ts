@@ -265,6 +265,16 @@ function touchesByPath(operations: readonly Operation[]): Map<string, Touch[]> {
   return byPath;
 }
 
+/** For every path, the operation of its latest change (see `compareTouches`): what left it so. */
+export function latestOperationByPath(operations: readonly Operation[]): Map<string, Operation> {
+  const latest = new Map<string, Operation>();
+  for (const [path, touches] of touchesByPath(operations)) {
+    const last = touches.at(-1);
+    if (last !== undefined) latest.set(path, last.operation);
+  }
+  return latest;
+}
+
 // --- Undo state and dependents ---------------------------------------------------------------
 
 /**
