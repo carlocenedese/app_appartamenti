@@ -49,7 +49,6 @@ import {
   loadAll,
   parseCsv,
   parseEuro,
-  planTransfers,
   readJournal,
   recordManualTransfer,
   repairDiverged,
@@ -175,6 +174,7 @@ const OPTIONS = {
   mese: { type: 'string' },
   scopo: { type: 'string' },
   'altra-gamba': { type: 'string' },
+  gambe: { type: 'string' },
   da: { type: 'string' },
   a: { type: 'string' },
   importo: { type: 'string' },
@@ -546,7 +546,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
           id: p.id,
           reason: p.reason,
           legCount: p.legIds.length,
-          ...(values.dettagli === true ? { legIds: p.legIds, ...txExtra(p) } : {}),
+          // Movement ids, as inside `p-giro-<id>`: `giroconto --gambe` gives them back (R132).
+          legIds: p.legIds,
+          ...txExtra(p),
         })),
         ...(transfers.operationId === undefined ? {} : { operationId: transfers.operationId }),
       },
@@ -635,16 +637,22 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !TransferPurposeSchema.safeParse(values.scopo).success) {
       throw invalid('bad-arguments');
     }
-    // The legs as recomputed now, always given (R127): when they change before the confirmation
-    // writes, the core refuses `unknown-proposal`.
-    const shown = (await planTransfers(store)).proposals.find((p) => p.id === values.proposta);
+    // The legs the user saw in `riconcilia` (none without --gambe): the core recomputes them and
+    // refuses `unknown-proposal` when they differ (R127), e.g. the only leg excluded since.
+    const legIds = values.gambe === undefined ? [] : values.gambe.split(',');
+    if (
+      legIds.some((id) => !/^[A-Za-z0-9_-]{1,128}$/.test(id)) ||
+      new Set(legIds).size !== legIds.length
+    ) {
+      throw invalid('bad-arguments');
+    }
     const result = await confirmTransfer(
       store,
       {
         proposalId: values.proposta,
         purpose: values.scopo,
         rememberPair: values['solo-questa-volta'] !== true,
-        legIds: shown?.legIds ?? [],
+        legIds,
         ...(values['altra-gamba'] === undefined ? {} : { otherLegId: values['altra-gamba'] }),
       },
       who,
@@ -910,6 +918,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       mese: ['uscita-inquilino'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],
+      gambe: ['giroconto'],
       da: ['giroconto-manuale'],
       a: ['giroconto-manuale'],
       importo: ['giroconto-manuale'],

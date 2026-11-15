@@ -1222,10 +1222,10 @@ async function putRecords(dir, records) {
  * A data folder holding the records of `tre-conti` and the synthetic bank profile as
  * `bp-sintetico` (the profile of its accounts, so `importa` works); no journal yet.
  */
-async function treConti() {
+async function treConti(profile = {}) {
   const dir = join(root, `d${String((counter += 1))}`);
   mkdirSync(dir);
-  await putRecords(dir, { ...TRE, bankProfile: [{ ...FIXTURE, id: 'bp-sintetico' }] });
+  await putRecords(dir, { ...TRE, bankProfile: [{ ...FIXTURE, id: 'bp-sintetico', ...profile }] });
   return { dir, common: ['--cartella', dir, '--ora', ORA] };
 }
 const journal = (dir) =>
@@ -1352,7 +1352,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
   const noData = (text) => {
     for (const secret of SECRETS) expect(text).not.toContain(secret);
     expect(text).not.toMatch(
-      /(?<![0-9a-f-])(50000|45000|30000|20000|10000|6300|5000|4000|1500|18576)(?![0-9a-f-])/,
+      /(?<![0-9a-f-])(50000|45000|30000|20000|18600|10104|10000|8496|6300|5000|4000|1500|18576)(?![0-9a-f-])/,
     );
     expect(text).not.toMatch(/[0-9],[0-9]{2}/);
     expect(scanText(text)).toEqual([]);
@@ -1399,7 +1399,9 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       expect(first.json.transfers).toEqual({
         written: 0,
         completed: 0,
-        proposals: [{ id: 'p-giro-tx-l-giro', reason: 'new-pair', legCount: 1 }],
+        proposals: [
+          { id: 'p-giro-tx-l-giro', reason: 'new-pair', legCount: 1, legIds: ['tx-b-giro'] },
+        ],
       });
       expect(first.json.outgoing).toEqual({
         written: 0,
@@ -1421,6 +1423,50 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         [...uscita, '--categoria', 'altro', '--appartamento', 'pulci', '--tipo', 'altro'],
         ['riconcilia', ...s.common, '--scopo', 'saldo'],
         ['riconcilia', ...s.common, '--f24'],
+        ['riconcilia', ...s.common, '--proposta', 'x'],
+        ['riconcilia', ...s.common, '--inquilino', 'x'],
+        ['riconcilia', ...s.common, '--appartamento', 'x'],
+        ['riconcilia', ...s.common, '--gambe', 'tx-b-giro'],
+        [
+          'giroconto',
+          ...s.common,
+          '--proposta',
+          'p-giro-tx-l-giro',
+          '--scopo',
+          'saldo',
+          '--gambe',
+          '',
+        ],
+        [
+          'giroconto',
+          ...s.common,
+          '--proposta',
+          'p-giro-tx-l-giro',
+          '--scopo',
+          'saldo',
+          '--gambe',
+          'tx-b-giro,',
+        ],
+        [
+          'giroconto',
+          ...s.common,
+          '--proposta',
+          'p-giro-tx-l-giro',
+          '--scopo',
+          'saldo',
+          '--gambe',
+          'tx-b-giro,tx-b-giro',
+        ],
+        [
+          'giroconto',
+          ...s.common,
+          '--proposta',
+          'p-giro-tx-l-giro',
+          '--scopo',
+          'saldo',
+          '--gambe',
+          'tx/b',
+        ],
         ['saldi', ...s.common, '--categoria', 'altro'],
         ['giroconto', ...s.common, '--proposta', 'p-giro-tx-l-giro', '--scopo', 'boh'],
         ['giroconto', ...s.common, '--proposta', 'p-giro-tx-l-giro'],
@@ -1438,7 +1484,18 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       expect([hand.code, hand.json.reason]).toEqual([1, 'not-automatic']);
       const none = run(['annulla-uscita', ...s.common, '--movimento', 'tx-l-giro']);
       expect([none.code, none.json.reason]).toEqual([1, 'unknown-class']);
-      const leg = ['giroconto', ...s.common, '--proposta', 'p-giro-tx-l-giro', '--scopo', 'saldo'];
+      const shownNone = [
+        'giroconto',
+        ...s.common,
+        '--proposta',
+        'p-giro-tx-l-giro',
+        '--scopo',
+        'saldo',
+      ];
+      // Without --gambe the legs shown are none: one leg now is the state changed (R127).
+      const noLegs = run(shownNone);
+      expect([noLegs.code, noLegs.json.reason]).toEqual([1, 'unknown-proposal']);
+      const leg = [...shownNone, '--gambe', 'tx-b-giro'];
       const notLeg = run([...leg, '--altra-gamba', 'tx-nessuno']);
       expect([notLeg.code, notLeg.json.reason]).toEqual([1, 'leg-not-allowed']);
       // A movement used since (here a payment of the income): the state changed (R127).
@@ -1688,7 +1745,8 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
   it(
     'giroconto-manuale e uscita-inquilino: argomenti 2, rifiuti 1, scritture annullabili',
     async () => {
-      const s = await treConti();
+      // A profile that recognises the F24: no note (R129).
+      const s = await treConti({ f24Pattern: '^PAGAMENTO F24\\b' });
       const outs = [];
       const run = (args) => {
         const r = cli(args);
@@ -1816,6 +1874,43 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         paid.json.operationId,
       ]);
       expect(back.code).toBe(0);
+      expect(rec.json.notes).toEqual([]);
+
+      // «Solo questa volta»: no rule for the outgoing, a oneOff transfer.
+      const once = run([
+        'uscita',
+        ...s.common,
+        '--proposta',
+        'p-uscita-tx-p-fornitore-feb',
+        '--categoria',
+        'altro',
+        '--appartamento',
+        'pulci',
+        '--solo-questa-volta',
+      ]);
+      expect(once.code).toBe(0);
+      expect(once.json).toEqual({
+        status: 'confirmed',
+        operationId: once.json.operationId,
+        classId: 'mc-tx-p-fornitore-feb',
+      });
+      const giro = ['giroconto', ...s.common, '--proposta', 'p-giro-tx-l-giro', '--scopo', 'saldo'];
+      const oneOff = run([...giro, '--gambe', 'tx-b-giro', '--solo-questa-volta']);
+      expect(oneOff.code).toBe(0);
+      const transferFile = join(s.dir, '_app', 'dati', 'transfer', 'tr-tx-l-giro.json');
+      expect(JSON.parse(readFileSync(transferFile, 'utf8')).oneOff).toBe(true);
+      expect(
+        run(['annulla-riconciliazione', ...s.common, '--operazione', oneOff.json.operationId]).code,
+      ).toBe(0);
+
+      // The only leg shown is excluded before the confirmation: the state changed, nothing written.
+      expect(
+        run(['escludi', ...s.common, '--movimento', 'tx-b-giro', '--motivo', 'doppione']).code,
+      ).toBe(0);
+      const snap3 = snapshot(s.dir);
+      const changed = run([...giro, '--gambe', 'tx-b-giro']);
+      expect([changed.code, changed.json.reason]).toEqual([1, 'unknown-proposal']);
+      expect(snapshot(s.dir)).toEqual(snap3);
       noData(outs.join(''));
     },
     TIMEOUT,
