@@ -487,7 +487,6 @@ async function command(name, values, positionals, store, who, clock, newId) {
         };
       };
       arrearExtra = (a) => ({
-        apartmentId: a.apartmentId,
         tenantId: a.tenantId,
         tenantName: tenants.find((t) => t.id === a.tenantId)?.name ?? a.tenantId,
       });
@@ -530,7 +529,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
         reason: e.reason,
       })),
       // Only the month without --dettagli (R117): ids are chosen by the user, like tenantIds.
-      arrears: result.arrears.map((a) => ({ month: a.month, ...arrearExtra(a) })),
+      // The id of an apartment is always shown (user1, 15 Nov 2026), the tenant only in detail.
+      arrears: result.arrears.map((a) => ({
+        month: a.month,
+        apartmentId: a.apartmentId,
+        ...arrearExtra(a),
+      })),
       ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
       // Ids, reasons and counts only (R107, R126).
       match: {

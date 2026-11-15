@@ -1004,7 +1004,7 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
   );
 
   it(
-    'riconcilia elenca gli arretrati: solo mesi senza --dettagli, id e nomi con --dettagli',
+    'riconcilia elenca gli arretrati: mese e appartamento senza --dettagli, inquilino con --dettagli',
     async () => {
       const s = await incomeSetup();
       month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
@@ -1017,7 +1017,9 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       month(s, 'nov.csv', [], '2026-11-01', '2026-11-30');
       const plain = cli(['riconcilia', ...s.common, '--prova']);
       expect(plain.json).toMatchObject({ written: 0, proposals: [] });
-      expect(plain.json.arrears).toEqual([{ month: '2026-11' }]);
+      // The id of an apartment is always shown (user1, 15 Nov 2026): a name the user chose, no
+      // personal data; the tenant stays hidden.
+      expect(plain.json.arrears).toEqual([{ month: '2026-11', apartmentId: 'apt' }]);
       const detailed = cli(['riconcilia', ...s.common, '--prova', '--dettagli']);
       expect(detailed.json.arrears).toEqual([
         { month: '2026-11', apartmentId: 'apt', tenantId: 't1', tenantName: NAME },
