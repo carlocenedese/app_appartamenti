@@ -706,7 +706,9 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect(journalCount(s.dir)).toBe(before + 1);
 
       const all = [...s.outputs, first.out, ok.out, dry.out, real.out].join('');
-      for (const secret of [NAME, CAUSALE, LABEL, IBAN, '850']) expect(all).not.toContain(secret);
+      for (const secret of [NAME, CAUSALE, LABEL, IBAN]) expect(all).not.toContain(secret);
+      // The amount as a whole number: not a part of a random hexadecimal id (flaky on a chance match).
+      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
       expect(scanText(all)).toEqual([]);
     },
     TIMEOUT,
@@ -914,7 +916,9 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       const gone = cli(['annulla', ...s.common, '--estratto', imp.json.statementId]);
       expect(gone.code).toBe(0);
       const all = [done.out, refused.out, again.out].join('');
-      for (const secret of [NAME, CAUSALE, IBAN, '850']) expect(all).not.toContain(secret);
+      for (const secret of [NAME, CAUSALE, IBAN]) expect(all).not.toContain(secret);
+      // The amount as a whole number: not a part of a random hexadecimal id (flaky on a chance match).
+      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
     },
     TIMEOUT,
   );
@@ -1079,7 +1083,9 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect(cli(['riconcilia', ...s.common]).json).toMatchObject({ written: 0, proposals: [] });
 
       const all = [unknown.out, manual.out, done.out, after.out, back.out].join('');
-      for (const secret of [NAME, CAUSALE, IBAN, LABEL, '850']) expect(all).not.toContain(secret);
+      for (const secret of [NAME, CAUSALE, IBAN, LABEL]) expect(all).not.toContain(secret);
+      // The amount as a whole number: not a part of a random hexadecimal id (flaky on a chance match).
+      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
       expect(scanText(all)).toEqual([]);
     },
     TIMEOUT,
