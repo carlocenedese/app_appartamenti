@@ -227,7 +227,7 @@ class OcrAnyOfTest(unittest.TestCase):
             "allOf": ["frase lunga"], "noneOf": []})]), [])
 
     def test_no_seed_profile_declares_ocr_any_of(self) -> None:
-        # Carlo's decision (R92): scans are not recognised by supplier words.
+        # user1's decision (R92): scans are not recognised by supplier words.
         profiles, warnings = load_profiles(SEED_DIR)
         self.assertEqual(warnings, [])
         self.assertEqual([p["id"] for p in profiles if "ocrAnyOf" in p["recognise"]], [])

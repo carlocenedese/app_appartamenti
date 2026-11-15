@@ -12,7 +12,7 @@
 
 ## Metodo di esecuzione
 
-- Come nel piano 4: un ramo, mai su `main`; per ogni task test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check`, commit; un revisore distinto per task, una revisione finale; PR, merge con commit di unione solo con la CI verde e il via di Carlo.
+- Come nel piano 4: un ramo, mai su `main`; per ogni task test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check`, commit; un revisore distinto per task, una revisione finale; PR, merge con commit di unione solo con la CI verde e il via di user1.
 
 ## Vincoli globali
 

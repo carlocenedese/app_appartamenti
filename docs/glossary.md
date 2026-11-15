@@ -74,7 +74,7 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | annullamento             | undo                      |                                           |
 | impronta                 | hash, fingerprint         | dei documenti e degli addebiti            |
 | profilo del fornitore    | supplier profile          | dati versionati, non codice               |
-| fixture dorata           | golden fixture            | caso verificato e approvato da Carlo      |
+| fixture dorata           | golden fixture            | caso verificato e approvato da user1      |
 | scostamento noto         | known deviation           | differenza motivata rispetto all'Excel    |
 | importo in centesimi     | amount in cents (`Cents`) | intero con marchio, mai decimale          |
 | archivio                 | store (`Store`)           | interfaccia di lettura e scrittura file   |

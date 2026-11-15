@@ -242,7 +242,11 @@ describe('journal summaries', () => {
 });
 
 describe('statementFilePath', () => {
-  const apt = (over: Partial<Apartment> = {}) => ({ ...apartment(), name: 'Berchet_3', ...over });
+  const apt = (over: Partial<Apartment> = {}) => ({
+    ...apartment(),
+    name: 'Berchet_Nord',
+    ...over,
+  });
   const path = (over: Partial<Parameters<typeof statementFilePath>[0]> = {}) =>
     statementFilePath({
       apartment: apt(),
@@ -254,13 +258,13 @@ describe('statementFilePath', () => {
 
   it('files the statement by apartment, lease year and month', () => {
     expect(path()).toBe(
-      'Riservato_proprietari/Estratti_conto/Berchet_3/2026-27/2026-10-31_Estratto_Banca_2026-10.xlsx',
+      'Riservato_proprietari/Estratti_conto/Berchet_Nord/2026-27/2026-10-31_Estratto_Banca_2026-10.xlsx',
     );
   });
 
   it('puts the month before the lease-year start in the previous year', () => {
     expect(path({ to: isoDate('2027-09-30'), ext: 'csv' })).toBe(
-      'Riservato_proprietari/Estratti_conto/Berchet_3/2026-27/2027-09-30_Estratto_Banca_2027-09.csv',
+      'Riservato_proprietari/Estratti_conto/Berchet_Nord/2026-27/2027-09-30_Estratto_Banca_2027-09.csv',
     );
     expect(path({ to: isoDate('2026-09-30') })).toContain('/2025-26/');
   });

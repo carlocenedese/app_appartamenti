@@ -1,20 +1,20 @@
 # Lettura dei PDF: profili dei fornitori
 
-Stato: **approvato da Carlo il 12 novembre 2026** (documento e fixture; Task 12 del piano 2a,
+Stato: **approvato da user1 il 12 novembre 2026** (documento e fixture; Task 12 del piano 2a,
 Fase B). Il campione a mano dopo le correzioni è stato rifatto: 57 su 57 giusti. Nessun profilo è `confermato`:
 tutti hanno `status: 'bozza'`.
 
 I profili stanno in `python/seed-profiles/<profilo>.json`, le fixture in `fixtures/pdf/<fornitore>-<NN>.json`
 (ognuna con i valori attesi), il test in `python/tests/test_real_layouts.py`. I profili non
 contengono codici cliente, POD, PDR, nomi o indirizzi (`identifiers` è vuoto: senza codici noti una
-bolletta va sempre in revisione, decisione di Carlo del 12 novembre 2026).
+bolletta va sempre in revisione, decisione di user1 del 12 novembre 2026).
 
-## Regole decise da Carlo
+## Regole decise da user1
 
 - **Importo = «Totale da pagare» del documento** (12 novembre 2026), anche quando comprende altri
   servizi: nel riepilogo Hera il totale può includere «Altri servizi» (es. gas più altro servizio).
   Stessa regola applicata alle bollette Enel Energia, il cui totale comprende il canone TV:
-  **confermato da Carlo (12 novembre 2026)**: il canone TV resta nel totale.
+  **confermato da user1 (12 novembre 2026)**: il canone TV resta nel totale.
 
 ## Regole prese dal piano per leggere i PDF
 
@@ -63,10 +63,10 @@ permette (tabella sotto).
 | `fastweb-internet-2024`           | sì                                     | sì                          | sì                    | **no**    | sì                    | **no**              |
 | `enel-luce-2020`                  | sì (`medium` con il totale a pagina 2) | sì (`medium` in tre layout) | sì (`medium` 2020-23) | sì        | sì (`medium` 2020-23) | solo layout 2024-25 |
 
-## Controllo a mano di Carlo (12 novembre 2026)
+## Controllo a mano di user1 (12 novembre 2026)
 
 57 PDF, uno per riga, scelti spaziando per anno e layout (10 per fornitore, 7 per l'acqua).
-Carlo ha confrontato i valori letti con i PDF; le righe che non ha citato valgono giuste.
+user1 ha confrontato i valori letti con i PDF; le righe che non ha citato valgono giuste.
 
 - Luce Hera: 10 su 10 giuste. Fastweb: 10 su 10 giuste.
 - Gas: 9 su 10 giuste; la decima era una nota di credito (importo -68,92 €), ora letta.
@@ -77,48 +77,48 @@ Carlo ha confrontato i valori letti con i PDF; le righe che non ha citato valgon
 - Enel (10): periodo non letto in nessuna e numero mancante nelle bollette 2020-23; dopo le
   correzioni sono letti, con confidenza `medium` nei layout 2020-23.
 - **Controllo rifatto dopo le correzioni (13 novembre 2026):** gli stessi 57 PDF, letti col codice
-  corretto (periodo dell'acqua compreso): 57 su 57 giusti. Carlo l'ha eseguito a mano.
+  corretto (periodo dell'acqua compreso): 57 su 57 giusti. user1 l'ha eseguito a mano.
 
 ## Esito sui PDF reali (solo conteggi, 12 novembre 2026)
 
 Con `python/tools/pdf_report.py` sulle cartelle in Dropbox, in sola lettura. Il rapporto stampa
 solo conteggi e non è conservato nel repository: si rifà con lo stesso comando.
 
-| Appartamento         | PDF | Riconosciute | Da confermare | Non riconosciute | Senza testo |
-| -------------------- | --- | ------------ | ------------- | ---------------- | ----------- |
-| Lovarini 2024-2027   | 86  | 82           | 0             | 4                | 0           |
-| Pulci 2a, 2020-2026  | 224 | 139          | 1             | 65               | 19          |
-| Berchet 3, 2020-2026 | 150 | 103          | 0             | 27               | 20          |
+| Appartamento       | PDF | Riconosciute | Da confermare | Non riconosciute | Senza testo |
+| ------------------ | --- | ------------ | ------------- | ---------------- | ----------- |
+| Lovarini 2024-2027 | 86  | 82           | 0             | 4                | 0           |
+| Pulci, 2020-2026   | 224 | 139          | 1             | 65               | 19          |
+| Berchet, 2020-2026 | 150 | 103          | 0             | 27               | 20          |
 
 Controllo dell'importo: per Lovarini (Hera, acqua, TARI) e per le bollette Enel di Pulci e
 Berchet (esclusi i tre PDF Enel 2020-21 con testo parziale) un programma di prova, non
 conservato nel repository, ha confrontato l'importo letto con il valore scritto accanto a «da
 pagare» nello stesso documento: nessuna differenza. **Non è il campione di dieci PDF per fornitore
-controllati a mano che chiede il piano: resta da fare con Carlo.**
+controllati a mano che chiede il piano: resta da fare con user1.**
 
 ## Scansioni lette con OCR (13 novembre 2026)
 
 Con `python/tools/pdf_report.py --ocr-data` (motore Tesseract 5.5.3, dati `ita.traineddata` di
 `tessdata_fast` 4.1.0, profili `python/seed-profiles/`, data `2026-11-13`), in sola lettura sulle
-cartelle in Dropbox di Berchet 3 e Pulci 2a (Lovarini non ha scansioni). Il rapporto stampa solo
+cartelle in Dropbox di Berchet e Pulci (Lovarini non ha scansioni). Il rapporto stampa solo
 conteggi e non è conservato nel repository: nessun PDF, nome, importo o testo letto è stato
 copiato o scritto. **Questi conteggi NON sono il campione controllato a mano: da controllare a
-mano con Carlo, un campione di dieci scansioni, prima di fidarsi dell'OCR.**
+mano con user1, un campione di dieci scansioni, prima di fidarsi dell'OCR.**
 
 | Appartamento | PDF | Senza testo prima | Letti con OCR (`ocr`) | Con qualche pagina OCR (`mixed`) | Solo testo (`pdf`) | Riconosciute | Da confermare | Non riconosciute | Senza testo | Illeggibili | Avviso «OCR non disponibile» |
 | ------------ | --- | ----------------- | --------------------- | -------------------------------- | ------------------ | ------------ | ------------- | ---------------- | ----------- | ----------- | ---------------------------- |
-| Berchet 3    | 150 | 20                | 20                    | 77                               | 53                 | 103          | 0             | 47               | 0           | 0           | 0                            |
-| Pulci 2a     | 224 | 19                | 19                    | 83                               | 122                | 139          | 1             | 84               | 0           | 0           | 0                            |
+| Berchet      | 150 | 20                | 20                    | 77                               | 53                 | 103          | 0             | 47               | 0           | 0           | 0                            |
+| Pulci        | 224 | 19                | 19                    | 83                               | 122                | 139          | 1             | 84               | 0           | 0           | 0                            |
 
 Stato per origine del testo (riconosciute / da confermare / non riconosciute):
 
 | Appartamento | `pdf`       | `ocr`      | `mixed`    |
 | ------------ | ----------- | ---------- | ---------- |
-| Berchet 3    | 28 / 0 / 25 | 0 / 0 / 20 | 75 / 0 / 2 |
-| Pulci 2a     | 61 / 0 / 61 | 0 / 0 / 19 | 78 / 1 / 4 |
+| Berchet      | 28 / 0 / 25 | 0 / 0 / 20 | 75 / 0 / 2 |
+| Pulci        | 61 / 0 / 61 | 0 / 0 / 19 | 78 / 1 / 4 |
 
-Prima (solo testo del PDF, stesse cartelle): Berchet 103 riconosciute, 0 da confermare, 27 non
-riconosciute; Pulci 139, 1 e 65. Durata: circa 5 minuti per Berchet e 1,5 per Pulci. Con la
+Prima (solo testo del PDF, stesse cartelle): Berchet: 103 riconosciute, 0 da confermare, 27 non
+riconosciute; Pulci: 139, 1 e 65. Durata: circa 5 minuti per Berchet e 1,5 per Pulci. Con la
 regola per campo (R87, task 7) le riconosciute tornano ai valori di prima; la prima corsa di questa
 sezione, con il tetto su tutto il documento, dava 28 e 61.
 
@@ -140,19 +140,19 @@ restano 39 `non-riconosciuta`, nessun profilo scelto; le altre origini non cambi
 riconosciute e 86 non; `mixed`: 153 riconosciute, 1 da confermare, 6 non). Le frasi lunghe dei
 profili (`allOf[0]`) non compaiono nelle scansioni nemmeno normalizzate (0 su 39); servono ancore
 alternative a parola singola per fornitore, che richiedono un cambio dello schema (in attesa di
-decisione di Carlo, R89).
+decisione di user1, R89).
 
 ### Terzo giro (R90, `recognise.ocrAnyOf`)
 
-`recognise` può avere `ocrAnyOf` (R90, approvato da Carlo il 13 novembre 2026): un documento letto
+`recognise` può avere `ocrAnyOf` (R90, approvato da user1 il 13 novembre 2026): un documento letto
 con l'OCR per intero (`textSource` `ocr`) è riconosciuto dal profilo se soddisfa `allOf`
 **oppure** contiene, come parola intera nel testo normalizzato come in R89, almeno uno dei testi di
 `ocrAnyOf`; `noneOf` esclude comunque. Un PDF di testo (e le pagine di testo di un `mixed`) ignora
-`ocrAnyOf` del tutto, e così le pagine OCR di un `mixed` (correzione della revisione finale, approvata da Carlo: una pagina scansionata con «kWh» rendeva ambiguo un PDF Enel di testo); un profilo senza `ocrAnyOf` non cambia. Ogni testo deve avere una lettera o una
+`ocrAnyOf` del tutto, e così le pagine OCR di un `mixed` (correzione della revisione finale, approvata da user1: una pagina scansionata con «kWh» rendeva ambiguo un PDF Enel di testo); un profilo senza `ocrAnyOf` non cambia. Ogni testo deve avere una lettera o una
 cifra una volta normalizzato e non ripetersi (JSON Schema, Zod e `check_profile_rules`, casi in
-`profile-cases.json`). **Nessun profilo seed lo dichiara (R92, decisione di Carlo del 14 novembre 2026):** le parole di fornitore farebbero riconoscere come bollette conferme di pagamento e note del fornitore, che devono restare `non-riconosciuta`; il campo resta come meccanismo per l'utente. Parola condivisa fra profili dello stesso fornitore: vale l'ordine
+`profile-cases.json`). **Nessun profilo seed lo dichiara (R92, decisione di user1 del 14 novembre 2026):** le parole di fornitore farebbero riconoscere come bollette conferme di pagamento e note del fornitore, che devono restare `non-riconosciuta`; il campo resta come meccanismo per l'utente. Parola condivisa fra profili dello stesso fornitore: vale l'ordine
 di R55; tipi diversi restano segnalati da R73 (comunque `da-confermare`). Tentativo unico: le scansioni restano
-«da rivedere» e inserimento a mano (decisione di Carlo, R90, R92).
+«da rivedere» e inserimento a mano (decisione di user1, R90, R92).
 
 Esito del terzo giro con le parole di fornitore, poi tolte (R92) (solo conteggi): delle 39 scansioni 9 sono riconosciute (tutte `da-confermare`:
 4 Enel, 3 acqua, 1 TARI, 1 gas Hera) e 30 no; ambigue 0; dei campi delle 9 riconosciute non se ne legge quasi nessuno
@@ -168,13 +168,13 @@ attivo, in sola lettura sulle cartelle in Dropbox. Solo conteggi: nessun nome, i
 | Appartamento | PDF | Con l'avviso | Per profilo              |
 | ------------ | --- | ------------ | ------------------------ |
 | Lovarini     | 86  | 1            | `hera-luce-2024` 1       |
-| Pulci 2a     | 224 | 1            | `enel-luce-2020` 1       |
-| Berchet 3    | 150 | 2            | `acegas-tari-2024-b` 2   |
+| Pulci        | 224 | 1            | `enel-luce-2020` 1       |
+| Berchet      | 150 | 2            | `acegas-tari-2024-b` 2   |
 | Totale       | 460 | 4            | nessuno «nessun profilo» |
 
 Gli altri conteggi (stati, origine del testo) sono invariati rispetto alla sezione delle scansioni.
 **L'avviso scatta anche su un documento solo con una tabella di storico** (stessi campi letti con
-valori diversi nello stesso file): i 4 casi non sono stati guardati e **vanno guardati da Carlo**,
+valori diversi nello stesso file): i 4 casi non sono stati guardati e **vanno guardati da user1**,
 che decide se il file contiene davvero più documenti. Le 18 fixture si leggono uguali con o senza
 `--pages 1-<pagine>` e nessuna ha l'avviso.
 
@@ -182,12 +182,12 @@ che decide se il file contiene davvero più documenti. Le 18 fixture si leggono 
 
 - **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il
   costruttore non ricava una regola stabile per l'importo (l'importo sta sotto «TOTALE DA PAGARE»
-  ma il testo cambia). Non ha profilo (spiegazione data a Carlo il 12 novembre 2026; decisione di Carlo: restano in revisione a mano, sono bollette chiuse del passato).
+  ma il testo cambia). Non ha profilo (spiegazione data a user1 il 12 novembre 2026; decisione di user1: restano in revisione a mano, sono bollette chiuse del passato).
 - **Scansioni:** 39 PDF senza testo (19 a Pulci, 20 a Berchet), tra cui le bollette Enel del 2020-21
   di Pulci con glifi rotti (`(cid:…)`). Fuori dal piano 2a (OCR nel 2b); i 3 PDF Enel 2020-21 di
   Pulci con testo parziale sono letti con importo da «Totale bolletta», non confrontato (da
   rivedere).
-- **Periodo dell'acqua:** letto come **unione dei periodi di consumo** (decisione di Carlo, 12
+- **Periodo dell'acqua:** letto come **unione dei periodi di consumo** (decisione di user1, 12
   novembre 2026, R76-R77): «rilevato» e «stimato» insieme, dal primo inizio all'ultima fine
   (esempi: 25.10.2023-12.03.2024; 10.08.2024-10.07.2025; 12.08.2025-11.03.2026). Con buchi o
   sovrapposizioni vale lo stesso; se un intervallo non si legge o le date discordano la confidenza
@@ -203,8 +203,8 @@ che decide se il file contiene davvero più documenti. Le 18 fixture si leggono 
 - **TARI condivisa tra Berchet e Lovarini (`[B+L]`):** i profili `acegas-tari-2024` e
   `acegas-tari-2024-b` leggono le utenze con `parts`: per ogni «Utenza N.» il «TOTALE» della riga
   «Parte fissa» nella tabella di pagina 2 (importo da inizio anno, TEFA compreso). Regola di
-  ripartizione decisa da Carlo (13 novembre 2026): l'«Importo da pagare» si divide in proporzione
-  a quei totali; le componenti perequative **non** sono nei totali delle utenze (nell'avviso di dicembre 2025: 306,44 + 257,66 = 564,10 = TARI 537,24 + TEFA 26,86; le perequative, 7,60 € a utenza, sono in una tabella a parte e fanno parte dell'importo da pagare). Carlo ha deciso di aggiungerle alla rispettiva utenza (13 novembre 2026): `parts.add` somma al totale di ogni utenza il «TOTALE» della tabella perequative, nel layout dell'avviso di dicembre 2025 (3 componenti UR). Il layout del 2024 (2 componenti) non è letto dall'`add`: lì il peso resta il solo totale (differenza di 1,60 € uguale per le due utenze). Il calcolo e il collegamento
+  ripartizione decisa da user1 (13 novembre 2026): l'«Importo da pagare» si divide in proporzione
+  a quei totali; le componenti perequative **non** sono nei totali delle utenze (nell'avviso di dicembre 2025: 306,44 + 257,66 = 564,10 = TARI 537,24 + TEFA 26,86; le perequative, 7,60 € a utenza, sono in una tabella a parte e fanno parte dell'importo da pagare). user1 ha deciso di aggiungerle alla rispettiva utenza (13 novembre 2026): `parts.add` somma al totale di ogni utenza il «TOTALE» della tabella perequative, nel layout dell'avviso di dicembre 2025 (3 componenti UR). Il layout del 2024 (2 componenti) non è letto dall'`add`: lì il peso resta il solo totale (differenza di 1,60 € uguale per le due utenze). Il calcolo e il collegamento
   utenza-appartamento (`tariParts`) sono del modulo di proposta, già previsto dalla sezione 42 R3;
   senza codici noti la bolletta va comunque in revisione. Un avviso senza utenze leggibili
   (`parts-found`) è `da-confermare`. Letti 2 utenze su tutte le 8 bollette `[B+L]` (e 1 o 2 sulle
@@ -227,6 +227,6 @@ fattura e l'impronta del file sono invece inventati da uno script di preparazion
 repository, con cifre prese dal nome della fixture e non dal numero vero (la stessa stringa nella
 fixture e nei valori attesi). Il test fissa l'elenco dei numeri inventati. La mappa di sostituzione
 sta fuori dal repository; `pnpm data:check` controlla i file tracciati.
-**Politica confermata da Carlo (12 novembre 2026):** `fixtures/README.md` ora ammette qui testo di bollette reali
+**Politica confermata da user1 (12 novembre 2026):** `fixtures/README.md` ora ammette qui testo di bollette reali
 anonimizzato, come dice `CLAUDE.md` (solo fixture anonimizzate) e il piano 2a, mentre prima
 diceva solo PDF sintetici.

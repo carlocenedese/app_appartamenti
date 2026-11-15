@@ -243,7 +243,7 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     targetType: 'bill',
     targetId: 'bill-1',
     text: 'Bolletta verificata con il fornitore.',
-    profileId: 'carlo',
+    profileId: 'user1',
     at: '2026-11-10T20:15:00.000Z',
     visibleToTenants: false,
   },

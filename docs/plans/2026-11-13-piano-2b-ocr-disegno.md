@@ -1,15 +1,15 @@
 # Piano 2b-1: OCR per le scansioni e le foto (disegno)
 
-Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 7, 8, 16, 22, 28, 40); piano 2a (`docs/plans/2026-11-11-piano-2a-lettura-pdf.md`) per la pipeline di lettura. Il piano 2b si divide in tre piani indipendenti: **2b-1 OCR e foto** (questo), **2b-2 PDF con più documenti**, **2b-3 condominio** (due tempi: prima il piano rate, poi preventivo e rendiconto con un campione dei tre amministratori). I disegni di 2b-2 e 2b-3 vengono dopo.
+Stato: **approvato da user1 il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 7, 8, 16, 22, 28, 40); piano 2a (`docs/plans/2026-11-11-piano-2a-lettura-pdf.md`) per la pipeline di lettura. Il piano 2b si divide in tre piani indipendenti: **2b-1 OCR e foto** (questo), **2b-2 PDF con più documenti**, **2b-3 condominio** (due tempi: prima il piano rate, poi preventivo e rendiconto con un campione dei tre amministratori). I disegni di 2b-2 e 2b-3 vengono dopo.
 
 ## Perché
 
 39 PDF reali non hanno testo (19 a Pulci, 20 a Berchet), e l'acqua scansionata continua ad arrivare, in qualche caso come foto JPEG. Oggi questi file restano `senza-testo` e si compilano a mano. Le Enel 2020-21 di Pulci hanno glifi rotti (`(cid:…)`) e vanno disegnate come immagine.
 
-## Decisioni di Carlo (13 novembre 2026)
+## Decisioni di user1 (13 novembre 2026)
 
 1. **Motore: Tesseract incorporato** (tesserocr con pypdfium2 e i dati italiani), non l'OCR del sistema operativo.
-2. **Librerie native fuori dall'elenco licenze** (Leptonica e simili): sì, **dopo un inventario**. Le accettabili vanno in `python/THIRD_PARTY.md` e in `CLAUDE.md`; macOS 15 diventa il minimo. Se l'inventario trova una GPL, AGPL o LGPL, si ferma tutto e si chiede a Carlo.
+2. **Librerie native fuori dall'elenco licenze** (Leptonica e simili): sì, **dopo un inventario**. Le accettabili vanno in `python/THIRD_PARTY.md` e in `CLAUDE.md`; macOS 15 diventa il minimo. Se l'inventario trova una GPL, AGPL o LGPL, si ferma tutto e si chiede a user1.
 3. **Anche foto e immagini**: JPEG e PNG entrano come le scansioni.
 4. **Condominio in due tempi** (vale per il 2b-3).
 
@@ -19,7 +19,7 @@ Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». S
 2. Il risultato dichiara la fonte del testo (`textSource: 'pdf' | 'ocr'`); con `ocr` la confidenza di ogni campo non supera `medium` e lo stato è sempre `da-confermare` (sezione 7: la scansione va sempre in revisione). Se l'OCR non è affidabile il campo resta vuoto.
 3. JPEG e PNG entrano dalla stessa strada.
 4. Risultato ripetibile: stesso file, stesso risultato (un solo thread, nessuna casualità).
-5. Profili per le bollette dell'acqua scansionate e rapporto sui 39 PDF reali con soli conteggi, più un campione controllato da Carlo.
+5. Profili per le bollette dell'acqua scansionate e rapporto sui 39 PDF reali con soli conteggi, più un campione controllato da user1.
 
 ## Non obiettivi
 
@@ -39,9 +39,9 @@ Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». S
 ## Approcci considerati
 
 - **Tesseract incorporato (scelto).** Un solo motore, uguale su Mac e Windows, in Python.
-- **OCR del sistema operativo** (Apple Vision, `Windows.Media.Ocr`): nessun peso in più ma due motori con risultati diversi, codice in Rust o Swift fuori dal pacchetto Python, e l'italiano può mancare su Windows. Scartato da Carlo.
+- **OCR del sistema operativo** (Apple Vision, `Windows.Media.Ocr`): nessun peso in più ma due motori con risultati diversi, codice in Rust o Swift fuori dal pacchetto Python, e l'italiano può mancare su Windows. Scartato da user1.
 - **Python puro o ONNX (`rapidocr`)**: porta Pillow (MIT-CMU, fuori elenco) e altre dipendenze. Scartato.
-- **Nessun OCR**: costo zero, tutto a mano. Scartato da Carlo.
+- **Nessun OCR**: costo zero, tutto a mano. Scartato da user1.
 
 ## Disegno
 
@@ -54,13 +54,13 @@ Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». S
 
 ## Mie scelte dopo la lettura di un revisore (da controllare)
 
-Un revisore indipendente ha trovato questi punti; li decido io, Carlo può correggerli.
+Un revisore indipendente ha trovato questi punti; li decido io, user1 può correggerli.
 
-1. **Piattaforme.** **Aggiornato il 13 novembre 2026 dopo l'inventario del Task 1:** solo macOS (arm64 e x64); **Windows senza OCR per ora**, perché la ruota Windows di tesserocr contiene due DLL LGPL-2.1 (decisione di Carlo: prima macOS, Windows dopo). Linux non è un obiettivo di distribuzione (resta nella CI solo per i test). Dove manca la ruota o l'OCR, quel sistema dà lo stato esplicito `senza-testo` con avviso, mai una compilazione da sorgente e mai uno stop dell'installer.
-2. **Licenze delle librerie native.** Si accettano e si registrano in `THIRD_PARTY.md` e `CLAUDE.md` solo licenze permissive in stile BSD, FTL (scegliendo l'opzione FTL della doppia licenza di FreeType), IJG, libpng, libtiff, Zlib. MPL, GPL, AGPL, LGPL o una licenza che non si riesce a identificare fermano il lavoro e si chiede a Carlo.
+1. **Piattaforme.** **Aggiornato il 13 novembre 2026 dopo l'inventario del Task 1:** solo macOS (arm64 e x64); **Windows senza OCR per ora**, perché la ruota Windows di tesserocr contiene due DLL LGPL-2.1 (decisione di user1: prima macOS, Windows dopo). Linux non è un obiettivo di distribuzione (resta nella CI solo per i test). Dove manca la ruota o l'OCR, quel sistema dà lo stato esplicito `senza-testo` con avviso, mai una compilazione da sorgente e mai uno stop dell'installer.
+2. **Licenze delle librerie native.** Si accettano e si registrano in `THIRD_PARTY.md` e `CLAUDE.md` solo licenze permissive in stile BSD, FTL (scegliendo l'opzione FTL della doppia licenza di FreeType), IJG, libpng, libtiff, Zlib. MPL, GPL, AGPL, LGPL o una licenza che non si riesce a identificare fermano il lavoro e si chiede a user1.
 3. **Testo misto.** L'OCR gira pagina per pagina solo sulle pagine senza testo (o con glifi rotti oltre la soglia). `textSource` è per documento: `'pdf'`, `'ocr'` o `'mixed'`; se il 2b-2 avrà bisogno della fonte per pagina si aggiunge allora.
 4. **Confidenza.** Con `textSource` diverso da `'pdf'` ogni campo letto da pagine OCR ha confidenza al massimo `medium`, anche se perfetto. Un campo resta vuoto quando il valore non passa il suo riconoscitore (`parse_euro`, date, ecc.) oppure quando la confidenza media delle parole del testo che lo contiene è sotto una soglia; la soglia è del costruttore (parte da 70 su 100) e si scrive come regola in `docs/progress.md`.
-5. **Profili dell'acqua scansionata.** Si scrivono contro fixture sintetiche con il layout dei profili già noti; la messa a punto sui PDF reali la fa Carlo con i soli conteggi e un campione di dieci. Il rapporto sui 39 PDF è informativo; il criterio di successo è quello già usato (campione a mano senza errori su importo, scadenza e numero).
+5. **Profili dell'acqua scansionata.** Si scrivono contro fixture sintetiche con il layout dei profili già noti; la messa a punto sui PDF reali la fa user1 con i soli conteggi e un campione di dieci. Il rapporto sui 39 PDF è informativo; il criterio di successo è quello già usato (campione a mano senza errori su importo, scadenza e numero).
 6. **Immagini.** Risoluzione presunta 300 punti per pollice (quella dell'EXIF se c'è); l'orientamento EXIF si applica (non la correzione dell'inclinazione); un'immagine oltre 30 megapixel o non leggibile dà `illeggibile`, mai un'eccezione.
 7. **Limiti.** Al massimo 20 pagine per documento passano dall'OCR (parametro); le altre restano senza testo con un avviso e lo stato `da-confermare`. Il programma resta una chiamata sincrona per file; il tempo massimo lo tiene chi lo lancia.
 8. **Dimensione e dati.** Va bene il peso stimato. `tessdata_fast` all'inizio; passare a `tessdata_best` (circa 6 MB in più) è la sostituzione di un file e si decide dopo il campione.
@@ -74,10 +74,10 @@ Quale soglia di glifi rotti fa scattare l'OCR; la risoluzione di disegno delle p
 
 Elenco e licenze delle librerie native dentro le ruote (FreeType, libjpeg, libpng, libtiff, Leptonica); dimensioni dopo la decompressione; che l'italiano si legga bene sulle foto reali; il minimo macOS 15.
 
-## Aperto con Carlo
+## Aperto con user1
 
 Nessuna domanda aperta; la decisione sulla licenza dipende dall'esito dell'inventario (task 1).
 
 ## Seguito: parola da chiedere nell'app
 
-Non si implementa ora (futuro piano dell'interfaccia). Quando una scansione non è riconosciuta da nessun profilo, l'app chiederà all'utente una parola distintiva del fornitore (o gli lascerà scegliere il fornitore tra quelli noti) e la aggiungerà come ancora al profilo, così le scansioni nuove dello stesso fornitore vengono riconosciute. Il campo c'è già (R90): `recognise.ocrAnyOf`, elenco opzionale di parole o frasi **del fornitore**, valido solo per i documenti letti per intero con l'OCR (`textSource` `ocr`), che il confronto normalizza come in R89; l'app dovrà solo aggiungervi la parola (stringa non vuota, con almeno una lettera o cifra una volta normalizzata, senza ripetizioni). I profili seed non ne hanno (R92, decisione di Carlo del 14 novembre 2026): il campo serve solo a ciò che l'utente aggiunge dall'app.
+Non si implementa ora (futuro piano dell'interfaccia). Quando una scansione non è riconosciuta da nessun profilo, l'app chiederà all'utente una parola distintiva del fornitore (o gli lascerà scegliere il fornitore tra quelli noti) e la aggiungerà come ancora al profilo, così le scansioni nuove dello stesso fornitore vengono riconosciute. Il campo c'è già (R90): `recognise.ocrAnyOf`, elenco opzionale di parole o frasi **del fornitore**, valido solo per i documenti letti per intero con l'OCR (`textSource` `ocr`), che il confronto normalizza come in R89; l'app dovrà solo aggiungervi la parola (stringa non vuota, con almeno una lettera o cifra una volta normalizzata, senza ripetizioni). I profili seed non ne hanno (R92, decisione di user1 del 14 novembre 2026): il campo serve solo a ciò che l'utente aggiunge dall'app.

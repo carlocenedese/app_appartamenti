@@ -20,7 +20,7 @@ allow = [
   "CC0-1.0",
   "Unlicense",
   "BlueOak-1.0.0",
-  # Added by Carlo on 11 November 2026, with Zlib below: both are permissive and the Rust tree of
+  # Added by user1 on 11 November 2026, with Zlib below: both are permissive and the Rust tree of
   # Tauri carries them (unicode-ident has Unicode-3.0 in its licence expression, foldhash is Zlib).
   # scripts/check-licenses.mjs allows them for npm packages too, so the two lists stay the same.
   "Unicode-3.0",

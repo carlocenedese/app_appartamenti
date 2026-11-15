@@ -176,7 +176,7 @@ export async function confirmIncome(
   const { apartmentId } = account;
   const open = proposal.step === 'cosa' || proposal.reason === 'multi-tenant';
   const validFrom = firstPresenceDay(state.tenancies, input.tenantId, apartmentId);
-  // Outside the candidates only with a presence in the apartment (Carlo, 14 Nov 2026): the key
+  // Outside the candidates only with a presence in the apartment (user1, 14 Nov 2026): the key
   // (a «cosa» or a payer of several tenants always has one) then gets a payer for this tenant
   // too, and is never automatic (decision 5). A deleted tenant is never allowed.
   const outside = open && !proposal.tenantIds.includes(input.tenantId);

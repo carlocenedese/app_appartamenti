@@ -177,7 +177,7 @@ export interface IncomeResult {
 
 /**
  * The months covered from the first to the last day by the live statements of the live accounts
- * of the apartment, together (R112, Carlo 14 Nov 2026): only these can be «to pay».
+ * of the apartment, together (R112, user1 14 Nov 2026): only these can be «to pay».
  */
 export function coveredMonths(
   ctx: { accounts: Account[]; statements: Statement[] },

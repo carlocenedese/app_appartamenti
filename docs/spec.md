@@ -8,7 +8,7 @@ App desktop multipiattaforma (Mac e Windows) per organizzare le bollette e le sp
 
 ## 2. Utenti
 
-- Utente principale: Carlo e il fratello di Carlo, manager, abituato alle app ma senza competenze di programmazione.
+- Utente principale: user1 e il fratello di user1, manager, abituato alle app ma senza competenze di programmazione.
 - Requisito: tutto tramite interfaccia grafica, nessun file di configurazione, nessun codice, installazione a doppio clic, procedura guidata al primo avvio.
 - Lingua dell'interfaccia: italiano o inglese, a scelta dell'utente nelle impostazioni (decisione del 5 novembre 2026), con termini semplici (Aggiungi inquilino / Add tenant, Nuovo fornitore / New supplier). Ogni utente sceglie la propria lingua; la scelta non cambia i dati né i documenti generati per gli inquilini, che hanno una lingua propria (vedi sezione 21).
 
@@ -76,7 +76,7 @@ App desktop multipiattaforma (Mac e Windows) per organizzare le bollette e le sp
 
 ## 9. Utenti multipli, sincronizzazione e condivisione
 
-L'app sarà usata da più persone (Carlo e suo fratello) e i dati devono restare sincronizzati. Ipotesi di lavoro: continuare a usare Dropbox, come oggi, evitando però un database unico condiviso.
+L'app sarà usata da più persone (user1 e suo fratello) e i dati devono restare sincronizzati. Ipotesi di lavoro: continuare a usare Dropbox, come oggi, evitando però un database unico condiviso.
 
 - **Perché non un database unico su Dropbox**: se due persone modificano in contemporanea, o la sincronizzazione è in ritardo, Dropbox crea una copia in conflitto e si rischia di perdere dati. Il rischio è noto con SQLite.
 - **Dati in piccoli file JSON**: un file per bolletta, per inquilino e per le regole. Dropbox gestisce bene molti file piccoli e un eventuale conflitto resta limitato a un solo record.
@@ -104,8 +104,8 @@ L'app incrocia tre fonti: bollette, pagamenti degli inquilini e movimenti dell'e
 - **Abbinamento inquilini**: cerca un bonifico in entrata con il nome dell'inquilino e l'importo atteso (quota forfettaria o affitto).
 - **Grado di certezza**: ogni abbinamento ha un livello di confidenza; quelli dubbi finiscono in una schermata di conferma, come per la revisione delle bollette.
 - **Esiti mostrati**: bolletta pagata, bolletta senza addebito corrispondente, importo diverso dal previsto, inquilino in ritardo.
-- **Sicurezza** (decisione del 14 novembre 2026): gli estratti conto non sono cifrati, perché Nicola è cointestatario e ha già tutti gli accessi. I movimenti si salvano con i soli campi necessari (data, importo, causale, codice disposizione, controparte) in `_app/dati/transaction/` e il file originale in `Riservato_proprietari/`. La cartella `App Bollette` non si condivide con gli inquilini, che ricevono solo i link alle sottocartelle di tipologia (sezione 27).
-- **Accesso**: il fratello di Carlo è cointestatario dei conti e vede già tutti i movimenti, quindi non servono permessi diversi tra i due utenti.
+- **Sicurezza** (decisione del 14 novembre 2026): gli estratti conto non sono cifrati, perché user2 è cointestatario e ha già tutti gli accessi. I movimenti si salvano con i soli campi necessari (data, importo, causale, codice disposizione, controparte) in `_app/dati/transaction/` e il file originale in `Riservato_proprietari/`. La cartella `App Bollette` non si condivide con gli inquilini, che ricevono solo i link alle sottocartelle di tipologia (sezione 27).
+- **Accesso**: il fratello di user1 è cointestatario dei conti e vede già tutti i movimenti, quindi non servono permessi diversi tra i due utenti.
 
 ## 12. Riconciliazione delle spese condominiali e foglio riservato
 
@@ -129,14 +129,14 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 
 ### Moduli rimandati (fuori dal perimetro iniziale)
 
-- **Imposte**: Carlo fornirà le informazioni sulle tasse, sul conto bancario usato per pagarle e sulle percentuali associate a ogni appartamento; l'app ridistribuirà le imposte tra gli appartamenti.
+- **Imposte**: user1 fornirà le informazioni sulle tasse, sul conto bancario usato per pagarle e sulle percentuali associate a ogni appartamento; l'app ridistribuirà le imposte tra gli appartamenti.
 - **Indici di investimento**: rendimento lordo e netto, flusso di cassa, valore attuale netto, tasso interno di rendimento, tempo di recupero. Servono dati aggiuntivi per appartamento (prezzo e costi di acquisto, ristrutturazione, valore attuale, voci fisse annuali, eventuale mutuo), da raccogliere quando il modulo verrà attivato.
 
 ## 14. Questioni aperte e informazioni in arrivo
 
-- Lovarini: PDF di gas e Internet da dicembre 2025 a marzo 2026 mancanti (li scarica Carlo dai portali); consuntivo condominiale 2025/26 non ancora arrivato.
+- Lovarini: PDF di gas e Internet da dicembre 2025 a marzo 2026 mancanti (li scarica user1 dai portali); consuntivo condominiale 2025/26 non ancora arrivato.
 - Da leggere ancora per i profili dei fornitori: PDF di Pulci (caldaia, Enel, gas, TARI e acqua in JPG, condominio ordinario e straordinario) e PDF di gas e Internet di Lovarini.
-- Alias pagante → inquilino da compilare insieme a Carlo (pagano spesso genitori o terzi).
+- Alias pagante → inquilino da compilare insieme a user1 (pagano spesso genitori o terzi).
 - Significato delle quote 380/280 nel foglio Affitti Versati di Berchet e della quota 30 € nel conguaglio.
 - Regole fiscali (RLI per subentri e nuovi contratti, termini e imposte) da verificare su fonti ufficiali prima di indicarle nell'app.
 - Decisione definitiva Tauri contro Electron, da confermare dopo un prototipo.
@@ -145,7 +145,7 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 
 - Ripartizione sempre a mesi interi, anche per le bollette a cavallo tra due annualità. Una bolletta si registra una sola volta e si ripartisce in automatico.
 - Commissione bancaria : l'app legge l'importo reale dalla riga "Commissioni e spese" del CSV, legata all'addebito (sezione 42, R7); nessuna opzione per appartamento.
-- Divisore dei conguagli = numero di posti: Berchet 5, Lovarini 4, Pulci 4. È un parametro dell'appartamento, non una formula.
+- Divisore dei conguagli = numero di posti: Berchet: 5, Lovarini: 4, Pulci: 4. È un parametro dell'appartamento, non una formula.
 - Canone TV, tassa consortile Bachiglione e TARI sono a carico degli inquilini.
 - TARI: per ogni avviso si usa il dovuto cumulato della singola utenza (Berchet e Lovarini arrivano insieme, Pulci a parte) meno quanto già addebitato per la stessa utenza nell'anno solare.
 - Condominio: agli inquilini si addebitano le quote del conduttore indicate dall'amministratore (manutenzione parti comuni, riscaldamento, consumo ripartitori, ascensore, scale, acqua). Restano al proprietario "Generali proprietà" (assicurazione, amministrazione, adempimenti fiscali, spese postali, cancelleria, spese bancarie, straordinarie impreviste), "Proprietà appartamenti", spese personali, saldi degli esercizi precedenti e saldi straordinari. Si parte dal preventivo e si corregge a consuntivo. L'art. 4 del contratto non si considera.
@@ -159,12 +159,12 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 - Una volta confermato, il layout diventa un profilo con versione e data di inizio validità. I documenti successivi con lo stesso layout si importano da soli e finiscono in un elenco "importate automaticamente" da controllare a colpo d'occhio.
 - Un layout che cambia (come l'Enel, cambiato tre volte) conta come nuova versione e chiede di nuovo conferma.
 - Per i documenti non ripartibili l'app chiede cosa farne: bolletta da ripartire, spesa del proprietario, da ignorare.
-- Bonifici: il primo movimento di un pagante o di una causale mai visti non si abbina da solo. L'app propone l'inquilino più probabile (nome nella causale, importo atteso, mese) e Carlo conferma, indicando anche a cosa serve (affitto e forfait, conguaglio, caparra, altro). La coppia pagante → inquilino viene salvata con data di inizio validità e applicata ai bonifici successivi.
+- Bonifici: il primo movimento di un pagante o di una causale mai visti non si abbina da solo. L'app propone l'inquilino più probabile (nome nella causale, importo atteso, mese) e user1 conferma, indicando anche a cosa serve (affitto e forfait, conguaglio, caparra, altro). La coppia pagante → inquilino viene salvata con data di inizio validità e applicata ai bonifici successivi.
 - Ogni conferma resta nello storico delle modifiche e si può annullare.
 
 ### Piattaforma
 
-- Il fratello di Carlo usa Windows: la versione Windows ha priorità per prove e installer. L'ambiente di sviluppo non è Windows, quindi le prove su Windows passano da build automatiche e da una prova reale sul suo computer.
+- Il fratello di user1 usa Windows: la versione Windows ha priorità per prove e installer. L'ambiente di sviluppo non è Windows, quindi le prove su Windows passano da build automatiche e da una prova reale sul suo computer.
 - Installer Windows non firmato mostra un avviso di SmartScreen: da decidere se acquistare un certificato di firma.
 
 ### Principi di usabilità
@@ -179,7 +179,7 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 
 | Parametro | Berchet | Lovarini | Pulci |
 | --- | --- | --- | --- |
-| Locatore | Carlo | Carlo | Nicola (adempimenti fiscali a suo nome) |
+| Locatore | user1 | user1 | user2 (adempimenti fiscali a suo nome) |
 | Posti / divisore | 5 | 4 | 4 |
 | Forfait mensile a persona | 30 € | 40 € | 30 € |
 | Annualità | 1 ottobre – 30 settembre | conguagli a richiesta; condominio 1 maggio – 30 aprile | conguagli a richiesta |
@@ -196,7 +196,7 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 2. Il bottone calcola il conguaglio provvisorio dell'inquilino uscente fino al mese di uscita.
 3. L'app calcola la caparra da restituire: caparra, più interessi legali per anno, meno conguaglio, meno eventuali addebiti extra (per esempio la zanzariera a Pulci).
 4. L'app prepara il prospetto per l'inquilino, con il dettaglio delle bollette.
-5. Carlo inserisce la data di invio; da quel giorno parte il controllo sul CSV.
+5. user1 inserisce la data di invio; da quel giorno parte il controllo sul CSV.
 6. L'app riconosce il bonifico di restituzione della caparra e i versamenti del conguaglio, anche a rate.
 7. Per il nuovo inquilino si impostano forfait, caparra attesa e alias dei paganti.
 8. L'app ricorda gli adempimenti fiscali del subentro. Termini e imposte vanno verificati su fonti ufficiali; non sono ancora stati verificati.
@@ -204,7 +204,7 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 ## 18. Riconciliazione bancaria: cosa emerge dagli estratti reali
 
 - Formato (Intesa): data, operazione, dettagli con causale, conto, categoria della banca, importo. Un file per conto.
-- Chi paga spesso non è l'inquilino (genitori, terzi): serve una tabella di alias pagante → inquilino che l'app propone e Carlo conferma.
+- Chi paga spesso non è l'inquilino (genitori, terzi): serve una tabella di alias pagante → inquilino che l'app propone e user1 conferma.
 - Le categorie della banca non sono affidabili: lo stesso bonifico è "Affitti incassati" o "Bonifici ricevuti".
 - I conguagli possono arrivare a rate ("Prima rata conguaglio").
 - Movimenti da ignorare o classificare come spese del proprietario: F24, rata del mutuo, imposta di bollo, SUNIA, commissioni.
@@ -227,16 +227,16 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 ## 20. Cartelle, smistamento e registro delle modifiche
 
 ```text
-App Bollette/                     (cartella condivisa tra Carlo e Nicola)
-  Berchet_3/
+App Bollette/                     (cartella condivisa tra user1 e user2)
+  Berchet/
     Da_smistare/                  qui si inseriscono le bollette di questo appartamento
     Contratti/<inquilino>/        contratti, moduli, caparra, registrazioni, subentri, attestazioni
     2025-26/                      una cartella per ogni annualità
       Elettricita/  Gas/  Acqua/  Internet/  Rifiuti/  Condominio/  Altro/
       Excel/                      Excel dell'annualità per gli inquilini
     2026-27/ ...
-  Lovarini_5/                     stessa struttura, con la sua Da_smistare
-  Pulci_2a/                       stessa struttura, con la sua Da_smistare
+  Lovarini/                       stessa struttura, con la sua Da_smistare
+  Pulci/                          stessa struttura, con la sua Da_smistare
   Riservato_proprietari/          Estratti_conto/<appartamento>/<annualità>/ (non cifrati), Excel dei proprietari per annualità
   _app/                           dati, configurazione, registro; non toccare
     dati/  config/  journal/  excel_versioni/  CHANGELOG.md
@@ -255,7 +255,7 @@ App Bollette/                     (cartella condivisa tra Carlo e Nicola)
 
 - **Scadenziario.** Una vista unica con fine contratti e preavvisi di disdetta, registrazioni e proroghe RLI, annualità dell'imposta di registro (se non in cedolare), IMU, TARI, rate condominiali, restituzione dei depositi. Promemoria in app con colori (in ritardo, entro 30 giorni, più avanti). Da verificare sulle fonti ufficiali: termini e codici tributo RLI prima di inserirli come regole.
 - **Messaggi pronti agli inquilini.** Bozza di email o WhatsApp per conguagli, solleciti, comunicazioni di subentro e restituzione del deposito, con importo, scadenza, IBAN e dettaglio delle bollette. Lingua scelta per inquilino (italiano o inglese, campo nella scheda dell'inquilino). L'app prepara il testo; l'invio resta un'azione confermata da una persona, e la data di invio avvia il controllo sul CSV bancario.
-- **Export per la dichiarazione.** Riepilogo annuale per appartamento e per proprietario (Pulci intestato a Nicola): canoni incassati, spese a carico del proprietario, imposte pagate, utile per il quadro RB, in un Excel pensato per il commercialista. Le spese a carico degli inquilini e i conguagli sono tenuti separati. Regime fiscale e importi da verificare con un professionista.
+- **Export per la dichiarazione.** Riepilogo annuale per appartamento e per proprietario (Pulci intestato a user2): canoni incassati, spese a carico del proprietario, imposte pagate, utile per il quadro RB, in un Excel pensato per il commercialista. Le spese a carico degli inquilini e i conguagli sono tenuti separati. Regime fiscale e importi da verificare con un professionista.
 - **Lingua dell'app.** Italiano o inglese, scelta per utente nelle impostazioni. Tutti i testi dell'interfaccia stanno in file di traduzione separati dal codice, così si possono aggiungere altre lingue senza modificare l'app. Date, importi e separatori seguono la lingua scelta.
 - **Allarme consumi anomali.** Quando importa una bolletta, l'app la confronta con le precedenti dello stesso appartamento e fornitore (stesso periodo dell'anno prima, e media degli ultimi mesi) e segnala in giallo o rosso se consumo, importo o prezzo unitario sono molto diversi, per esempio una perdita d'acqua, un contatore sbagliato o una lettura stimata. L'avviso compare sulla Home e nella schermata di conferma della bolletta, con il confronto a fianco. Soglie di default semplici, modificabili per appartamento; l'utente può segnare un avviso come "va bene così" e l'app lo ricorda. Serve almeno un anno di storico: si parte dalle bollette importate dalle vecchie cartelle.
 
@@ -278,8 +278,8 @@ App Bollette/                     (cartella condivisa tra Carlo e Nicola)
 
 Lo Scadenziario diventa "Scadenze e pagamenti" e include una schermata per imposte e spese a carico dei proprietari. Il controllo del pagamento sul CSV della banca è una funzione prevista (finora la riconciliazione copriva solo gli incassi degli inquilini).
 
-- **Voci gestibili:** IMU, imposta di registro e bollo, cedolare secca, TARI pagata al Comune, rate condominiali (dal piano rate del preventivo), F24 in generale. Ogni voce ha appartamento, intestatario (Via Pulci a Nicola), scadenza, importo atteso, stato (da pagare, in scadenza, pagata, in ritardo) e, se c'è, ricevuta allegata. Le voci ricorrenti si ripetono ogni anno. L'app tiene traccia dei pagamenti e non compila l'F24.
-- **Imposta di registro:** tutti i contratti sono a canone concordato. Secondo Carlo l'imposta di registro si applica solo al subentro o alla firma di un nuovo contratto, e per il subentro l'importo è di 67 euro. Verificato sul sito dell'Agenzia delle Entrate: cessione o subentro senza corrispettivo = imposta fissa di 67 euro, termine 30 giorni, tramite servizi telematici o F24 Elementi identificativi (con comunicazione all'ufficio se si usa l'F24). Da verificare: registrazione di un nuovo contratto (importo, termini). La scheda degli appartamenti indica la cedolare secca per tutti e tre i contratti (canone concordato e cedolare secca sono due cose distinte); con la cedolare non sono dovuti imposta di registro né bollo sul canone. Per cessione e subentro l'imposta fissa di 67 euro è dovuta (confermato da Carlo il 5 novembre 2026) e, in caso di cessione, viene detratta dalla caparra restituita all'inquilino uscente: l'app la inserisce tra le detrazioni nel passo 3 del subentro.
+- **Voci gestibili:** IMU, imposta di registro e bollo, cedolare secca, TARI pagata al Comune, rate condominiali (dal piano rate del preventivo), F24 in generale. Ogni voce ha appartamento, intestatario (Pulci a user2), scadenza, importo atteso, stato (da pagare, in scadenza, pagata, in ritardo) e, se c'è, ricevuta allegata. Le voci ricorrenti si ripetono ogni anno. L'app tiene traccia dei pagamenti e non compila l'F24.
+- **Imposta di registro:** tutti i contratti sono a canone concordato. Secondo user1 l'imposta di registro si applica solo al subentro o alla firma di un nuovo contratto, e per il subentro l'importo è di 67 euro. Verificato sul sito dell'Agenzia delle Entrate: cessione o subentro senza corrispettivo = imposta fissa di 67 euro, termine 30 giorni, tramite servizi telematici o F24 Elementi identificativi (con comunicazione all'ufficio se si usa l'F24). Da verificare: registrazione di un nuovo contratto (importo, termini). La scheda degli appartamenti indica la cedolare secca per tutti e tre i contratti (canone concordato e cedolare secca sono due cose distinte); con la cedolare non sono dovuti imposta di registro né bollo sul canone. Per cessione e subentro l'imposta fissa di 67 euro è dovuta (confermato da user1 il 5 novembre 2026) e, in caso di cessione, viene detratta dalla caparra restituita all'inquilino uscente: l'app la inserisce tra le detrazioni nel passo 3 del subentro.
 - **Controllo sul CSV:** dopo la scadenza l'app cerca nei movimenti in uscita un pagamento compatibile (importo, data vicina, causale F24, IMU, condominio). La prima volta chiede conferma e salva la regola; poi segna "pagata" da sola, con Annulla. Se non trova nulla la voce resta in rosso sulla Home e nello Scadenziario. Si può anche segnare "pagata" a mano con la ricevuta.
 - **Conti (chiarito il 14 novembre 2026):** IMU, F24 e rate condominiali escono dai tre conti degli appartamenti, tutti della stessa banca; non ci sono altri conti da importare.
 
@@ -325,9 +325,9 @@ Dalla cartella "99.Modulistica aggiornata" di Berchet risultano gli stessi modul
 - *Rinnovo:* prepara la comunicazione dei nuovi canoni per ogni camera, poi l'impegno sul canone o la conferma di cauzione.
 - *Dopo la firma:* ricorda la registrazione o la comunicazione RLI, con le regole di cui alla sezione 23.
 
-**Parametri per appartamento (non fissi nel modello).** Locatore (Carlo per Berchet e Lovarini, Nicola per Via Pulci), indirizzo, IBAN, importo della caparra, numero di inquilini, canone per camera, forfait. Nei modelli attuali nome del locatore e IBAN sono quelli di Berchet.
+**Parametri per appartamento (non fissi nel modello).** Locatore (user1 per Berchet e Lovarini, user2 per Pulci), indirizzo, IBAN, importo della caparra, numero di inquilini, canone per camera, forfait. Nei modelli attuali nome del locatore e IBAN sono quelli di Berchet.
 
-**Da correggere nei modelli attuali.** Cauzione o conferma: la data "31.09" non esiste (settembre ha 30 giorni). Restituzione cauzione: "Vicolo Berchet 3" contro "Galleria Giovanni Berchet n3" negli altri moduli, un riferimento "Padova1" nel testo e un refuso ("eccezzion"). Contratto: nel modello v03 il locatore risulta residente a Oberengstringen (CH), indirizzo non aggiornato. I testi giuridici non vengono cambiati dall'app: eventuali modifiche vanno concordate.
+**Da correggere nei modelli attuali.** Cauzione o conferma: la data "31.09" non esiste (settembre ha 30 giorni). Restituzione cauzione: "Vicolo Esempio 1" contro "Galleria Giovanni Esempio n1" negli altri moduli, un riferimento "Padova1" nel testo e un refuso ("eccezzion"). Contratto: nel modello v03 il locatore risulta residente a Oberengstringen (CH), indirizzo non aggiornato. I testi giuridici non vengono cambiati dall'app: eventuali modifiche vanno concordate.
 
 **Regole decise (5 novembre 2026).** (1) Caparra di 500 euro per tutti e tre gli appartamenti, per ogni inquilino. (2) Imposta fissa di 67 euro per la cessione: va tutta addebitata all'inquilino uscente (detratta dalla caparra da restituire); se nello stesso mese più inquilini cedono il contratto, i 67 euro si dividono in parti uguali tra gli inquilini che cedono in quel mese. (3) Quota pulizia annuale: non è un importo fisso, l'app la chiede ogni volta nel passo di restituzione, con 0 come valore proposto. (4) Si usano solo i dati e i moduli più recenti: i valori dei modelli datati (canoni di esempio, importi, date) non vengono riutilizzati e i dati dei contratti in corso vengono dalla scheda degli appartamenti.
 
@@ -405,7 +405,7 @@ Dalla cartella "99.Modulistica aggiornata" di Berchet risultano gli stessi modul
 ## 34. Tasse e stime (sostituisce "Dichiarazione dei redditi")
 
 - **Ruolo**: dichiarazioni ed F24 li prepara il commercialista con i dati di immobile e contratto. L'app non compila nulla. A inizio anno l'utente stima spese e tasse; l'app confronta con quanto pagato e con quanto ancora previsto e segnala le discrepanze.
-- **Tabella per contribuente** (Carlo: Berchet e Lovarini; Nicola: Pulci): per ogni voce (cedolare secca, IMU, imposte di registro e proroghe, TARI, condominio quota proprietario) stima di inizio anno, pagato finora, ancora previsto, differenza e stato (in linea, discrepanza, da verificare). Differenza = pagato + ancora previsto - stima. Il pagato arriva dal CSV, l'ancora previsto da Scadenze e pagamenti.
+- **Tabella per contribuente** (user1: Berchet e Lovarini; user2: Pulci): per ogni voce (cedolare secca, IMU, imposte di registro e proroghe, TARI, condominio quota proprietario) stima di inizio anno, pagato finora, ancora previsto, differenza e stato (in linea, discrepanza, da verificare). Differenza = pagato + ancora previsto - stima. Il pagato arriva dal CSV, l'ancora previsto da Scadenze e pagamenti.
 - **Tasse**: gli importi li inserisce l'utente voce per voce e anno per anno (tabella voce × anno). Nell'app non ci sono aliquote e nulla si calcola da solo. Se un anno è vuoto, a gennaio l'app avvisa e propone di copiare l'anno precedente.
 - **Spese condominiali**: per gli anni senza dati si estrapolano da quelli precedenti finché non ci sono preventivi o consuntivi aggiornati; la stima poi si aggiorna da sola e mostra la fonte (preventivo, consuntivo, estrapolata dal...).
 - **Discrepanze**: elenco con link alla voce, solo come avviso: non bloccano nulla.
@@ -419,7 +419,7 @@ Dalla cartella "99.Modulistica aggiornata" di Berchet risultano gli stessi modul
 
 ## 36. Profili, sincronizzazione e dati
 
-- **Primo avvio**: crea il gruppo di lavoro e il profilo di chi lo usa (Carlo, Nicola). I profili non sono account con password. Chi arriva dopo sceglie "Unisciti a un gruppo" e indica la cartella condivisa.
+- **Primo avvio**: crea il gruppo di lavoro e il profilo di chi lo usa (user1, user2). I profili non sono account con password. Chi arriva dopo sceglie "Unisciti a un gruppo" e indica la cartella condivisa.
 - **Cartella di lavoro condivisa** "App Bollette" su Dropbox: l'app la riconosce dal file \_app/workspace.json, quindi la stessa cartella condivisa vale come invito e non serve importare nulla. Il percorso locale è per macchina.
 - Dropbox deve tenere i file "sempre su questo dispositivo". Non c'è blocco dei file: se due persone modificano insieme appare un avviso, e in caso di conflitto un confronto.
 - **Dati**: un file JSON per record e un file per ogni operazione del registro; niente SQLite e niente .git dentro Dropbox. I profili dei fornitori sono dati versionati.
@@ -428,10 +428,10 @@ Dalla cartella "99.Modulistica aggiornata" di Berchet risultano gli stessi modul
 
 ## 37. Distribuzione e aggiornamenti
 
-- **Tecnologia**: interfaccia web in Tauri con un componente Python (pdfplumber, Tesseract, openpyxl) incluso nell'installer. Windows è la priorità (Nicola), poi macOS.
+- **Tecnologia**: interfaccia web in Tauri con un componente Python (pdfplumber, Tesseract, openpyxl) incluso nell'installer. Windows è la priorità (user2), poi macOS.
 - **Build**: GitHub Actions produce gli installer per Windows (.msi/.exe) e macOS a ogni versione. Il codice sorgente è in un repository privato fuori da Dropbox; le versioni si pubblicano in un repository pubblico senza dati personali.
 - **Aggiornamenti**: l'app controlla se esiste una versione nuova e propone di installarla; il manifest è firmato con una chiave propria. È l'unica chiamata di rete (sezione 28) e si può disattivare.
-- **Firma Windows**: decisione del 6 novembre 2026, nessun certificato di firma. Alla prima installazione Windows SmartScreen mostra un avviso; le istruzioni per Nicola sono "Maggiori informazioni", poi "Esegui comunque". Da verificare l'equivalente su macOS (app non notarizzata).
+- **Firma Windows**: decisione del 6 novembre 2026, nessun certificato di firma. Alla prima installazione Windows SmartScreen mostra un avviso; le istruzioni per user2 sono "Maggiori informazioni", poi "Esegui comunque". Da verificare l'equivalente su macOS (app non notarizzata).
 - **Compatibilità**: i layout dei fornitori sono dati, quindi un cambio di layout non richiede una nuova versione dell'app.
 
 ## 38. Decisioni del 6 novembre 2026
@@ -450,7 +450,7 @@ Dalla cartella "99.Modulistica aggiornata" di Berchet risultano gli stessi modul
 - Nuove versioni dei cinque modelli (subentro, conferma disdetta, cauzione o conferma, impegno canone, contratto) e loro dati.
 - Verificare su fonti ufficiali i tassi di interesse legale per anno (2025: 2%, 2026: 1,6%) e termini e importi di registrazione dei nuovi contratti. Nessuna aliquota va scritta nell'app senza fonte.
 - Verificare che Dropbox consenta il link in sola visualizzazione di una sottocartella.
-- Confermare che la proroga RLI di Berchet e la registrazione di Via Pulci (scadenza 30/10/2026) siano state fatte: oggi sono segnate come in ritardo nell'esempio.
+- Confermare che la proroga RLI di Berchet e la registrazione di Pulci (scadenza 30/10/2026) siano state fatte: oggi sono segnate come in ritardo nell'esempio.
 - Comportamento su macOS senza notarizzazione.
 - Alias del pagatore per abbinare un bonifico all'inquilino; un unico link alla cartella Excel per gli inquilini o uno per annualità.
 - Blocco di aggiornamento della scheda appartamenti nel progetto (contratto di Berchet, caparre, nuove annualità).
@@ -460,7 +460,7 @@ Dalla cartella "99.Modulistica aggiornata" di Berchet risultano gli stessi modul
 ## 40. Apertura ad altri utenti (decisione del 6 novembre 2026)
 
 - **Obiettivo oggi:** uso personale o con poche altre persone; ipotesi di open source; si tiene aperta la possibilità di venderla in futuro.
-- **Repository privato** finché non si decide la licenza. Il copyright resta di Carlo; non si accettano contributi esterni senza un accordo che permetta di cambiare licenza in seguito.
+- **Repository privato** finché non si decide la licenza. Il copyright resta di user1; non si accettano contributi esterni senza un accordo che permetta di cambiare licenza in seguito.
 - **Controllo delle licenze delle librerie** fin dall'inizio: niente dipendenze con licenza che obblighi a rilasciare tutto o che impedisca la vendita (per esempio PyMuPDF, AGPL). Si usano librerie con licenze permissive (MIT, Apache, BSD).
 - **Licenze ammesse in più (decisione dell'11 novembre 2026):** Unicode-3.0 e Zlib, permissive, richieste dalle dipendenze Rust di Tauri.
 - **Regole di sviluppo che tengono aperta la porta:** nessun dato dei propri appartamenti scritto nel codice; tipi di contratto, regimi, utenze e regole di ripartizione come impostazioni; regole fiscali come dati con fonte e data; nessuna telemetria; i profili dei fornitori non contengono dati personali.
@@ -496,11 +496,11 @@ Queste 8 regole sono le uniche regole di calcolo in vigore. Prevalgono sulle sez
 
 ### R3. Voci a rate (condominio, TARI)
 
-- Una voce pagata in n rate entra nel conguaglio una rata alla volta, quando l'addebito compare nel CSV. Ogni rata copre 12/n mesi del periodo della voce, in ordine, salvo diversa indicazione del piano rate. Piani reali (dai documenti): condominio di Berchet 3 rate (ottobre, gennaio, aprile) e di Lovarini 3 rate (10 luglio, 10 ottobre, 10 febbraio), ciascuna da 4 mesi, di importo diverso (la prima include il conguaglio dell'anno prima); condominio di Pulci 3 rate ordinarie, con esercizio da ottobre e 4 mesi per rata; TARI 3 avvisi all'anno (gennaio–aprile, maggio–agosto, settembre–dicembre, anno solare), ciascuno con l'importo al netto di quanto già richiesto.
+- Una voce pagata in n rate entra nel conguaglio una rata alla volta, quando l'addebito compare nel CSV. Ogni rata copre 12/n mesi del periodo della voce, in ordine, salvo diversa indicazione del piano rate. Piani reali (dai documenti): condominio di Berchet: 3 rate (ottobre, gennaio, aprile) e di Lovarini: 3 rate (10 luglio, 10 ottobre, 10 febbraio), ciascuna da 4 mesi, di importo diverso (la prima include il conguaglio dell'anno prima); condominio di Pulci: 3 rate ordinarie, con esercizio da ottobre e 4 mesi per rata; TARI 3 avvisi all'anno (gennaio–aprile, maggio–agosto, settembre–dicembre, anno solare), ciascuno con l'importo al netto di quanto già richiesto.
 - Condominio, rata: entra al netto della quota annua della proprietà (un solo importo per appartamento ed esercizio, somma di tutte le voci escluse come Generali Proprietà e le spese straordinarie), divisa in parti uguali tra le rate. Le rate straordinarie sono interamente della proprietà.
 - Condominio, conguaglio dell'anno prima: sta sulla stessa riga della rata, in un'altra colonna. Entra per intero, senza sottrazioni, quando compare nel CSV l'addebito della rata che lo contiene, e si divide sui 12 mesi dell'esercizio corrente tra gli inquilini presenti. È l'unica eccezione alla competenza: non va all'annualità precedente, nemmeno se è a credito. L'addebito atteso è rata + conguaglio.
 - IMU: non entra nel conguaglio degli inquilini. È un'imposta della proprietà e si gestisce in Scadenze e pagamenti (due rate per legge, F24 nel CSV). L'F24 di Berchet e Lovarini esce dal conto di Berchet e si ripartisce tra i due appartamenti in parti proporzionali nel Saldo tra conti.
-- TARI di Berchet e Lovarini: un solo avviso e un solo addebito, con una sezione per utenza. L'addebito si divide tra i due appartamenti in proporzione ai totali per utenza indicati nell'avviso (abbinamento automatico quando l'addebito comune è uno solo, decisione dell'11 novembre 2026; resti ai resti maggiori). Via Pulci ha avvisi propri.
+- TARI di Berchet e Lovarini: un solo avviso e un solo addebito, con una sezione per utenza. L'addebito si divide tra i due appartamenti in proporzione ai totali per utenza indicati nell'avviso (abbinamento automatico quando l'addebito comune è uno solo, decisione dell'11 novembre 2026; resti ai resti maggiori). Pulci ha avvisi propri.
 - TARI, competenza (decisa il 10 novembre 2026): gli avvisi sono cumulativi sull'anno solare e ognuno si assegna ai suoi 4 mesi nuovi: gennaio–aprile, maggio–agosto, settembre–dicembre (l'avviso di dicembre contiene anche le piccole componenti annuali). L'annualità di Berchet si chiude solo dopo l'addebito TARI di dicembre, così settembre non riapre l'annualità precedente.
 - TARI, nota su ogni avviso: l'app scrive accanto a ogni avviso TARI (in Da rivedere, nell'Excel degli inquilini e nel file della proprietà) una nota che spiega il calcolo: numero e data dell'avviso, periodo dichiarato, mesi assegnati e perché, importo addebitato nel CSV con data e conto; per l'avviso comune anche il totale di ciascuna utenza, la quota di Berchet e di Lovarini dell'addebito con il criterio di riparto, e lo storno: quanto il conto di Lovarini deve al conto di Berchet per quell'avviso. Esempio: "Avviso 2026/1/89064, periodo gennaio–aprile 2026, mesi assegnati gennaio–aprile. Addebito 186,00 € il 16/03/2026 sul conto di Berchet. Utenze: Berchet 100,75 €, Lovarini 84,71 €; riparto dell'addebito in proporzione: Berchet 101,04 €, Lovarini 84,96 €. Storno: Lovarini deve 84,96 € a Berchet."
 

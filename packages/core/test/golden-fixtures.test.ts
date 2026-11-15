@@ -1,12 +1,12 @@
 // Golden fixtures (Task 7 of plan 1): anonymised apartments and lease years whose `expected`
-// values Carlo checked against the real Excel files. The settlement engine of Task 9 must
+// values user1 checked against the real Excel files. The settlement engine of Task 9 must
 // reproduce them; this file only checks that every fixture is well formed, free of personal data
 // and consistent with itself. The rules behind the values are in docs/rules/conguaglio-rules.md.
 import { describe, expect, it } from 'vitest';
 import { cents, isoDate, matchToTransactions, monthsInPeriod, splitCents } from '../src/index';
 import { goldenFiles, readGolden } from './helpers/golden';
 
-/** Matching window decided by Carlo (R30): 5 days before to 10 days after the due date. */
+/** Matching window decided by user1 (R30): 5 days before to 10 days after the due date. */
 const WINDOW = { daysBefore: 5, daysAfter: 10 };
 
 // The patterns of Task 7, step 5. pnpm data:check runs stricter checks on every tracked file.
@@ -178,7 +178,7 @@ describe('golden fixtures', () => {
 
     it('documents every deviation from the Excel and who approved the values', () => {
       expect(fixture.knownDeviations.length).toBeGreaterThan(0);
-      // A fixture waits as «da approvare» until Carlo checks its values (Task 7, step 6).
+      // A fixture waits as «da approvare» until user1 checks its values (Task 7, step 6).
       expect(fixture.approvedBy.trim()).not.toBe('');
       expect(fixture.approvedBy).not.toBe('da approvare');
     });

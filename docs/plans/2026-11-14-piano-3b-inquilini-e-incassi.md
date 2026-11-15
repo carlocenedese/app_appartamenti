@@ -15,7 +15,7 @@
 - Un ramo, mai su `main`. Per ogni task: test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `TZ=Pacific/Auckland pnpm test`, `TZ=America/Los_Angeles pnpm test`, `pnpm data:check`, commit. Un revisore distinto per task (piano, disegno, qualità), fino a 5 giri; poi una revisione finale e la PR.
 - **Un task = un gate di revisione:** il task N+1 parte solo dopo che il task N ha superato la revisione.
 - Le regole nuove vanno in `docs/progress.md` dalla **prossima R libera** (controllare con `grep -n '^- \*\*R[0-9]' docs/progress.md | tail -1` prima di scrivere; al 14 novembre 2026 l'ultima è R107). I task che scrivono una R lo dicono nel loro passo.
-- Le regole di calcolo e di confidenza non si decidono da soli: NEEDS_CONTEXT e si chiede a Carlo. **Una è già aperta** (sotto, «Da confermare con Carlo prima del Task 5»).
+- Le regole di calcolo e di confidenza non si decidono da soli: NEEDS_CONTEXT e si chiede a user1. **Una è già aperta** (sotto, «Da confermare con user1 prima del Task 5»).
 
 ## Vincoli globali
 
@@ -32,9 +32,9 @@
   - `validFrom` di un `payer` = primo giorno della prima presenza dell'inquilino nell'appartamento del conto (decisione A);
   - `id`: `pay-<transactionId>` (automatico), `pay-<transactionId>-<n>` (parti confermate, n da 1), `p-chi-<transactionId>`, `p-cosa-<transactionId>`.
 
-## Da confermare con Carlo prima del Task 5
+## Da confermare con user1 prima del Task 5
 
-**Da quando un mese conta come «da pagare».** Senza un limite, al primo estratto importato tutti i mesi precedenti della presenza risultano senza canone, e ogni bonifico va in revisione come `late`. Raccomandazione (analogia con R2: un periodo senza estratto si considera pagato, «assunto»): un mese conta come da pagare solo se almeno un giorno del mese è coperto da uno `statement` vivo di un conto dello stesso appartamento. È una regola di confidenza: il Task 5 la riceve come insieme di mesi coperti (`coveredMonths`), così la regola sta in un punto solo. Se Carlo decide altro, cambia solo il calcolo di `coveredMonths`.
+**Da quando un mese conta come «da pagare».** Senza un limite, al primo estratto importato tutti i mesi precedenti della presenza risultano senza canone, e ogni bonifico va in revisione come `late`. Raccomandazione (analogia con R2: un periodo senza estratto si considera pagato, «assunto»): un mese conta come da pagare solo se almeno un giorno del mese è coperto da uno `statement` vivo di un conto dello stesso appartamento. È una regola di confidenza: il Task 5 la riceve come insieme di mesi coperti (`coveredMonths`), così la regola sta in un punto solo. Se user1 decide altro, cambia solo il calcolo di `coveredMonths`.
 
 ## Revisione mirata (Review Focus)
 
@@ -143,7 +143,7 @@
 
 ## Task 5: `reconcileIncome`, fase «che cosa»
 
-Parte solo dopo la risposta di Carlo su «Da confermare con Carlo prima del Task 5».
+Parte solo dopo la risposta di user1 su «Da confermare con user1 prima del Task 5».
 
 **Files:** Modify `packages/core/src/income.ts`, `packages/core/src/index.ts`, `docs/progress.md` (prossima R libera); Test `packages/core/test/income.test.ts`.
 
@@ -158,7 +158,7 @@ Parte solo dopo la risposta di Carlo su «Da confermare con Carlo prima del Task
   - Regole:
     - movimenti vivi, importo positivo, nessun `Payment` vivo con quel `transactionId`; in ordine di `date`, poi `id`;
     - `whoPaid` `ask` → proposta `p-chi-…` con `step: 'chi'`;
-    - `known`: se un movimento precedente della stessa corsa ha dato una proposta `cosa` con `tenantIds` uguale a `[tenantId]` → `earlier-open`; se l'inquilino non è presente né nel mese della data né in quello prima → `not-present`; `unpaid` = mesi coperti (`coveredMonths`, dalla risposta di Carlo) con l'inquilino presente e senza `Payment` `canone` vivo, inclusi i pagamenti automatici già decisi nella corsa; poi `chooseRentMonth` con `apartment.rentLateDays ?? DEFAULT_RENT_LATE_DAYS`; se `auto` e l'importo è esattamente affitto più forfait della presenza in quel mese → `PaymentDraft` `pay-<transactionId>` (`kind: 'canone'`, `confirmed: true`, `source: 'csv'`, `forMonth`, `apartmentId` del conto); altrimenti proposta `p-cosa-…` con il motivo (`amount-differs` con il mese proposto);
+    - `known`: se un movimento precedente della stessa corsa ha dato una proposta `cosa` con `tenantIds` uguale a `[tenantId]` → `earlier-open`; se l'inquilino non è presente né nel mese della data né in quello prima → `not-present`; `unpaid` = mesi coperti (`coveredMonths`, dalla risposta di user1) con l'inquilino presente e senza `Payment` `canone` vivo, inclusi i pagamenti automatici già decisi nella corsa; poi `chooseRentMonth` con `apartment.rentLateDays ?? DEFAULT_RENT_LATE_DAYS`; se `auto` e l'importo è esattamente affitto più forfait della presenza in quel mese → `PaymentDraft` `pay-<transactionId>` (`kind: 'canone'`, `confirmed: true`, `source: 'csv'`, `forMonth`, `apartmentId` del conto); altrimenti proposta `p-cosa-…` con il motivo (`amount-differs` con il mese proposto);
     - due presenze sovrapposte dello stesso inquilino: `SettlementInputError` `tenant-overlap`, come `collectedForfait`.
 
 - [ ] **Step 1: test che falliscono** (Review Focus 1 e 5):
@@ -170,7 +170,7 @@ Parte solo dopo la risposta di Carlo su «Da confermare con Carlo prima del Task
   - `collectedForfait` sui `PaymentDraft` restituiti dà il forfait atteso;
   - movimenti, presenze e paganti mescolati: stesso risultato (`toEqual`); un `Payment` vivo per il movimento → il movimento non compare.
 - [ ] **Step 2:** `pnpm test -- income` fallisce.
-- [ ] **Step 3: implementare**; scrivere la prossima R libera con la regola dei mesi coperti come decisa da Carlo e con la definizione di `earlier-open`.
+- [ ] **Step 3: implementare**; scrivere la prossima R libera con la regola dei mesi coperti come decisa da user1 e con la definizione di `earlier-open`.
 - [ ] **Step 4:** lint, typecheck, test con i due `TZ`, copertura passano.
 - [ ] **Step 5: commit** `feat(core): incassi automatici con R4 stretto e proposte (piano 3b, task 5)`.
 

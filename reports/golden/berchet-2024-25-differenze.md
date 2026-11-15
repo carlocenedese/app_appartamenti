@@ -2,7 +2,7 @@
 
 Generato da `pnpm golden:report` da `fixtures/golden/berchet-2024-25.json`: non modificarlo a mano.
 
-Periodo 2024-25 (2024-10 – 2025-09), 5 posti. Valori dell'app approvati da: Carlo, 11 novembre 2026.
+Periodo 2024-25 (2024-10 – 2025-09), 5 posti. Valori dell'app approvati da: user1, 11 novembre 2026.
 Condominio escluso (sezione 42, R3). Differenza = app − Excel.
 
 ## Spese per inquilino e voce
@@ -89,8 +89,8 @@ Dovuto = spese − forfait incassato (negativo: da restituire).
 4. **Luce dell'inquilino C (Doppia marmo 1, ott 2024 - ago 2025).** Conguagli D9 somma la luce fino a giugno (RegistroBollette G17:G21) e omette luglio-agosto 2025 (G22-G23): 94,57 € nell'Excel contro 113,78 € dell'app.
 5. **Importi dell'Excel per voce (campo excel).** Ricavati dalle formule di Conguagli D/5 per tipologia, con la commissione compresa dove l'Excel la somma; arrotondati al centesimo per voce, quindi il totale può differire di 1 centesimo da D/5 (inquilini I e K).
 6. **Spese dell'inquilino I (Doppia 1, ago-set 2025).** Conguagli D17 somma tutto il terzo avviso TARI 2025; l'app ne assegna solo settembre 2025.
-7. **Condominio.** Escluso da expected per costruzione (sezione 42, R3). Le rate 2024-25 non sono disponibili (l'Excel ha solo la quota annua inquilini di 2.103,34 €), quindi la fixture non ha rate di condominio e il controllo di fine esercizio del Task 9 non si applica a questa fixture. Il conguaglio condominiale 2023-24 di 1.302,68 € resta alla proprietà (Carlo).
-8. **Forfait.** L'Excel considera il forfait dovuto (30 € x mesi); l'app quello incassato (R4). Qui coincidono: ogni mese ha un versamento (l'inquilino I ha pagato agosto e settembre, confermato da Carlo).
+7. **Condominio.** Escluso da expected per costruzione (sezione 42, R3). Le rate 2024-25 non sono disponibili (l'Excel ha solo la quota annua inquilini di 2.103,34 €), quindi la fixture non ha rate di condominio e il controllo di fine esercizio del Task 9 non si applica a questa fixture. Il conguaglio condominiale 2023-24 di 1.302,68 € resta alla proprietà (user1).
+8. **Forfait.** L'Excel considera il forfait dovuto (30 € x mesi); l'app quello incassato (R4). Qui coincidono: ogni mese ha un versamento (l'inquilino I ha pagato agosto e settembre, confermato da user1).
 9. **Bolletta della luce settembre-ottobre 2025.** Non ancora registrata: la sua metà di settembre appartiene al 2024-25 e arriverà come conguaglio supplementare (R5).
 10. **Scadenza della bolletta luce settembre-ottobre 2024.** RegistroBollette H6 (10/11/2024) è prima dell'emissione I6 (25/11/2024): riportate come nell'Excel; la bolletta è assunta pagata e la data non cambia il conguaglio.
 11. **Scadenza della bolletta luce novembre-dicembre 2024.** RegistroBollette H8 riporta 27/01/2024, prima dell'emissione: errore di battitura, nella fixture 27/01/2025.

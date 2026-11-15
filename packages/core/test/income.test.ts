@@ -138,7 +138,7 @@ describe('coveredMonths', () => {
     statements: Statement[];
   } => ({ accounts: input().accounts, statements });
 
-  it('counts only months covered from the first to the last day (Carlo, 14 Nov 2026)', () => {
+  it('counts only months covered from the first to the last day (user1, 14 Nov 2026)', () => {
     const months = coveredMonths(
       ctx([
         statement({ id: 's1', from: '2026-01-31', to: '2026-02-01' }),

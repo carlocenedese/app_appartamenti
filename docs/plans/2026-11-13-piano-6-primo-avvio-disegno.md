@@ -1,12 +1,12 @@
 # Piano 6 (parte «primo avvio e sincronizzazione»): disegno
 
-Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 2, 9, 20, 28, 36, 40 e 41). Prima parte già fatta: `docs/plans/2026-11-13-piano-6-profili-disegno.md` (i profili dei fornitori arrivano con l'app). Fuori da questo disegno: aggiornamenti firmati, Scadenze e pagamenti, Tasse e stime.
+Stato: **approvato da user1 il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 2, 9, 20, 28, 36, 40 e 41). Prima parte già fatta: `docs/plans/2026-11-13-piano-6-profili-disegno.md` (i profili dei fornitori arrivano con l'app). Fuori da questo disegno: aggiornamenti firmati, Scadenze e pagamenti, Tasse e stime.
 
 ## Perché
 
 L'app installata non può ancora né creare né aprire una cartella di lavoro: il core sa leggere e scrivere i record, ma `apps/desktop` ha solo una finestra con la versione e nessun accesso al disco. Serve la procedura che crea il gruppo di lavoro (o ci si unisce a uno esistente) e che dice con chiarezza che cosa succede se Dropbox ha sincronizzato solo a metà o se un altro sta lavorando.
 
-## Decisioni di Carlo (13 novembre 2026)
+## Decisioni di user1 (13 novembre 2026)
 
 1. **Modifiche insieme: avviso di presenza.** Ogni utente scrive un piccolo file di presenza con un segnale periodico; se un altro è attivo, l'app mostra un avviso e basta. Nessun blocco dei file (la sezione 36 prevale sulla 9).
 2. **Cartella sincronizzata a metà: sola lettura più un clic.** L'app dice «sincronizzazione in corso» e apre in sola lettura finché registro e record tornano coerenti. La riparazione parte solo con un clic e solo se il record è davvero indietro.
@@ -44,7 +44,7 @@ L'app installata non può ancora né creare né aprire una cartella di lavoro: i
 ## Disegno
 
 - `User` (record `user`): `name`, id sicuro come nome di file; funzione `createUser`, operazione `users.create`.
-- `createWorkspace(store, {workspaceId, name, user: {id, name}}, seeds, clock, newId)`: rifiuta se esiste `workspace.json` o se `_app/journal` e `_app/dati` contengono file che non sono di una creazione interrotta dello stesso gruppo (stesso `user.id`; decisione di Carlo, 13 novembre 2026); scrive utente, `seedProfiles`, poi `workspace.json` (con `schemaVersion`, `minAppVersion` dell'app, `createdAt`).
+- `createWorkspace(store, {workspaceId, name, user: {id, name}}, seeds, clock, newId)`: rifiuta se esiste `workspace.json` o se `_app/journal` e `_app/dati` contengono file che non sono di una creazione interrotta dello stesso gruppo (stesso `user.id`; decisione di user1, 13 novembre 2026); scrive utente, `seedProfiles`, poi `workspace.json` (con `schemaVersion`, `minAppVersion` dell'app, `createdAt`).
 - `assessWorkspace(store, app, conflictRules)`: `{compat, sync: 'ok' | 'behind', writable, problems}`.
 - `TauriStore implements Store` con scrittura atomica (file temporaneo e rinomina), le impostazioni per macchina nella cartella di configurazione dell'app, il selettore di cartelle.
 - `othersActive(now, entries, windowMinutes)` e scrittura periodica del file di presenza.
@@ -52,7 +52,7 @@ L'app installata non può ancora né creare né aprire una cartella di lavoro: i
 
 ## Mie scelte dopo la lettura di un revisore (da controllare)
 
-Un revisore indipendente ha trovato questi punti; li decido io, Carlo può correggerli.
+Un revisore indipendente ha trovato questi punti; li decido io, user1 può correggerli.
 
 1. **Due stati di sincronizzazione, non tre.** Non c'è modo di distinguere, senza orologio né altri segnali, un record che manca perché Dropbox non l'ha ancora scaricato da uno che manca davvero. Quindi `sync` vale `'ok'` oppure `'behind'` (almeno un record è diverso da come dice l'ultima operazione del registro, o manca): sola lettura, messaggio «sincronizzazione in corso o incompleta». Con il clic dell'utente si usa `repairDiverged`, che oggi scrive il record come dice il registro e rifiuta se il record su disco ha una `rev` più alta; non cambia.
 2. **Quando si scrive.** Si apre in sola lettura se la compatibilità non è `ok`, se `sync` è `'behind'` o se `workspace.json` non è valido. Le copie in conflitto e gli `id` doppi restano avvisi in un elenco di problemi e non bloccano.
@@ -67,6 +67,6 @@ Un revisore indipendente ha trovato questi punti; li decido io, Carlo può corre
 
 Il nome esatto dei file di presenza e della finestra predefinita (come impostazione); il testo dei messaggi; il modo preciso di dare al plugin il permesso sulla cartella scelta.
 
-## Aperto con Carlo
+## Aperto con user1
 
 Nessuna domanda aperta; due verifiche tecniche sono nell'elenco «Approcci» (permessi e licenza dei plugin).

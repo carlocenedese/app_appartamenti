@@ -20,7 +20,13 @@
 //                      structure alone. Because the structure is an assumption, any 17-character
 //                      token starting with T, with at least 5 digits and 2 letters, also counts
 //                      when "codice identificativo", "registrazione", "RLI" or "TRN" is close.
+//   person name        The real owners' names, as whole words in any case: Carlo, Nicola,
+//                      Cenedese. The repository uses user1 and user2 instead.
+//   address            A house number after an apartment name (Berchet, Lovarini, Pulci):
+//                      "Berchet 3", "Pulci 2a", "Lovarini_5". Years ("Berchet 2024-25") and
+//                      amounts ("Berchet 100,75 €") are not house numbers. The bare names are fine.
 //
+// The two kinds above are not checked in the files that define them (NAME_CHECK_FILES).
 // Fictitious example codes are allowed: list them in backticks in the section
 // "Codici d'esempio fittizi" of fixtures/README.md. Nothing else is ever allowed.
 // The pnpm lockfile (hashes only) and binary files are not scanned.
@@ -36,6 +42,12 @@ import { fileURLToPath } from 'node:url';
 const ALLOWED_CODES_FILE = 'fixtures/README.md';
 const ALLOWED_CODES_HEADING = /^##\s+Codici d['’]esempio fittizi\b.*$/im;
 const SKIPPED_FILES = new Set(['pnpm-lock.yaml']);
+// This script and its test spell out the names and addresses they look for.
+const NAME_CHECK_FILES = new Set([
+  'scripts/check-personal-data.mjs',
+  'scripts/check-personal-data.test.mjs',
+]);
+const NAME_KINDS = new Set(['person name', 'address']);
 
 // No word boundary on "pdr": keys such as "pdrCode", "gasPdr" and "pdr_code" must count too. A
 // 14-digit run with this substring within reach is rare enough in ordinary text.
@@ -119,6 +131,15 @@ const DETECTORS = [
       (match.match(/[A-Z]/g) ?? []).length >= 2 &&
       near(text, index, match.length, REGISTRATION_KEYWORD),
   },
+  {
+    kind: 'person name',
+    pattern: /\b(?:Carlo|Nicola|Cenedese)\b/gi,
+  },
+  {
+    kind: 'address',
+    // 1-3 digits and an optional letter, not the start of a year or of an amount.
+    pattern: /\b(?:Berchet|Lovarini|Pulci)[ _]\d{1,3}[a-z]?\b(?![.,]\d)/gi,
+  },
 ];
 
 function lineOf(text, index) {
@@ -187,7 +208,10 @@ export function scanFiles(rootDir, files) {
     }
     if (isBinary(content)) continue;
     scannedFiles++;
-    for (const hit of scanText(content.toString('utf8'), allowed)) findings.push({ file, ...hit });
+    for (const hit of scanText(content.toString('utf8'), allowed)) {
+      if (NAME_CHECK_FILES.has(file) && NAME_KINDS.has(hit.kind)) continue;
+      findings.push({ file, ...hit });
+    }
   }
   return { scannedFiles, findings };
 }

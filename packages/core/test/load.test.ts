@@ -38,7 +38,7 @@ describe('loadAll', () => {
     store.putRaw(`${DIR}/truncated.json`, '{"id": "truncated", "v": 1, "rev": 1, "amou');
     putBill(store, 'future.json', billJson('future', { v: 2 }));
     putBill(store, 'x (conflicted copy 2026-11-05).json', billJson('x'));
-    putBill(store, 'x (Copia in conflitto di Nicola 2026-11-05).json', billJson('x'));
+    putBill(store, 'x (Copia in conflitto di user2 2026-11-05).json', billJson('x'));
 
     const { records, problems } = await loadAll(store, 'bill', BillSchema);
 
@@ -47,7 +47,7 @@ describe('loadAll', () => {
       { path: `${DIR}/future.json`, reason: 'future-version' },
       { path: `${DIR}/truncated.json`, reason: 'malformed-json' },
       {
-        path: `${DIR}/x (Copia in conflitto di Nicola 2026-11-05).json`,
+        path: `${DIR}/x (Copia in conflitto di user2 2026-11-05).json`,
         reason: 'conflicted-copy',
         originalPath: `${DIR}/x.json`,
       },
@@ -79,12 +79,12 @@ describe('loadAll', () => {
     it('reports them and does not load them, even when they hold a valid record', async () => {
       const store = new MemoryStore();
       putBill(store, 'x.json', billJson('x'));
-      putBill(store, "x (Carlo's conflicted copy 2026-11-05).json", billJson('x-copy'));
+      putBill(store, "x (user1's conflicted copy 2026-11-05).json", billJson('x-copy'));
       const { records, problems } = await loadAll(store, 'bill', BillSchema);
       expect(ids(records)).toEqual(['x']);
       expect(problems).toEqual([
         {
-          path: `${DIR}/x (Carlo's conflicted copy 2026-11-05).json`,
+          path: `${DIR}/x (user1's conflicted copy 2026-11-05).json`,
           reason: 'conflicted-copy',
           originalPath: `${DIR}/x.json`,
         },
@@ -94,13 +94,13 @@ describe('loadAll', () => {
     it.each([
       ['x (conflicted copy 2026-11-05).json', 'x.json'],
       ['x (CONFLICTED COPY 2026-11-05).json', 'x.json'],
-      ['x (Copia in conflitto di Nicola 2026-11-05).json', 'x.json'],
-      ['x (copia in conflitto di Nicola 2026-11-05).json', 'x.json'],
-      ['x (COPIA IN CONFLITTO DI NICOLA 2026-11-05).json', 'x.json'],
-      ["x (Nicola's conflicted copy 2026-11-05).json", 'x.json'],
+      ['x (Copia in conflitto di user2 2026-11-05).json', 'x.json'],
+      ['x (copia in conflitto di user2 2026-11-05).json', 'x.json'],
+      ['x (COPIA IN CONFLITTO DI USER2 2026-11-05).json', 'x.json'],
+      ["x (user2's conflicted copy 2026-11-05).json", 'x.json'],
       ['x (conflicted copy 2026-11-05) (1).json', 'x.json'],
       ["x (A's conflicted copy 2026-11-05) (B's conflicted copy 2026-11-06).json", 'x.json'],
-      ['x (Copia in conflitto di Nicola 2026-11-05) (2).json', 'x.json'],
+      ['x (Copia in conflitto di user2 2026-11-05) (2).json', 'x.json'],
       ['Perch\u00e9 (conflicted copy 2026-11-05).json', 'Perch\u00e9.json'],
       ['bill 2026 (1) (conflicted copy 2026-11-05).json', 'bill 2026 (1).json'],
     ])('recognises %s and gives %s as the original', async (name, original) => {
@@ -464,7 +464,7 @@ describe('loadAll', () => {
         targetType: 'bill',
         targetId: 'bill-1',
         text: 'Verificata.',
-        profileId: 'carlo',
+        profileId: 'user1',
         at: '2026-11-10T20:15:00.000Z',
       }),
     );
