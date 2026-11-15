@@ -1,6 +1,6 @@
 # Piano 3c: esclusioni, uscite, F24, giroconti e saldo tra conti (disegno)
 
-Stato: **bozza da approvare da Carlo** (15 novembre 2026). Solo disegno, nessun codice e nessun piano
+Stato: **bozza da approvare da user1** (15 novembre 2026). Solo disegno, nessun codice e nessun piano
 di implementazione. Il piano copre il core (`packages/core`) e la riga di comando (`pnpm estratti`);
 **niente schermate e niente veste grafica**. Riferimenti: disegno approvato del piano 3
 (`docs/plans/2026-11-14-piano-3-csv-disegno.md`, risposte 8, 9, 10, 12, 13, «Riconciliazione» punti
@@ -43,7 +43,7 @@ pagamento (3b), classificato, giroconto, da rivedere.
 - Schermate (scheda Movimenti, Saldo tra conti), azioni di massa, veste grafica.
 - Smistamento e spostamento dei file.
 
-## Decisioni già prese da Carlo
+## Decisioni già prese da user1
 
 Dal disegno del piano 3, dal 3b e dalla richiesta del 15 novembre 2026:
 
@@ -79,7 +79,7 @@ Tutti `v: 1`, campi minimi, nessun campo nuovo obbligatorio sui record esistenti
   `doppione`, `non-contabilizzato`, `non-reale`; `apartmentId` (destinazione, assente con `escluso`;
   di norma l'appartamento del conto); `f24?: true`; `ruleId?` (la regola che l'ha prodotta). Nessuna
   causale, nessun nome.
-- **`movementRule`**: `direction` (`out`, e `in` solo se Carlo risponde sì alla domanda 2), `accountId`,
+- **`movementRule`**: `direction` (`out`, e `in` solo se user1 risponde sì alla domanda 2), `accountId`,
   `key` (la chiave della controparte, stessa forma di `PayerKey`: `iban:` o `name:`), `kind`
   (`utenze`, `tasse`, `condominio`, `altro`), `apartmentId`, `validTo?`. I criteri esatti sono la
   domanda 1.
@@ -109,7 +109,7 @@ Proposte: non sono record, si ricalcolano dallo stato (come nel 3b); `id` determ
   (`earlier-open` del 3b) e non entra nel saldo.
 - **Annullamento:** `undoOperation` dell'esclusione cancella la `movementClass`; alla corsa dopo il
   movimento torna normale (proposte o automatici come prima).
-- **Proposta di esclusione** (`p-escl-`): solo se Carlo risponde sì alla domanda 3, e sempre da
+- **Proposta di esclusione** (`p-escl-`): solo se user1 risponde sì alla domanda 3, e sempre da
   confermare.
 - Riga di comando: `estratti escludi --movimento <id> --motivo doppione|non-contabilizzato|non-reale`.
 
@@ -210,7 +210,9 @@ Riga di comando `estratti saldi`: di default solo coppie di `id` di appartamento
 - `annulla-incassi` diventa un annullamento generico delle operazioni della riconciliazione (stesso
   controllo `has-dependents`); `statement.import` resta solo da `annulla`.
 
-## Domande per Carlo
+## Domande per user1
+
+Risposta (15 novembre 2026): ok a tutte le raccomandazioni, 1–11.
 
 Regole di calcolo o di fiducia: non le decido io. Per ognuna la mia raccomandazione e un esempio con
 importi inventati.
@@ -322,7 +324,7 @@ tabella:
 ## Non verificato
 
 - Testo della causale di un F24 nella banca vera (per `f24Pattern`); serve lo strumento di struttura o
-  una riga anonimizzata con Carlo.
+  una riga anonimizzata con user1.
 - Se i giroconti tra i conti propri portano l'IBAN della controparte in entrata e in uscita.
 - Se le date di un movimento non contabilizzato cambiano alla contabilizzazione (domanda 3).
 
@@ -344,7 +346,7 @@ tabella:
 ## Cosa resta fuori
 
 - **Interfaccia:** scheda Movimenti di «Da rivedere», Saldo tra conti sulla Home e in Banca, azioni di
-  massa, veste grafica (con Carlo).
+  massa, veste grafica (con user1).
 - **3d:** ripartizione dell'F24 per immobile (IMU di Berchet e Lovarini) e correzione di R3.
 - **Excel e piano 5:** colonne del file riservato, stato «saldato» dei conguagli (R6), uso dei
   `Payment` negativi.
