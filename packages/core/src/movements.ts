@@ -11,7 +11,15 @@ import {
   PaymentSchema,
   StatementSchema,
 } from './model';
-import type { Account, BankTransaction, ExcludeReason, MovementClass, Statement } from './model';
+import type {
+  Account,
+  BankTransaction,
+  BillMatch,
+  ExcludeReason,
+  MovementClass,
+  Payment,
+  Statement,
+} from './model';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -23,6 +31,36 @@ export function excludedIds(classes: MovementClass[]): Set<string> {
   return new Set(
     classes.filter((c) => c.deleted !== true && c.kind === 'escluso').map((c) => c.transactionId),
   );
+}
+
+/** What a movement is used for: one use at most per movement (plan 3c, «Mie scelte» 1, D2). */
+export type MovementUse = 'escluso' | 'abbinato' | 'pagamento' | 'classificato' | 'giroconto';
+
+/**
+ * The uses of each movement from the live records: a class (`escluso` or `classificato`), a
+ * confirmed `BillMatch` that is not `assumed` (`abbinato`), a payment (`pagamento`); each use
+ * once per movement, in that order.
+ */
+export function movementUses(state: {
+  classes: MovementClass[];
+  payments: Payment[];
+  matches: BillMatch[];
+}): Map<string, MovementUse[]> {
+  const uses = new Map<string, MovementUse[]>();
+  const add = (id: string, use: MovementUse) => {
+    const list = uses.get(id) ?? [];
+    if (!list.includes(use)) uses.set(id, [...list, use]);
+  };
+  for (const c of state.classes.filter((r) => r.deleted !== true)) {
+    add(c.transactionId, c.kind === 'escluso' ? 'escluso' : 'classificato');
+  }
+  for (const m of state.matches) {
+    if (m.deleted !== true && m.confirmed && m.by !== 'assumed') add(m.transactionId, 'abbinato');
+  }
+  for (const p of state.payments) {
+    if (p.deleted !== true && p.transactionId !== undefined) add(p.transactionId, 'pagamento');
+  }
+  return uses;
 }
 
 export type ExcludeMovementResult =

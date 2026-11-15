@@ -144,6 +144,29 @@ export async function runMatch(
   if ((await checkConsistency(store)).length > 0) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
+  const { run, written, changes, where } = await planMatch(store);
+  if (options.dryRun === true || written.length === 0) return run;
+
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'match.reconcile',
+      ...where,
+      summary: `Abbinate le voci: ${plural(written.length, 'automatica', 'automatiche')}, ${String(run.proposals.length)} da rivedere.`,
+      changes,
+    },
+    clock,
+    newId,
+  );
+  return { ...run, operationId: operation.id };
+}
+
+/**
+ * What `runMatch` would write on the current state, without checking it or writing: its result,
+ * the new confirmed matches and their changes. `runReconciliation` reads it for a dry run.
+ */
+export async function planMatch(store: Store) {
   const state = await loadMatchState(store);
   const result = matchToTransactions({
     bills: state.bills,
@@ -188,21 +211,7 @@ export async function runMatch(
     ambiguous: result.ambiguous,
     assumed: fresh.filter((m) => m.by === 'assumed').map(ref),
   };
-  if (options.dryRun === true || written.length === 0) return run;
-
-  const operation = await commitChange(
-    store,
-    {
-      profileId,
-      kind: 'match.reconcile',
-      ...where,
-      summary: `Abbinate le voci: ${plural(written.length, 'automatica', 'automatiche')}, ${String(proposals.length)} da rivedere.`,
-      changes,
-    },
-    clock,
-    newId,
-  );
-  return { ...run, operationId: operation.id };
+  return { run, written, changes, where };
 }
 
 export interface ConfirmMatchInput {

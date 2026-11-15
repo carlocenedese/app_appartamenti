@@ -11,6 +11,7 @@ import {
   AccountSchema,
   ApartmentSchema,
   BankTransactionSchema,
+  BillMatchSchema,
   MovementClassSchema,
   PayerSchema,
   PaymentSchema,
@@ -20,7 +21,7 @@ import {
 } from './model';
 import type { Payment } from './model';
 import type { Cents } from './money';
-import { excludedIds } from './movements';
+import { movementUses } from './movements';
 import { parseOrThrow } from './parse';
 import { firstPresenceDay } from './payers';
 import type { YearMonth } from './period';
@@ -53,23 +54,34 @@ export async function saveTenant(
   );
 }
 
-/** Every record the reconciliation reads, deleted ones included (it filters them itself), and the journal. */
-async function loadIncomeState(store: Store) {
+/**
+ * Every record the reconciliation reads, deleted ones included (it filters them itself), and the
+ * journal; `alsoUsed` are movements a phase before would use (a dry run writes nothing).
+ */
+async function loadIncomeState(store: Store, alsoUsed: ReadonlySet<string> = new Set()) {
   const all = { includeDeleted: true };
+  const payments = (await loadAll(store, 'payment', PaymentSchema, all)).records;
+  const uses = movementUses({
+    classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
+    payments,
+    matches: (await loadAll(store, 'match', BillMatchSchema, all)).records,
+  });
   return {
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
     apartments: (await loadAll(store, 'apartment', ApartmentSchema, all)).records,
     tenancies: (await loadAll(store, 'tenancy', TenancySchema, all)).records,
     tenants: (await loadAll(store, 'tenant', TenantSchema, all)).records,
     payers: (await loadAll(store, 'payer', PayerSchema, all)).records,
-    payments: (await loadAll(store, 'payment', PaymentSchema, all)).records,
+    payments,
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
     operations: (await readJournal(store)).operations,
-    // The excluded movements are left out of the income (plan 3c).
-    usedTransactionIds: excludedIds(
-      (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
-    ),
+    // Excluded, matched or classified movements are left out of the income (plan 3c, D2); a
+    // payment is reconcileIncome's own business.
+    usedTransactionIds: new Set([
+      ...alsoUsed,
+      ...[...uses].filter(([, list]) => list.some((u) => u !== 'pagamento')).map(([id]) => id),
+    ]),
   };
 }
 
@@ -92,18 +104,19 @@ export type ReconcileRunResult =
 /**
  * Writes the automatic payments of `reconcileIncome` in one `income.reconcile` operation; none
  * when there are none or with `dryRun`. Running it again on the same state writes nothing.
+ * `alsoUsed`: movements to skip as well (the matches a dry run of `runReconciliation` would write).
  */
 export async function runReconcile(
   store: Store,
   profileId: string,
   clock: () => string,
   newId: () => string,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; alsoUsed?: ReadonlySet<string> } = {},
 ): Promise<ReconcileRunResult> {
   if ((await checkConsistency(store)).length > 0) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
-  const state = await loadIncomeState(store);
+  const state = await loadIncomeState(store, options.alsoUsed);
   const { payments, proposals, skipped } = reconcileIncome(state);
   const result = {
     status: 'reconciled' as const,

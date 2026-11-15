@@ -1,0 +1,424 @@
+{
+  "description": "Tre conti inventati (Berchet, Lovarini, Pulci) da gennaio a marzo 2027, IBAN di prova di fixtures/README.md. Berchet ha due estratti con un buco a febbraio: la bolletta Hera di febbraio è presunta, quella di gennaio si abbina da sola, la nota di credito di marzo si abbina a un accredito e non è un incasso. Lovarini: una rata condominiale, il suo doppione escluso, un giroconto verso Berchet (le due gambe), un canone senza pagante (proposta). Pulci: due bonifici al fornitore inventato, il secondo classificato a mano. Mario ha un pagante confermato: i suoi canoni diventano pagamenti automatici. Nomi e importi inventati.",
+  "records": {
+    "apartment": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "berchet",
+        "name": "Berchet",
+        "locatore": "Locatore fittizio",
+        "posti": 2,
+        "annualitaStart": {
+          "month": 1,
+          "day": 1
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "lovarini",
+        "name": "Lovarini",
+        "locatore": "Locatore fittizio",
+        "posti": 2,
+        "annualitaStart": {
+          "month": 1,
+          "day": 1
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "pulci",
+        "name": "Pulci",
+        "locatore": "Locatore fittizio",
+        "posti": 2,
+        "annualitaStart": {
+          "month": 1,
+          "day": 1
+        }
+      }
+    ],
+    "account": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "acc-berchet",
+        "apartmentId": "berchet",
+        "label": "Conto Berchet",
+        "bankProfileId": "bp-sintetico",
+        "iban": "IT85X0542811101000000000301"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "acc-lovarini",
+        "apartmentId": "lovarini",
+        "label": "Conto Lovarini",
+        "bankProfileId": "bp-sintetico",
+        "iban": "IT58X0542811101000000000302"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "acc-pulci",
+        "apartmentId": "pulci",
+        "label": "Conto Pulci",
+        "bankProfileId": "bp-sintetico",
+        "iban": "IT52A9999999999000000000001"
+      }
+    ],
+    "tenant": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "t-mario",
+        "name": "Mario Inventato"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "t-luisa",
+        "name": "Luisa Inventata"
+      }
+    ],
+    "tenancy": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-mario",
+        "apartmentId": "berchet",
+        "tenantId": "t-mario",
+        "from": "2027-01",
+        "to": "2027-12",
+        "monthlyRent": 50000,
+        "monthlyForfait": 0
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-luisa",
+        "apartmentId": "lovarini",
+        "tenantId": "t-luisa",
+        "from": "2027-01",
+        "to": "2027-12",
+        "monthlyRent": 45000,
+        "monthlyForfait": 0
+      }
+    ],
+    "payer": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "pr-mario",
+        "key": "iban:IT09X0542811101000000000311",
+        "tenantId": "t-mario",
+        "validFrom": "2027-01-01",
+        "source": "confirmed"
+      }
+    ],
+    "statement": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "s-b-gen",
+        "accountId": "acc-berchet",
+        "bankProfileId": "bp-sintetico",
+        "fileName": "s-b-gen.csv",
+        "suggestedPath": "estratti/s-b-gen.csv",
+        "from": "2027-01-01",
+        "to": "2027-01-31",
+        "periodSource": "file",
+        "rowCount": 2,
+        "transactionIds": ["tx-b-affitto-gen", "tx-b-hera-gen"],
+        "held": []
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "s-b-mar",
+        "accountId": "acc-berchet",
+        "bankProfileId": "bp-sintetico",
+        "fileName": "s-b-mar.csv",
+        "suggestedPath": "estratti/s-b-mar.csv",
+        "from": "2027-03-01",
+        "to": "2027-03-31",
+        "periodSource": "file",
+        "rowCount": 3,
+        "transactionIds": ["tx-b-giro", "tx-b-affitto-mar", "tx-b-nc"],
+        "held": []
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "s-l",
+        "accountId": "acc-lovarini",
+        "bankProfileId": "bp-sintetico",
+        "fileName": "s-l.csv",
+        "suggestedPath": "estratti/s-l.csv",
+        "from": "2027-01-01",
+        "to": "2027-03-31",
+        "periodSource": "file",
+        "rowCount": 4,
+        "transactionIds": ["tx-l-affitto-gen", "tx-l-cond", "tx-l-cond-doppio", "tx-l-giro"],
+        "held": []
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "s-p",
+        "accountId": "acc-pulci",
+        "bankProfileId": "bp-sintetico",
+        "fileName": "s-p.csv",
+        "suggestedPath": "estratti/s-p.csv",
+        "from": "2027-01-01",
+        "to": "2027-03-31",
+        "periodSource": "file",
+        "rowCount": 2,
+        "transactionIds": ["tx-p-fornitore-feb", "tx-p-fornitore-mar"],
+        "held": []
+      }
+    ],
+    "transaction": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-b-affitto-gen",
+        "apartmentId": "berchet",
+        "accountId": "acc-berchet",
+        "date": "2027-01-05",
+        "amount": 50000,
+        "description": "BONIFICO AFFITTO GENNAIO",
+        "statementHash": "s-b-gen",
+        "counterparty": {
+          "name": "Mario Inventato",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-b-hera-gen",
+        "apartmentId": "berchet",
+        "accountId": "acc-berchet",
+        "date": "2027-01-22",
+        "amount": -6300,
+        "description": "ADDEBITO DIRETTO HERA COMM",
+        "statementHash": "s-b-gen"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-b-giro",
+        "apartmentId": "berchet",
+        "accountId": "acc-berchet",
+        "date": "2027-03-02",
+        "amount": 20000,
+        "description": "GIROCONTO DA LOVARINI",
+        "statementHash": "s-b-mar",
+        "counterparty": {
+          "name": "Conto Lovarini",
+          "iban": "IT58X0542811101000000000302"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-b-affitto-mar",
+        "apartmentId": "berchet",
+        "accountId": "acc-berchet",
+        "date": "2027-03-05",
+        "amount": 50000,
+        "description": "BONIFICO AFFITTO MARZO",
+        "statementHash": "s-b-mar",
+        "counterparty": {
+          "name": "Mario Inventato",
+          "iban": "IT09X0542811101000000000311"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-b-nc",
+        "apartmentId": "berchet",
+        "accountId": "acc-berchet",
+        "date": "2027-03-12",
+        "amount": 1500,
+        "description": "ACCREDITO NOTA DI CREDITO HERA",
+        "statementHash": "s-b-mar",
+        "counterparty": {
+          "name": "Fornitore Inventato",
+          "iban": "IT04X0542811101000000000401"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-l-affitto-gen",
+        "apartmentId": "lovarini",
+        "accountId": "acc-lovarini",
+        "date": "2027-01-07",
+        "amount": 45000,
+        "description": "BONIFICO CANONE GENNAIO",
+        "statementHash": "s-l",
+        "counterparty": {
+          "name": "Luisa Inventata",
+          "iban": "IT79X0542811101000000000312"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-l-cond",
+        "apartmentId": "lovarini",
+        "accountId": "acc-lovarini",
+        "date": "2027-02-16",
+        "amount": -30000,
+        "description": "ADDEBITO CONDOMINIO",
+        "statementHash": "s-l"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-l-cond-doppio",
+        "apartmentId": "lovarini",
+        "accountId": "acc-lovarini",
+        "date": "2027-02-16",
+        "amount": -30000,
+        "description": "ADDEBITO CONDOMINIO RIPETUTO",
+        "statementHash": "s-l"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-l-giro",
+        "apartmentId": "lovarini",
+        "accountId": "acc-lovarini",
+        "date": "2027-03-01",
+        "amount": -20000,
+        "description": "GIROCONTO A BERCHET",
+        "statementHash": "s-l",
+        "counterparty": {
+          "name": "Conto Berchet",
+          "iban": "IT85X0542811101000000000301"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-p-fornitore-feb",
+        "apartmentId": "pulci",
+        "accountId": "acc-pulci",
+        "date": "2027-02-10",
+        "amount": -4000,
+        "description": "BONIFICO A FORNITORE INVENTATO",
+        "statementHash": "s-p",
+        "counterparty": {
+          "name": "Fornitore Inventato",
+          "iban": "IT04X0542811101000000000401"
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tx-p-fornitore-mar",
+        "apartmentId": "pulci",
+        "accountId": "acc-pulci",
+        "date": "2027-03-10",
+        "amount": -4000,
+        "description": "BONIFICO A FORNITORE INVENTATO",
+        "statementHash": "s-p",
+        "counterparty": {
+          "name": "Fornitore Inventato",
+          "iban": "IT04X0542811101000000000401"
+        }
+      }
+    ],
+    "bill": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "bill-hera-gen",
+        "apartmentId": "berchet",
+        "category": "gas",
+        "supplier": "Hera",
+        "dueDate": "2027-01-20",
+        "periodStart": "2026-11-01",
+        "periodEnd": "2026-12-31",
+        "amount": 6300,
+        "includedInConguaglio": true,
+        "sharedWithTenants": true,
+        "fileHash": "hash-bill-hera-gen",
+        "filePath": "bollette/bill-hera-gen.pdf"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "bill-hera-feb",
+        "apartmentId": "berchet",
+        "category": "gas",
+        "supplier": "Hera",
+        "dueDate": "2027-02-20",
+        "periodStart": "2026-11-01",
+        "periodEnd": "2026-12-31",
+        "amount": 6300,
+        "includedInConguaglio": true,
+        "sharedWithTenants": true,
+        "fileHash": "hash-bill-hera-feb",
+        "filePath": "bollette/bill-hera-feb.pdf"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "bill-hera-nc",
+        "apartmentId": "berchet",
+        "category": "gas",
+        "supplier": "Hera",
+        "dueDate": "2027-03-10",
+        "periodStart": "2026-11-01",
+        "periodEnd": "2026-12-31",
+        "amount": -1500,
+        "includedInConguaglio": true,
+        "sharedWithTenants": true,
+        "fileHash": "hash-bill-hera-nc",
+        "filePath": "bollette/bill-hera-nc.pdf"
+      }
+    ],
+    "instalment": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "inst-l-cond",
+        "apartmentId": "lovarini",
+        "kind": "condominio",
+        "esercizio": "2026-27",
+        "rateIndex": 1,
+        "rateCount": 3,
+        "dueDate": "2027-02-15",
+        "rata": 30000,
+        "quotaProprieta": 0,
+        "conguaglioPrec": 0,
+        "coversFrom": "2027-01",
+        "coversTo": "2027-04"
+      }
+    ],
+    "movementClass": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "mc-tx-l-cond-doppio",
+        "transactionId": "tx-l-cond-doppio",
+        "kind": "escluso",
+        "excludeReason": "doppione"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "mc-tx-p-fornitore-mar",
+        "transactionId": "tx-p-fornitore-mar",
+        "kind": "altro",
+        "apartmentId": "pulci"
+      }
+    ]
+  }
+}

@@ -8,7 +8,9 @@
 // Plan 3b, task 8 adds inquilino, riconcilia, conferma and ripara (repairs what an interrupted
 // operation left: `checkConsistency` blocks every reconciliation until then); plan 3b-bis adds
 // annulla-pagamento (cancels one automatic payment: its movement goes back to review, R121); plan
-// 3c adds escludi (excludes one movement written by an import; annulla-incassi takes it back).
+// 3c adds escludi (excludes one movement written by an import), abbina (confirms a match of bills
+// and instalments by hand) and annulla-riconciliazione (undoes one operation of the
+// reconciliation; annulla-incassi is its synonym, R116); riconcilia runs every phase (R126).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -33,16 +35,16 @@ import {
   cancelAutomaticPayment,
   checkConsistency,
   confirmIncome,
+  confirmMatch,
   excludeMovement,
   importStatement,
-  listExclusionProposals,
   loadAll,
   parseCsv,
   parseEuro,
   readJournal,
   repairDiverged,
   resolveHeld,
-  runReconcile,
+  runReconciliation,
   saveAccount,
   saveBankProfile,
   saveTenant,
@@ -78,6 +80,8 @@ const MESSAGES = {
   'shared-transactions': 'Rifiutato: un altro estratto elenca gli stessi movimenti.',
   'held-duplicates': 'Rifiutato: un altro estratto ha righe da rivedere che ne dipendono.',
   'dependent-payments': 'Rifiutato: dei pagamenti dipendono dai movimenti di questo estratto.',
+  'dependent-records':
+    'Rifiutato: abbinamenti o classificazioni dipendono dai movimenti di questo estratto.',
   'later-changes': 'Rifiutato: dopo l’importazione ci sono state altre modifiche.',
   'journal-not-aligned': 'Rifiutato: il registro non è riallineato con i dati.',
   'inconsistent-store':
@@ -88,8 +92,8 @@ const MESSAGES = {
   'sum-mismatch': 'Rifiutato: la somma delle parti non è l’importo del movimento.',
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
-  'not-income-operation':
-    'Rifiutato: si annullano solo riconciliazioni e conferme degli incassi, pagamenti annullati ed esclusioni.',
+  'not-reconcile-operation':
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -99,6 +103,11 @@ const MESSAGES = {
     'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
   'unknown-transaction': 'Rifiutato: movimento sconosciuto o cancellato.',
   'already-classified': 'Rifiutato: il movimento è già escluso o classificato: annullarlo prima.',
+  'unknown-item': 'Rifiutato: bolletta o rata sconosciuta o cancellata.',
+  'transaction-used': 'Rifiutato: il movimento è escluso, già pagato o classificato a mano.',
+  'duplicate-part': 'Rifiutato: la stessa parte compare due volte.',
+  'invalid-group': 'Rifiutato: l’avviso comune della rata non è valido.',
+  'invalid-matches': 'Rifiutato: le somme dell’abbinamento non tornano.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
 };
 
@@ -144,6 +153,26 @@ const OPTIONS = {
 };
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
+
+/** `<bill|instalment>:<voce>:<movimento>:<importo>[:commissione]` (amount as `parseEuro` reads it). */
+function parseMatchPart(text) {
+  const [itemType, itemId, transactionId, amount, commission, ...rest] = text.split(':');
+  if (
+    !['bill', 'instalment'].includes(itemType) ||
+    !itemId ||
+    !transactionId ||
+    rest.length > 0 ||
+    ![undefined, 'commissione'].includes(commission)
+  ) {
+    throw invalid('bad-arguments');
+  }
+  try {
+    const part = commission === undefined ? 'amount' : 'commission';
+    return { itemType, itemId, transactionId, amount: parseEuro(amount ?? ''), part };
+  } catch {
+    throw invalid('bad-arguments');
+  }
+}
 
 /** `<tipo>:<AAAA-MM>:<importo>` (the amount as `parseEuro` reads it, e.g. `850,00`). */
 function parsePart(text) {
@@ -384,8 +413,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'riconcilia') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await runReconcile(store, who, clock, newId, { dryRun: values.prova === true });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const run = await runReconciliation(store, who, clock, newId, {
+      dryRun: values.prova === true,
+    });
+    if (run.status === 'refused') throw new Stop('rejected', run.reason);
+    const { income: result, match } = run;
     let extra = () => ({});
     let arrearExtra = () => ({});
     if (values.dettagli === true) {
@@ -422,14 +454,43 @@ async function command(name, values, positionals, store, who, clock, newId) {
       })),
       skipped: result.skipped,
       // Only id and reason: the movement id, the date and the amount stay out (R124).
-      exclusions: (await listExclusionProposals(store)).map((e) => ({
+      exclusions: run.exclusions.map((e) => ({
         id: e.id,
         reason: e.reason,
       })),
       // Only the month without --dettagli (R117): ids are chosen by the user, like tenantIds.
       arrears: result.arrears.map((a) => ({ month: a.month, ...arrearExtra(a) })),
       ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
+      // Ids, reasons and counts only (R107, R126).
+      match: {
+        written: match.written,
+        yielded: match.yielded,
+        proposals: match.proposals.map((p) => ({ id: p.id, reason: p.reason })),
+        pending: match.pending.length,
+        assumed: match.assumed.length,
+        ...(match.operationId === undefined ? {} : { operationId: match.operationId }),
+      },
     };
+  }
+
+  if (name === 'abbina') {
+    if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
+    const result = await confirmMatch(
+      store,
+      { parts: values.parte.map(parseMatchPart) },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') {
+      // The errors of invalid-matches are codes and ids only, no amount.
+      throw new Stop(
+        'rejected',
+        result.reason,
+        'errors' in result ? { errors: result.errors } : {},
+      );
+    }
+    return { status: 'confirmed', operationId: result.operationId, matchIds: result.matchIds };
   }
 
   if (name === 'conferma') {
@@ -456,7 +517,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
-  if (name === 'annulla-incassi') {
+  if (name === 'annulla-riconciliazione' || name === 'annulla-incassi') {
     need(values, 'operazione');
     if (positionals.length > 0) throw invalid('bad-arguments');
     const { operations } = await readJournal(store);
@@ -467,9 +528,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
       'income.confirm',
       'income.cancel-payment',
       'movement.exclude',
+      'match.reconcile',
+      'match.confirm',
     ];
     if (!kinds.includes(target.kind)) {
-      throw new Stop('rejected', 'not-income-operation');
+      throw new Stop('rejected', 'not-reconcile-operation');
     }
     try {
       const undone = await undoOperation(store, target.id, who, clock, newId);
@@ -536,7 +599,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw new Stop(
         'rejected',
         result.reason,
-        result.reason === 'dependent-payments' ? { paymentIds: result.paymentIds } : {},
+        result.reason === 'dependent-payments'
+          ? { paymentIds: result.paymentIds }
+          : result.reason === 'dependent-records'
+            ? { recordIds: result.recordIds }
+            : {},
       );
     }
     return { status: 'undone', statementId: values.estratto, operationId: result.operation.id };
@@ -571,8 +638,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'conferma',
         'ripara',
         'annulla-incassi',
+        'annulla-riconciliazione',
         'annulla-pagamento',
         'escludi',
+        'abbina',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -588,7 +657,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     const only = {
       prova: ['riconcilia'],
       dettagli: ['riconcilia', 'importa'],
-      parte: ['conferma'],
+      parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma'],
       pagamento: ['annulla-pagamento'],
       movimento: ['escludi'],

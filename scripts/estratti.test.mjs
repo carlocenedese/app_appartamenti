@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
-import { commitChange, recordPath } from '../packages/core/src/index.ts';
+import { commitChange, recordPath, recordSchemas } from '../packages/core/src/index.ts';
 import { apartment } from '../packages/core/test/helpers/conguaglio-builders.ts';
 import {
   pythonAvailability,
@@ -896,13 +896,13 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-operation']);
       // The apartment of the setup (`seed-1`): an operation annulla-incassi never undoes.
       const other = undo(['--operazione', 'seed-1']);
-      expect(other.json).toMatchObject({ status: 'rejected', reason: 'not-income-operation' });
+      expect(other.json).toMatchObject({ status: 'rejected', reason: 'not-reconcile-operation' });
       expect(other.code).toBe(1);
       const imported = readdirSync(join(s.dir, '_app', 'journal'))
         .map((f) => JSON.parse(readFileSync(join(s.dir, '_app', 'journal', f), 'utf8')))
         .find((o) => o.kind === 'statement.import');
       const refused = undo(['--operazione', imported.id]);
-      expect(refused.json).toMatchObject({ status: 'rejected', reason: 'not-income-operation' });
+      expect(refused.json).toMatchObject({ status: 'rejected', reason: 'not-reconcile-operation' });
       expect(refused.code).toBe(1);
 
       const snap = snapshot(s.dir);
@@ -1201,6 +1201,125 @@ describe('pnpm estratti riconcilia: esclusioni proposte (piano 3c, task 2)', () 
       ]);
       expect(done.code).toBe(0);
       expect(cli(['riconcilia', ...s.common, '--prova']).json.exclusions).toEqual([]);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, task 4)', () => {
+  const TRE = JSON.parse(
+    readFileSync(join(ROOT, 'fixtures', 'reconcile', 'tre-conti.json'), 'utf8'),
+  ).records;
+  /** A data folder holding the records of `tre-conti` (no journal: nothing to undo yet). */
+  async function treConti() {
+    const dir = join(root, `d${String((counter += 1))}`);
+    mkdirSync(dir);
+    const store = new FsStore(dir);
+    for (const [kind, list] of Object.entries(TRE)) {
+      for (const record of list) {
+        await store.writeJsonAtomic(recordPath(kind, record.id), recordSchemas[kind].parse(record));
+      }
+    }
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+  const journal = (dir) =>
+    readdirSync(join(dir, '_app', 'journal')).map((f) =>
+      JSON.parse(readFileSync(join(dir, '_app', 'journal', f), 'utf8')),
+    );
+
+  it(
+    'riconcilia: incassi in cima più match, senza dati; abbina e annulla-riconciliazione',
+    async () => {
+      const s = await treConti();
+      const run = cli(['riconcilia', ...s.common]);
+      expect(run.code).toBe(0);
+      expect(run.json).toMatchObject({ status: 'reconciled', written: 2, skipped: 1 });
+      expect(Object.keys(run.json).slice(0, 4)).toEqual([
+        'status',
+        'written',
+        'proposals',
+        'skipped',
+      ]);
+      expect(run.json.exclusions).toEqual([]);
+      const matchOp = journal(s.dir).find((o) => o.kind === 'match.reconcile');
+      expect(run.json.match).toEqual({
+        written: 3,
+        yielded: 0,
+        proposals: [],
+        pending: 0,
+        assumed: 1,
+        operationId: matchOp.id,
+      });
+      expect(scanText(run.out)).toEqual([]);
+      const secrets = [
+        'Mario Inventato',
+        'Luisa Inventata',
+        'Fornitore Inventato',
+        'ADDEBITO',
+        'BONIFICO',
+        'ACCREDITO',
+        'GIROCONTO',
+        '0542811101',
+        '9999999999',
+      ];
+      for (const secret of secrets) expect(run.out).not.toContain(secret);
+      expect(run.out).not.toMatch(
+        /(?<![0-9a-f])(50000|45000|30000|20000|6300|4000|1500)(?![0-9a-f])/,
+      );
+      expect(run.out).not.toMatch(/[0-9],[0-9]{2}/);
+
+      const abbina = (args) => cli(['abbina', ...s.common, ...args]);
+      const snap = snapshot(s.dir);
+      for (const bad of [
+        [],
+        ['--parte', 'bill:bill-hera-gen:tx-b-hera-gen'],
+        ['--parte', 'fattura:bill-hera-gen:tx-b-hera-gen:63,00'],
+        ['--parte', 'bill:bill-hera-gen:tx-b-hera-gen:sessanta'],
+        ['--parte', 'bill:bill-hera-gen:tx-b-hera-gen:63,00:altro'],
+        ['--parte', 'bill::tx-b-hera-gen:63,00'],
+        ['--parte', 'bill:bill-hera-gen:tx-b-hera-gen:63,00', 'x'],
+      ]) {
+        expect(abbina(bad).code).toBe(2);
+      }
+      expect(cli(['riconcilia', ...s.common, '--parte', 'bill:a:b:1,00']).code).toBe(2);
+      const used = abbina(['--parte', 'bill:bill-hera-gen:tx-l-cond-doppio:63,00']);
+      expect([used.code, used.json.reason]).toEqual([1, 'transaction-used']);
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const undo = cli(['annulla-riconciliazione', ...s.common, '--operazione', matchOp.id]);
+      expect(undo.code).toBe(0);
+      expect(undo.json).toMatchObject({ status: 'undone' });
+      const ok = abbina(['--parte', 'bill:bill-hera-gen:tx-b-hera-gen:63,00']);
+      expect(ok.code).toBe(0);
+      expect(ok.json).toEqual({
+        status: 'confirmed',
+        operationId: ok.json.operationId,
+        matchIds: ['m-bill-bill-hera-gen-amount-tx-b-hera-gen'],
+      });
+      const confirmed = cli([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        ok.json.operationId,
+      ]);
+      expect(confirmed.code).toBe(0);
+      const all = [undo.out, ok.out, confirmed.out, used.out].join('');
+      for (const secret of secrets) expect(all).not.toContain(secret);
+      expect(scanText(all)).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'annulla-riconciliazione di uno statement.import: 1 not-reconcile-operation',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const imported = journal(s.dir).find((o) => o.kind === 'statement.import');
+      const refused = cli(['annulla-riconciliazione', ...s.common, '--operazione', imported.id]);
+      expect([refused.code, refused.json.reason]).toEqual([1, 'not-reconcile-operation']);
+      const synonym = cli(['annulla-incassi', ...s.common, '--operazione', imported.id]);
+      expect([synonym.code, synonym.json.reason]).toEqual([1, 'not-reconcile-operation']);
     },
     TIMEOUT,
   );

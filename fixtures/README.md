@@ -79,6 +79,13 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 
 - `IT04X0542811101000000000401` è l'IBAN di un fornitore inventato: nei test del piano 3c è la
   controparte di uscite e rimborsi, mai un conto proprio.
+- `fixtures/reconcile/tre-conti.json`: tre conti inventati (Berchet, Lovarini, Pulci, con gli IBAN di
+  prova `…0301`, `…0302` e `IT52A…0001` della tabella sopra), gennaio-marzo 2027. Due estratti di
+  Berchet con un buco a febbraio (la bolletta di febbraio è presunta), bollette con una nota di
+  credito, una rata condominiale con il suo doppione escluso, due inquilini inventati (gli IBAN
+  `…0311` e `…0312`), un giroconto tra Lovarini e Berchet e uscite verso il fornitore inventato
+  `…0401`. `records` sono i record per tipo. La leggono `packages/core/test/reconcile.test.ts` e
+  `scripts/estratti.test.mjs`.
 
 ## Incassi (piano 3b)
 

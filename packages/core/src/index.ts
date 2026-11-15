@@ -40,3 +40,4 @@ export * from './income';
 export * from './income-store';
 export * from './movements';
 export * from './match-store';
+export * from './reconcile';
