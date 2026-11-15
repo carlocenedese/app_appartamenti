@@ -94,7 +94,7 @@ export function outgoingCandidate(
 
 /**
  * The valid rules of `tx` (question 1), by `id`: live, same account, same direction, same key,
- * `validTo` absent or not before its date; none without a key. The amount does not count.
+ * `validFrom` absent or not after its date, `validTo` absent or not before it; none without a key. The amount does not count.
  */
 export function validRules(
   rules: MovementRule[],
@@ -110,6 +110,7 @@ export function validRules(
         r.accountId === tx.accountId &&
         r.direction === direction &&
         r.key === key &&
+        (r.validFrom === undefined || r.validFrom <= tx.date) &&
         (r.validTo === undefined || r.validTo >= tx.date),
     )
     .sort((a, b) => compareText(a.id, b.id));

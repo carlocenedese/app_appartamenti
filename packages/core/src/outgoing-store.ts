@@ -28,7 +28,8 @@ import { outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
 import type { MovementClassDraft, OutgoingProposal } from './outgoing';
 import { parseOrThrow } from './parse';
 import { firstPresenceDay } from './payers';
-import type { YearMonth } from './period';
+import { addDays } from './period';
+import type { ISODate, YearMonth } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -177,6 +178,7 @@ export type ConfirmOutgoingResult =
         | 'inconsistent-store'
         | 'unknown-proposal'
         | 'unknown-apartment'
+        | 'rule-conflict-dates'
         | 'f24-not-tasse'
         | 'f24-not-outgoing';
     };
@@ -189,7 +191,10 @@ export type ConfirmOutgoingResult =
  * `rule-<transactionId>` last, in one `outgoing.confirm` operation. `apartmentId` must be a live
  * apartment (`unknown-apartment`), any of them, also for an F24 (question 5). With `f24` the
  * class is `tasse` (`f24-not-tasse` otherwise) with `f24: true`, and never gets a rule; an incoming
- * movement is never an F24 (`f24-not-outgoing`).
+ * movement is never an F24 (`f24-not-outgoing`). The new rule closes the valid rules in conflict
+ * with it (another category or apartment) with `validTo` the day before the movement and starts
+ * itself on the movement (`validFrom`), in the same operation; one of them starting on or after
+ * the movement is `rule-conflict-dates` (user1, 15 Nov 2026).
  */
 export async function confirmOutgoing(
   store: Store,
@@ -229,28 +234,43 @@ export async function confirmOutgoing(
     }),
   ];
   const { key } = candidate;
-  // A rule with another category or apartment would leave every later movement in conflict:
-  // none is saved (coordinator's ruling, fix round 1, M1; open question for user1).
-  const conflict = validRules(state.rules, tx, candidate.direction, key).some(
-    (r) => r.kind !== kind || r.apartmentId !== input.apartmentId,
-  );
-  const rule =
-    input.rememberRule && !f24 && key !== undefined && !conflict
-      ? parseOrThrow(
-          MovementRuleSchema,
-          {
-            id: `rule-${tx.id}`,
-            v: 1,
-            rev: 1,
-            direction: candidate.direction,
-            accountId: tx.accountId,
-            key,
-            kind,
-            apartmentId: input.apartmentId,
-          },
-          'movementRule',
-        )
-      : undefined;
+  const remember = input.rememberRule && !f24 && key !== undefined;
+  // A new rule closes the live rules in conflict with it (same key, account and direction,
+  // another category or apartment) the day before the movement (user1, 15 Nov 2026): from then
+  // on the newer rule holds. One that starts on or after the movement is not decided here.
+  const dayBefore = addDays(tx.date as ISODate, -1);
+  const closed = remember
+    ? validRules(state.rules, tx, candidate.direction, key).filter(
+        (r) => r.kind !== kind || r.apartmentId !== input.apartmentId,
+      )
+    : [];
+  if (closed.some((r) => r.validFrom !== undefined && r.validFrom > dayBefore)) {
+    return refuse('rule-conflict-dates');
+  }
+  for (const r of closed) {
+    changes.push({
+      path: recordPath('movementRule', r.id),
+      before: r,
+      after: parseOrThrow(MovementRuleSchema, { ...r, validTo: dayBefore }, 'movementRule'),
+    });
+  }
+  const rule = remember
+    ? parseOrThrow(
+        MovementRuleSchema,
+        {
+          id: `rule-${tx.id}`,
+          v: 1,
+          rev: 1,
+          direction: candidate.direction,
+          accountId: tx.accountId,
+          key,
+          kind,
+          apartmentId: input.apartmentId,
+          ...(closed.length > 0 ? { validFrom: tx.date } : {}),
+        },
+        'movementRule',
+      )
+    : undefined;
   // The rule last: an interrupted confirmation never leaves a rule without its class.
   if (rule !== undefined) {
     changes.push({

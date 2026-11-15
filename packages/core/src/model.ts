@@ -509,13 +509,22 @@ export const MovementRuleSchema = RecordBaseSchema.extend({
   key: PayerKeySchema,
   kind: OutgoingKindSchema,
   apartmentId: NonEmptyString,
+  /** Set when the rule took the place of older rules in conflict (user1, 15 Nov 2026). */
+  validFrom: ISODateSchema.optional(),
   validTo: ISODateSchema.optional(),
 })
   .refine((r) => r.direction === 'out' || r.key.startsWith('iban:'), {
     message: 'An incoming rule needs an iban key',
     path: ['key'],
   })
-  .meta({ description: 'With direction in, key must be an iban: key.' });
+  .refine(
+    (r) => r.validFrom === undefined || r.validTo === undefined || notAfter(r.validFrom, r.validTo),
+    { message: 'The rule ends before it starts', path: ['validTo'] },
+  )
+  .meta({
+    description:
+      'With direction in, key must be an iban: key. When both are present, validFrom must not be after validTo.',
+  });
 export type MovementRule = z.infer<typeof MovementRuleSchema>;
 
 /** A note written by a person (not the automatic notes of the app). */

@@ -243,7 +243,7 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
     expect((await run(store)).proposals.map((p) => p.id)).toEqual(['p-uscita-y']);
   });
 
-  it('a confirmation that would add a conflicting rule saves none (fix round 1, M1)', async () => {
+  it('an undone movement confirmed with another category closes the old rule (user1, 6-bis)', async () => {
     const store = await storeWith(
       tx('x', '2027-02-10', -4000, supplier),
       tx('w', '2027-03-10', -4000, supplier),
@@ -256,16 +256,25 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
       status: 'confirmed',
       operationId: 'h-1',
       classId: 'mc-w',
+      ruleId: 'rule-w',
     });
-    expect((await rules(store)).map((r) => r.id)).toEqual(['rule-x']);
-    // The rule of x still holds alone: the next debit is automatic.
+    const saved = await rules(store);
+    expect(saved.find((r) => r.id === 'rule-x')).toMatchObject({ rev: 2, validTo: '2027-03-09' });
+    expect(saved.find((r) => r.id === 'rule-w')).toMatchObject({
+      kind: 'utenze',
+      validFrom: '2027-03-10',
+    });
+    // From then on the newer rule holds alone.
     await put(store, 'transaction', [tx('y', '2028-02-10', -4200, supplier)]);
     expect(await run(store)).toMatchObject({ written: 1, classified: ['y'] });
+    expect((await classes(store)).find((c) => c.id === 'mc-y')).toMatchObject({
+      kind: 'utenze',
+      ruleId: 'rule-w',
+    });
   });
 
-  it('two valid rules with different categories: a proposal; confirmed, no third rule (M1)', async () => {
-    const store = await storeWith(tx('y', '2028-02-10', -4200, supplier));
-    const rule = (id: string, kind: OutgoingKind) => ({
+  describe('a rule-conflict confirmed (user1, 15 Nov 2026, task 6-bis)', () => {
+    const rule = (id: string, kind: OutgoingKind, extra: Record<string, unknown> = {}) => ({
       ...base,
       id,
       direction: 'out',
@@ -273,23 +282,119 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
       key: `iban:${SUPPLIER}`,
       kind,
       apartmentId: 'berchet',
+      ...extra,
     });
-    await put(store, 'movementRule', [rule('rule-a', 'altro'), rule('rule-b', 'utenze')]);
-    expect(await run(store)).toEqual({
-      status: 'reconciled',
-      written: 0,
-      classified: [],
-      proposals: [
-        { id: 'p-uscita-y', transactionId: 'y', step: 'uscita', reason: 'rule-conflict' },
-      ],
-      missingDocument: [],
+    async function conflicted(date = '2028-02-10', extra: Record<string, unknown> = {}) {
+      const store = await storeWith(tx('y', date, -4200, supplier));
+      await put(store, 'movementRule', [rule('rule-a', 'altro'), rule('rule-b', 'utenze', extra)]);
+      expect(await run(store, 'q')).toMatchObject({
+        written: 0,
+        proposals: [{ id: 'p-uscita-y', reason: 'rule-conflict' }],
+      });
+      return store;
+    }
+
+    it('with rememberRule: the old rules in conflict close the day before, the next run is automatic', async () => {
+      const store = await conflicted();
+      expect(await confirm(store, 'p-uscita-y', 'condominio')).toEqual({
+        status: 'confirmed',
+        operationId: 'c-1',
+        classId: 'mc-y',
+        ruleId: 'rule-y',
+      });
+      expect((await rules(store)).map((r) => [r.id, r.rev, r.validFrom, r.validTo])).toEqual([
+        ['rule-a', 2, undefined, '2028-02-09'],
+        ['rule-b', 2, undefined, '2028-02-09'],
+        ['rule-y', 1, '2028-02-10', undefined],
+      ]);
+      const [op] = (await readJournal(store)).operations;
+      // The class first, the closed rules, the new rule last.
+      expect(op?.changes.map((c) => c.path)).toEqual([
+        recordPath('movementClass', 'mc-y'),
+        recordPath('movementRule', 'rule-a'),
+        recordPath('movementRule', 'rule-b'),
+        recordPath('movementRule', 'rule-y'),
+      ]);
+      await put(store, 'transaction', [tx('z', '2028-03-10', -4200, supplier)]);
+      expect(await run(store)).toMatchObject({ written: 1, classified: ['z'], proposals: [] });
+      expect((await classes(store)).find((c) => c.id === 'mc-z')).toMatchObject({
+        kind: 'condominio',
+        ruleId: 'rule-y',
+      });
+      // An older movement imported later: the old rules still hold for it (still a conflict).
+      await put(store, 'transaction', [tx('old', '2028-01-10', -4200, supplier)]);
+      expect((await run(store, 's')).proposals).toEqual([
+        { id: 'p-uscita-old', transactionId: 'old', step: 'uscita', reason: 'rule-conflict' },
+      ]);
+      const once = await snapshot(store);
+      await run(store, 't');
+      expect(await snapshot(store)).toEqual(once);
     });
-    expect(await confirm(store, 'p-uscita-y', 'utenze')).toEqual({
-      status: 'confirmed',
-      operationId: 'c-1',
-      classId: 'mc-y',
+
+    it('a rule with the same category and apartment stays as it is', async () => {
+      const store = await conflicted();
+      await confirm(store, 'p-uscita-y', 'utenze');
+      expect((await rules(store)).map((r) => [r.id, r.rev, r.validTo])).toEqual([
+        ['rule-a', 2, '2028-02-09'],
+        ['rule-b', 1, undefined],
+        ['rule-y', 1, undefined],
+      ]);
     });
-    expect((await rules(store)).map((r) => r.id)).toEqual(['rule-a', 'rule-b']);
+
+    it('undone, the old rules open again and the conflict is back', async () => {
+      const store = await conflicted();
+      await confirm(store, 'p-uscita-y', 'condominio');
+      await undoOperation(store, 'c-1', 'p1', clock, ids('u'));
+      const after = await rules(store);
+      expect(after.map((r) => [r.id, r.deleted === true, r.validTo])).toEqual([
+        ['rule-a', false, undefined],
+        ['rule-b', false, undefined],
+        ['rule-y', true, undefined],
+      ]);
+      expect((await run(store)).proposals.map((p) => [p.id, p.reason])).toEqual([
+        ['p-uscita-y', 'rule-conflict'],
+      ]);
+    });
+
+    it('without rememberRule nothing changes but the class', async () => {
+      const store = await conflicted();
+      expect(await confirm(store, 'p-uscita-y', 'condominio', { rememberRule: false })).toEqual({
+        status: 'confirmed',
+        operationId: 'c-1',
+        classId: 'mc-y',
+      });
+      expect((await rules(store)).map((r) => [r.id, r.rev, r.validTo])).toEqual([
+        ['rule-a', 1, undefined],
+        ['rule-b', 1, undefined],
+      ]);
+      await put(store, 'transaction', [tx('z', '2028-03-10', -4200, supplier)]);
+      expect((await run(store)).proposals.map((p) => p.reason)).toEqual(['rule-conflict']);
+    });
+
+    it('a movement on or before the validFrom of an old rule: rule-conflict-dates, nothing written', async () => {
+      const store = await conflicted('2028-02-10', { validFrom: '2028-02-10' });
+      const before = await snapshot(store);
+      expect(await confirm(store, 'p-uscita-y', 'condominio')).toEqual({
+        status: 'refused',
+        reason: 'rule-conflict-dates',
+      });
+      expect(await snapshot(store)).toEqual(before);
+      // «Solo questa volta» closes nothing, so it is never refused for the dates.
+      expect(
+        await confirm(store, 'p-uscita-y', 'condominio', { rememberRule: false }),
+      ).toMatchObject({ status: 'confirmed' });
+
+      // The day after the validFrom: the old rule closes on its validFrom.
+      const next = await conflicted('2028-02-11', { validFrom: '2028-02-10' });
+      expect(await confirm(next, 'p-uscita-y', 'condominio')).toMatchObject({
+        status: 'confirmed',
+        ruleId: 'rule-y',
+      });
+      expect((await rules(next)).find((r) => r.id === 'rule-b')).toMatchObject({
+        validFrom: '2028-02-10',
+        validTo: '2028-02-10',
+      });
+    });
   });
 
   it('refuses a changed state, an unknown apartment and a diverged store, writing nothing', async () => {

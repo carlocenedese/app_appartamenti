@@ -73,6 +73,8 @@ const MESSAGES = {
   'no-python': 'Impossibile leggere l’XLSX: interprete Python non utilizzabile.',
   'already-imported': 'Questo estratto è già stato importato.',
   'unknown-apartment': 'Rifiutato: appartamento sconosciuto.',
+  'rule-conflict-dates':
+    'Rifiutato: una regola in conflitto comincia il giorno del movimento o dopo; confermare «solo questa volta».',
   'unknown-bank-profile': 'Rifiutato: profilo della banca sconosciuto.',
   'bad-iban': 'Rifiutato: IBAN non valido.',
   'iban-in-use': 'Rifiutato: IBAN già usato da un altro conto.',

@@ -95,6 +95,10 @@ describe('MovementRuleSchema (plan 3c, task 6)', () => {
     expect(rule('r', { direction: 'in' }).direction).toBe('in');
     expect(() => rule('r', { direction: 'in', key: 'name:fornitore inventato' })).toThrow();
     expect(() => rule('r', { kind: 'escluso' })).toThrow();
+    expect(() => rule('r', { validFrom: '2028-02-11', validTo: '2028-02-10' })).toThrow();
+    expect(rule('r', { validFrom: '2028-02-10', validTo: '2028-02-10' }).validTo).toBe(
+      '2028-02-10',
+    );
     expect(() => rule('r', { key: `iban:${SUPPLIER.toLowerCase()}` })).toThrow();
   });
 });
@@ -123,6 +127,8 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
     const cases: [Partial<Record<keyof MovementRule, unknown>>, boolean][] = [
       [{ validTo: '2028-02-10' }, true],
       [{ validTo: '2028-02-09' }, false],
+      [{ validFrom: '2028-02-10' }, true],
+      [{ validFrom: '2028-02-11' }, false],
       [{ deleted: true }, false],
       [{ direction: 'in' }, false],
       [{ key: 'name:fornitore inventato' }, false],
