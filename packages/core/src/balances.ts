@@ -3,9 +3,10 @@
  * who owes whom and the items behind it. An item says that `forApartmentId` owes `amount` to
  * `payerApartmentId`:
  *
- * - `rata` / `commissione`: a live confirmed match (never `assumed`) of a live instalment of Y
- *   paid from the account of X (`paidFromApartmentId`), with its share `m.amount`; the commission
- *   follows it (R7, question 10);
+ * - `rata` / `bolletta` / `commissione`: a live confirmed match (never `assumed`) of a live
+ *   instalment or bill of Y on a live movement of an account of X (the apartment of the account,
+ *   else that of the movement; never `paidFromApartmentId`), with its share `m.amount`; the
+ *   commission follows it (R7, question 10);
  * - `uscita` / `f24`: a class that passes `inBalance` on a movement of an account of X with an
  *   `apartmentId` Y ≠ X, for `-tx.amount` (a refund lowers the debt); an F24 of X itself is
  *   listed in `toSplit`, with no amount (decision 9, question 5);
@@ -22,6 +23,7 @@ import {
   AccountSchema,
   BankTransactionSchema,
   BillMatchSchema,
+  BillSchema,
   InstalmentSchema,
   MovementClassSchema,
   TransferSchema,
@@ -29,6 +31,7 @@ import {
 import type {
   Account,
   BankTransaction,
+  Bill,
   BillMatch,
   Instalment,
   MovementClass,
@@ -43,12 +46,12 @@ import { compareText } from './text';
 
 export interface BalanceItem {
   date: ISODate;
-  kind: 'rata' | 'commissione' | 'uscita' | 'f24' | 'giroconto';
+  kind: 'rata' | 'bolletta' | 'commissione' | 'uscita' | 'f24' | 'giroconto';
   payerApartmentId: string;
   forApartmentId: string;
   /** Positive: what `forApartmentId` owes to `payerApartmentId`. */
   amount: Cents;
-  /** The instalment, the movement or the transfer. */
+  /** The instalment, the bill, the movement or the transfer. */
   refId: string;
 }
 
@@ -62,6 +65,7 @@ export interface BalancePair {
 
 export interface BalanceInput {
   accounts: Account[];
+  bills: Bill[];
   instalments: Instalment[];
   matches: BillMatch[];
   assumed: MatchItemRef[];
@@ -95,19 +99,26 @@ export function accountBalances(input: BalanceInput): AccountBalances {
   // Deleted accounts too: the money did move.
   const apartmentOfAccount = new Map(input.accounts.map((a) => [a.id, a.apartmentId]));
   const instalments = new Map(live(input.instalments).map((i) => [i.id, i]));
+  const bills = new Map(live(input.bills).map((b) => [b.id, b]));
   const transactions = new Map(live(input.transactions).map((t) => [t.id, t]));
+  /** Who paid a movement: the apartment of its account, else its own (I4 of the final review). */
+  const payerOf = (tx: BankTransaction): string =>
+    (tx.accountId === undefined ? undefined : apartmentOfAccount.get(tx.accountId)) ??
+    tx.apartmentId;
   const items: BalanceItem[] = [];
   const toSplit: AccountBalances['toSplit'] = [];
 
   // By match id first: two parts of one instalment on the same day then follow their movement.
   for (const m of live(input.matches).sort((a, b) => compareText(a.id, b.id))) {
-    const item = m.itemType === 'instalment' ? instalments.get(m.itemId) : undefined;
-    const payer = item?.paidFromApartmentId;
-    if (item === undefined || payer === undefined || payer === item.apartmentId) continue;
     if (!m.confirmed || m.by === 'assumed') continue;
+    const item = m.itemType === 'instalment' ? instalments.get(m.itemId) : bills.get(m.itemId);
+    const tx = transactions.get(m.transactionId);
+    if (item === undefined || tx === undefined) continue;
+    const payer = payerOf(tx);
+    if (payer === item.apartmentId) continue;
     items.push({
       date: m.transactionDate,
-      kind: m.part === 'commission' ? 'commissione' : 'rata',
+      kind: m.part === 'commission' ? 'commissione' : m.itemType === 'bill' ? 'bolletta' : 'rata',
       payerApartmentId: payer,
       forApartmentId: item.apartmentId,
       amount: m.amount,
@@ -118,9 +129,7 @@ export function accountBalances(input: BalanceInput): AccountBalances {
   for (const c of input.classes.filter(inBalance)) {
     const tx = transactions.get(c.transactionId);
     if (tx === undefined || c.apartmentId === undefined) continue;
-    const payer =
-      (tx.accountId === undefined ? undefined : apartmentOfAccount.get(tx.accountId)) ??
-      tx.apartmentId;
+    const payer = payerOf(tx);
     if (c.apartmentId === payer) {
       if (c.f24 === true) toSplit.push({ transactionId: tx.id, apartmentId: payer, date: tx.date });
       continue;
@@ -225,6 +234,7 @@ export async function loadAccountBalances(store: Store): Promise<LoadAccountBala
   const all = { includeDeleted: true };
   const balances = accountBalances({
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
+    bills: (await loadAll(store, 'bill', BillSchema, all)).records,
     instalments: (await loadAll(store, 'instalment', InstalmentSchema, all)).records,
     matches: (await loadAll(store, 'match', BillMatchSchema, all)).records,
     assumed: (await planMatch(store)).run.assumed,

@@ -3,6 +3,7 @@ import {
   AccountSchema,
   BankTransactionSchema,
   BillMatchSchema,
+  BillSchema,
   InstalmentSchema,
   MovementClassSchema,
   TransferSchema,
@@ -18,6 +19,7 @@ import {
 import type {
   Account,
   BankTransaction,
+  Bill,
   BillMatch,
   Instalment,
   MatchItemRef,
@@ -114,6 +116,7 @@ const tari = { kind: 'tari', esercizio: '2027', coversFrom: '2027-01', coversTo:
 const shared = (weight: number) => ({ groupId: 'avviso-1', groupTotal: 18600, weight });
 const example = {
   accounts,
+  bills: [] as Bill[],
   instalments: [
     instalment('tari-b', { ...tari, apartmentId: 'berchet', rata: 10104, shared: shared(10104) }),
     instalment('tari-l', {
@@ -262,6 +265,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
   it('counts the automatic classes too and a refund lowers the debt (user1, 15 November)', () => {
     const result = accountBalances({
       accounts,
+      bills: [],
       instalments: [],
       matches: [],
       assumed: [],
@@ -370,6 +374,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
     });
     const result = accountBalances({
       accounts,
+      bills: [],
       instalments: [],
       matches: [],
       assumed: [],
@@ -395,11 +400,123 @@ describe('accountBalances (plan 3c, task 9)', () => {
       match('condo-l', 't-p2', '2027-04-05', 10000),
       match('condo-l', 't-p1', '2027-04-05', 20000),
     ];
-    const input = { ...example, matches: parts, transfers: [] };
+    const input = {
+      ...example,
+      matches: parts,
+      transactions: [
+        tx('t-p1', 'acc-berchet', '2027-04-05', -20000),
+        tx('t-p2', 'acc-berchet', '2027-04-05', -10000),
+      ],
+      transfers: [],
+    };
     const refs = (m: BillMatch[]) =>
       accountBalances({ ...input, matches: m }).pairs[0]?.items.map((i) => i.amount);
     expect(refs(parts)).toEqual([20000, 10000]);
     expect(refs([...parts].reverse())).toEqual([20000, 10000]);
+  });
+
+  // I4 of the final review (ruling of the coordinator after the final decision of user1): the
+  // payer is the apartment of the account of the movement, for instalments and bills alike.
+  it('an instalment of Y without paidFromApartmentId paid from the account of X is a rata', () => {
+    const result = accountBalances(
+      withExtra({
+        instalments: [instalment('condo-l-2', { apartmentId: 'lovarini' })],
+        transactions: [tx('t-condo-2', 'acc-berchet', '2027-05-05', -30000)],
+        matches: [match('condo-l-2', 't-condo-2', '2027-05-05', 30000, { by: 'manual' })],
+      }),
+    );
+    expect(result.pairs[0]?.amount).toBe(18576 + 30000);
+    expect(result.pairs[0]?.items).toContainEqual({
+      date: '2027-05-05',
+      kind: 'rata',
+      payerApartmentId: 'berchet',
+      forApartmentId: 'lovarini',
+      amount: 30000,
+      refId: 'condo-l-2',
+    });
+  });
+
+  it('an instalment paid from its own account is no item, whatever paidFromApartmentId says', () => {
+    const own = instalment('condo-l-3', {
+      apartmentId: 'lovarini',
+      paidFromApartmentId: 'berchet',
+    });
+    const result = accountBalances(
+      withExtra({
+        instalments: [own],
+        transactions: [tx('t-condo-3', 'acc-lovarini', '2027-05-05', -30000)],
+        matches: [match('condo-l-3', 't-condo-3', '2027-05-05', 30000)],
+      }),
+    );
+    expect(result.pairs[0]?.amount).toBe(18576);
+  });
+
+  it('an automatic class yielded to a match by hand stays in the balance as a rata', () => {
+    const result = accountBalances(
+      withExtra({
+        instalments: [instalment('condo-l-4', { apartmentId: 'lovarini' })],
+        transactions: [tx('t-condo-4', 'acc-berchet', '2027-05-05', -30000)],
+        classes: [
+          cls('t-condo-4', {
+            kind: 'condominio',
+            apartmentId: 'lovarini',
+            ruleId: 'rule-c',
+            deleted: true,
+          }),
+        ],
+        matches: [match('condo-l-4', 't-condo-4', '2027-05-05', 30000, { by: 'manual' })],
+      }),
+    );
+    expect(result.pairs[0]?.amount).toBe(18576 + 30000);
+    expect(result.pairs[0]?.items).toContainEqual(
+      expect.objectContaining({ kind: 'rata', refId: 'condo-l-4', amount: 30000 }),
+    );
+  });
+
+  it('a bill of Y paid from the account of X is a bolletta, its commission follows', () => {
+    const bill = BillSchema.parse({
+      ...base,
+      id: 'bill-l',
+      apartmentId: 'lovarini',
+      category: 'gas',
+      supplier: 'Fornitore',
+      dueDate: '2027-05-20',
+      periodStart: '2027-03-01',
+      periodEnd: '2027-04-30',
+      amount: 6300,
+      includedInConguaglio: true,
+      sharedWithTenants: true,
+      fileHash: 'hash-bill-l',
+      filePath: 'bollette/bill-l.pdf',
+    });
+    const billMatch = (transactionId: string, amount: number, extra: Partial<BillMatch> = {}) =>
+      match('bill-l', transactionId, '2027-05-20', amount, {
+        id: `m-bill-bill-l-${extra.part ?? 'amount'}-${transactionId}`,
+        itemType: 'bill',
+        ...extra,
+      });
+    const result = accountBalances(
+      withExtra({
+        bills: [bill],
+        transactions: [
+          tx('t-gas', 'acc-berchet', '2027-05-20', -6300),
+          tx('t-gas-c', 'acc-berchet', '2027-05-20', -100),
+        ],
+        matches: [billMatch('t-gas', 6300), billMatch('t-gas-c', 100, { part: 'commission' })],
+      }),
+    );
+    expect(result.pairs[0]?.amount).toBe(18576 + 6400);
+    expect(result.pairs[0]?.items).toContainEqual({
+      date: '2027-05-20',
+      kind: 'bolletta',
+      payerApartmentId: 'berchet',
+      forApartmentId: 'lovarini',
+      amount: 6300,
+      refId: 'bill-l',
+    });
+    expect(result.pairs[0]?.items).toContainEqual(
+      expect.objectContaining({ kind: 'commissione', refId: 'bill-l', amount: 100 }),
+    );
   });
 
   it('gives the same result in any order of the input', () => {
