@@ -12,7 +12,7 @@ import { planMatch, runMatch } from './match-store';
 import type { ExclusionProposal } from './movements';
 import { legsOf, listExclusionProposals } from './movements';
 import type { OutgoingRunResult } from './outgoing-store';
-import { runOutgoing } from './outgoing-store';
+import { planOutgoing, runOutgoing } from './outgoing-store';
 import type { Store } from './store/store';
 import type { TransferRunResult } from './transfer-store';
 import { planTransfers, runTransfers } from './transfer-store';
@@ -57,13 +57,16 @@ export async function runReconciliation(
     match = written;
   }
   let income: Extract<ReconcileRunResult, { status: 'reconciled' }>;
+  // An incoming movement an «in» rule will classify is no «chi» of the income: it would block the
+  // later rents of the apartment (earlier-open) until the next run. Only the income skips it.
+  const incomeUsed = new Set([...alsoUsed, ...(await planOutgoing(store, alsoUsed)).incoming]);
   if (dryRun) {
     // The transfers then skip the movements of the payments the income would write as well.
-    const plan = await planIncome(store, alsoUsed);
+    const plan = await planIncome(store, incomeUsed);
     income = plan.result;
     alsoUsed = new Set([...alsoUsed, ...plan.payments.flatMap((p) => p.transactionId ?? [])]);
   } else {
-    const written = await runReconcile(store, profileId, clock, newId, { alsoUsed });
+    const written = await runReconcile(store, profileId, clock, newId, { alsoUsed: incomeUsed });
     if (written.status === 'refused') return refused;
     income = written;
   }
@@ -73,7 +76,15 @@ export async function runReconciliation(
   }
   const transfers = await runTransfers(store, profileId, clock, newId, { dryRun, alsoUsed });
   if (transfers.status === 'refused') return refused;
-  const outgoing = await runOutgoing(store, profileId, clock, newId, { dryRun, alsoUsed });
+  // A movement of a transfer proposal (or one of its legs) is no outgoing proposal as well.
+  const outgoingUsed = new Set([
+    ...alsoUsed,
+    ...transfers.proposals.flatMap((p) => [p.transactionId, ...p.legIds]),
+  ]);
+  const outgoing = await runOutgoing(store, profileId, clock, newId, {
+    dryRun,
+    alsoUsed: outgoingUsed,
+  });
   if (outgoing.status === 'refused') return refused;
   // An incoming movement the outgoings classified is no «chi» of the income any more.
   const classified = new Set(outgoing.classified);

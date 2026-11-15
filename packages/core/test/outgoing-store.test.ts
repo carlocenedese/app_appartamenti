@@ -239,7 +239,7 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
     expect((await run(store)).proposals.map((p) => p.id)).toEqual(['p-uscita-y']);
   });
 
-  it('two valid rules with different categories: a proposal, never automatic', async () => {
+  it('a confirmation that would add a conflicting rule saves none (fix round 1, M1)', async () => {
     const store = await storeWith(
       tx('x', '2027-02-10', -4000, supplier),
       tx('w', '2027-03-10', -4000, supplier),
@@ -248,11 +248,29 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
     // The rule of x classifies w; cancelled by itself, w is confirmed with another category.
     expect(await run(store, 'a')).toMatchObject({ written: 1, classified: ['w'] });
     await cancelAutomaticClass(store, 'w', 'p1', clock, ids('k'));
-    expect(await confirm(store, 'p-uscita-w', 'utenze', {}, 'h')).toMatchObject({
+    expect(await confirm(store, 'p-uscita-w', 'utenze', {}, 'h')).toEqual({
       status: 'confirmed',
-      ruleId: 'rule-w',
+      operationId: 'h-1',
+      classId: 'mc-w',
     });
+    expect((await rules(store)).map((r) => r.id)).toEqual(['rule-x']);
+    // The rule of x still holds alone: the next debit is automatic.
     await put(store, 'transaction', [tx('y', '2028-02-10', -4200, supplier)]);
+    expect(await run(store)).toMatchObject({ written: 1, classified: ['y'] });
+  });
+
+  it('two valid rules with different categories: a proposal; confirmed, no third rule (M1)', async () => {
+    const store = await storeWith(tx('y', '2028-02-10', -4200, supplier));
+    const rule = (id: string, kind: OutgoingKind) => ({
+      ...base,
+      id,
+      direction: 'out',
+      accountId: 'acc-berchet',
+      key: `iban:${SUPPLIER}`,
+      kind,
+      apartmentId: 'berchet',
+    });
+    await put(store, 'movementRule', [rule('rule-a', 'altro'), rule('rule-b', 'utenze')]);
     expect(await run(store)).toEqual({
       status: 'reconciled',
       written: 0,
@@ -260,8 +278,14 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
       proposals: [
         { id: 'p-uscita-y', transactionId: 'y', step: 'uscita', reason: 'rule-conflict' },
       ],
-      missingDocument: ['w'],
+      missingDocument: [],
     });
+    expect(await confirm(store, 'p-uscita-y', 'utenze')).toEqual({
+      status: 'confirmed',
+      operationId: 'c-1',
+      classId: 'mc-y',
+    });
+    expect((await rules(store)).map((r) => r.id)).toEqual(['rule-a', 'rule-b']);
   });
 
   it('refuses a changed state, an unknown apartment and a diverged store, writing nothing', async () => {

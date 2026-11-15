@@ -422,6 +422,80 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     expect(await snapshot(store)).toEqual(once);
   });
 
+  it('a refund classified by an in rule never blocks a later rent (task 6, fix round 1, I1)', async () => {
+    const make = async () => {
+      const store = await treConti();
+      const rule = recordSchemas.movementRule.parse({
+        id: 'rule-in',
+        v: 1,
+        rev: 1,
+        direction: 'in',
+        accountId: 'acc-berchet',
+        key: 'iban:IT04X0542811101000000000401',
+        kind: 'utenze',
+        apartmentId: 'berchet',
+      });
+      await store.writeJsonAtomic(recordPath('movementRule', rule.id), rule);
+      // A refund of the supplier two days before the March rent of the same apartment.
+      const refund = recordSchemas.transaction.parse({
+        ...enel,
+        id: 'tx-b-rimborso',
+        apartmentId: 'berchet',
+        accountId: 'acc-berchet',
+        date: '2027-03-03',
+        amount: 1230,
+        description: 'RIMBORSO',
+        statementHash: 's-b-mar',
+      });
+      await store.writeJsonAtomic(recordPath('transaction', refund.id), refund);
+      return store;
+    };
+    const store = await make();
+    const real = await reconcile(store);
+    if (real.status !== 'reconciled') throw new Error('refused');
+    expect(real.outgoing.classified).toEqual(['tx-b-rimborso']);
+    expect(real.income.written).toBe(2);
+    expect(real.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-affitto-mar');
+    const once = await snapshot(store);
+    expect(await reconcile(store, 's')).toMatchObject({ income: { written: 0 } });
+    expect(await snapshot(store)).toEqual(once);
+
+    const dry = await reconcile(await make(), 'r', true);
+    if (dry.status !== 'reconciled') throw new Error('refused');
+    expect({ ...dry.income, operationId: real.income.operationId }).toEqual(real.income);
+    expect({ ...dry.outgoing, operationId: real.outgoing.operationId }).toEqual(real.outgoing);
+  });
+
+  it('a leg of a proposed transfer is no outgoing proposal (task 6, fix round 1, M2)', async () => {
+    const store = await treConti();
+    const leg = (id: string, accountId: string, amount: number, date: string, iban?: string) =>
+      recordSchemas.transaction.parse({
+        id,
+        v: 1,
+        rev: 1,
+        apartmentId: accountId.replace('acc-', ''),
+        accountId,
+        date,
+        amount,
+        description: 'GIROCONTO',
+        statementHash: 's',
+        ...(iban === undefined ? {} : { counterparty: { name: 'Conto', iban } }),
+      });
+    // Berchet → Lovarini: only the incoming row names the other account.
+    for (const t of [
+      leg('tx-b-out', 'acc-berchet', -7000, '2027-03-19'),
+      leg('tx-l-in', 'acc-lovarini', 7000, '2027-03-20', 'IT85X0542811101000000000301'),
+    ]) {
+      await store.writeJsonAtomic(recordPath('transaction', t.id), t);
+    }
+    const result = await reconcile(store);
+    if (result.status !== 'reconciled') throw new Error('refused');
+    expect(result.transfers.proposals).toContainEqual(
+      expect.objectContaining({ id: 'p-giro-tx-l-in', legIds: ['tx-b-out'] }),
+    );
+    expect(result.outgoing.proposals.map((p) => p.transactionId)).not.toContain('tx-b-out');
+  });
+
   it('a dry run of the transfers skips the movements the income would take (fix round 1)', async () => {
     const store = await treConti();
     // −500,00 € from Lovarini to Berchet two days before the automatic March rent of Berchet,

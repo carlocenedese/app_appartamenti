@@ -78,6 +78,29 @@ export function outgoingCandidate(
 }
 
 /**
+ * The valid rules of `tx` (question 1), by `id`: live, same account, same direction, same key,
+ * `validTo` absent or not before its date; none without a key. The amount does not count.
+ */
+export function validRules(
+  rules: MovementRule[],
+  tx: BankTransaction,
+  direction: 'in' | 'out',
+  key: PayerKey | undefined,
+): MovementRule[] {
+  if (key === undefined) return [];
+  return rules
+    .filter(
+      (r) =>
+        r.deleted !== true &&
+        r.accountId === tx.accountId &&
+        r.direction === direction &&
+        r.key === key &&
+        (r.validTo === undefined || r.validTo >= tx.date),
+    )
+    .sort((a, b) => compareText(a.id, b.id));
+}
+
+/**
  * The automatic classes and the proposals of the candidates (`outgoingCandidate`), by `id`. The
  * valid rules of a movement: live, same account, same direction, same key, `validTo` absent or
  * not before its date (question 1); one pair (kind, apartment) is a class with the rule (the
@@ -106,25 +129,13 @@ export function reconcileOutgoing(input: OutgoingInput): {
     .filter((r) => r.deleted !== true)
     .map((r) => foldText(r.supplier))
     .filter((s) => s !== '');
-  const rules = input.rules
-    .filter((r) => r.deleted !== true)
-    .sort((a, b) => compareText(a.id, b.id));
-
   const classes: MovementClassDraft[] = [];
   const proposals: OutgoingProposal[] = [];
   for (const tx of input.transactions) {
     const candidate = outgoingCandidate(tx, input);
     if (candidate === undefined) continue;
     const { direction, key } = candidate;
-    const valid = undone.has(tx.id)
-      ? []
-      : rules.filter(
-          (r) =>
-            r.accountId === tx.accountId &&
-            r.direction === direction &&
-            r.key === key &&
-            (r.validTo === undefined || r.validTo >= tx.date),
-        );
+    const valid = undone.has(tx.id) ? [] : validRules(input.rules, tx, direction, key);
     const pairs = new Set(valid.map((r) => `${r.kind}\u0000${r.apartmentId}`));
     const [rule] = valid;
     if (pairs.size === 1 && rule !== undefined) {

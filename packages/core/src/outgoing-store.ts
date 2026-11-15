@@ -22,7 +22,7 @@ import {
 } from './model';
 import type { OutgoingKind } from './model';
 import { movementUses } from './movements';
-import { outgoingCandidate, reconcileOutgoing } from './outgoing';
+import { outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
 import type { MovementClassDraft, OutgoingProposal } from './outgoing';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
@@ -62,6 +62,18 @@ async function loadOutgoingState(store: Store, alsoUsed: ReadonlySet<string> = n
   return { ...state, result: reconcileOutgoing(state) };
 }
 type OutgoingState = Awaited<ReturnType<typeof loadOutgoingState>>;
+
+/**
+ * What `runOutgoing` would write on the current state, without checking it or writing, and the
+ * movements of those classes that are incoming (`runReconciliation` keeps them from the income).
+ */
+export async function planOutgoing(store: Store, alsoUsed?: ReadonlySet<string>) {
+  const state = await loadOutgoingState(store, alsoUsed);
+  const incoming = state.result.classes
+    .filter((c) => (state.transactions.find((t) => t.id === c.transactionId)?.amount ?? 0) > 0)
+    .map((c) => c.transactionId);
+  return { ...state.result, incoming };
+}
 
 const classChange = (state: OutgoingState, draft: MovementClassDraft) => {
   const after = parseOrThrow(MovementClassSchema, { ...draft, v: 1, rev: 1 }, 'movementClass');
@@ -196,8 +208,13 @@ export async function confirmOutgoing(
     }),
   ];
   const { key } = candidate;
+  // A rule with another category or apartment would leave every later movement in conflict:
+  // none is saved (coordinator's ruling, fix round 1, M1; open question for user1).
+  const conflict = validRules(state.rules, tx, candidate.direction, key).some(
+    (r) => r.kind !== kind || r.apartmentId !== input.apartmentId,
+  );
   const rule =
-    input.rememberRule && key !== undefined
+    input.rememberRule && key !== undefined && !conflict
       ? parseOrThrow(
           MovementRuleSchema,
           {
