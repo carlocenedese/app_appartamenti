@@ -28,7 +28,7 @@
  * The result never depends on the order of the input: everything is sorted by id.
  */
 import { BillMatchSchema } from './model';
-import type { BankTransaction, Bill, BillMatch, Instalment } from './model';
+import type { Account, BankTransaction, Bill, BillMatch, Instalment, Statement } from './model';
 import { commissionLinks, commissionParts } from './commission';
 import { cents } from './money';
 import type { Cents } from './money';
@@ -270,6 +270,40 @@ function solve(
   return solution;
 }
 
+/** The id of a match: one per item, part and movement. */
+export const matchId = (
+  item: MatchItemRef,
+  part: BillMatch['part'],
+  transactionId: string,
+): string => `m-${item.itemType}-${item.itemId}-${part}-${transactionId}`;
+
+/** Days a debit may come before and after the due date (R30). */
+export const MATCH_WINDOW = { daysBefore: 5, daysAfter: 10 } as const;
+
+/**
+ * One period per live statement of a live account, in the apartment of the account (R106),
+ * sorted by apartment, `from` and `to`. Never merged: a gap between two statements stays
+ * uncovered, so its items are assumed paid.
+ */
+export function statementPeriodsOf(
+  accounts: Account[],
+  statements: Statement[],
+): MatchInput['statementPeriods'] {
+  const apartmentOf = new Map(
+    accounts.filter((a) => a.deleted !== true).map((a) => [a.id, a.apartmentId]),
+  );
+  return statements
+    .filter((s) => s.deleted !== true)
+    .flatMap((s) => {
+      const apartmentId = apartmentOf.get(s.accountId);
+      return apartmentId === undefined ? [] : [{ apartmentId, from: s.from, to: s.to }];
+    })
+    .sort(
+      (a, b) =>
+        byText(a.apartmentId, b.apartmentId) || byText(a.from, b.from) || byText(a.to, b.to),
+    );
+}
+
 function makeMatch(
   item: MatchItemRef,
   part: BillMatch['part'],
@@ -279,7 +313,7 @@ function makeMatch(
   by: BillMatch['by'],
 ): BillMatch {
   return BillMatchSchema.parse({
-    id: `m-${item.itemType}-${item.itemId}-${part}-${transaction.id}`,
+    id: matchId(item, part, transaction.id),
     v: 1,
     rev: 1,
     itemType: item.itemType,

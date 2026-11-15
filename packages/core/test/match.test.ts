@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AccountSchema,
   BillMatchSchema,
+  MATCH_WINDOW,
+  StatementSchema,
   cents,
   expectedDebit,
   isoDate,
+  matchId,
   matchToTransactions,
   splitSharedDebit,
+  statementPeriodsOf,
   tariNote,
   validateMatches,
   yearMonth,
@@ -1334,5 +1339,63 @@ describe('tariNote', () => {
     expect(() => tariNote({ avviso, months, transaction, parts: [other] })).toThrow(RangeError);
     const own = { ...other, apartmentName: 'Berchet', paidFromOtherAccount: false };
     expect(() => tariNote({ avviso, months, transaction, parts: [own, own] })).toThrow(RangeError);
+  });
+});
+
+describe('MATCH_WINDOW, matchId and statementPeriodsOf (plan 3c, task 3)', () => {
+  it('the window of R30 and the id format of the matches', () => {
+    expect(MATCH_WINDOW).toEqual({ daysBefore: 5, daysAfter: 10 });
+    expect(matchId({ itemType: 'bill', itemId: 'b1' }, 'commission', 't9')).toBe(
+      'm-bill-b1-commission-t9',
+    );
+    const [made] = run({
+      bills: [bill('b1')],
+      transactions: [tx('t1', '2026-11-12', -21460)],
+    }).matches;
+    expect(made?.id).toBe(matchId({ itemType: 'bill', itemId: 'b1' }, 'amount', 't1'));
+  });
+
+  const account = (id: string, apartmentId: string, deleted?: true) =>
+    AccountSchema.parse({ id, v: 1, rev: 1, apartmentId, label: id, bankProfileId: 'bp', deleted });
+  const statement = (id: string, accountId: string, from: string, to: string, deleted?: true) =>
+    StatementSchema.parse({
+      id,
+      v: 1,
+      rev: 1,
+      accountId,
+      bankProfileId: 'bp',
+      fileName: `${id}.csv`,
+      suggestedPath: `estratti/${id}.csv`,
+      from,
+      to,
+      periodSource: 'file',
+      rowCount: 0,
+      transactionIds: [],
+      held: [],
+      deleted,
+    });
+
+  it('one period per live statement of a live account, never merged, sorted', () => {
+    expect(
+      statementPeriodsOf(
+        [
+          account('acc-l', 'lovarini'),
+          account('acc-b', 'berchet'),
+          account('acc-x', 'pulci', true),
+        ],
+        [
+          statement('s3', 'acc-b', '2027-03-01', '2027-03-31'),
+          statement('s1', 'acc-b', '2027-01-01', '2027-01-31'),
+          statement('s2', 'acc-b', '2027-02-01', '2027-02-28', true),
+          statement('s4', 'acc-x', '2027-01-01', '2027-12-31'),
+          statement('s5', 'acc-l', '2027-01-01', '2027-06-30'),
+          statement('s6', 'acc-unknown', '2027-01-01', '2027-06-30'),
+        ],
+      ),
+    ).toEqual([
+      { apartmentId: 'berchet', from: '2027-01-01', to: '2027-01-31' },
+      { apartmentId: 'berchet', from: '2027-03-01', to: '2027-03-31' },
+      { apartmentId: 'lovarini', from: '2027-01-01', to: '2027-06-30' },
+    ]);
   });
 });
