@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { firstPresenceDay, nameInText, payerKeyOf, nameKeyOf, validPayers } from '../src/payers';
-import { ISODateSchema, PayerSchema, TenancySchema } from '../src/model';
+import { ISODateSchema, PayerSchema, TenancySchema, TenantSchema } from '../src/model';
 import type { Payer, Tenancy } from '../src/model';
 
 // A wrong check digit made at run time: no whole made-up IBAN is written in the file.
@@ -76,7 +76,7 @@ describe('validPayers', () => {
       payer({ id: 'c', validTo: '2025-04-30' }),
       payer({ id: 'd', tenantId: 't9', validTo: '2025-05-01' }),
     ];
-    expect(validPayers(list, key, day('2025-05-01')).map((p) => p.id)).toEqual(['d']);
+    expect(validPayers(list, key, day('2025-05-01'), []).map((p) => p.id)).toEqual(['d']);
   });
   it('keeps one record per tenant, sorted by tenantId', () => {
     const list = [
@@ -84,14 +84,17 @@ describe('validPayers', () => {
       payer({ id: 'y', tenantId: 't1' }),
       payer({ id: 'z', tenantId: 't1' }),
     ];
-    expect(validPayers(list, key, day('2025-05-01')).map((p) => p.tenantId)).toEqual(['t1', 't2']);
+    expect(validPayers(list, key, day('2025-05-01'), []).map((p) => p.tenantId)).toEqual([
+      't1',
+      't2',
+    ]);
   });
   it('includes both ends of the validity', () => {
     const list = [
       payer({ id: 'a', validFrom: '2025-05-01' }),
       payer({ id: 'b', tenantId: 't2', validTo: '2025-05-01' }),
     ];
-    expect(validPayers(list, key, day('2025-05-01')).map((p) => p.id)).toEqual(['a', 'b']);
+    expect(validPayers(list, key, day('2025-05-01'), []).map((p) => p.id)).toEqual(['a', 'b']);
   });
   it('picks the record with the smallest id whatever the input order', () => {
     const z = payer({ id: 'z', source: 'confirmed' });
@@ -100,12 +103,24 @@ describe('validPayers', () => {
       [z, y],
       [y, z],
     ]) {
-      const [only] = validPayers(list, key, day('2025-05-01'));
+      const [only] = validPayers(list, key, day('2025-05-01'), []);
       expect([only?.id, only?.source]).toEqual(['y', 'manual']);
     }
   });
+  it('ignores the payers of a deleted tenant, as if they were not there (Carlo, 15 Nov 2026)', () => {
+    const tenants = [
+      TenantSchema.parse({ id: 't1', v: 1, rev: 2, name: 'Nome Inventato', deleted: true }),
+      TenantSchema.parse({ id: 't2', v: 1, rev: 1, name: 'Altro Nome' }),
+    ];
+    const list = [
+      payer({ id: 'a' }),
+      payer({ id: 'b', tenantId: 't2' }),
+      payer({ id: 'c', tenantId: 't3' }),
+    ];
+    expect(validPayers(list, key, day('2025-05-01'), tenants).map((p) => p.id)).toEqual(['b', 'c']);
+  });
   it('ignores other keys', () => {
-    expect(validPayers([payer({ key: 'name:altro' })], key, day('2025-05-01'))).toEqual([]);
+    expect(validPayers([payer({ key: 'name:altro' })], key, day('2025-05-01'), [])).toEqual([]);
   });
 });
 

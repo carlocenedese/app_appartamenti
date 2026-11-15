@@ -372,10 +372,16 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const result = await runReconcile(store, who, clock, newId, { dryRun: values.prova === true });
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     let extra = () => ({});
+    let arrearExtra = () => ({});
     if (values.dettagli === true) {
       const all = { includeDeleted: true };
       const txs = (await loadAll(store, 'transaction', BankTransactionSchema, all)).records;
       const tenants = (await loadAll(store, 'tenant', TenantSchema, all)).records;
+      arrearExtra = (a) => ({
+        apartmentId: a.apartmentId,
+        tenantId: a.tenantId,
+        tenantName: tenants.find((t) => t.id === a.tenantId)?.name ?? a.tenantId,
+      });
       extra = (p) => {
         const tx = txs.find((t) => t.id === p.transactionId);
         return {
@@ -400,6 +406,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...extra(p),
       })),
       skipped: result.skipped,
+      // Only the month without --dettagli (R117): ids are chosen by the user, like tenantIds.
+      arrears: result.arrears.map((a) => ({ month: a.month, ...arrearExtra(a) })),
       ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
     };
   }

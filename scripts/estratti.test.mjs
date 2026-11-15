@@ -892,7 +892,9 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect(undo(['--operazione', conf.json.operationId, '--prova']).code).toBe(2);
       const unknown = undo(['--operazione', 'nessuna']);
       expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-operation']);
-      const other = undo(['--operazione', blocked.json.operationId ?? 'x']);
+      // The apartment of the setup (`seed-1`): an operation annulla-incassi never undoes.
+      const other = undo(['--operazione', 'seed-1']);
+      expect(other.json).toMatchObject({ status: 'rejected', reason: 'not-income-operation' });
       expect(other.code).toBe(1);
       const imported = readdirSync(join(s.dir, '_app', 'journal'))
         .map((f) => JSON.parse(readFileSync(join(s.dir, '_app', 'journal', f), 'utf8')))
@@ -913,6 +915,111 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect(gone.code).toBe(0);
       const all = [done.out, refused.out, again.out].join('');
       for (const secret of [NAME, CAUSALE, IBAN, '850']) expect(all).not.toContain(secret);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'annulla-incassi: una conferma con un’operazione dipendente = 1, has-dependents, nulla scritto',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const conf = cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't1',
+        '--parte',
+        'canone:2026-10:850,00',
+      ]);
+      expect(conf.code).toBe(0);
+      // A later operation that changes the payment of the confirmation.
+      const [paymentId] = conf.json.paymentIds;
+      const file = join(s.dir, '_app', 'dati', 'payment', `${paymentId}.json`);
+      const payment = JSON.parse(readFileSync(file, 'utf8'));
+      await commitChange(
+        new FsStore(s.dir),
+        {
+          profileId: 'p1',
+          kind: 'payment.edit',
+          summary: 'x',
+          changes: [
+            {
+              path: recordPath('payment', paymentId),
+              before: payment,
+              after: { ...payment, rev: payment.rev + 1, confirmed: false },
+            },
+          ],
+        },
+        () => ORA,
+        () => 'dep-1',
+      );
+      const snap = snapshot(s.dir);
+      const refused = cli(['annulla-incassi', ...s.common, '--operazione', conf.json.operationId]);
+      expect(refused.code).toBe(1);
+      expect(refused.json).toEqual({
+        status: 'rejected',
+        reason: 'has-dependents',
+        message: 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
+      });
+      expect(snapshot(s.dir)).toEqual(snap);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'annullo l’intera riconciliazione per reimportare un estratto, poi riconcilio: di nuovo automatici, nessun undone',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const part = ['--parte', 'canone:2026-10:850,00'];
+      cli(['conferma', ...s.common, '--proposta', proposal.id, '--inquilino', 't1', ...part]);
+      const rows = [
+        ['03/11/2026', '850,00'],
+        ['02/12/2026', '850,00'],
+      ];
+      const nov = month(s, 'nov-dic.csv', rows, '2026-11-01', '2026-12-31');
+      const first = cli(['riconcilia', ...s.common]);
+      expect(first.json).toMatchObject({ written: 2, proposals: [], arrears: [] });
+
+      expect(
+        cli(['annulla-incassi', ...s.common, '--operazione', first.json.operationId]).code,
+      ).toBe(0);
+      expect(cli(['annulla', ...s.common, '--estratto', nov.json.statementId]).code).toBe(0);
+      const again = month(s, 'nov-dic.csv', rows, '2026-11-01', '2026-12-31');
+      expect(again.json).toMatchObject({ status: 'imported', statementId: nov.json.statementId });
+      const second = cli(['riconcilia', ...s.common]);
+      expect(second.code).toBe(0);
+      expect(second.json).toMatchObject({ written: 2, proposals: [], arrears: [] });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'riconcilia elenca gli arretrati: solo mesi senza --dettagli, id e nomi con --dettagli',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      const part = ['--parte', 'canone:2026-10:850,00'];
+      cli(['conferma', ...s.common, '--proposta', proposal.id, '--inquilino', 't1', ...part]);
+      // December first, then November without a transfer: November is in arrears, December paid.
+      month(s, 'dic.csv', [['02/12/2026', '850,00']], '2026-12-01', '2026-12-31');
+      expect(cli(['riconcilia', ...s.common]).json).toMatchObject({ written: 1, arrears: [] });
+      month(s, 'nov.csv', [], '2026-11-01', '2026-11-30');
+      const plain = cli(['riconcilia', ...s.common, '--prova']);
+      expect(plain.json).toMatchObject({ written: 0, proposals: [] });
+      expect(plain.json.arrears).toEqual([{ month: '2026-11' }]);
+      const detailed = cli(['riconcilia', ...s.common, '--prova', '--dettagli']);
+      expect(detailed.json.arrears).toEqual([
+        { month: '2026-11', apartmentId: 'apt', tenantId: 't1', tenantName: NAME },
+      ]);
+      expect(plain.out).not.toContain('t1');
+      expect(scanText(plain.out)).toEqual([]);
     },
     TIMEOUT,
   );

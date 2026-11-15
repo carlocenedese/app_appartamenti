@@ -1,6 +1,6 @@
 /** Who pays: the key of a payer, the payers valid on a day, and the name as it appears in text. */
 import { normaliseIban } from './iban';
-import type { Payer, PayerKey, Tenancy } from './model';
+import type { Payer, PayerKey, Tenancy, Tenant } from './model';
 import type { ISODate } from './period';
 import { compareText, foldText } from './text';
 
@@ -18,12 +18,21 @@ export function payerKeyOf(counterparty?: { name?: string; iban?: string }): Pay
   return iban === undefined ? nameKeyOf(counterparty) : `iban:${iban}`;
 }
 
-/** Live payers with this key valid on `date` (both ends included), one per tenant, by `tenantId`. */
-export function validPayers(payers: Payer[], key: PayerKey, date: ISODate): Payer[] {
+/**
+ * Live payers with this key valid on `date` (both ends included), one per tenant, by `tenantId`.
+ * A payer of a deleted tenant is left out, as if it were not there (Carlo, 15 Nov 2026, R119).
+ */
+export function validPayers(
+  payers: Payer[],
+  key: PayerKey,
+  date: ISODate,
+  tenants: Tenant[],
+): Payer[] {
+  const gone = new Set(tenants.filter((t) => t.deleted === true).map((t) => t.id));
   const byTenant = new Map<string, Payer>();
   // By id first, so the record kept for a tenant does not depend on the loading order.
   for (const p of [...payers].sort((a, b) => compareText(a.id, b.id))) {
-    if (p.deleted === true || p.key !== key) continue;
+    if (p.deleted === true || p.key !== key || gone.has(p.tenantId)) continue;
     if (p.validFrom > date || (p.validTo !== undefined && p.validTo < date)) continue;
     if (!byTenant.has(p.tenantId)) byTenant.set(p.tenantId, p);
   }

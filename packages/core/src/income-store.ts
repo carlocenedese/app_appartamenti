@@ -3,8 +3,8 @@
  * confirmation of a proposal, each one operation of the journal. Nothing is written while
  * `checkConsistency` reports a problem (R106, R107). Summaries carry counts only.
  */
-import { reconcileIncome } from './income';
-import type { IncomeProposal } from './income';
+import { reconcileIncome, rentArrears } from './income';
+import type { IncomeProposal, RentArrear } from './income';
 import { checkConsistency, commitChange } from './journal';
 import type { Operation } from './journal';
 import {
@@ -76,6 +76,8 @@ export type ReconcileRunResult =
       written: number;
       proposals: IncomeProposal[];
       skipped: number;
+      /** The arrears (`rentArrears`) with the automatic payments of the run counted as paid. */
+      arrears: RentArrear[];
       operationId?: string;
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
@@ -101,6 +103,10 @@ export async function runReconcile(
     written: payments.length,
     proposals,
     skipped: skipped.length,
+    arrears: rentArrears({
+      ...state,
+      payments: [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
+    }),
   };
   if (options.dryRun === true || payments.length === 0) return result;
 

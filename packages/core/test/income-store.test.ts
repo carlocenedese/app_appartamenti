@@ -120,6 +120,10 @@ describe('runReconcile', () => {
 
     const first = await runReconcile(store, 'p1', clock, ids('op'));
     expect(first).toMatchObject({ status: 'reconciled', written: 1, operationId: 'op-1' });
+    // The dry run counts its own automatic payment as paid, as the written one is.
+    expect(dry.status === 'reconciled' && first.status === 'reconciled' && dry.arrears).toEqual(
+      first.status === 'reconciled' && first.arrears,
+    );
     const { operations } = await readJournal(store);
     expect(operations.map((o) => [o.kind, o.summary])).toEqual([
       ['income.reconcile', 'Riconciliati gli incassi: 1 automatico, 47 da rivedere.'],
@@ -334,63 +338,78 @@ describe('confirmIncome', () => {
     expect((await payers(store)).find((p) => p.id === 'payer-tx-bruno-2026-01')?.rev).toBe(3);
   });
 
-  it('an undone automatic payment is confirmed by hand with a new id, as rent or as something else', async () => {
+  it('undoing a whole reconciliation brings its movements back to automatic, never undone (Carlo, 15 Nov 2026)', async () => {
     const store = await yearStore();
     const r = await runReconcile(store, 'p1', clock, ids('op'));
     if (r.status !== 'reconciled' || r.operationId === undefined) throw new Error('none');
     await undoOperation(store, r.operationId, 'p1', clock, ids('u'));
-    expect(
-      (await proposalsOf(store)).find((p) => p.transactionId === 'tx-anna-2026-01'),
-    ).toMatchObject({ id: 'p-cosa-tx-anna-2026-01', reason: 'undone', tenantIds: ['t-anna'] });
-    const asOther = {
-      proposalId: 'p-cosa-tx-anna-2026-01',
+    const again = await runReconcile(store, 'p1', clock, ids('d'), { dryRun: true });
+    expect(again).toEqual({ ...r, operationId: undefined });
+    expect(again).not.toHaveProperty('operationId');
+  });
+
+  /** Confirms Anna's February «cosa» (held by Bruno's open «chi») and undoes that confirmation. */
+  const undoneAnnaFeb = async () => {
+    const store = await yearStore();
+    const feb = bruno({
+      proposalId: 'p-cosa-tx-anna-2026-02',
       tenantId: 't-anna',
-      parts: [{ kind: 'altro' as const, forMonth: yearMonth('2026-01'), amount: cents(45000) }],
+      parts: [canone('2026-02', 45000)],
+    });
+    const c = await confirmIncome(store, feb, 'p1', clock, ids('op'));
+    if (c.status !== 'confirmed') throw new Error('refused');
+    await undoOperation(store, c.operationId, 'p1', clock, ids('u'));
+    return store;
+  };
+
+  it('an undone confirmation is undone, and is confirmed again by hand as rent or as something else', async () => {
+    const store = await undoneAnnaFeb();
+    expect(
+      (await proposalsOf(store)).find((p) => p.transactionId === 'tx-anna-2026-02'),
+    ).toMatchObject({ id: 'p-cosa-tx-anna-2026-02', reason: 'undone', tenantIds: ['t-anna'] });
+    const asOther = {
+      proposalId: 'p-cosa-tx-anna-2026-02',
+      tenantId: 't-anna',
+      parts: [{ kind: 'altro' as const, forMonth: yearMonth('2026-02'), amount: cents(45000) }],
       rememberPayer: true,
     };
     const confirmed = await confirmIncome(store, asOther, 'p1', clock, ids('c'));
     expect(confirmed).toEqual({
       status: 'confirmed',
       operationId: 'c-1',
-      paymentIds: ['pay-tx-anna-2026-01-1'],
+      paymentIds: ['pay-tx-anna-2026-02-1'],
     });
     const live = await payments(store);
-    expect(live.map((p) => [p.id, p.kind])).toEqual([['pay-tx-anna-2026-01-1', 'altro']]);
-    expect((await proposalsOf(store)).some((p) => p.transactionId === 'tx-anna-2026-01')).toBe(
+    expect(live.map((p) => [p.id, p.kind, p.rev])).toEqual([['pay-tx-anna-2026-02-1', 'altro', 3]]);
+    expect((await proposalsOf(store)).some((p) => p.transactionId === 'tx-anna-2026-02')).toBe(
       false,
     );
   });
 
-  it('reassigns an undone automatic payment to another tenant of the apartment: the key then has two payers', async () => {
-    const store = await yearStore();
-    const r = await runReconcile(store, 'p1', clock, ids('op'));
-    if (r.status !== 'reconciled' || r.operationId === undefined) throw new Error('none');
-    await undoOperation(store, r.operationId, 'p1', clock, ids('u'));
+  it('reassigns an undone confirmation to another tenant of the apartment: the key then has two payers', async () => {
+    const store = await undoneAnnaFeb();
     const toBruno = bruno({
-      proposalId: 'p-cosa-tx-anna-2026-01',
-      parts: [canone('2026-01', 45000)],
+      proposalId: 'p-cosa-tx-anna-2026-02',
+      parts: [canone('2026-02', 45000)],
     });
     expect(await confirmIncome(store, toBruno, 'p1', clock, ids('c'))).toEqual({
       status: 'confirmed',
       operationId: 'c-1',
-      paymentIds: ['pay-tx-anna-2026-01-1'],
-      payerId: 'payer-tx-anna-2026-01',
+      paymentIds: ['pay-tx-anna-2026-02-1'],
+      payerId: 'payer-tx-anna-2026-02',
     });
-    expect((await payers(store)).find((p) => p.id === 'payer-tx-anna-2026-01')).toMatchObject({
+    expect((await payers(store)).find((p) => p.id === 'payer-tx-anna-2026-02')).toMatchObject({
       tenantId: 't-bruno',
       validFrom: '2026-01-01',
     });
     // Anna's key now belongs to two tenants: never automatic again (decision 5).
     expect(
-      (await proposalsOf(store)).find((p) => p.transactionId === 'tx-anna-2026-02'),
+      (await proposalsOf(store)).find((p) => p.transactionId === 'tx-anna-2026-03'),
     ).toMatchObject({ step: 'chi', reason: 'multi-tenant', tenantIds: ['t-anna', 't-bruno'] });
   });
 
   it('refuses a deleted tenant, even with a live presence, and a tenant whose only presence is deleted', async () => {
     const store = await yearStore();
-    const r = await runReconcile(store, 'p1', clock, ids('op'));
-    if (r.status !== 'reconciled' || r.operationId === undefined) throw new Error('none');
-    await undoOperation(store, r.operationId, 'p1', clock, ids('u'));
     const tenants = (await loadAll(store, 'tenant', TenantSchema)).records;
     const bruno0 = tenants.find((t) => t.id === 't-bruno');
     await store.writeJsonAtomic(recordPath('tenant', 't-bruno'), { ...bruno0, deleted: true });
@@ -410,7 +429,7 @@ describe('confirmIncome', () => {
       }),
     );
     const before = await snapshot(store);
-    const anna = { proposalId: 'p-cosa-tx-anna-2026-01', parts: [canone('2026-01', 45000)] };
+    const anna = { proposalId: 'p-cosa-tx-anna-2026-02', parts: [canone('2026-02', 45000)] };
     for (const tenantId of ['t-bruno', 't-carla']) {
       expect(
         await confirmIncome(store, bruno({ ...anna, tenantId }), 'p1', clock, ids('x')),
