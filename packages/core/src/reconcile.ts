@@ -60,7 +60,8 @@ export async function runReconciliation(
   // An incoming movement an «in» rule will classify is no «chi» of the income: it would block the
   // later rents of the apartment (earlier-open) until the next run. Only the income skips it.
   const beforeIncome = new Set([...alsoUsed, ...(await planOutgoing(store, alsoUsed)).incoming]);
-  // Nor is a movement of a transfer (automatic, completed or proposed, I3 of the final review);
+  // Nor is a movement of an automatic or completed transfer (I3 of the final review); a leg of a
+  // mere proposal keeps its own «chi» (user1: two proposals, the rents blocked until confirmed);
   // the transfers skip the payments the income would write, so this goes on until it settles.
   const paidBy = async (skip: ReadonlySet<string>) =>
     (await planIncome(store, skip)).payments.flatMap((p) => p.transactionId ?? []);
@@ -69,10 +70,7 @@ export async function runReconciliation(
   for (let round = 0; round < 5; round++) {
     const skip = new Set([...beforeIncome, ...transferIds]);
     const plan = await planTransfers(store, new Set([...alsoUsed, ...(await paidBy(skip))]));
-    const next = new Set([
-      ...[...plan.transfers, ...plan.completed].flatMap(legsOf),
-      ...plan.proposals.flatMap((p) => [p.transactionId, ...p.legIds]),
-    ]);
+    const next = new Set([...plan.transfers, ...plan.completed].flatMap(legsOf));
     const same = next.size === transferIds.size && [...next].every((id) => transferIds.has(id));
     transferIds = next;
     if (same) break;

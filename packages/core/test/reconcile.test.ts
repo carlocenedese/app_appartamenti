@@ -827,16 +827,31 @@ describe('runReconciliation: transfers against the dry run and the income (final
     expect({ ...dry.transfers, operationId: first.transfers.operationId }).toEqual(first.transfers);
   });
 
-  it('I3: with a new pair a leg has one proposal only, and the rents are not blocked', async () => {
+  const treContiWithLegs = async () => {
+    const store = await treConti();
+    await write(store, legs());
+    return store;
+  };
+
+  it('I3: with a new pair an incoming leg keeps its «chi» proposal and blocks the later rents', async () => {
     const store = await treConti();
     await write(store, legs());
     const first = await reconcile(store);
     if (first.status !== 'reconciled') throw new Error('refused');
     const legIds = first.transfers.proposals.flatMap((p) => [p.transactionId, ...p.legIds]);
     expect(legIds).toContain('tx-b-in2');
-    expect(first.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-in2');
-    expect(first.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-affitto-mar');
+    expect(first.income.proposals).toContainEqual(
+      expect.objectContaining({ id: 'p-chi-tx-b-in2', transactionId: 'tx-b-in2' }),
+    );
+    expect(first.income.proposals).toContainEqual(
+      expect.objectContaining({ transactionId: 'tx-b-affitto-mar', reason: 'earlier-open' }),
+    );
+    const once = await snapshot(store);
     expect(await reconcile(store, 's')).toMatchObject({ income: { written: 0 } });
+    expect(await snapshot(store)).toEqual(once);
+    const dry = await reconcile(await treContiWithLegs(), 'd', true);
+    if (dry.status !== 'reconciled') throw new Error('refused');
+    expect({ ...dry.income, operationId: first.income.operationId }).toEqual(first.income);
   });
 });
 
