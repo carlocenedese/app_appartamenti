@@ -183,7 +183,7 @@ export async function confirmIncome(
   const { apartmentId } = account;
   const open = proposal.step === 'cosa' || proposal.reason === 'multi-tenant';
   const validFrom = firstPresenceDay(state.tenancies, input.tenantId, apartmentId);
-  // Outside the candidates only with a presence in the apartment (Carlo, 14 Nov 2026): the key
+  // Outside the candidates only with a presence in the apartment (user1, 14 Nov 2026): the key
   // (a «cosa» or a payer of several tenants always has one) then gets a payer for this tenant
   // too, and is never automatic (decision 5). A deleted tenant is never allowed.
   const outside = open && !proposal.tenantIds.includes(input.tenantId);
@@ -272,7 +272,7 @@ export type CancelPaymentResult =
   | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-payment' | 'not-automatic' };
 
 /**
- * Cancels one automatic payment by itself (Carlo, 15 Nov 2026, R121): an `income.cancel-payment`
+ * Cancels one automatic payment by itself (user1, 15 Nov 2026, R121): an `income.cancel-payment`
  * operation that deletes it, which `undoOperation` takes back. Its movement is then `undone` and
  * never automatic again (R118). Only a live `csv` payment whose latest change is an
  * `income.reconcile` is automatic (`not-automatic` otherwise); an unknown or deleted one is

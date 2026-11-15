@@ -1,6 +1,6 @@
 # Piano 2a: lettura delle bollette in PDF di testo — disegno
 
-Disegno approvato a voce da Carlo l'11 novembre 2026, da rileggere prima di scrivere il piano con i
+Disegno approvato a voce da user1 l'11 novembre 2026, da rileggere prima di scrivere il piano con i
 task. La specifica (`docs/spec.md`, sezioni 7, 8, 22, 30, 32 e 42) resta l'autorità: qui si
 scelgono solo i dettagli che la specifica lascia aperti.
 
@@ -27,7 +27,7 @@ inventato (sezione 22).
 
 ## Decisioni di architettura
 
-1. **Python come programma a riga di comando, un PDF per volta** (approccio A, scelto da Carlo).
+1. **Python come programma a riga di comando, un PDF per volta** (approccio A, scelto da user1).
    L'app lo lancia, riceve un JSON su stdout e il programma termina. Niente servizio sempre acceso,
    nessuna porta di rete (sezione 28), un PDF guasto non ferma gli altri.
 2. **I profili sono record JSON**, come gli altri, nella cartella dei dati condivisa

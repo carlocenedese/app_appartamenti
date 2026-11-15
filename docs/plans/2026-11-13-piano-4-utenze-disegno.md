@@ -1,17 +1,17 @@
 # Piano 4: utenze condivise e appartamento nuovo (disegno)
 
-Stato: **approvato da Carlo il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 22, 29, 30, 42 R3). Dipende da R80 (record `supply`) e dai controlli di `proposalFromExtraction`.
+Stato: **approvato da user1 il 13 novembre 2026**, comprese le «Mie scelte». Specifica di riferimento: `docs/spec.md` (sezioni 22, 29, 30, 42 R3). Dipende da R80 (record `supply`) e dai controlli di `proposalFromExtraction`.
 
 ## Perché
 
-Una bolletta con un'utenza che l'app non conosce (un nuovo appartamento, o una TARI condivisa tra più appartamenti) oggi si ferma con `unknown-part` e non c'è nessun posto, nell'app, dove dire a chi appartiene. Carlo vuole poterlo fare da «Da rivedere» (decisione del 13 novembre 2026), con l'appartamento già suggerito e con una nota scritta a mano che spieghi perché la ripartizione è quella.
+Una bolletta con un'utenza che l'app non conosce (un nuovo appartamento, o una TARI condivisa tra più appartamenti) oggi si ferma con `unknown-part` e non c'è nessun posto, nell'app, dove dire a chi appartiene. user1 vuole poterlo fare da «Da rivedere» (decisione del 13 novembre 2026), con l'appartamento già suggerito e con una nota scritta a mano che spieghi perché la ripartizione è quella.
 
 ## Obiettivi
 
 1. In «Da rivedere», nel documento con `unknown-part`, un passo **«A chi appartiene l'utenza?»**: scegliere uno o più appartamenti, scrivere la percentuale di ciascuno, confermare. Alla conferma nasce il record `supply` e vale per gli avvisi successivi.
 2. L'appartamento è **suggerito**, mai deciso dall'app (vedi «Suggerimento»).
 3. Per ogni utenza la **somma delle percentuali è esattamente 100%**; con meno o più la conferma resta bloccata.
-4. Una **nota libera** (scritta da Carlo) spiega il perché della ripartizione; è un record «nota» agganciato all'utenza, e se serve alla singola rata.
+4. Una **nota libera** (scritta da user1) spiega il perché della ripartizione; è un record «nota» agganciato all'utenza, e se serve alla singola rata.
 5. Una **vista per correggere i collegamenti** (scheda dell'appartamento e voce in Impostazioni) e messaggi chiari per `duplicate-supply` e `part-share`.
 6. La procedura guidata «Aggiungi appartamento» (sezione 29, già decisa) resta com'è e **non** ha un passo per le utenze: i collegamenti nascono dal primo avviso.
 
@@ -33,7 +33,7 @@ Una bolletta con un'utenza che l'app non conosce (un nuovo appartamento, o una T
 
 **Dove si collega l'utenza.** (1) Subito in «Da rivedere»: la via più corta, **scelta**. (2) Prima, nella scheda dell'appartamento: richiede i codici in anticipo, scartata. (3) Tutte e due: due schermate da mantenere, scartata.
 
-**Dove sta la nota.** (A) Un campo di testo nell'utenza: semplice ma senza storia. (B) **Note vere** (record `note` già esistente) agganciate all'utenza e alla rata: autore, data, più note, **scelta** da Carlo. (C) Campo e note insieme: più campi per poco.
+**Dove sta la nota.** (A) Un campo di testo nell'utenza: semplice ma senza storia. (B) **Note vere** (record `note` già esistente) agganciate all'utenza e alla rata: autore, data, più note, **scelta** da user1. (C) Campo e note insieme: più campi per poco.
 
 ## Disegno
 
@@ -69,10 +69,10 @@ Scheda «Utenze» dell'appartamento (e la stessa lista in Impostazioni): per ogn
 
 ## Mie scelte (da controllare)
 
-Dopo la lettura di un revisore indipendente, queste le decido io; Carlo può correggerle.
+Dopo la lettura di un revisore indipendente, queste le decido io; user1 può correggerle.
 
 1. **Campi dell'appartamento.** `ApartmentSchema` non ha indirizzo né catasto, e la procedura guidata non è ancora costruita. Questo piano aggiunge `address` (testo) e `cadastre` (elenco di foglio, particella, subalterno) come campi facoltativi, che si compilano in Impostazioni, Appartamenti anche per gli appartamenti esistenti. Senza questi dati non c'è suggerimento e si sceglie a mano.
-2. **Il conto della banca resta fuori dalla prima versione.** L'appartamento non ha un conto e l'addebito di un avviso arriva dopo la conferma. Carlo ha chiesto «dal CSV oppure dai dati della bolletta»: basta la seconda fonte. Il suggerimento dal conto si aggiunge quando il CSV è collegato (piano dei movimenti).
+2. **Il conto della banca resta fuori dalla prima versione.** L'appartamento non ha un conto e l'addebito di un avviso arriva dopo la conferma. user1 ha chiesto «dal CSV oppure dai dati della bolletta»: basta la seconda fonte. Il suggerimento dal conto si aggiunge quando il CSV è collegato (piano dei movimenti).
 3. **Una modifica è atomica.** La vista di correzione cambia tutta l'utenza in una sola scrittura, quindi la somma resta sempre 10000; non esiste uno stato a metà. Fixture e test con pesi 1 e 2 si riscrivono in punti base.
 4. **Proposte ormai vecchie.** Una proposta non si conserva: si ricalcola ogni volta che il documento si apre in «Da rivedere». Cancellare o cambiare un collegamento ha quindi effetto subito sui documenti ancora da rivedere (tornano a `unknown-part`) e mai sulle rate già registrate.
 5. **Note e rate.** `Instalment` riceve un campo facoltativo `supplyId` (l'utenza da cui nasce), così le note dell'utenza si vedono accanto alle rate. `NoteSchema.targetType` aggiunge `supply`.
@@ -86,6 +86,6 @@ Dopo la lettura di un revisore indipendente, queste le decido io; Carlo può cor
 - Come si ordina l'elenco degli appartamenti suggeriti e come si mostra il PDF affiancato.
 - I test di accettazione della schermata (comportamento, non pixel).
 
-## Aperto con Carlo
+## Aperto con user1
 
 Nessuna domanda aperta.

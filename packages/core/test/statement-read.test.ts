@@ -188,7 +188,7 @@ describe('readStatementTable', () => {
     expect(r.rows.map((x) => x.booked)).toEqual([false, true, true]);
   });
 
-  it('reads counterparty and IBAN from the description; an invalid IBAN is kept as read (Carlo, 15 Nov 2026)', () => {
+  it('reads counterparty and IBAN from the description; an invalid IBAN is kept as read (user1, 15 Nov 2026)', () => {
     const r = readStatementTable(
       table(
         HEADER,

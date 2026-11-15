@@ -1,6 +1,6 @@
 # Piano 2b-2: PDF con più documenti (disegno)
 
-Stato: **approvato da Carlo il 14 novembre 2026 (fase 1 snella).** Priorità **bassa**: quasi tutti i PDF reali contengono una sola bolletta. Specifica di riferimento: `docs/spec.md` (sezioni 7, 22 e 42; la sezione 22 dice «PDF con più documenti (l'app propone di separarli e chiede conferma)»); piano 2a (`docs/plans/2026-11-11-piano-2a-lettura-pdf.md`) per la pipeline di lettura; disegno 2b-1 (`docs/plans/2026-11-13-piano-2b-ocr-disegno.md`) e regole R86-R90 di `docs/progress.md` per l'OCR, con R92 (ramo `fix/ocr-senza-ancore-seed`); profili in `docs/rules/lettura-pdf.md`. Il piano 2b-3 (condominio) è indipendente da questo.
+Stato: **approvato da user1 il 14 novembre 2026 (fase 1 snella).** Priorità **bassa**: quasi tutti i PDF reali contengono una sola bolletta. Specifica di riferimento: `docs/spec.md` (sezioni 7, 22 e 42; la sezione 22 dice «PDF con più documenti (l'app propone di separarli e chiede conferma)»); piano 2a (`docs/plans/2026-11-11-piano-2a-lettura-pdf.md`) per la pipeline di lettura; disegno 2b-1 (`docs/plans/2026-11-13-piano-2b-ocr-disegno.md`) e regole R86-R90 di `docs/progress.md` per l'OCR, con R92 (ramo `fix/ocr-senza-ancore-seed`); profili in `docs/rules/lettura-pdf.md`. Il piano 2b-3 (condominio) è indipendente da questo.
 
 ## Perché
 
@@ -13,19 +13,19 @@ Oggi un file è un documento: `read_pdf` legge tutte le pagine, `extract` scegli
 
 Il caso è raro (decisione 1): per questo la fase 1 è la più piccola che rende possibile registrare ogni documento di un file, e la divisione automatica è la fase 2, da fare solo se i casi veri la richiedono.
 
-## Decisioni di Carlo (14 novembre 2026)
+## Decisioni di user1 (14 novembre 2026)
 
 1. **Caso raro, priorità bassa.** Quasi tutti i PDF reali sono associati a una sola bolletta. Fase 1 snella: avviso, un intervallo di pagine per lettura, duplicati per intervallo, tipo di documento e nota. La divisione automatica con `split.startAnyOf` (approccio C) è la **fase 2**, solo se i casi veri la richiedono.
 2. **Un solo file con N registrazioni per intervallo di pagine.** Nessun PDF separato, quindi nessuna libreria per scrivere PDF.
-3. **Allegato non riconosciuto:** si propone come documento a parte, con una domanda di revisione per quel documento con cui Carlo dice che cosa è.
+3. **Allegato non riconosciuto:** si propone come documento a parte, con una domanda di revisione per quel documento con cui user1 dice che cosa è.
 4. **Annullamento:** l'app offre entrambe le opzioni, «annulla solo questo documento» e «annulla tutto il file».
 5. **Registrazione automatica:** un documento di un file diviso **può registrarsi da solo** se ha alta confidenza, con la politica di conferma di oggi (sezione 22). Restano `da-confermare` i documenti con un controllo fallito, con confidenza non alta o non riconosciuti. Ogni documento registrato da un file diviso porta una **nota** che lo dice e un **tipo di documento** (`documentKind`) con cui filtrare nella barra di ricerca.
 6. **Fase 1 snella** (seconda risposta del 14 novembre 2026): `--pages` con un solo intervallo per chiamata; `extract` stampa ancora **un** `ExtractionResult` (forma dell'uscita invariata) con in più `pageRange` e `documentKind`; `ExtractionSet`, controlli fra documenti e divisione in un'unica lettura passano alla fase 2.
-7. **Conferme di pagamento e note esplicative** non sono mai bollette: sempre `unknown` e `non-riconosciuta`. «Se succedesse dovrai flaggarle come non riconosciute» (Carlo).
+7. **Conferme di pagamento e note esplicative** non sono mai bollette: sempre `unknown` e `non-riconosciuta`. «Se succedesse dovrai flaggarle come non riconosciute» (user1).
 
-## Campione di Carlo (14 novembre 2026)
+## Campione di user1 (14 novembre 2026)
 
-Delle dieci scansioni reali controllate a mano da Carlo nessuna è una bolletta attuale: 4 preventivi o rendiconti condominiali, 1 conferma di pagamento TARI, 4 note o scarti, 1 Enel del 2020. Solo conteggi: nessun testo copiato. Conta per questo piano per due motivi: un file «strano» spesso non è una bolletta (decisione 7), e i documenti condominiali vanno al piano 2b-3, non divisi qui.
+Delle dieci scansioni reali controllate a mano da user1 nessuna è una bolletta attuale: 4 preventivi o rendiconti condominiali, 1 conferma di pagamento TARI, 4 note o scarti, 1 Enel del 2020. Solo conteggi: nessun testo copiato. Conta per questo piano per due motivi: un file «strano» spesso non è una bolletta (decisione 7), e i documenti condominiali vanno al piano 2b-3, non divisi qui.
 
 ## Obiettivi (fase 1)
 
@@ -103,7 +103,7 @@ Quando le occorrenze dell'ancora di importo o di numero portano valori diversi (
 ### Tipo di documento (`documentKind`)
 
 - **Valori:** `bill` (bolletta), `tari` (avviso TARI), `unknown` (sconosciuto); nell'interfaccia «bolletta», «avviso TARI», «sconosciuto». Un tipo nuovo (per esempio del condominio, piano 2b-3) si aggiunge all'elenco.
-- **Come si valorizza:** dal `kind` del profilo scelto; `unknown` quando nessun profilo è scelto (`non-riconosciuta`, `senza-testo`, `illeggibile`). Quando Carlo risponde alla domanda di revisione di un documento `unknown` e lo registra a mano come bolletta o rata TARI, il record prende il tipo scelto.
+- **Come si valorizza:** dal `kind` del profilo scelto; `unknown` quando nessun profilo è scelto (`non-riconosciuta`, `senza-testo`, `illeggibile`). Quando user1 risponde alla domanda di revisione di un documento `unknown` e lo registra a mano come bolletta o rata TARI, il record prende il tipo scelto.
 - **Conferme di pagamento e note esplicative** (decisione 7) sono sempre `unknown`: oggi nessun profilo le riconosce. Se un profilo ne riconoscesse una, la correzione è un testo in `recognise.noneOf` di quel profilo (configurazione, non codice), con una fixture sintetica che lo prova.
 - **Dove vive:** nell'`ExtractionResult` (sempre) e nel record registrato, nel campo opzionale `fileDocument: { pages: [first, last], documentKind }` di `Bill` e delle rate TARI (`Instalment`). Si scrive solo per un documento che non copre tutto il file; assente vale «file intero», quindi i record già scritti restano validi senza migrazione.
 - **Ricerca (requisito per il piano dell'interfaccia):** la barra di ricerca deve permettere di filtrare per tipo di documento e per «da un file con più documenti» (più record con lo stesso `fileHash`, o un record con `fileDocument`), insieme agli altri filtri. La funzione di filtro si scrive in quel piano (Mie scelte 3).
@@ -128,7 +128,7 @@ Come la nota dell'avviso TARI (`tari-note.ts`), è un testo generato dal core e 
 
 - **Confine sbagliato = importi sbagliati.** In fase 1 i confini li mette una persona; un confine di troppo lascia una metà di bolletta senza importo o con un importo letto da un'ancora diversa (`medium`), uno mancante dà l'avviso se i valori discordano. Resta **sempre `da-confermare`**: ogni documento con un campo non `high` o un campo obbligatorio mancante, con un controllo fallito, o `unknown` (che ha in più la domanda di revisione).
 - **Bollette perse in fase 1.** Un file con due bollette dello stesso importo e numero non dà l'avviso, resta un documento `high` e può registrarsi da solo con una bolletta sola (come oggi). Caso raro (decisione 1); se compare nei fatti, è il motivo per fare la fase 2.
-- **Documento non bolletta preso per bolletta.** Una conferma di pagamento o una nota riconosciuta da un profilo darebbe una spesa inesistente: la difesa è `noneOf` nel profilo (decisione 7) e il campione di Carlo, che oggi non ne mostra nessuna riconosciuta.
+- **Documento non bolletta preso per bolletta.** Una conferma di pagamento o una nota riconosciuta da un profilo darebbe una spesa inesistente: la difesa è `noneOf` nel profilo (decisione 7) e il campione di user1, che oggi non ne mostra nessuna riconosciuta.
 - **Costo della rilettura.** Ogni intervallo rilegge il file (OCR compreso): accettato per la rarità.
 - **Regressione.** Senza `--pages` nulla cambia tranne `pageRange` e `documentKind`; il test di non regressione rilegge tutte le fixture di `fixtures/pdf/`.
 - **Rilettura con intervalli diversi.** Un intervallo che si sovrappone a uno registrato dà `possible-duplicate`, mai una seconda registrazione silenziosa.
@@ -156,10 +156,10 @@ Il formato preciso di `--pages`; la forma della vista ristretta del `Document`; 
 
 ## Non verificato
 
-- Quanti PDF reali contengono più documenti: rari secondo Carlo; nessun PDF reale è stato aperto per questo disegno. Il conteggio dell'avviso si fa dopo la fase 1, con i soli numeri.
+- Quanti PDF reali contengono più documenti: rari secondo user1; nessun PDF reale è stato aperto per questo disegno. Il conteggio dell'avviso si fa dopo la fase 1, con i soli numeri.
 - Quali testi stanno solo sulla prima pagina dei documenti di ciascun fornitore (serve solo per la fase 2).
 - Se esistono file con pagine di due appartamenti diversi (conterebbe la verifica dell'appartamento per documento, sezione 22, punto 3).
 
-## Aperto con Carlo
+## Aperto con user1
 
 Nessuna domanda che blocchi la fase 1. Più avanti, solo se l'avviso o i casi veri mostrano file con più documenti non notati: **se e quando fare la fase 2**.

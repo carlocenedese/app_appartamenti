@@ -107,7 +107,7 @@ describe('validPayers', () => {
       expect([only?.id, only?.source]).toEqual(['y', 'manual']);
     }
   });
-  it('ignores the payers of a deleted tenant, as if they were not there (Carlo, 15 Nov 2026)', () => {
+  it('ignores the payers of a deleted tenant, as if they were not there (user1, 15 Nov 2026)', () => {
     const tenants = [
       TenantSchema.parse({ id: 't1', v: 1, rev: 2, name: 'Nome Inventato', deleted: true }),
       TenantSchema.parse({ id: 't2', v: 1, rev: 1, name: 'Altro Nome' }),

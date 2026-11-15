@@ -64,7 +64,7 @@ export function whoPaid(tx: BankTransaction, ctx: IncomeContext): WhoResult {
       .map((t) => t.tenantId),
   );
   // An IBAN that is there but not valid is never automatic and never falls back on the name key:
-  // a «chi» without key, so no payer is saved for it (Carlo, 15 Nov 2026, R120). Blank is no IBAN.
+  // a «chi» without key, so no payer is saved for it (user1, 15 Nov 2026, R120). Blank is no IBAN.
   if (iban === undefined && (tx.counterparty?.iban ?? '').trim() !== '') {
     return { kind: 'ask', reason: 'invalid-iban', tenantIds: order([...present]) };
   }
@@ -73,7 +73,7 @@ export function whoPaid(tx: BankTransaction, ctx: IncomeContext): WhoResult {
   const keyField = key === undefined ? {} : { key };
   const valid = key === undefined ? [] : validPayers(ctx.payers, key, tx.date, ctx.tenants);
   // A live payer of a deleted tenant is no candidate, but keeps the key from being automatic
-  // while it is valid (Carlo, 15 Nov 2026, R119).
+  // while it is valid (user1, 15 Nov 2026, R119).
   const blocked =
     key !== undefined && validPayers(ctx.payers, key, tx.date, []).length > valid.length;
   const [only] = valid;
@@ -192,7 +192,7 @@ export interface IncomeResult {
 
 /**
  * The months covered from the first to the last day by the live statements of the live accounts
- * of the apartment, together (R112, Carlo 14 Nov 2026): only these can be «to pay».
+ * of the apartment, together (R112, user1 14 Nov 2026): only these can be «to pay».
  */
 export function coveredMonths(
   ctx: { accounts: Account[]; statements: Statement[] },
@@ -224,7 +224,7 @@ export interface RentArrear {
 }
 
 /**
- * The arrears (Carlo, 15 Nov 2026, R117): each month covered in full by the live statements of an
+ * The arrears (user1, 15 Nov 2026, R117): each month covered in full by the live statements of an
  * account of the apartment (`coveredMonths`) in which the tenant (not deleted) has a live presence there and no
  * live `canone` payment for it there (`forMonth`, else the month of the date). Only a list: it
  * changes no calculation and no proposal. Sorted by apartment, tenant, month.
@@ -290,7 +290,7 @@ export function reconcileIncome(
     if (p.transactionId === undefined) continue;
     if (p.deleted !== true) handled.add(p.transactionId);
     else if (p.source === 'csv') {
-      // The latest operation on the record deleted it (R118, Carlo, 15 Nov 2026): only the undo of
+      // The latest operation on the record deleted it (R118, user1, 15 Nov 2026): only the undo of
       // a whole reconciliation puts the movement back to normal; an undone confirmation, a
       // payment cancelled by itself or a deletion no operation explains make it `undone`.
       const by = latest.get(recordPath('payment', p.id));

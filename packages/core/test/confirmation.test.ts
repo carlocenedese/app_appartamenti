@@ -366,7 +366,7 @@ describe('registerProposal: bills', () => {
     const { result, proposal } = await billCase();
     const outcome = await registerProposal(
       store,
-      { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'auto' },
+      { proposal, result, bytes: PDF, profileId: 'user1', mode: 'auto' },
       clock,
     );
     const operationId = 'op-bill-1-20261112T090000000Z';
@@ -378,7 +378,7 @@ describe('registerProposal: bills', () => {
     const { operations } = await readJournal(store);
     expect(operations.map((o) => o.kind)).toEqual(['bill.register-auto']);
 
-    await undoOperation(store, operationId, 'carlo', clock, () => 'undo-1');
+    await undoOperation(store, operationId, 'user1', clock, () => 'undo-1');
     const stored = BillSchema.parse(await store.readJson(recordPath('bill', 'bill-1')));
     expect(stored.deleted).toBe(true);
     expect((await loadAll(store, 'bill', BillSchema)).records).toEqual([]);
@@ -389,7 +389,7 @@ describe('registerProposal: bills', () => {
     const { result, proposal } = await billCase();
     await registerProposal(
       store,
-      { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      { proposal, result, bytes: PDF, profileId: 'user1', mode: 'manual' },
       tickingClock(),
     );
     const { operations } = await readJournal(store);
@@ -402,14 +402,14 @@ describe('registerProposal: bills', () => {
     const first = await billCase();
     await registerProposal(
       store,
-      { ...first, bytes: PDF, profileId: 'carlo', mode: 'auto' },
+      { ...first, bytes: PDF, profileId: 'user1', mode: 'auto' },
       clock,
     );
     const again = await billCase();
     const second = proposalFromExtraction(again.result, context(), ids('other'));
     const outcome = await registerProposal(
       store,
-      { proposal: second, result: again.result, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      { proposal: second, result: again.result, bytes: PDF, profileId: 'user1', mode: 'manual' },
       clock,
     );
     expect(outcome).toEqual({ status: 'duplicate', existingId: 'bill-1' });
@@ -423,7 +423,7 @@ describe('registerProposal: bills', () => {
     const first = await billCase();
     await registerProposal(
       store,
-      { ...first, bytes: PDF, profileId: 'carlo', mode: 'auto' },
+      { ...first, bytes: PDF, profileId: 'user1', mode: 'auto' },
       clock,
     );
     const result = billResult(await hashBytes(PDF_AGAIN));
@@ -432,7 +432,7 @@ describe('registerProposal: bills', () => {
     expect(proposal.checks.every((c) => c.severity === 'ok')).toBe(true);
     const outcome = await registerProposal(
       store,
-      { proposal, result, bytes: PDF_AGAIN, profileId: 'carlo', mode: 'auto' },
+      { proposal, result, bytes: PDF_AGAIN, profileId: 'user1', mode: 'auto' },
       clock,
     );
     expect(outcome).toEqual({ status: 'possible-duplicate', existingId: 'bill-1' });
@@ -446,7 +446,7 @@ describe('registerProposal: bills', () => {
     );
     const later = await registerProposal(
       store,
-      { proposal, result, bytes: PDF_AGAIN, profileId: 'carlo', mode: 'auto' },
+      { proposal, result, bytes: PDF_AGAIN, profileId: 'user1', mode: 'auto' },
       clock,
     );
     expect(later).toEqual({ status: 'possible-duplicate', existingId: 'bill-1' });
@@ -467,7 +467,7 @@ describe('registerProposal: bills', () => {
     for (const c of cases) {
       const outcome = await registerProposal(
         store,
-        { ...c, bytes: PDF, profileId: 'carlo', mode: 'auto' },
+        { ...c, bytes: PDF, profileId: 'user1', mode: 'auto' },
         clock,
       );
       expect(outcome.status).toBe('rejected');
@@ -515,7 +515,7 @@ describe('registerProposal: bills', () => {
     for (const [name, store, read, reason] of cases) {
       const outcome = await registerProposal(
         store,
-        { proposal, result: read, bytes: PDF, profileId: 'carlo', mode: 'auto' },
+        { proposal, result: read, bytes: PDF, profileId: 'user1', mode: 'auto' },
         clock,
       );
       expect(outcome.status, name).toBe('rejected');
@@ -530,7 +530,7 @@ describe('registerProposal: bills', () => {
     const { result, proposal } = await billCase();
     const outcome = await registerProposal(
       store,
-      { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      { proposal, result, bytes: PDF, profileId: 'user1', mode: 'manual' },
       tickingClock(),
     );
     expect(outcome.status).toBe('registered');
@@ -541,7 +541,7 @@ describe('registerProposal: bills', () => {
     const missing = await billCase(PDF, { fields: { amount: field(null, 'missing') } });
     const outcome = await registerProposal(
       store,
-      { ...missing, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      { ...missing, bytes: PDF, profileId: 'user1', mode: 'manual' },
       tickingClock(),
     );
     expect(outcome.status).toBe('rejected');
@@ -557,7 +557,7 @@ describe('registerProposal: bills', () => {
         proposal: withCheck(proposal, 'fail'),
         result,
         bytes: PDF,
-        profileId: 'carlo',
+        profileId: 'user1',
         mode: 'manual',
       },
       tickingClock(),
@@ -570,7 +570,7 @@ describe('registerProposal: bills', () => {
     const { result, proposal } = await billCase();
     const outcome = await registerProposal(
       store,
-      { proposal, result, bytes: PDF_AGAIN, profileId: 'carlo', mode: 'manual' },
+      { proposal, result, bytes: PDF_AGAIN, profileId: 'user1', mode: 'manual' },
       tickingClock(),
     );
     expect(outcome).toEqual({
@@ -589,7 +589,7 @@ describe('registerProposal: retry after a failed write (R68)', () => {
     store.failNext = true;
     const clock = tickingClock();
     const { result, proposal } = await billCase();
-    const input = { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'auto' as const };
+    const input = { proposal, result, bytes: PDF, profileId: 'user1', mode: 'auto' as const };
     await expect(registerProposal(store, input, clock)).rejects.toThrow(/EIO/);
     expect(await store.list('_app/journal')).toHaveLength(1);
     expect(await store.readJson(recordPath('bill', 'bill-1'))).toBeUndefined();
@@ -601,7 +601,7 @@ describe('registerProposal: retry after a failed write (R68)', () => {
     expect(operations.map((o) => o.id)).toContain(retry.operationId);
     expect(new Set(operations.map((o) => o.id)).size).toBe(operations.length);
 
-    await undoOperation(store, retry.operationId, 'carlo', clock, () => 'undo-1');
+    await undoOperation(store, retry.operationId, 'user1', clock, () => 'undo-1');
     const stored = BillSchema.parse(await store.readJson(recordPath('bill', 'bill-1')));
     expect(stored.deleted).toBe(true);
   });
@@ -613,8 +613,8 @@ describe('registerProposal: retry after a failed write (R68)', () => {
     const draft = profile({ status: 'bozza' });
     await store.writeJsonAtomic(recordPath('supplierProfile', draft.id), draft);
     store.failNext = true;
-    await expect(confirmProfile(store, draft, 'carlo', clock)).rejects.toThrow(/EIO/);
-    const confirmed = await confirmProfile(store, draft, 'carlo', clock);
+    await expect(confirmProfile(store, draft, 'user1', clock)).rejects.toThrow(/EIO/);
+    const confirmed = await confirmProfile(store, draft, 'user1', clock);
     expect(confirmed.status).toBe('confermato');
 
     const { operations, problems } = await readJournal(store);
@@ -622,7 +622,7 @@ describe('registerProposal: retry after a failed write (R68)', () => {
     expect(operations).toHaveLength(2);
     expect(new Set(operations.map((o) => o.id)).size).toBe(2);
     const retryOp = operations.at(-1);
-    await undoOperation(store, retryOp?.id ?? '', 'carlo', clock, () => 'undo-1');
+    await undoOperation(store, retryOp?.id ?? '', 'user1', clock, () => 'undo-1');
     const undone = SupplierProfileSchema.parse(
       await store.readJson(recordPath('supplierProfile', draft.id)),
     );
@@ -644,7 +644,7 @@ describe('registerProposal: TARI', () => {
     const { result, proposal } = await tariCase();
     const outcome = await registerProposal(
       store,
-      { proposal, result, bytes: TARI_PDF, profileId: 'carlo', mode: 'manual' },
+      { proposal, result, bytes: TARI_PDF, profileId: 'user1', mode: 'manual' },
       clock,
     );
     const newIds = proposal.instalments.map((i) => i.id);
@@ -660,7 +660,7 @@ describe('registerProposal: TARI', () => {
     expect(operations[0]?.changes).toHaveLength(2);
     expect(operations[0]?.apartmentId).toBeUndefined();
 
-    await undoOperation(store, operationId, 'carlo', clock, () => 'undo-1');
+    await undoOperation(store, operationId, 'user1', clock, () => 'undo-1');
     expect((await loadAll(store, 'instalment', InstalmentSchema)).records).toEqual([]);
     const all = await loadAll(store, 'instalment', InstalmentSchema, { includeDeleted: true });
     expect(all.records.map((i) => i.deleted)).toEqual([true, true]);
@@ -672,13 +672,13 @@ describe('registerProposal: TARI', () => {
     const first = await tariCase();
     await registerProposal(
       store,
-      { ...first, bytes: TARI_PDF, profileId: 'carlo', mode: 'manual' },
+      { ...first, bytes: TARI_PDF, profileId: 'user1', mode: 'manual' },
       clock,
     );
     const again = await tariCase('j');
     const outcome = await registerProposal(
       store,
-      { ...again, bytes: TARI_PDF, profileId: 'carlo', mode: 'manual' },
+      { ...again, bytes: TARI_PDF, profileId: 'user1', mode: 'manual' },
       clock,
     );
     expect(outcome).toEqual({ status: 'duplicate', existingId: first.proposal.instalments[0]?.id });
@@ -692,7 +692,7 @@ describe('registerProposal: TARI', () => {
     const first = await tariCase();
     const auto = await registerProposal(
       store,
-      { ...first, bytes: TARI_PDF, profileId: 'carlo', mode: 'auto' },
+      { ...first, bytes: TARI_PDF, profileId: 'user1', mode: 'auto' },
       clock,
     );
     expect(auto.status).toBe('registered');
@@ -703,7 +703,7 @@ describe('registerProposal: TARI', () => {
     const proposal = proposalFromExtraction(result, tariContext(), ids('k'));
     const outcome = await registerProposal(
       store,
-      { proposal, result, bytes: other, profileId: 'carlo', mode: 'auto' },
+      { proposal, result, bytes: other, profileId: 'user1', mode: 'auto' },
       clock,
     );
     expect(outcome.status).toBe('possible-duplicate');
@@ -715,7 +715,7 @@ describe('registerProposal: TARI', () => {
     const { result, proposal } = await tariCase();
     const outcome = await registerProposal(
       store,
-      { proposal, result, bytes: TARI_PDF, profileId: 'carlo', mode: 'auto' },
+      { proposal, result, bytes: TARI_PDF, profileId: 'user1', mode: 'auto' },
       tickingClock(),
     );
     expect(outcome.status).toBe('rejected');
@@ -731,7 +731,7 @@ describe('registerProposal: TARI', () => {
         proposal: { ...proposal, instalments: [] },
         result,
         bytes: TARI_PDF,
-        profileId: 'carlo',
+        profileId: 'user1',
         mode: 'manual',
       },
       tickingClock(),
@@ -745,7 +745,7 @@ describe('registerProposal: TARI', () => {
     const single = { ...proposal, instalments: proposal.instalments.slice(0, 1) };
     await registerProposal(
       store,
-      { proposal: single, result, bytes: TARI_PDF, profileId: 'carlo', mode: 'manual' },
+      { proposal: single, result, bytes: TARI_PDF, profileId: 'user1', mode: 'manual' },
       tickingClock(),
     );
     expect((await readJournal(store)).operations[0]?.apartmentId).toBe('apt-b');
@@ -763,12 +763,12 @@ describe('confirmProfile and setProfileAutoRegister', () => {
     const store = new MemoryStore();
     const clock = tickingClock();
     const draft = await storedProfile(store);
-    const confirmed = await confirmProfile(store, draft, 'carlo', clock);
+    const confirmed = await confirmProfile(store, draft, 'user1', clock);
     expect(confirmed).toMatchObject({ status: 'confermato', rev: 2 });
     expect(
       SupplierProfileSchema.parse(await store.readJson(recordPath('supplierProfile', draft.id))),
     ).toEqual(confirmed);
-    const again = await confirmProfile(store, confirmed, 'carlo', clock);
+    const again = await confirmProfile(store, confirmed, 'user1', clock);
     expect(again).toBe(confirmed);
     const { operations } = await readJournal(store);
     expect(operations.map((o) => o.kind)).toEqual(['profile.confirm']);
@@ -778,10 +778,10 @@ describe('confirmProfile and setProfileAutoRegister', () => {
     const store = new MemoryStore();
     const clock = tickingClock();
     const p = await storedProfile(store, { status: 'confermato' });
-    const always = await setProfileAutoRegister(store, p, false, 'carlo', clock);
+    const always = await setProfileAutoRegister(store, p, false, 'user1', clock);
     expect(always).toMatchObject({ autoRegister: false, rev: 2 });
-    expect(await setProfileAutoRegister(store, always, false, 'carlo', clock)).toBe(always);
-    const back = await setProfileAutoRegister(store, always, true, 'carlo', clock);
+    expect(await setProfileAutoRegister(store, always, false, 'user1', clock)).toBe(always);
+    const back = await setProfileAutoRegister(store, always, true, 'user1', clock);
     expect(back).toMatchObject({ autoRegister: true, rev: 3 });
     const { operations, problems } = await readJournal(store);
     expect(problems).toEqual([]);
@@ -796,14 +796,14 @@ describe('confirmProfile and setProfileAutoRegister', () => {
     const store = new MemoryStore();
     const clock = tickingClock();
     const draft = await storedProfile(store);
-    await confirmProfile(store, draft, 'carlo', clock);
+    await confirmProfile(store, draft, 'user1', clock);
     const [op] = (await readJournal(store)).operations;
-    await undoOperation(store, op?.id ?? '', 'carlo', clock, () => 'undo-1');
+    await undoOperation(store, op?.id ?? '', 'user1', clock, () => 'undo-1');
     const undone = SupplierProfileSchema.parse(
       await store.readJson(recordPath('supplierProfile', draft.id)),
     );
     expect(undone.status).toBe('bozza');
-    const again = await confirmProfile(store, undone, 'carlo', clock);
+    const again = await confirmProfile(store, undone, 'user1', clock);
     expect(again.status).toBe('confermato');
     const { operations, problems } = await readJournal(store);
     expect(problems).toEqual([]);
@@ -823,7 +823,7 @@ describe('registerProposal: documents of one file by page range', () => {
     const again = proposalFromExtraction(result, context(), ids(prefix));
     return registerProposal(
       store,
-      { proposal: again, result, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      { proposal: again, result, bytes: PDF, profileId: 'user1', mode: 'manual' },
       tickingClock(),
     );
   }
@@ -839,7 +839,7 @@ describe('registerProposal: documents of one file by page range', () => {
         proposal: proposalFromExtraction(result, context(), ids('b')),
         result,
         bytes: PDF,
-        profileId: 'carlo',
+        profileId: 'user1',
         mode: 'manual',
       },
       tickingClock(),
@@ -868,7 +868,7 @@ describe('registerProposal: documents of one file by page range', () => {
     const old = await billCase(PDF, { pages: 4, pageRange: [1, 4] });
     await registerProposal(
       store,
-      { ...old, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+      { ...old, bytes: PDF, profileId: 'user1', mode: 'manual' },
       tickingClock(),
     );
     const [stored] = (await loadAll(store, 'bill', BillSchema)).records;
@@ -900,7 +900,7 @@ describe('registerProposal: documents of one file by page range', () => {
       const proposal = proposalFromExtraction(result, tariContext(), ids(prefix));
       return registerProposal(
         store,
-        { proposal, result, bytes: PDF, profileId: 'carlo', mode: 'manual' },
+        { proposal, result, bytes: PDF, profileId: 'user1', mode: 'manual' },
         tickingClock(),
       );
     };
@@ -944,7 +944,7 @@ describe('registerProposal: documents of one file by page range', () => {
         proposal: proposalFromExtraction(result, tariContext(), ids(prefix)),
         result,
         bytes: PDF,
-        profileId: 'carlo',
+        profileId: 'user1',
         mode: 'manual',
       },
       tickingClock(),

@@ -1020,7 +1020,7 @@
       "kind": "canone",
       "forMonth": "2025-08",
       "source": "manual",
-      "note": "Versamento confermato da Carlo; data non registrata nell'Excel"
+      "note": "Versamento confermato da user1; data non registrata nell'Excel"
     },
     {
       "id": "pay-i-2025-09",
@@ -1034,7 +1034,7 @@
       "kind": "canone",
       "forMonth": "2025-09",
       "source": "manual",
-      "note": "Versamento confermato da Carlo; data non registrata nell'Excel"
+      "note": "Versamento confermato da user1; data non registrata nell'Excel"
     },
     {
       "id": "pay-j-2024-10",
@@ -1846,7 +1846,7 @@
       }
     }
   ],
-  "approvedBy": "Carlo, 11 novembre 2026",
+  "approvedBy": "user1, 11 novembre 2026",
   "knownDeviations": [
     {
       "what": "Commissione bancaria di 0,80 € per bolletta",
@@ -1874,11 +1874,11 @@
     },
     {
       "what": "Condominio",
-      "why": "Escluso da expected per costruzione (sezione 42, R3). Le rate 2024-25 non sono disponibili (l'Excel ha solo la quota annua inquilini di 2.103,34 €), quindi la fixture non ha rate di condominio e il controllo di fine esercizio del Task 9 non si applica a questa fixture. Il conguaglio condominiale 2023-24 di 1.302,68 € resta alla proprietà (Carlo)."
+      "why": "Escluso da expected per costruzione (sezione 42, R3). Le rate 2024-25 non sono disponibili (l'Excel ha solo la quota annua inquilini di 2.103,34 €), quindi la fixture non ha rate di condominio e il controllo di fine esercizio del Task 9 non si applica a questa fixture. Il conguaglio condominiale 2023-24 di 1.302,68 € resta alla proprietà (user1)."
     },
     {
       "what": "Forfait",
-      "why": "L'Excel considera il forfait dovuto (30 € x mesi); l'app quello incassato (R4). Qui coincidono: ogni mese ha un versamento (l'inquilino I ha pagato agosto e settembre, confermato da Carlo)."
+      "why": "L'Excel considera il forfait dovuto (30 € x mesi); l'app quello incassato (R4). Qui coincidono: ogni mese ha un versamento (l'inquilino I ha pagato agosto e settembre, confermato da user1)."
     },
     {
       "what": "Bolletta della luce settembre-ottobre 2025",

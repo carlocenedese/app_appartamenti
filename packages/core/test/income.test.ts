@@ -160,7 +160,7 @@ describe('coveredMonths', () => {
     statements: Statement[];
   } => ({ accounts: input().accounts, statements });
 
-  it('counts only months covered from the first to the last day (Carlo, 14 Nov 2026)', () => {
+  it('counts only months covered from the first to the last day (user1, 14 Nov 2026)', () => {
     const months = coveredMonths(
       ctx([
         statement({ id: 's1', from: '2026-01-31', to: '2026-02-01' }),
@@ -560,7 +560,7 @@ describe('reconcileIncome, phase «che cosa»', () => {
     ]);
   });
 
-  describe('which deletion makes a transaction undone (R118, Carlo, 15 Nov 2026)', () => {
+  describe('which deletion makes a transaction undone (R118, user1, 15 Nov 2026)', () => {
     const transactions = [tx('x1', '2026-01-05'), tx('x2', '2026-02-03'), tx('x3', '2026-03-03')];
     const first = reconcileIncome(input({ transactions }));
     const live = first.payments.map((p) => payment({ ...p }));
@@ -608,7 +608,7 @@ describe('reconcileIncome, phase «che cosa»', () => {
     });
   });
 
-  it('a payer of a deleted tenant does not count: once automatic, now a «chi» (Carlo, 15 Nov 2026)', () => {
+  it('a payer of a deleted tenant does not count: once automatic, now a «chi» (user1, 15 Nov 2026)', () => {
     const transactions = [tx('x1', '2026-01-05')];
     expect(reconcileIncome(input({ transactions })).payments).toEqual([
       auto('x1', '2026-01-05', '2026-01'),
@@ -630,7 +630,7 @@ describe('reconcileIncome, phase «che cosa»', () => {
     ]);
   });
 
-  it('an invalid IBAN is never automatic, also with a name payer: invalid-iban (Carlo, 15 Nov 2026)', () => {
+  it('an invalid IBAN is never automatic, also with a name payer: invalid-iban (user1, 15 Nov 2026)', () => {
     const named = {
       ...tx('x1', '2026-01-05'),
       counterparty: { iban: BAD_IBAN, name: 'Nome Inventato' },
@@ -703,7 +703,7 @@ describe('reconcileIncome, phase «che cosa»', () => {
   });
 });
 
-describe('rentArrears (Carlo, 15 Nov 2026)', () => {
+describe('rentArrears (user1, 15 Nov 2026)', () => {
   it('lists the months covered in full, with a presence, without a live rent payment', () => {
     // Feb-Mar imported and reconciled first, January afterwards without a transfer (I2).
     const later = [statement({ from: '2026-02-01', to: '2026-03-31' })];
@@ -722,7 +722,7 @@ describe('rentArrears (Carlo, 15 Nov 2026)', () => {
     );
   });
 
-  it('skips a tenant whose record is deleted, even with a live presence (Carlo, 15 Nov 2026)', () => {
+  it('skips a tenant whose record is deleted, even with a live presence (user1, 15 Nov 2026)', () => {
     const tenants = [
       TenantSchema.parse({ ...base, id: 't1', name: 'Nome Inventato', rev: 2, deleted: true }),
       TenantSchema.parse({ ...base, id: 't2', name: 'Altro Nome' }),

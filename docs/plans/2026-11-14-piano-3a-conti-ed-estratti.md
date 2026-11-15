@@ -2,7 +2,7 @@
 
 > **Per gli agenti che eseguono:** SOTTO-SKILL OBBLIGATORIA: usare superpowers:subagent-driven-development (consigliata) oppure superpowers:executing-plans per eseguire il piano task per task. I passi usano la sintassi con casella `- [ ]`.
 
-**Obiettivo:** importare l'estratto di un conto (XLSX o CSV) in movimenti normalizzati, una sola volta per movimento, con il periodo coperto dal file o dato da Carlo. Doppioni possibili e movimenti non contabilizzati restano in revisione finché una persona non decide. I periodi coperti valgono per il conto che li ha, e una riga di comando importa e stampa solo conteggi.
+**Obiettivo:** importare l'estratto di un conto (XLSX o CSV) in movimenti normalizzati, una sola volta per movimento, con il periodo coperto dal file o dato da user1. Doppioni possibili e movimenti non contabilizzati restano in revisione finché una persona non decide. I periodi coperti valgono per il conto che li ha, e una riga di comando importa e stampa solo conteggi.
 
 **Architettura:** Python (`python -I -m bollette_pdf table`) trasforma l'XLSX in una tabella JSON di celle tipizzate con la sola libreria standard. Il core (puro) legge anche i CSV nella stessa tabella. `readStatementTable` applica il profilo della banca (dati, non codice) e dà righe normalizzate o un errore con riga e campo, mai il valore. `importStatement` scrive in un'operazione il record `statement` e i movimenti nuovi. L'`id` dei movimenti è l'impronta di `transactionKey`, con il conto nell'identità. `matchToTransactions` usa periodi coperti per conto. Lo script `pnpm estratti` lega tutto con `FsStore`.
 
@@ -14,8 +14,8 @@
 
 - Come nei piani precedenti: un ramo, mai su `main`. Per ogni task: test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm python:test`, `pnpm data:check`, commit. Un revisore distinto per task (piano, disegno, qualità), fino a 5 giri; poi una revisione finale e la PR.
 - Le regole nuove vanno in `docs/progress.md` dalla **prossima R libera** di `docs/progress.md` (controllare con `grep` prima di scrivere; il Task 1 ha preso R99).
-- Le regole di calcolo e di confidenza non si decidono da soli: NEEDS_CONTEXT e si chiede a Carlo.
-- **Il profilo della banca è SINTETICO** (`fixtures/bank/profilo-sintetico.json`, colonne e formati ipotizzati da `docs/spec.md` sezione 18 e da `docs/rules/conguaglio-rules.md`). Lo sostituisce il Task 9 (3a-bis), solo dopo l'uscita di `python/tools/xlsx_structure.py` sui file di Carlo.
+- Le regole di calcolo e di confidenza non si decidono da soli: NEEDS_CONTEXT e si chiede a user1.
+- **Il profilo della banca è SINTETICO** (`fixtures/bank/profilo-sintetico.json`, colonne e formati ipotizzati da `docs/spec.md` sezione 18 e da `docs/rules/conguaglio-rules.md`). Lo sostituisce il Task 9 (3a-bis), solo dopo l'uscita di `python/tools/xlsx_structure.py` sui file di user1.
 
 ## Vincoli globali
 
@@ -180,7 +180,7 @@
   - `saveAccount(store, draft: Omit<Account, 'id' | 'v' | 'rev'>, profileId, clock, newId): Promise<{ status: 'saved'; account: Account; operationId: string } | { status: 'rejected'; reason: 'unknown-apartment' | 'unknown-bank-profile' | 'bad-iban' | 'iban-in-use' }>`; l'IBAN passa da `normaliseIban`.
   - `statementFilePath(input: { apartment: Apartment; to: ISODate; bank: string; ext: 'xlsx' | 'csv' }): string`.
 
-- [ ] **Step 1: test che falliscono.** `saveAccount` con l'IBAN di esempio scritto con spazi salva `'IT60X0542811101000000123456'`. Danno `rejected`: lo stesso IBAN su un secondo conto (`iban-in-use`), un appartamento inesistente o cancellato, un profilo inesistente. Ogni salvataggio è un'operazione annullabile. `statementFilePath({ apartment: { name: 'Berchet_3', annualitaStart: { month: 10, day: 1 } }, to: '2026-10-31', bank: 'Banca', ext: 'xlsx' })` dà `'Riservato_proprietari/Estratti_conto/Berchet_3/2026-27/2026-10-31_Estratto_Banca_2026-10.xlsx'`; un nome con `:` o accenti esce sicuro.
+- [ ] **Step 1: test che falliscono.** `saveAccount` con l'IBAN di esempio scritto con spazi salva `'IT60X0542811101000000123456'`. Danno `rejected`: lo stesso IBAN su un secondo conto (`iban-in-use`), un appartamento inesistente o cancellato, un profilo inesistente. Ogni salvataggio è un'operazione annullabile. `statementFilePath({ apartment: { name: 'Berchet_Nord', annualitaStart: { month: 10, day: 1 } }, to: '2026-10-31', bank: 'Banca', ext: 'xlsx' })` dà `'Riservato_proprietari/Estratti_conto/Berchet_Nord/2026-27/2026-10-31_Estratto_Banca_2026-10.xlsx'`; un nome con `:` o accenti esce sicuro.
 - [ ] **Step 2:** `pnpm test -- accounts` fallisce.
 - [ ] **Step 3: implementare.**
 - [ ] **Step 4:** lint, typecheck, test passano.
@@ -245,14 +245,14 @@
 
 ## Task 9 (3a-bis): profilo vero della banca
 
-Parte solo quando Carlo ha incollato l'uscita di `python/tools/xlsx_structure.py` sui file di ottobre 2026: sole intestazioni, tipi e conteggi, nessun valore.
+Parte solo quando user1 ha incollato l'uscita di `python/tools/xlsx_structure.py` sui file di ottobre 2026: sole intestazioni, tipi e conteggi, nessun valore.
 
 **Files:** Create `python/seed-profiles/<banca>-estratto-<anno>.json` (o la cartella dei seed scelta nel Task 1), Modify `fixtures/bank/` (una fixture sintetica con le intestazioni vere e valori inventati), `packages/core/src/seed-profiles.ts` se i seed della banca si copiano al primo avvio come quelli dei fornitori, `docs/progress.md` (prossima R libera).
 
 - [ ] **Step 1: test che falliscono.** La fixture con le intestazioni vere, letta con il profilo nuovo, dà le righe attese: date, segni, codice disposizione, controparte, non contabilizzati e periodo dichiarato, ciascuno se l'uscita dello strumento mostra che esiste.
 - [ ] **Step 2:** fallisce con il profilo sintetico.
 - [ ] **Step 3: scrivere il profilo.** Ogni ipotesi del profilo sintetico smentita dall'uscita (per esempio dove sta «Cod Disp.», colonna unica o dare/avere, date seriali o testo) va nella prossima R libera. Se serve un campo di profilo nuovo, NEEDS_CONTEXT.
-- [ ] **Step 4:** tutti i controlli passano; Carlo importa i suoi file in locale con `pnpm estratti importa` e riporta solo l'uscita senza `--dettagli`.
+- [ ] **Step 4:** tutti i controlli passano; user1 importa i suoi file in locale con `pnpm estratti importa` e riporta solo l'uscita senza `--dettagli`.
 - [ ] **Step 5: commit** `feat(profili): profilo dell'estratto della banca dei tre conti (piano 3a, task 9)`.
 
 ## Autoverifica

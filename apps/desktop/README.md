@@ -75,10 +75,10 @@ Gli installer non sono firmati:
   Rust in locale (`cargo update` in `src-tauri`), oppure si toglie `--locked` per una build, si
   scarica l'artifact `cargo-lock` e lo si committa.
 - **Licenze di `cargo-deny`** (`deny.toml`): ammette l'elenco del vincolo globale più MPL-2.0 e,
-  per decisione di Carlo dell'11 novembre 2026, `Unicode-3.0` e `Zlib` (richieste dall'albero Rust
-  di Tauri). Con queste la prima build è passata; se una dipendenza nuova porta altre licenze, decide Carlo.
+  per decisione di user1 dell'11 novembre 2026, `Unicode-3.0` e `Zlib` (richieste dall'albero Rust
+  di Tauri). Con queste la prima build è passata; se una dipendenza nuova porta altre licenze, decide user1.
 - **Chiave di firma degli aggiornamenti**: generata l'11 novembre 2026, senza password, nella
-  cartella iCloud di Carlo `Personale/App_appartamenti/chiave-firma-aggiornamenti/` (con un
+  cartella iCloud di user1 `Personale/App_appartamenti/chiave-firma-aggiornamenti/` (con un
   `LEGGIMI.txt`). Non entra mai nel repository; nel piano 6 la privata diventa un secret GitHub e la
   pubblica va in `tauri.conf.json`. Conservarne una copia anche fuori da iCloud.
 - **Firma del codice**: nessun certificato Windows; su Mac, se l'app si rifiuta di partire su

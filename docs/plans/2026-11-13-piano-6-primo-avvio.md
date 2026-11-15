@@ -12,7 +12,7 @@
 
 ## Metodo di esecuzione
 
-- Come nei piani 4 e 6: un ramo, mai su `main`; per ogni task test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check`, commit; un revisore distinto per task, una revisione finale; PR, merge con commit di unione solo con la CI verde e il via di Carlo.
+- Come nei piani 4 e 6: un ramo, mai su `main`; per ogni task test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check`, commit; un revisore distinto per task, una revisione finale; PR, merge con commit di unione solo con la CI verde e il via di user1.
 - Le regole di calcolo e i casi che il disegno non decide: l'esecutore si ferma con NEEDS_CONTEXT.
 - Il Task 1 è una **prova**: se non regge, il ripiego concordato (comandi Rust propri) cambia la forma dei Task 1 e 6; l'orchestratore decide e lo scrive nel registro.
 

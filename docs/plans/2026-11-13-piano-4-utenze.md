@@ -12,8 +12,8 @@
 
 ## Metodo di esecuzione
 
-- Come nel piano 2a: un ramo, mai su `main`; per ogni task test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check`, commit; un revisore distinto, correzioni fino a 5 giri; PR a fine piano, merge con commit di unione solo con la CI verde e il via di Carlo.
-- Le regole di calcolo non si decidono da soli: l'esecutore si ferma con NEEDS_CONTEXT e l'orchestratore chiede a Carlo.
+- Come nel piano 2a: un ramo, mai su `main`; per ogni task test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check`, commit; un revisore distinto, correzioni fino a 5 giri; PR a fine piano, merge con commit di unione solo con la CI verde e il via di user1.
+- Le regole di calcolo non si decidono da soli: l'esecutore si ferma con NEEDS_CONTEXT e l'orchestratore chiede a user1.
 
 ## Vincoli globali
 
@@ -53,7 +53,7 @@
 - Consumes: `Apartment` (Task 1), `ExtractionResult.parts`.
 - Produces: `ExtractionResult.parts[].property?: {address: string; sheet?: string; parcel?: string; sub?: string}`; `suggestApartments(property: Part['property'], apartments: Pick<Apartment,'id'|'address'|'cadastre'>[]): {apartmentId: string; origin: 'catasto' | 'indirizzo'}[]` (catasto per uguaglianza di foglio, particella e subalterno; indirizzo per uguaglianza di via e numero civico dopo normalizzazione senza maiuscole, accenti, punteggiatura e con «via»/«v.» uniformati; mai più di un'origine per appartamento, `catasto` prima di `indirizzo`).
 
-- [ ] **Step 1: test che falliscono** (`suggest.test.ts`): stesso catasto trova l'appartamento con origine `catasto`; indirizzo scritto «GAL. G. BERCHET 3» contro «Galleria G. Berchet 3» trova `indirizzo`; stesso civico in altra via non trova nulla; appartamento senza `address` e senza `cadastre` mai suggerito; `property` assente dà `[]`.
+- [ ] **Step 1: test che falliscono** (`suggest.test.ts`): stesso catasto trova l'appartamento con origine `catasto`; indirizzo scritto «GAL. G. ESEMPIO 1» contro «Galleria G. Esempio 1» trova `indirizzo`; stesso civico in altra via non trova nulla; appartamento senza `address` e senza `cadastre` mai suggerito; `property` assente dà `[]`.
 - [ ] **Step 2: eseguire e vedere il fallimento.**
 - [ ] **Step 3: implementare** `suggestApartments` in `suggest.ts` e aggiungere `property` a `ExtractionResult.parts` (facoltativo). Nei controlli di `proposal.ts` i messaggi di `unknown-part`, `duplicate-supply`, `part-share` sono quelli del disegno («Collegala qui sotto.», «Apri Impostazioni, Utenze e correggi: …», «La percentuale è troppo piccola per questo importo. Controlla le percentuali.»); aggiornare i test esistenti che li citano.
 - [ ] **Step 4: lint, typecheck, test.**

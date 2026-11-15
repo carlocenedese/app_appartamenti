@@ -1,7 +1,7 @@
 # Piano 3b: inquilini, paganti e incassi (disegno)
 
-Stato: **approvato da Carlo il 14 novembre 2026, con le cinque raccomandazioni (sotto, «Decise da
-Carlo»).** Piano: `docs/plans/2026-11-14-piano-3b-inquilini-e-incassi.md`. Solo disegno, nessun codice. Il piano copre il core
+Stato: **approvato da user1 il 14 novembre 2026, con le cinque raccomandazioni (sotto, «Decise da
+user1»).** Piano: `docs/plans/2026-11-14-piano-3b-inquilini-e-incassi.md`. Solo disegno, nessun codice. Il piano copre il core
 (`packages/core`) e la riga di comando (`pnpm estratti`); **niente schermate e niente veste
 grafica**. Riferimenti: disegno approvato del piano 3 (`docs/plans/2026-11-14-piano-3-csv-disegno.md`,
 «Risposte» 3-7, 12, 13 e «Mie scelte» 8), piano 3a (`docs/plans/2026-11-14-piano-3a-conti-ed-estratti.md`),
@@ -34,7 +34,7 @@ del mese si registrano da soli.
 - Uscite verso gli inquilini (rimborsi, restituzione della caparra, R6 a credito): 3c e piano 5.
 - Schermate, azioni di massa, veste grafica.
 
-## Decisioni già prese da Carlo
+## Decisioni già prese da user1
 
 Dal disegno del piano 3 (14 novembre 2026) e dalla ricognizione:
 
@@ -79,7 +79,7 @@ presenza dell'inquilino nell'appartamento del conto: decisione A), `validTo?`, `
   punto 7). Un record per associazione: un genitore che paga per due figli sono due `payer` con la
   stessa `key`.
 - **`Apartment.rentLateDays?`**: intero da 0 a 31 (Ruling, sotto); assente vale 10 (decisione 6).
-  Il 10 è il valore deciso da Carlo, scritto una volta come costante con nome, non una regola fiscale.
+  Il 10 è il valore deciso da user1, scritto una volta come costante con nome, non una regola fiscale.
 - **`Payment`**: nessun campo nuovo. Un pagamento creato da un movimento ha `source: 'csv'`,
   `transactionId`, `confirmed: true`, `forMonth` sempre esplicito. Un bonifico di più mesi o di più
   tipi dà più `Payment` con lo stesso `transactionId`, la cui somma è l'importo del movimento.
@@ -251,13 +251,13 @@ Fixture di un anno su due conti: inquilini con nomi inventati, IBAN di prova agg
   o nessuna.
 - Se la banca mette l'IBAN dell'ordinante nei bonifici in entrata o solo il nome.
 
-## Decise da Carlo (14 novembre 2026)
+## Decise da user1 (14 novembre 2026)
 
-Le cinque domande della bozza, **tutte decise da Carlo il 14 novembre 2026 come raccomandato**. Nel
+Le cinque domande della bozza, **tutte decise da user1 il 14 novembre 2026 come raccomandato**. Nel
 testo sopra si citano come decisioni A (1), B (2), C (3), D (4) ed E (5).
 
 Una domanda nata scrivendo il piano resta aperta: da quando un mese conta come «da pagare» (piano,
-«Da confermare con Carlo prima del Task 5»).
+«Da confermare con user1 prima del Task 5»).
 
 1. **Da quando vale un pagante confermato** (`validFrom`)? Se vale dalla data del bonifico
    confermato, gli estratti più vecchi importati dopo richiedono di nuovo «chi è» (contro la

@@ -143,12 +143,12 @@ describe('updateSupply', () => {
     const next = await updateSupply(
       store,
       supply,
-      draft({ label: 'Berchet 2', rows: [{ apartmentId: 'apt-b', basisPoints: 10000 }] }),
+      draft({ label: 'Berchet bis', rows: [{ apartmentId: 'apt-b', basisPoints: 10000 }] }),
       'p1',
       clock,
       ids('b'),
     );
-    expect(next).toMatchObject({ id: supply.id, label: 'Berchet 2', rev: 2 });
+    expect(next).toMatchObject({ id: supply.id, label: 'Berchet bis', rev: 2 });
     expect(next.apartments).toEqual([{ apartmentId: 'apt-b', weight: 10000 }]);
     const ops = (await readJournal(store)).operations;
     expect(ops.map((o) => o.kind).sort()).toEqual(['supply.link', 'supply.update']);

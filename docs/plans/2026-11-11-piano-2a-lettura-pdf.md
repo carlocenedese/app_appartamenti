@@ -12,11 +12,11 @@
 
 ## Metodo di esecuzione
 
-- Il repository è `carlocenedese/app_appartamenti`; si lavora su un ramo per fase, mai su `main`, con pull request a fine fase e la CI completa (Ubuntu, Windows, macOS). Il clone sta fuori da Dropbox e da iCloud.
+- Il repository è `user1/app_appartamenti`; si lavora su un ramo per fase, mai su `main`, con pull request a fine fase e la CI completa (Ubuntu, Windows, macOS). Il clone sta fuori da Dropbox e da iCloud.
 - Si segue superpowers:subagent-driven-development, come nel piano 1: un agente nuovo per task, un revisore per task, correzioni fino a 5 giri, revisione finale del ramo; registro in `.superpowers/sdd/` (escluso da git) e riassunto in `docs/progress.md`. Le decisioni dell'orchestratore sono «Ruling» numerati (si continua da R40).
-- **Fase A:** Task 1-11, nessun dato reale. **Fase B:** Task 12, con Carlo presente: legge i PDF reali sul posto, approva profili e fixture. Il Task 12 non parte se le PR della Fase A non sono unite.
+- **Fase A:** Task 1-11, nessun dato reale. **Fase B:** Task 12, con user1 presente: legge i PDF reali sul posto, approva profili e fixture. Il Task 12 non parte se le PR della Fase A non sono unite.
 - I file reali (PDF, Excel, estratti conto) non entrano mai nel repository: si leggono sul posto dalle cartelle Bollette di Dropbox (sola lettura, nessuna copia); gli output di lavoro vanno nella cartella temporanea della sessione.
-- Le regole di lettura che nessun documento decide non si inventano: se manca un caso, l'esecutore si ferma con NEEDS_CONTEXT e l'orchestratore decide o chiede a Carlo.
+- Le regole di lettura che nessun documento decide non si inventano: se manca un caso, l'esecutore si ferma con NEEDS_CONTEXT e l'orchestratore decide o chiede a user1.
 
 ## Vincoli globali
 
@@ -247,9 +247,9 @@
 - [ ] **Step 4: Eseguire** `pnpm lint && pnpm typecheck && pnpm test` in locale e la CI su tre sistemi, atteso verde.
 - [ ] **Step 5: Commit** `test: integrazione tra il core e il programma Python di lettura dei PDF`.
 
-### Task 12: Profili dei fornitori reali e fixture (Fase B, con Carlo)
+### Task 12: Profili dei fornitori reali e fixture (Fase B, con user1)
 
-Questo task richiede Carlo: servono le bollette vere. Parte solo dopo che le pull request della Fase A sono unite.
+Questo task richiede user1: servono le bollette vere. Parte solo dopo che le pull request della Fase A sono unite.
 
 **Files:**
 - Create: `python/seed-profiles/<fornitore>-<AAAA>.json`, `python/tools/dump_text.py`, `python/tools/pdf_report.py`, `fixtures/pdf/<fornitore>-<NN>.json`, `docs/rules/lettura-pdf.md`
@@ -259,12 +259,12 @@ Questo task richiede Carlo: servono le bollette vere. Parte solo dopo che le pul
 - Consumes: `read_pdf`, `dump_document`, `build_profile`, `extract`, `tools/anonymise.py`.
 - Produces: `dump_text.py <file.pdf>` (stampa su stdout `dump_document` in JSON; serve a costruire le fixture); `pdf_report.py --profiles <cartella> <cartella-di-pdf>...` (legge sul posto, ricorsivamente, e stampa solo conteggi per fornitore e stato: `riconosciuta`, `da-confermare`, `non-riconosciuta`, `senza-testo`, `illeggibile`, e per i riconosciuti quanti campi sono `high`; nessun nome di file, importo o testo). `docs/rules/lettura-pdf.md`: per ogni fornitore, il profilo, le etichette usate, i layout visti e i casi dubbi.
 
-- [ ] **Step 1: Raccolta.** Carlo conferma le cartelle (le cartelle Bollette dei tre appartamenti in Dropbox, già individuate); si lavora sul posto, in sola lettura, senza copiare i PDF. Per ogni fornitore (Hera, Enel, Fastweb e l'avviso TARI, compresa la TARI condivisa tra Berchet e Lovarini) si scelgono tre PDF di anni diversi per cogliere i cambi di layout.
+- [ ] **Step 1: Raccolta.** user1 conferma le cartelle (le cartelle Bollette dei tre appartamenti in Dropbox, già individuate); si lavora sul posto, in sola lettura, senza copiare i PDF. Per ogni fornitore (Hera, Enel, Fastweb e l'avviso TARI, compresa la TARI condivisa tra Berchet e Lovarini) si scelgono tre PDF di anni diversi per cogliere i cambi di layout.
 - [ ] **Step 2: Profili.** Con `dump_text.py` e `build_profile` si costruisce il profilo di ogni fornitore e lo si rifinisce a mano; ogni profilo ha `status: 'bozza'`, una data di inizio validità per layout e nessun codice cliente, POD, PDR o indirizzo. Per la TARI condivisa il profilo legge le utenze con `parts`.
-- [ ] **Step 3: Rapporto sul posto.** `pdf_report.py` sulle cartelle reali: per ogni fornitore e per ogni stato quanti PDF; obiettivo concordato con Carlo: di ogni fornitore, su un campione di dieci PDF controllati a mano, importo, scadenza e periodo letti giusti o segnalati `da-confermare`, mai sbagliati senza avviso. Le differenze finiscono in `docs/rules/lettura-pdf.md` con il motivo; le regole non ricavabili dai PDF si chiedono a Carlo.
+- [ ] **Step 3: Rapporto sul posto.** `pdf_report.py` sulle cartelle reali: per ogni fornitore e per ogni stato quanti PDF; obiettivo concordato con user1: di ogni fornitore, su un campione di dieci PDF controllati a mano, importo, scadenza e periodo letti giusti o segnalati `da-confermare`, mai sbagliati senza avviso. Le differenze finiscono in `docs/rules/lettura-pdf.md` con il motivo; le regole non ricavabili dai PDF si chiedono a user1.
 - [ ] **Step 4: Fixture.** Per ogni layout si salva `fixtures/pdf/<fornitore>-<NN>.json` con `dump_text.py` e `tools/anonymise.py` (mappa fuori dal repository: nomi, codici cliente, POD/PDR, IBAN, indirizzi, link); `pnpm data:check` deve passare.
 - [ ] **Step 5: Test** `test_real_layouts.py`: per ogni fixture, `load_dump` + `extract` con i profili di `python/seed-profiles/` dà lo stato e i valori attesi scritti accanto alla fixture (importo, scadenza, periodo, numero, consumo), compresi due layout dello stesso fornitore e un cambio di layout che porta a `da-confermare`. Nessuna fixture contiene stringhe da IBAN, codice fiscale o POD.
-- [ ] **Step 6: Approvazione.** Carlo rilegge `docs/rules/lettura-pdf.md` e i valori attesi delle fixture e li approva; senza approvazione il piano 2a non si chiude.
+- [ ] **Step 6: Approvazione.** user1 rilegge `docs/rules/lettura-pdf.md` e i valori attesi delle fixture e li approva; senza approvazione il piano 2a non si chiude.
 - [ ] **Step 7: Commit** `docs: profili dei fornitori e fixture di lettura dei PDF`.
 
 ## Criteri di completamento del piano 2a
@@ -272,7 +272,7 @@ Questo task richiede Carlo: servono le bollette vere. Parte solo dopo che le pul
 - Tutti i test (TypeScript e Python) verdi su Ubuntu, Windows e macOS, con tre fusi orari; copertura del core almeno al 90 %; lint e tipi puliti; controllo delle licenze verde anche per i pacchetti Python.
 - Gli schemi di profilo e risultato sono esportati in `docs/schemas/` e aggiornati.
 - Un installer Windows e uno macOS costruiti dalla CI contengono l'interprete Python, e `python -I -m bollette_pdf --version` parte dall'installazione (anche con spazi nel percorso).
-- I profili di Hera, Enel, Fastweb e TARI sono approvati da Carlo, con il rapporto sui PDF reali (solo conteggi) e le fixture anonimizzate; nessun PDF e nessun dato personale nel repository (anche nella cronologia).
+- I profili di Hera, Enel, Fastweb e TARI sono approvati da user1, con il rapporto sui PDF reali (solo conteggi) e le fixture anonimizzate; nessun PDF e nessun dato personale nel repository (anche nella cronologia).
 - Il percorso completo (estrazione, proposta, controlli, conferma del profilo, registrazione automatica e annullamento) è provato in integrazione su PDF sintetici.
 
 ## Piani successivi collegati

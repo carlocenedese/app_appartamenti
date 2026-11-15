@@ -13,7 +13,7 @@ contratto, periodo, bollette, rate, versamenti, movimenti, abbinamenti, inquilin
 attesi del conguaglio per inquilino: `due`, `forfaitIncassato` e le spese per tipologia
 (`byCategory`), più le quote dei posti vuoti (`expectedUnassigned`).
 
-- I valori `expected` non sono «quello che dice l'Excel» ma quello che Carlo ha controllato e
+- I valori `expected` non sono «quello che dice l'Excel» ma quello che user1 ha controllato e
   approvato (`approvedBy`); ogni differenza dall'Excel sta in `knownDeviations` con il motivo.
 - Il condominio è escluso da `expected` per costruzione (sezione 42 della specifica, R3).
 - Gli inquilini sono `ten-a`, `ten-b`, …; nomi, codici delle bollette e link ai file non ci sono.

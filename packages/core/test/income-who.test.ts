@@ -132,7 +132,7 @@ describe('whoPaid: known payers', () => {
     });
   });
 
-  it('a payer of a deleted tenant does not count (Carlo, 15 Nov 2026)', () => {
+  it('a payer of a deleted tenant does not count (user1, 15 Nov 2026)', () => {
     const c = ctx({
       tenants: [tenant('t1', 'Zoe Bianchi', true)],
       tenancies: [tenancy({ id: 'n1', tenantId: 't1' })],
@@ -141,7 +141,7 @@ describe('whoPaid: known payers', () => {
     const row = tx({ counterparty: { iban: PAYER_IBAN } });
     expect(whoPaid(row, c)).toEqual({ kind: 'ask', reason: 'new-payer', tenantIds: ['t1'], key });
     // A payer of a deleted tenant still keeps the key from being automatic: only the live ones
-    // are candidates (Carlo, 15 Nov 2026).
+    // are candidates (user1, 15 Nov 2026).
     const two = { ...c, payers: [...c.payers, payer({ id: 'p2', key, tenantId: 't2' })] };
     expect(whoPaid(row, two)).toEqual({
       kind: 'ask',
@@ -160,7 +160,7 @@ describe('whoPaid: known payers', () => {
     expect(whoPaid(row, expired)).toEqual({ kind: 'known', tenantId: 't2', key });
   });
 
-  it('an invalid IBAN never falls back on the name payer: invalid-iban (Carlo, 15 Nov 2026)', () => {
+  it('an invalid IBAN never falls back on the name payer: invalid-iban (user1, 15 Nov 2026)', () => {
     const c = ctx({
       tenancies: [tenancy({ id: 'n1', tenantId: 't1' })],
       payers: [payer({ id: 'p1', key: 'name:mario rossi', tenantId: 't1' })],

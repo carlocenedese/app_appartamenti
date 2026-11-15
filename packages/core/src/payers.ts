@@ -20,7 +20,7 @@ export function payerKeyOf(counterparty?: { name?: string; iban?: string }): Pay
 
 /**
  * Live payers with this key valid on `date` (both ends included), one per tenant, by `tenantId`.
- * A payer of a deleted tenant is left out, as if it were not there (Carlo, 15 Nov 2026, R119).
+ * A payer of a deleted tenant is left out, as if it were not there (user1, 15 Nov 2026, R119).
  */
 export function validPayers(
   payers: Payer[],

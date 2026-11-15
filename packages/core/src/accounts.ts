@@ -99,7 +99,7 @@ export async function saveAccount(
 const MAX_FOLDER = 60;
 const RESERVED = /^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$/i;
 
-/** The apartment's folder name: words kept apart by `_` (`Berchet_3`), each one safe; never a Windows reserved name. */
+/** The apartment's folder name: words kept apart by `_` (`Berchet_Nord`), each one safe; never a Windows reserved name. */
 function apartmentFolder(name: string): string {
   const parts = name
     .split('_')

@@ -38,7 +38,7 @@ describe('assertSafeRelPath', () => {
     'workspace.json',
     '_app/dati/bill/bill-1.json',
     '_app/dati/bill/x (conflicted copy 2026-11-05).json',
-    '_app/dati/bill/x (Copia in conflitto di Nicola 2026-11-05).json',
+    '_app/dati/bill/x (Copia in conflitto di user2 2026-11-05).json',
     'Perch\u00e9.json',
     'Perche\u0301.json',
     'bollette/2026-02 luce \u2013 acqua.pdf',

@@ -1,7 +1,7 @@
 # OCR: librerie native e licenze delle ruote
 
 Stato: **inventario del 13 novembre 2026** (Task 1 del piano 2b-1, `docs/plans/2026-11-13-piano-2b-ocr.md`).
-Esito: **macOS accettato; Windows rimandato per decisione di Carlo del 13 novembre 2026**
+Esito: **macOS accettato; Windows rimandato per decisione di user1 del 13 novembre 2026**
 (vedi «Conclusione»); `python/THIRD_PARTY.md` e `CLAUDE.md` aggiornati di conseguenza.
 
 ## Metodo
@@ -141,7 +141,7 @@ DLL dentro ciascuna DLL: `tesseract55` → `leptonica`, `archive`, `libcurl`; `a
 
 ## Conclusione
 
-Decisione di Carlo del 13 novembre 2026: l'OCR esce per ora **solo su macOS**; Windows resta senza
+Decisione di user1 del 13 novembre 2026: l'OCR esce per ora **solo su macOS**; Windows resta senza
 OCR perché la ruota Windows di tesserocr contiene GNU libiconv e libcharset sotto LGPL-2.1.
 
 Conteggio: 27 righe macOS e dati accettate (2 pacchetti, 14 componenti di pypdfium2, 10 librerie di

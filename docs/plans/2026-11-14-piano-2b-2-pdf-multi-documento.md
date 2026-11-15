@@ -12,9 +12,9 @@
 
 ## Metodo di esecuzione
 
-- Come nei piani 2a, 2b-1, 4 e 6: un ramo, mai su `main`; per ogni task test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm python:test`, `pnpm data:check`, commit; un revisore distinto per task (piano, disegno, qualità), fino a 5 giri; una revisione finale; PR, merge solo con la CI verde e il via di Carlo.
+- Come nei piani 2a, 2b-1, 4 e 6: un ramo, mai su `main`; per ogni task test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm python:test`, `pnpm data:check`, commit; un revisore distinto per task (piano, disegno, qualità), fino a 5 giri; una revisione finale; PR, merge solo con la CI verde e il via di user1.
 - Regole nuove in `docs/progress.md` da **R93** (R92 è del ramo `fix/ocr-senza-ancore-seed`; rinumerare all'unione se serve).
-- Le regole di calcolo e di confidenza non si decidono da soli: NEEDS_CONTEXT e si chiede a Carlo.
+- Le regole di calcolo e di confidenza non si decidono da soli: NEEDS_CONTEXT e si chiede a user1.
 - I PDF reali non entrano mai nel repository; il Task 5 li legge in sola lettura e scrive solo numeri.
 
 ## Vincoli globali
@@ -118,7 +118,7 @@
 
 - [ ] **Step 1: test che falliscono.** Per ogni fixture di `fixtures/pdf/` (18 oggi): stessi valori, confidenze e stato attesi, `pageRange [1, pages]`, `documentKind` del profilo; e lo stesso risultato con `--pages 1-<pages>` letto dalla riga di comando, salvo `pageRange` uguale. Il rapporto su una cartella temporanea con un composto letto intero conta 1 nella colonna «più documenti» del suo profilo.
 - [ ] **Step 2:** `PYTHON=<venv> pnpm python:test` fallisce.
-- [ ] **Step 3: implementare** la colonna; lanciare il rapporto in sola lettura sulle cartelle reali (Lovarini, Pulci, Berchet) e scrivere in `docs/rules/lettura-pdf.md` **solo numeri**: file con l'avviso per profilo, con la nota che l'avviso scatta anche su un documento solo con una tabella di storico e che i casi vanno guardati da Carlo; nessun nome di file, importo o testo. Una riga in `docs/progress.md`.
+- [ ] **Step 3: implementare** la colonna; lanciare il rapporto in sola lettura sulle cartelle reali (Lovarini, Pulci, Berchet) e scrivere in `docs/rules/lettura-pdf.md` **solo numeri**: file con l'avviso per profilo, con la nota che l'avviso scatta anche su un documento solo con una tabella di storico e che i casi vanno guardati da user1; nessun nome di file, importo o testo. Una riga in `docs/progress.md`.
 - [ ] **Step 4:** lint, `pnpm python:test`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check` passano.
 - [ ] **Step 5: commit** `test(pdf): non regressione delle fixture e conteggi dell'avviso più documenti (piano 2b-2, task 5)`.
 

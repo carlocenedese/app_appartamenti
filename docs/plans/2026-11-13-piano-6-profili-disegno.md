@@ -1,14 +1,14 @@
 # Piano 6 (parte «profili»): i profili dei fornitori arrivano con l'app (disegno)
 
-Stato: **approvato da Carlo il 13 novembre 2026**. Specifica di riferimento: `docs/spec.md` (sezioni 7 e 34); è la parte «profili» del piano 6 della tabella del piano 1 (il resto del piano 6, cioè primo avvio guidato, sincronizzazione, aggiornamenti firmati, Scadenze, Tasse e stime, resta fuori).
+Stato: **approvato da user1 il 13 novembre 2026**. Specifica di riferimento: `docs/spec.md` (sezioni 7 e 34); è la parte «profili» del piano 6 della tabella del piano 1 (il resto del piano 6, cioè primo avvio guidato, sincronizzazione, aggiornamenti firmati, Scadenze, Tasse e stime, resta fuori).
 
 ## Perché
 
 I profili di `python/seed-profiles/` (11 file, tutti `bozza`, senza codici) sono scritti e provati, ma l'app installata non li ha: il lettore legge i profili da `_app/dati/supplierProfile/`. Senza un passo che li copi lì, nessun fornitore è riconosciuto.
 
-## Decisione di Carlo (13 novembre 2026)
+## Decisione di user1 (13 novembre 2026)
 
-I profili si copiano **solo alla creazione dell'area di lavoro, mai dopo**. Un layout nuovo arriva come profilo nuovo con la sua data di validità (come già nel piano 2a), mai correggendo un profilo che Carlo ha già confermato o cambiato.
+I profili si copiano **solo alla creazione dell'area di lavoro, mai dopo**. Un layout nuovo arriva come profilo nuovo con la sua data di validità (come già nel piano 2a), mai correggendo un profilo che user1 ha già confermato o cambiato.
 
 ## Obiettivi
 
@@ -18,7 +18,7 @@ I profili si copiano **solo alla creazione dell'area di lavoro, mai dopo**. Un l
 
 ## Non obiettivi
 
-- Nessun aggiornamento dei profili dopo la creazione dell'area di lavoro, nessun confronto con quelli esistenti (opzioni 2 e 3 scartate da Carlo).
+- Nessun aggiornamento dei profili dopo la creazione dell'area di lavoro, nessun confronto con quelli esistenti (opzioni 2 e 3 scartate da user1).
 - Nessuna schermata, nessun editor dei profili, nessuna procedura guidata.
 - Nessun codice cliente, POD, PDR o indirizzo nei profili (già vietato; i codici si imparano dopo la prima conferma).
 

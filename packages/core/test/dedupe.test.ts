@@ -102,7 +102,7 @@ describe('registerBill', () => {
       store,
       newBill('bill-1'),
       pdf,
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence(),
     );
@@ -128,7 +128,7 @@ describe('registerBill', () => {
     const [operation] = operations;
     expect(operation).toMatchObject({
       id: 'op-001',
-      profileId: 'carlo',
+      profileId: 'user1',
       kind: 'register-bill',
       apartmentId: 'apt-1',
       summary: 'Registrata bolletta Fornitore Luce 2025-12-01–2026-01-31',
@@ -145,7 +145,7 @@ describe('registerBill', () => {
   it('refuses the same file a second time: duplicate, with the id of the first, nothing written', async () => {
     const store = new MemoryStore();
     const pdf = bytes('pdf-1');
-    await registerBill(store, newBill('bill-1'), pdf, 'carlo', tickingClock(), idSequence());
+    await registerBill(store, newBill('bill-1'), pdf, 'user1', tickingClock(), idSequence());
     const newId = idSequence('later');
 
     // Even with other details: the same bytes are the same document.
@@ -153,7 +153,7 @@ describe('registerBill', () => {
       store,
       newBill('bill-2', { supplier: 'Altro', amount: cents(1) }),
       pdf,
-      'carlo',
+      'user1',
       tickingClock(),
       newId,
     );
@@ -170,7 +170,7 @@ describe('registerBill', () => {
       store,
       newBill('bill-1'),
       bytes('pdf-1'),
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence(),
     );
@@ -180,7 +180,7 @@ describe('registerBill', () => {
       store,
       newBill('bill-2'),
       bytes('pdf-1, downloaded again'),
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence('later'),
     );
@@ -198,7 +198,7 @@ describe('registerBill', () => {
         store,
         newBill(id, extra),
         bytes(`pdf-of-${id}`),
-        'carlo',
+        'user1',
         tickingClock(),
         idSequence(`op-${id}`),
       );
@@ -227,7 +227,7 @@ describe('registerBill', () => {
       store,
       newBill('bill-2', { number: undefined }),
       bytes('pdf-2'),
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence(),
     );
@@ -250,7 +250,7 @@ describe('registerBill', () => {
       store,
       newBill('bill-2', extra),
       bytes('pdf-2'),
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence(),
     );
@@ -274,7 +274,7 @@ describe('registerBill', () => {
         issueDate: isoDate('2026-02-05'),
       }),
       bytes('pdf-2'),
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence(),
     );
@@ -295,7 +295,7 @@ describe('registerBill', () => {
       store,
       newBill('bill-new'),
       pdfB,
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence(),
     );
@@ -311,7 +311,7 @@ describe('registerBill', () => {
     await putBill(store, 'bill-a', { fileHash });
     await putBill(store, 'bill-b', { fileHash });
     expect(
-      await registerBill(store, newBill('bill-new'), pdf, 'carlo', tickingClock(), idSequence()),
+      await registerBill(store, newBill('bill-new'), pdf, 'user1', tickingClock(), idSequence()),
     ).toEqual({ status: 'duplicate', existingId: 'bill-a' });
 
     const other = new MemoryStore();
@@ -323,7 +323,7 @@ describe('registerBill', () => {
         other,
         newBill('bill-new'),
         bytes('x'),
-        'carlo',
+        'user1',
         tickingClock(),
         idSequence(),
       ),
@@ -339,7 +339,7 @@ describe('registerBill', () => {
       store,
       newBill('bill-2'),
       pdf,
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence(),
     );
@@ -356,7 +356,7 @@ describe('registerBill', () => {
         store,
         newBill('bill-1', { periodStart: isoDate('2026-02-01'), periodEnd: isoDate('2026-01-01') }),
         bytes('pdf-1'),
-        'carlo',
+        'user1',
         tickingClock(),
         idSequence(),
       ),
@@ -366,7 +366,7 @@ describe('registerBill', () => {
         store,
         newBill('bill-1', { supplier: '' }),
         bytes('pdf-1'),
-        'carlo',
+        'user1',
         tickingClock(),
         idSequence(),
       ),
@@ -386,7 +386,7 @@ describe('registerBill', () => {
         store,
         newBill('bill-1', { supplier: 'Fornitore Gas' }),
         bytes('pdf-2'),
-        'carlo',
+        'user1',
         tickingClock(),
         idSequence(),
       ),
@@ -422,7 +422,7 @@ describe('registerBill: kind of the operation', () => {
       store,
       newBill('bill-1'),
       bytes('%PDF luce'),
-      'carlo',
+      'user1',
       tickingClock(),
       idSequence(),
       { kind: 'bill.register-auto' },

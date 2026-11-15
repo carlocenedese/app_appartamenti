@@ -4,8 +4,8 @@ import { suggestApartments } from '../src/suggest';
 const apartments = [
   {
     id: 'a1',
-    address: 'Galleria G. Berchet 3',
-    cadastre: [{ sheet: '12', parcel: '345', sub: '6' }],
+    address: 'Galleria G. Esempio 1',
+    cadastre: [{ sheet: '10', parcel: '20', sub: '30' }],
   },
   { id: 'a2', address: 'Via Roma 10', cadastre: undefined },
   { id: 'a3', address: undefined, cadastre: undefined },
@@ -15,14 +15,14 @@ describe('suggestApartments', () => {
   it('finds by cadastre', () => {
     expect(
       suggestApartments(
-        { address: 'Altrove 99', sheet: '12', parcel: '345', sub: '6' },
+        { address: 'Altrove 99', sheet: '10', parcel: '20', sub: '30' },
         apartments,
       ),
     ).toEqual([{ apartmentId: 'a1', origin: 'catasto' }]);
   });
 
   it('finds by address ignoring case, accents, punctuation and street type', () => {
-    expect(suggestApartments({ address: 'GAL. G. BERCHET 3' }, apartments)).toEqual([
+    expect(suggestApartments({ address: 'GAL. G. ESEMPIO 1' }, apartments)).toEqual([
       { apartmentId: 'a1', origin: 'indirizzo' },
     ]);
     expect(suggestApartments({ address: 'v. ROMA, 10' }, apartments)).toEqual([
@@ -33,7 +33,7 @@ describe('suggestApartments', () => {
   it('gives one origin per apartment, cadastre first', () => {
     expect(
       suggestApartments(
-        { address: 'Via G. Berchet 3', sheet: '12', parcel: '345', sub: '6' },
+        { address: 'Via G. Esempio 1', sheet: '10', parcel: '20', sub: '30' },
         apartments,
       ),
     ).toEqual([{ apartmentId: 'a1', origin: 'catasto' }]);
@@ -56,7 +56,7 @@ describe('suggestApartments', () => {
   it('returns only the cadastre matches when there are any', () => {
     expect(
       suggestApartments(
-        { address: 'Via Roma 10', sheet: '12', parcel: '345', sub: '6' },
+        { address: 'Via Roma 10', sheet: '10', parcel: '20', sub: '30' },
         apartments,
       ),
     ).toEqual([{ apartmentId: 'a1', origin: 'catasto' }]);

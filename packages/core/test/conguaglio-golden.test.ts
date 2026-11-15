@@ -1,5 +1,5 @@
 // Golden settlement test (Task 9, step 4): `calcConguaglio` on every fixture of fixtures/golden
-// must give, to the cent, the values Carlo approved (`expected`, `expectedUnassigned`,
+// must give, to the cent, the values user1 approved (`expected`, `expectedUnassigned`,
 // `expectedPending`), condominium excluded. Where the app and the Excel disagree, the fixture must
 // document why in `knownDeviations`; `pnpm golden:report` lists the differences one by one.
 import { describe, expect, it } from 'vitest';

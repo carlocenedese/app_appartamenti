@@ -336,7 +336,7 @@ describe('FsStore with the engine', () => {
     await seed('truncated.json', '{"id": "truncated", "v": 1, "rev": 1, "amou');
     await seed('future.json', JSON.stringify({ ...bill, id: 'future', v: 2 }));
     await seed('x (conflicted copy 2026-11-05).json', JSON.stringify(bill));
-    await seed('x (Copia in conflitto di Nicola 2026-11-05).json', JSON.stringify(bill));
+    await seed('x (Copia in conflitto di user2 2026-11-05).json', JSON.stringify(bill));
     await seed('.tmp-0190e5c6-1f2a', '{"partial');
     await seed('notes.txt', 'hello');
 
@@ -348,7 +348,7 @@ describe('FsStore with the engine', () => {
       { path: `${dir}/future.json`, reason: 'future-version' },
       { path: `${dir}/truncated.json`, reason: 'malformed-json' },
       {
-        path: `${dir}/x (Copia in conflitto di Nicola 2026-11-05).json`,
+        path: `${dir}/x (Copia in conflitto di user2 2026-11-05).json`,
         reason: 'conflicted-copy',
         originalPath: `${dir}/x.json`,
       },

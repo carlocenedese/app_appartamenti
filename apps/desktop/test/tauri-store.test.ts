@@ -241,10 +241,10 @@ describe('TauriStore: paths', () => {
   });
 
   it('joins with backslashes below a Windows root, and ignores a trailing separator', async () => {
-    const windows = new TauriStore('C:\\Users\\Nicola\\Dropbox\\Appartamenti\\', fs);
+    const windows = new TauriStore('C:\\Users\\user2\\Dropbox\\Appartamenti\\', fs);
     const exists = vi.spyOn(fs, 'exists');
     await windows.readJson('_app/workspace.json');
-    expect(exists).toHaveBeenCalledWith('C:\\Users\\Nicola\\Dropbox\\Appartamenti\\_app');
+    expect(exists).toHaveBeenCalledWith('C:\\Users\\user2\\Dropbox\\Appartamenti\\_app');
   });
 });
 
@@ -359,8 +359,8 @@ describe('TauriStore with the engine', () => {
 
 describe('pickFolder', () => {
   it('opens the folder dialog, recursive so that the whole folder enters the file permissions', async () => {
-    vi.mocked(open).mockResolvedValueOnce('/Users/nicola/Dropbox/Appartamenti');
-    expect(await pickFolder()).toBe('/Users/nicola/Dropbox/Appartamenti');
+    vi.mocked(open).mockResolvedValueOnce('/Users/user2/Dropbox/Appartamenti');
+    expect(await pickFolder()).toBe('/Users/user2/Dropbox/Appartamenti');
     expect(open).toHaveBeenCalledWith({ directory: true, recursive: true, multiple: false });
   });
 

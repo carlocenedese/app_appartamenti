@@ -138,6 +138,30 @@ describe('scanText', () => {
     ).toEqual([]);
   });
 
+  it('flags the real names as whole words, in any case', () => {
+    expect(kinds('chiedere a Carlo\nNICOLA e cenedese')).toEqual([
+      'person name',
+      'person name',
+      'person name',
+    ]);
+    expect(kinds("profileId: 'carlo'")).toEqual(['person name']);
+    expect(kinds('non modificarlo; user1 e user2; Nicolas')).toEqual([]);
+  });
+
+  it('flags a house number after an apartment name, not years or amounts', () => {
+    expect(kinds('Berchet 3, Pulci 2a, Lovarini_5, GAL. G. BERCHET 3')).toEqual([
+      'address',
+      'address',
+      'address',
+      'address',
+    ]);
+    expect(
+      kinds(
+        'Berchet 2024-25, Pulci 2020-21, Berchet 100,75 €, Pulci 1.234,56 €, Berchet: 5, Berchet_Nord',
+      ),
+    ).toEqual([]);
+  });
+
   it('skips the codes in the allowed set, compared without spaces and ignoring case', () => {
     const allowed = new Set([EXAMPLE_IBAN_COMPACT, EXAMPLE_CF, EXAMPLE_POD, EXAMPLE_PDR]);
     expect(
@@ -247,6 +271,25 @@ describe('scanFiles and the command line', () => {
     ]);
     writeFileSync(join(root, 'fixtures/README.md'), README_WITH_EXAMPLES.split('\n## Altra')[0]);
     expect(scanFiles(root, files).findings).toEqual([]);
+  });
+
+  it('does not check names and addresses in the files of the check itself', () => {
+    const text = 'Carlo, Berchet 3\n';
+    const root = makeRepo({
+      'scripts/check-personal-data.mjs': text,
+      'scripts/check-personal-data.test.mjs': `${text}${UNLISTED_IBAN}\n`,
+      'docs/a.md': text,
+    });
+    const files = [
+      'scripts/check-personal-data.mjs',
+      'scripts/check-personal-data.test.mjs',
+      'docs/a.md',
+    ];
+    expect(scanFiles(root, files).findings.map((f) => [f.file, f.kind])).toEqual([
+      ['scripts/check-personal-data.test.mjs', 'IBAN'],
+      ['docs/a.md', 'person name'],
+      ['docs/a.md', 'address'],
+    ]);
   });
 
   it('also looks at file names', () => {

@@ -1,5 +1,5 @@
 // Writes, for every golden fixture, the report of the differences between the Excel and the app
-// (`pnpm golden:report`): reports/golden/<fixture>-differenze.md, in Italian, for Carlo to check
+// (`pnpm golden:report`): reports/golden/<fixture>-differenze.md, in Italian, for user1 to check
 // and approve. For each tenant and category it gives the Excel amount (the `excel` field of the
 // fixture), the app amount (`calcConguaglio`, condominium excluded as in the golden values) and the
 // difference, then the known deviations with their reasons.

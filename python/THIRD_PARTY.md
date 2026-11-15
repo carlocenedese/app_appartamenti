@@ -21,7 +21,7 @@ serve a Python 3.12, per questo si usa Python 3.13.
 
 ## OCR (solo macOS)
 
-L'OCR esce solo su macOS (decisione di Carlo del 13 novembre 2026); Windows è rimandato perché la
+L'OCR esce solo su macOS (decisione di user1 del 13 novembre 2026); Windows è rimandato perché la
 ruota Windows di tesserocr contiene libiconv e libcharset sotto LGPL-2.1. Inventario completo e
 verifiche in `docs/rules/ocr-licenze.md`. Le ruote macOS (arm64 e x86_64) non portano i testi delle
 licenze delle librerie in `tesserocr/.dylibs/`: i testi sono in `python/licenses/ocr-native-libraries.txt`
@@ -94,6 +94,6 @@ pacchetto.
 ⁴ Su Windows `_uuid` usa le funzioni del sistema (rpcrt4).
 
 (*) Fuori dall'elenco delle licenze ammesse (spec sezione 40), accettate in attesa della decisione
-di Carlo: bzip2-1.0.6 è una licenza simile a BSD, SQLite è nel pubblico dominio, il runtime
+di user1: bzip2-1.0.6 è una licenza simile a BSD, SQLite è nel pubblico dominio, il runtime
 Microsoft si ridistribuisce alle condizioni riportate nel `LICENSE.txt` di Windows. Il
 `LICENSE.txt` di Windows riporta anche la licenza di Tcl/Tk, che però non è più nel pacchetto.

@@ -165,7 +165,7 @@ describe.skipIf(!availability.available)('core and the Python reader', () => {
           proposal: marchProposal,
           result: march,
           bytes: marchBytes,
-          profileId: 'carlo',
+          profileId: 'user1',
           mode: 'manual',
         },
         clock,
@@ -173,8 +173,8 @@ describe.skipIf(!availability.available)('core and the Python reader', () => {
       expect(manual).toMatchObject({ status: 'registered', ids: ['marzo-1'] });
 
       // The owner confirms the profile and turns automatic registration on.
-      const confirmed = await confirmProfile(store, draft, 'carlo', clock);
-      const automatic = await setProfileAutoRegister(store, confirmed, true, 'carlo', clock);
+      const confirmed = await confirmProfile(store, draft, 'user1', clock);
+      const automatic = await setProfileAutoRegister(store, confirmed, true, 'user1', clock);
       expect(automatic).toMatchObject({ status: 'confermato', autoRegister: true });
       expect(automatic.rev).toBeGreaterThan(draft.rev);
       // A reading made with the old revision is not enough any more.
@@ -203,7 +203,7 @@ describe.skipIf(!availability.available)('core and the Python reader', () => {
       });
       const registered = await registerProposal(
         store,
-        { proposal: mayProposal, result: may, bytes: mayBytes, profileId: 'carlo', mode: 'auto' },
+        { proposal: mayProposal, result: may, bytes: mayBytes, profileId: 'user1', mode: 'auto' },
         clock,
       );
       expect(registered).toEqual({
@@ -238,7 +238,7 @@ describe.skipIf(!availability.available)('core and the Python reader', () => {
           proposal: againProposal,
           result: again,
           bytes: mayBytes,
-          profileId: 'carlo',
+          profileId: 'user1',
           mode: 'auto',
         },
         clock,
@@ -250,7 +250,7 @@ describe.skipIf(!availability.available)('core and the Python reader', () => {
       await undoOperation(
         store,
         'op-maggio-1-20261112T090000003Z',
-        'carlo',
+        'user1',
         clock,
         () => 'annulla-1',
       );
@@ -285,7 +285,7 @@ describe.skipIf(!availability.available)('core and the Python reader', () => {
         expect(decision.action).toBe('review');
         const outcome = await registerProposal(
           store,
-          { proposal, result, bytes: readFileSync(pdf(name)), profileId: 'carlo', mode: 'auto' },
+          { proposal, result, bytes: readFileSync(pdf(name)), profileId: 'user1', mode: 'auto' },
           tickingClock(),
         );
         expect(outcome.status).toBe('rejected');

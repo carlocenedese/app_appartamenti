@@ -339,7 +339,7 @@ describe('confirmIncome', () => {
     expect((await payers(store)).find((p) => p.id === 'payer-tx-bruno-2026-01')?.rev).toBe(3);
   });
 
-  it('undoing a whole reconciliation brings its movements back to automatic, never undone (Carlo, 15 Nov 2026)', async () => {
+  it('undoing a whole reconciliation brings its movements back to automatic, never undone (user1, 15 Nov 2026)', async () => {
     const store = await yearStore();
     const r = await runReconcile(store, 'p1', clock, ids('op'));
     if (r.status !== 'reconciled' || r.operationId === undefined) throw new Error('none');
@@ -351,7 +351,7 @@ describe('confirmIncome', () => {
     expect(again).not.toHaveProperty('operationId');
   });
 
-  it('confirming an invalid-iban «chi» never saves a payer (Carlo, 15 Nov 2026)', async () => {
+  it('confirming an invalid-iban «chi» never saves a payer (user1, 15 Nov 2026)', async () => {
     const store = await yearStore();
     const path = recordPath('transaction', 'tx-bruno-2026-01');
     const tx = BankTransactionSchema.parse(await store.readJson(path));
@@ -576,7 +576,7 @@ describe('confirmIncome', () => {
   });
 });
 
-describe('cancelAutomaticPayment (Carlo, 15 Nov 2026)', () => {
+describe('cancelAutomaticPayment (user1, 15 Nov 2026)', () => {
   it('cancels one automatic payment in an operation of its own: undone, and an undo brings it back', async () => {
     const store = await yearStore();
     await runReconcile(store, 'p1', clock, ids('r'));
