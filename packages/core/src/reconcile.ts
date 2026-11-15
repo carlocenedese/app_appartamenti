@@ -59,7 +59,25 @@ export async function runReconciliation(
   let income: Extract<ReconcileRunResult, { status: 'reconciled' }>;
   // An incoming movement an «in» rule will classify is no «chi» of the income: it would block the
   // later rents of the apartment (earlier-open) until the next run. Only the income skips it.
-  const incomeUsed = new Set([...alsoUsed, ...(await planOutgoing(store, alsoUsed)).incoming]);
+  const beforeIncome = new Set([...alsoUsed, ...(await planOutgoing(store, alsoUsed)).incoming]);
+  // Nor is a movement of a transfer (automatic, completed or proposed, I3 of the final review);
+  // the transfers skip the payments the income would write, so this goes on until it settles.
+  const paidBy = async (skip: ReadonlySet<string>) =>
+    (await planIncome(store, skip)).payments.flatMap((p) => p.transactionId ?? []);
+  let transferIds = new Set<string>();
+  // shortcut: at most 5 rounds (one or two in practice); upgrade if a case ever needs more.
+  for (let round = 0; round < 5; round++) {
+    const skip = new Set([...beforeIncome, ...transferIds]);
+    const plan = await planTransfers(store, new Set([...alsoUsed, ...(await paidBy(skip))]));
+    const next = new Set([
+      ...[...plan.transfers, ...plan.completed].flatMap(legsOf),
+      ...plan.proposals.flatMap((p) => [p.transactionId, ...p.legIds]),
+    ]);
+    const same = next.size === transferIds.size && [...next].every((id) => transferIds.has(id));
+    transferIds = next;
+    if (same) break;
+  }
+  const incomeUsed = new Set([...beforeIncome, ...transferIds]);
   if (dryRun) {
     // The transfers then skip the movements of the payments the income would write as well.
     const plan = await planIncome(store, incomeUsed);
@@ -70,12 +88,14 @@ export async function runReconciliation(
     if (written.status === 'refused') return refused;
     income = written;
   }
+  // In a dry run the transfers count their own candidates first (I1 of the final review), then
+  // the outgoings skip their legs as well.
+  const transfers = await runTransfers(store, profileId, clock, newId, { dryRun, alsoUsed });
+  if (transfers.status === 'refused') return refused;
   if (dryRun) {
     const plan = await planTransfers(store, alsoUsed);
     alsoUsed = new Set([...alsoUsed, ...[...plan.transfers, ...plan.completed].flatMap(legsOf)]);
   }
-  const transfers = await runTransfers(store, profileId, clock, newId, { dryRun, alsoUsed });
-  if (transfers.status === 'refused') return refused;
   // A movement of a transfer proposal (or one of its legs) is no outgoing proposal as well.
   const outgoingUsed = new Set([
     ...alsoUsed,

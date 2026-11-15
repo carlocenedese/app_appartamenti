@@ -727,3 +727,110 @@ describe('excludeMovement: order of the refusals (plan 3c, task 4, ledger)', () 
     expect(await snapshot(store)).toEqual(diverged);
   });
 });
+
+describe('runReconciliation: transfers against the dry run and the income (final fix wave)', () => {
+  const giro = (id: string, accountId: string, date: string, amount: number, cp: object) =>
+    recordSchemas.transaction.parse({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: accountId.replace('acc-', ''),
+      accountId,
+      date,
+      amount,
+      description: 'GIRO',
+      statementHash: 's',
+      counterparty: cp,
+    });
+  const toBerchet = { name: 'C', iban: 'IT85X0542811101000000000301' };
+  const toLovarini = { name: 'C', iban: 'IT58X0542811101000000000302' };
+  const write = async (store: MemoryStore, list: ReturnType<typeof giro>[]) => {
+    for (const t of list) await store.writeJsonAtomic(recordPath('transaction', t.id), t);
+  };
+  /** tre-conti with the pair Lovarini → Berchet confirmed and remembered. */
+  async function knownPair(): Promise<MemoryStore> {
+    const store = await treConti();
+    await confirmTransfer(
+      store,
+      { proposalId: 'p-giro-tx-l-giro', purpose: 'saldo', rememberPair: true },
+      'p1',
+      clock,
+      ids('g'),
+    );
+    return store;
+  }
+
+  it('I1: a dry run counts the automatic transfers of a known pair as the real run writes', async () => {
+    const make = async () => {
+      const store = await knownPair();
+      await write(store, [
+        giro('tx-l-giro2', 'acc-lovarini', '2027-03-20', -3000, toBerchet),
+        giro('tx-b-giro2', 'acc-berchet', '2027-03-21', 3000, toLovarini),
+      ]);
+      return store;
+    };
+    const dry = await reconcile(await make(), 'd', true);
+    const real = await reconcile(await make());
+    if (dry.status !== 'reconciled' || real.status !== 'reconciled') throw new Error('refused');
+    expect(real.transfers).toMatchObject({ written: 1, completed: 0 });
+    expect({ ...dry.transfers, operationId: real.transfers.operationId }).toEqual(real.transfers);
+  });
+
+  it('I1: a dry run counts the completed transfers as the real run writes', async () => {
+    const make = async () => {
+      const store = await knownPair();
+      await write(store, [giro('tx-l-giro2', 'acc-lovarini', '2027-03-20', -3000, toBerchet)]);
+      await reconcile(store, 'a');
+      await write(store, [giro('tx-b-giro2', 'acc-berchet', '2027-03-21', 3000, toLovarini)]);
+      return store;
+    };
+    const dry = await reconcile(await make(), 'd', true);
+    const real = await reconcile(await make());
+    if (dry.status !== 'reconciled' || real.status !== 'reconciled') throw new Error('refused');
+    expect(real.transfers).toMatchObject({ written: 0, completed: 1 });
+    expect({ ...dry.transfers, operationId: real.transfers.operationId }).toEqual(real.transfers);
+  });
+
+  // −30,00 € from Lovarini with the IBAN of Berchet on 3 March, +30,00 € on Berchet with only a
+  // name on 4 March, the day before the March rent of Berchet.
+  const legs = () => [
+    giro('tx-l-out2', 'acc-lovarini', '2027-03-03', -3000, toBerchet),
+    giro('tx-b-in2', 'acc-berchet', '2027-03-04', 3000, { name: 'Conto Lovarini' }),
+  ];
+
+  it('I3: a leg without IBAN of a known pair is no «chi»: the second run writes nothing', async () => {
+    const make = async () => {
+      const store = await knownPair();
+      await write(store, legs());
+      return store;
+    };
+    const store = await make();
+    const first = await reconcile(store);
+    if (first.status !== 'reconciled') throw new Error('refused');
+    expect(first.transfers.written).toBe(1);
+    expect(first.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-in2');
+    expect(first.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-affitto-mar');
+    const once = await snapshot(store);
+    expect(await reconcile(store, 's')).toMatchObject({
+      income: { written: 0 },
+      transfers: { written: 0 },
+    });
+    expect(await snapshot(store)).toEqual(once);
+    const dry = await reconcile(await make(), 'd', true);
+    if (dry.status !== 'reconciled') throw new Error('refused');
+    expect({ ...dry.income, operationId: first.income.operationId }).toEqual(first.income);
+    expect({ ...dry.transfers, operationId: first.transfers.operationId }).toEqual(first.transfers);
+  });
+
+  it('I3: with a new pair a leg has one proposal only, and the rents are not blocked', async () => {
+    const store = await treConti();
+    await write(store, legs());
+    const first = await reconcile(store);
+    if (first.status !== 'reconciled') throw new Error('refused');
+    const legIds = first.transfers.proposals.flatMap((p) => [p.transactionId, ...p.legIds]);
+    expect(legIds).toContain('tx-b-in2');
+    expect(first.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-in2');
+    expect(first.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-affitto-mar');
+    expect(await reconcile(store, 's')).toMatchObject({ income: { written: 0 } });
+  });
+});
