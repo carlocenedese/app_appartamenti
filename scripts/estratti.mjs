@@ -528,8 +528,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         id: e.id,
         reason: e.reason,
       })),
-      // Only the month without --dettagli (R117): ids are chosen by the user, like tenantIds.
-      // The id of an apartment is always shown (user1, 15 Nov 2026), the tenant only in detail.
+      // Month and apartment (its id is always shown, user1, 15 Nov 2026, R117); the tenant,
+      // whose id is chosen by the user like tenantIds, only with --dettagli.
       arrears: result.arrears.map((a) => ({
         month: a.month,
         apartmentId: a.apartmentId,

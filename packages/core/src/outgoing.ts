@@ -109,7 +109,8 @@ export function isPayerIban(
 
 /**
  * The valid rules of `tx` (question 1), by `id`: live, same account, same direction, same key,
- * `validFrom` absent or not after its date, `validTo` absent or not before it; none without a key. The amount does not count.
+ * `validFrom` absent or not after its date, `validTo` absent or not before it; none without a
+ * key. The amount does not count.
  */
 export function validRules(
   rules: MovementRule[],
@@ -133,9 +134,9 @@ export function validRules(
 
 /**
  * The automatic classes and the proposals of the candidates (`outgoingCandidate`), by `id`. The
- * valid rules of a movement: live, same account, same direction, same key, `validTo` absent or
- * not before its date (question 1); one pair (kind, apartment) is a class with the rule (the
- * first by `id`), several pairs a `rule-conflict`, none `new-counterparty` (`no-counterparty`
+ * valid rules of a movement (`validRules`): live, same account, same direction, same key,
+ * `validFrom` absent or not after its date, `validTo` absent or not before it (question 1); one
+ * pair (kind, apartment) is a class with the rule (the first by `id`), several pairs a `rule-conflict`, none `new-counterparty` (`no-counterparty`
  * without a key). A movement whose deleted class has an `outgoing.cancel-auto` in force in its
  * history is `undone`, never automatic again, unless the undo of a whole `outgoing.reconcile`
  * deleted it last (as R118). An incoming candidate gets a class or nothing (its «chi»

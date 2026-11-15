@@ -500,8 +500,9 @@ export type MovementClass = z.infer<typeof MovementClassSchema>;
 
 /**
  * A rule learnt from a confirmation (`rule-<transactionId>`, plan 3c, question 1): the movements
- * of `accountId` in `direction` whose counterparty has `key` get `kind` and `apartmentId`, up to
- * `validTo`; the amount does not count. Incoming only by IBAN (question 2).
+ * of `accountId` in `direction` whose counterparty has `key` get `kind` and `apartmentId`, from
+ * `validFrom` up to `validTo` (both optional); the amount does not count. Incoming only by IBAN
+ * (question 2); never outgoing on the IBAN of a valid payer (R130).
  */
 export const MovementRuleSchema = RecordBaseSchema.extend({
   direction: z.enum(['in', 'out']),
