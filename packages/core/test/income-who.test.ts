@@ -16,6 +16,8 @@ const base = { v: 1, rev: 1 };
 const OWN_A = ibanEndingWith('1');
 const OWN_B = ibanEndingWith('2');
 const PAYER_IBAN = ibanEndingWith('77');
+// One digit changed at run time: never a whole invented IBAN in the file.
+const BAD_IBAN = PAYER_IBAN.replace(/\d$/, (d) => String((Number(d) + 1) % 10));
 
 const account = (id: string, apartmentId: string, iban?: string, deleted?: boolean) =>
   AccountSchema.parse({
@@ -127,6 +129,52 @@ describe('whoPaid: known payers', () => {
       kind: 'known',
       tenantId: 't1',
       key: 'name:mario rossi',
+    });
+  });
+
+  it('a payer of a deleted tenant does not count (Carlo, 15 Nov 2026)', () => {
+    const c = ctx({
+      tenants: [tenant('t1', 'Zoe Bianchi', true)],
+      tenancies: [tenancy({ id: 'n1', tenantId: 't1' })],
+      payers: [payer({ id: 'p1', key, tenantId: 't1' })],
+    });
+    const row = tx({ counterparty: { iban: PAYER_IBAN } });
+    expect(whoPaid(row, c)).toEqual({ kind: 'ask', reason: 'new-payer', tenantIds: ['t1'], key });
+    // A payer of a deleted tenant still keeps the key from being automatic: only the live ones
+    // are candidates (Carlo, 15 Nov 2026).
+    const two = { ...c, payers: [...c.payers, payer({ id: 'p2', key, tenantId: 't2' })] };
+    expect(whoPaid(row, two)).toEqual({
+      kind: 'ask',
+      reason: 'multi-tenant',
+      tenantIds: ['t2'],
+      key,
+    });
+    // An expired payer of the deleted tenant does not block.
+    const expired = {
+      ...two,
+      payers: [
+        payer({ id: 'p1', key, tenantId: 't1', validTo: '2026-01-31' }),
+        payer({ id: 'p2', key, tenantId: 't2' }),
+      ],
+    };
+    expect(whoPaid(row, expired)).toEqual({ kind: 'known', tenantId: 't2', key });
+  });
+
+  it('an invalid IBAN never falls back on the name payer: invalid-iban (Carlo, 15 Nov 2026)', () => {
+    const c = ctx({
+      tenancies: [tenancy({ id: 'n1', tenantId: 't1' })],
+      payers: [payer({ id: 'p1', key: 'name:mario rossi', tenantId: 't1' })],
+    });
+    for (const iban of [BAD_IBAN, 'IT60', 'non un iban']) {
+      expect(whoPaid(tx({ counterparty: { iban, name: 'Mario Rossi' } }), c)).toEqual({
+        kind: 'ask',
+        reason: 'invalid-iban',
+        tenantIds: ['t1'],
+      });
+    }
+    // A blank IBAN is no IBAN: the name payer holds.
+    expect(whoPaid(tx({ counterparty: { iban: '  ', name: 'Mario Rossi' } }), c)).toMatchObject({
+      kind: 'known',
     });
   });
 

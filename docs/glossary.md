@@ -54,7 +54,7 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | bonifico              | bank transfer      |                                                            |
 | pagamento, versamento | payment            | versamento di un inquilino                                 |
 | pagante               | payer              | chi versa su un conto (IBAN o nome), legato a un inquilino |
-| riconciliazione       | reconciliation     | abbinamento di bollette e rate ai movimenti                |
+| riconciliazione       | reconciliation     | abbinamento ai movimenti di bollette, rate e versamenti    |
 | abbinamento           | match              |                                                            |
 | da rivedere           | to review          | ogni valore incerto passa da qui                           |
 | conto                 | account            | conto bancario di un appartamento                          |
