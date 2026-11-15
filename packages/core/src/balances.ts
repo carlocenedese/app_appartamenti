@@ -16,6 +16,7 @@
  * (question 11); the income of the tenants never counts. Nothing depends on the input order.
  */
 import type { MatchItemRef, MatchItemType } from './match';
+import { checkConsistency } from './journal';
 import { planMatch } from './match-store';
 import {
   AccountSchema,
@@ -98,7 +99,8 @@ export function accountBalances(input: BalanceInput): AccountBalances {
   const items: BalanceItem[] = [];
   const toSplit: AccountBalances['toSplit'] = [];
 
-  for (const m of live(input.matches)) {
+  // By match id first: two parts of one instalment on the same day then follow their movement.
+  for (const m of live(input.matches).sort((a, b) => compareText(a.id, b.id))) {
     const item = m.itemType === 'instalment' ? instalments.get(m.itemId) : undefined;
     const payer = item?.paidFromApartmentId;
     if (item === undefined || payer === undefined || payer === item.apartmentId) continue;
@@ -208,13 +210,20 @@ export function accountBalances(input: BalanceInput): AccountBalances {
   return { pairs, toSplit, unverified };
 }
 
+export type LoadAccountBalancesResult =
+  ({ status: 'computed' } & AccountBalances) | { status: 'refused'; reason: 'inconsistent-store' };
+
 /**
  * The balance on the records of the store, with the items assumed paid by the matching computed
- * as `runMatch` with `dryRun` would (`planMatch`, the same calculation). Writes nothing.
+ * as `runMatch` with `dryRun` would (`planMatch`, the same calculation). Writes nothing. Refused
+ * while `checkConsistency` reports a problem: a write left half done could count a movement twice.
  */
-export async function loadAccountBalances(store: Store): Promise<AccountBalances> {
+export async function loadAccountBalances(store: Store): Promise<LoadAccountBalancesResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
   const all = { includeDeleted: true };
-  return accountBalances({
+  const balances = accountBalances({
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
     instalments: (await loadAll(store, 'instalment', InstalmentSchema, all)).records,
     matches: (await loadAll(store, 'match', BillMatchSchema, all)).records,
@@ -223,4 +232,5 @@ export async function loadAccountBalances(store: Store): Promise<AccountBalances
     classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
     transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,
   });
+  return { status: 'computed', ...balances };
 }

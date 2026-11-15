@@ -8,7 +8,10 @@ import {
   TransferSchema,
   accountBalances,
   inBalance,
+  cents,
+  isoDate,
   loadAccountBalances,
+  recordManualTransfer,
   recordPath,
   recordSchemas,
 } from '../src/index';
@@ -22,7 +25,7 @@ import type {
   RecordKind,
   Transfer,
 } from '../src/index';
-import { snapshot } from './helpers/income-year';
+import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
 // Synthetic records only, the own accounts of fixtures/README.md and invented amounts (the
@@ -284,6 +287,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
       },
     ]);
     expect(inBalance(cls('t-asso', { kind: 'altro', apartmentId: 'lovarini' }))).toBe(true);
+    expect(inBalance(cls('t-asso', { kind: 'escluso', excludeReason: 'doppione' }))).toBe(false);
   });
 
   it('lists an assumed instalment paid for another apartment apart, out of the net', () => {
@@ -333,6 +337,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
         matches: [
           match('condo-l', 't-prop', '2027-05-03', 30000, { confirmed: false }),
           match('condo-l', 't-del', '2027-05-02', 999, { deleted: true }),
+          match('condo-l', 't-escl', '2027-05-01', 999, { by: 'assumed' }),
         ],
         instalments: [
           instalment('condo-gone', {
@@ -385,6 +390,18 @@ describe('accountBalances (plan 3c, task 9)', () => {
     ]);
   });
 
+  it('orders two parts of one instalment on the same day by their movement', () => {
+    const parts = [
+      match('condo-l', 't-p2', '2027-04-05', 10000),
+      match('condo-l', 't-p1', '2027-04-05', 20000),
+    ];
+    const input = { ...example, matches: parts, transfers: [] };
+    const refs = (m: BillMatch[]) =>
+      accountBalances({ ...input, matches: m }).pairs[0]?.items.map((i) => i.amount);
+    expect(refs(parts)).toEqual([20000, 10000]);
+    expect(refs([...parts].reverse())).toEqual([20000, 10000]);
+  });
+
   it('gives the same result in any order of the input', () => {
     const input = withExtra({
       transfers: [transfer('tr-2', { fromAccountId: 'acc-berchet', toAccountId: 'acc-lovarini' })],
@@ -416,15 +433,23 @@ describe('loadAccountBalances (plan 3c, task 9)', () => {
     await put(store, 'movementClass', [
       cls('t-f24-l', { kind: 'tasse', f24: true, apartmentId: 'lovarini' }),
     ]);
-    await put(store, 'transfer', [
-      transfer('tr-1', {
-        source: 'manual',
-        outTransactionId: undefined,
-        inTransactionId: undefined,
-      }),
-    ]);
+    const manual = await recordManualTransfer(
+      store,
+      {
+        fromAccountId: 'acc-lovarini',
+        toAccountId: 'acc-berchet',
+        amount: cents(20000),
+        date: isoDate('2027-04-20'),
+        purpose: 'saldo',
+      },
+      'p1',
+      clock,
+      ids('t'),
+    );
+    expect(manual.status).toBe('recorded');
     const before = await snapshot(store);
     const result = await loadAccountBalances(store);
+    if (result.status !== 'computed') throw new Error('expected a balance');
     expect(result.pairs.map((p) => [p.creditorApartmentId, p.amount])).toEqual([
       ['lovarini', 20000 - 6700],
     ]);
@@ -437,5 +462,15 @@ describe('loadAccountBalances (plan 3c, task 9)', () => {
       },
     ]);
     expect(await snapshot(store)).toEqual(before);
+
+    // A write left half done (the transfer changed by hand): no balance, nothing written.
+    const [path] = (await store.list('_app/dati/transfer')).map((n) => `_app/dati/transfer/${n}`);
+    store.putRaw(path as string, (store.getRaw(path as string) ?? '').replace('20000', '19000'));
+    const diverged = await snapshot(store);
+    expect(await loadAccountBalances(store)).toEqual({
+      status: 'refused',
+      reason: 'inconsistent-store',
+    });
+    expect(await snapshot(store)).toEqual(diverged);
   });
 });
