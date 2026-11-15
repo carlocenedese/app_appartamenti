@@ -1319,6 +1319,33 @@ describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, t
   );
 
   it(
+    'annulla-riconciliazione di un annulla-pagamento dopo un nuovo uso del movimento: 1 has-dependents (I2)',
+    async () => {
+      const s = await treConti();
+      expect(cli(['riconcilia', ...s.common]).code).toBe(0);
+      const [payment] = readdirSync(join(s.dir, '_app', 'dati', 'payment')).map((f) =>
+        JSON.parse(readFileSync(join(s.dir, '_app', 'dati', 'payment', f), 'utf8')),
+      );
+      const cancel = cli(['annulla-pagamento', ...s.common, '--pagamento', payment.id]);
+      expect(cancel.code).toBe(0);
+      const args = ['--movimento', payment.transactionId, '--motivo', 'doppione'];
+      expect(cli(['escludi', ...s.common, ...args]).code).toBe(0);
+      const snap = snapshot(s.dir);
+      const op = ['--operazione', cancel.json.operationId];
+      const refused = cli(['annulla-riconciliazione', ...s.common, ...op]);
+      expect(refused.code).toBe(1);
+      expect(refused.json).toEqual({
+        status: 'rejected',
+        reason: 'has-dependents',
+        message: 'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
+        recordIds: [`mc-${payment.transactionId}`],
+      });
+      expect(snapshot(s.dir)).toEqual(snap);
+    },
+    TIMEOUT,
+  );
+
+  it(
     'annulla-riconciliazione di uno statement.import: 1 not-reconcile-operation',
     async () => {
       const s = await incomeSetup();

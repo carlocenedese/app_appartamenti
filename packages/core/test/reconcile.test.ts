@@ -19,11 +19,14 @@ import {
   TenantSchema,
   PaymentSchema,
   TransferSchema,
+  cancelAutomaticClass,
+  cancelAutomaticPayment,
   cents,
   commitChange,
   confirmIncome,
   confirmMatch,
   confirmOutgoing,
+  confirmTenantOutgoing,
   confirmTransfer,
   excludeMovement,
   loadAll,
@@ -38,6 +41,8 @@ import {
   runReconcile,
   runReconciliation,
   saveTenant,
+  undoBlockedBy,
+  undoOperation,
   statementPeriodsOf,
   yearMonth,
 } from '../src/index';
@@ -832,5 +837,164 @@ describe('runReconciliation: transfers against the dry run and the income (final
     expect(first.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-in2');
     expect(first.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-affitto-mar');
     expect(await reconcile(store, 's')).toMatchObject({ income: { written: 0 } });
+  });
+});
+
+describe('undo of a cancellation after a new use of its movement (final fix wave, I2)', () => {
+  async function cancelledPayment() {
+    const store = await treConti();
+    await reconcile(store);
+    const payment = (await loadAll(store, 'payment', PaymentSchema)).records.find(
+      (p) => p.source === 'csv',
+    );
+    if (payment?.transactionId === undefined) throw new Error('no automatic payment');
+    const cancel = await cancelAutomaticPayment(store, payment.id, 'p1', clock, ids('c'));
+    if (cancel.status !== 'cancelled') throw new Error('not cancelled');
+    return { store, tx: payment.transactionId, op: cancel.operationId, payment: payment.id };
+  }
+
+  /** The debit to the supplier classified by a rule, then its class cancelled by itself. */
+  async function cancelledClass() {
+    const store = await treConti();
+    await confirmOutgoing(
+      store,
+      {
+        proposalId: 'p-uscita-tx-p-fornitore-feb',
+        kind: 'altro',
+        apartmentId: 'pulci',
+        rememberRule: true,
+      },
+      'p1',
+      clock,
+      ids('o'),
+    );
+    await store.writeJsonAtomic(
+      recordPath('transaction', enel.id),
+      recordSchemas.transaction.parse(enel),
+    );
+    await reconcile(store);
+    const cancel = await cancelAutomaticClass(store, enel.id, 'p1', clock, ids('c'));
+    if (cancel.status !== 'cancelled') throw new Error('not cancelled');
+    return { store, op: cancel.operationId };
+  }
+
+  it('nothing blocks the undo while the movement has no other use', async () => {
+    const paid = await cancelledPayment();
+    expect(await undoBlockedBy(paid.store, paid.op)).toEqual([]);
+    const classified = await cancelledClass();
+    expect(await undoBlockedBy(classified.store, classified.op)).toEqual([]);
+    await undoOperation(classified.store, classified.op, 'p1', clock, ids('u'));
+    expect((await usesOf(classified.store)).get(enel.id)).toEqual(['classificato']);
+  });
+
+  it('income.cancel-payment, then the exclusion of the movement: the exclusion blocks it', async () => {
+    const { store, tx, op } = await cancelledPayment();
+    expect(
+      await excludeMovement(
+        store,
+        { transactionId: tx, reason: 'doppione' },
+        'p1',
+        clock,
+        ids('e'),
+      ),
+    ).toMatchObject({ status: 'excluded' });
+    expect(await undoBlockedBy(store, op)).toEqual([`mc-${tx}`]);
+  });
+
+  it('outgoing.cancel-auto, then a payment to a tenant: the payment blocks it', async () => {
+    const { store, op } = await cancelledClass();
+    const tenancy = recordSchemas.tenancy.parse({
+      id: 'ten-luisa-p',
+      v: 1,
+      rev: 1,
+      apartmentId: 'pulci',
+      tenantId: 't-luisa',
+      from: '2027-01',
+      to: '2027-12',
+      monthlyRent: 40000,
+      monthlyForfait: 0,
+    });
+    await store.writeJsonAtomic(recordPath('tenancy', tenancy.id), tenancy);
+    expect(
+      await confirmTenantOutgoing(
+        store,
+        {
+          proposalId: `p-uscita-${enel.id}`,
+          tenantId: 't-luisa',
+          kind: 'altro',
+          forMonth: yearMonth('2027-03'),
+        },
+        'p1',
+        clock,
+        ids('t'),
+      ),
+    ).toMatchObject({ status: 'confirmed' });
+    expect(await undoBlockedBy(store, op)).toEqual([`pay-${enel.id}-1`]);
+  });
+
+  it('outgoing.cancel-auto, then a match by hand: the match blocks it', async () => {
+    const { store, op } = await cancelledClass();
+    const bill = recordSchemas.bill.parse({
+      id: 'bill-enel',
+      v: 1,
+      rev: 1,
+      apartmentId: 'pulci',
+      category: 'elettricita',
+      supplier: 'Altro Fornitore',
+      dueDate: '2027-03-25',
+      periodStart: '2027-01-01',
+      periodEnd: '2027-02-28',
+      amount: 4820,
+      includedInConguaglio: true,
+      sharedWithTenants: true,
+      fileHash: 'hash-bill-enel',
+      filePath: 'bollette/bill-enel.pdf',
+    });
+    await store.writeJsonAtomic(recordPath('bill', bill.id), bill);
+    const confirmed = await confirmMatch(
+      store,
+      {
+        parts: [
+          {
+            itemType: 'bill',
+            itemId: 'bill-enel',
+            transactionId: enel.id,
+            amount: cents(4820),
+            part: 'amount',
+          },
+        ],
+      },
+      'p1',
+      clock,
+      ids('m'),
+    );
+    if (confirmed.status !== 'confirmed') throw new Error(confirmed.reason);
+    expect(await undoBlockedBy(store, op)).toEqual(confirmed.matchIds);
+  });
+
+  it('outgoing.cancel-auto, then a transfer with the movement as its leg: the transfer blocks it', async () => {
+    const { store, op } = await cancelledClass();
+    const back = recordSchemas.transaction.parse({
+      id: 'tx-b-da-pulci',
+      v: 1,
+      rev: 1,
+      apartmentId: 'berchet',
+      accountId: 'acc-berchet',
+      date: '2027-03-21',
+      amount: 4820,
+      description: 'GIRO',
+      statementHash: 's',
+      counterparty: { name: 'Conto Pulci', iban: 'IT52A9999999999000000000001' },
+    });
+    await store.writeJsonAtomic(recordPath('transaction', back.id), back);
+    const confirmed = await confirmTransfer(
+      store,
+      { proposalId: 'p-giro-tx-b-da-pulci', purpose: 'altro', rememberPair: false },
+      'p1',
+      clock,
+      ids('g'),
+    );
+    if (confirmed.status !== 'confirmed') throw new Error(confirmed.reason);
+    expect(await undoBlockedBy(store, op)).toEqual([confirmed.transferId]);
   });
 });

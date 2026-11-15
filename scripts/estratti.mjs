@@ -57,6 +57,7 @@ import {
   saveAccount,
   saveBankProfile,
   saveTenant,
+  undoBlockedBy,
   undoImport,
   undoOperation,
 } from '../packages/core/src/index.ts';
@@ -776,6 +777,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (target === undefined) throw new Stop('rejected', 'unknown-operation');
     if (!RECONCILE_KINDS.includes(target.kind)) {
       throw new Stop('rejected', 'not-reconcile-operation');
+    }
+    // A cancellation whose movement has had another use since: undoing it would give a second one.
+    const recordIds = await undoBlockedBy(store, target.id);
+    if (recordIds.length > 0) {
+      throw new Stop('rejected', 'has-dependents', {
+        message: MESSAGES['movement-has-dependents'],
+        recordIds,
+      });
     }
     try {
       const undone = await undoOperation(store, target.id, who, clock, newId);

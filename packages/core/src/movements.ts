@@ -2,7 +2,7 @@
  * The class of a movement (plan 3c): its exclusion, by hand and with a confirmation only (the
  * call is the confirmation: no exclusion is born anywhere else), undone with `undoOperation`.
  */
-import { checkConsistency, commitChange } from './journal';
+import { checkConsistency, commitChange, readJournal } from './journal';
 import {
   AccountSchema,
   BankTransactionSchema,
@@ -73,6 +73,52 @@ export function movementUses(state: {
   return uses;
 }
 
+/**
+ * The live records that give the movements `transactionIds` a use: their class, payments,
+ * confirmed matches that are not `assumed` and transfers; ids sorted.
+ */
+async function liveUsesOf(store: Store, transactionIds: readonly string[]): Promise<string[]> {
+  const of = (id: string | undefined) => id !== undefined && transactionIds.includes(id);
+  return [
+    ...(await loadAll(store, 'movementClass', MovementClassSchema)).records.filter((c) =>
+      of(c.transactionId),
+    ),
+    ...(await loadAll(store, 'payment', PaymentSchema)).records.filter((p) => of(p.transactionId)),
+    ...(await loadAll(store, 'match', BillMatchSchema)).records.filter(
+      (m) => of(m.transactionId) && m.confirmed && m.by !== 'assumed',
+    ),
+    ...(await loadAll(store, 'transfer', TransferSchema)).records.filter((t) =>
+      legsOf(t).some(of),
+    ),
+  ]
+    .map((r) => r.id)
+    .sort(compareText);
+}
+
+/** The operations whose undo brings back the use of a movement they took away by itself. */
+const CANCEL_KINDS = ['income.cancel-payment', 'outgoing.cancel-auto'];
+
+/**
+ * What stops the undo of the operation `operationId` (I2 of the final review of plan 3c): for an
+ * `income.cancel-payment` or an `outgoing.cancel-auto`, the live records that give its movement
+ * another use since (sorted ids: undo those first, as `has-dependents`); empty otherwise, and
+ * for an unknown operation (`undoOperation` says so). The journal only sees paths, so these
+ * records on other paths are no dependents of it: every undo of such an operation asks here.
+ */
+export async function undoBlockedBy(store: Store, operationId: string): Promise<string[]> {
+  const operation = (await readJournal(store)).operations.find((o) => o.id === operationId);
+  if (operation === undefined || !CANCEL_KINDS.includes(operation.kind)) return [];
+  const movements = operation.changes.flatMap(({ before }) =>
+    typeof before === 'object' &&
+    before !== null &&
+    'transactionId' in before &&
+    typeof before.transactionId === 'string'
+      ? [before.transactionId]
+      : [],
+  );
+  return liveUsesOf(store, movements);
+}
+
 export type ExcludeMovementResult =
   | { status: 'excluded'; operationId: string }
   | {
@@ -109,19 +155,7 @@ export async function excludeMovement(
   if (stored !== undefined && stored.deleted !== true) {
     return { status: 'refused', reason: 'already-classified' };
   }
-  const recordIds = [
-    ...(await loadAll(store, 'payment', PaymentSchema)).records.filter(
-      (p) => p.transactionId === tx.id,
-    ),
-    ...(await loadAll(store, 'match', BillMatchSchema)).records.filter(
-      (m) => m.transactionId === tx.id && m.confirmed && m.by !== 'assumed',
-    ),
-    ...(await loadAll(store, 'transfer', TransferSchema)).records.filter((t) =>
-      legsOf(t).includes(tx.id),
-    ),
-  ]
-    .map((r) => r.id)
-    .sort(compareText);
+  const recordIds = await liveUsesOf(store, [tx.id]);
   if (recordIds.length > 0) return { status: 'refused', reason: 'has-dependents', recordIds };
 
   const after = parseOrThrow(
