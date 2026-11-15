@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AccountSchema,
   ApartmentSchema,
+  BankProfileSchema,
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
@@ -109,6 +110,7 @@ async function pureState(store: MemoryStore) {
     rules: (await loadAll(store, 'movementRule', MovementRuleSchema, all)).records,
     supplierProfiles: (await loadAll(store, 'supplierProfile', SupplierProfileSchema, all)).records,
     transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,
+    bankProfiles: (await loadAll(store, 'bankProfile', BankProfileSchema, all)).records,
     // The journal is a history: its order is never shuffled.
     operations: (await readJournal(store)).operations,
   };

@@ -516,3 +516,110 @@ describe('incoming movements without a payer (plan 3c, task 6, question 2)', () 
     });
   });
 });
+
+describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
+  // An invented description: the real text of an F24 at the bank is not verified yet (R129).
+  const profile = (f24Pattern?: string) => ({
+    ...base,
+    id: 'bp',
+    bank: 'Banca inventata',
+    validFrom: '2020-01-01',
+    container: 'csv',
+    header: { allOf: ['Data'] },
+    columns: { date: 'Data', description: ['Descrizione'], amount: 'Importo' },
+    dateFormat: 'DD/MM/YYYY',
+    ...(f24Pattern === undefined ? {} : { f24Pattern }),
+  });
+  async function f24Store(f24Pattern?: string) {
+    const store = await storeWith({
+      ...tx('f', '2028-02-10', -6700, supplier),
+      description: 'PAGAMENTO F24 DELEGA 0001',
+    });
+    await put(store, 'apartment', [apartment('lovarini')]);
+    await put(store, 'bankProfile', [profile(f24Pattern)]);
+    return store;
+  }
+  const f24 = (store: MemoryStore, proposalId: string, kind: OutgoingKind, isF24: boolean) =>
+    confirmOutgoing(
+      store,
+      { proposalId, kind, apartmentId: 'lovarini', rememberRule: true, f24: isF24 },
+      'p1',
+      clock,
+      ids('c'),
+    );
+
+  it('a p-f24- proposal, even with a valid rule: the run writes nothing', async () => {
+    const store = await f24Store('^PAGAMENTO F24\\b');
+    await put(store, 'movementRule', [
+      {
+        ...base,
+        id: 'rule-old',
+        direction: 'out',
+        accountId: 'acc-berchet',
+        key: `iban:${SUPPLIER}`,
+        kind: 'tasse',
+        apartmentId: 'berchet',
+      },
+    ]);
+    const before = await snapshot(store);
+    expect(await run(store)).toEqual({
+      status: 'reconciled',
+      written: 0,
+      classified: [],
+      proposals: [
+        { id: 'p-f24-f', transactionId: 'f', step: 'f24', reason: 'f24', suggestedKind: 'tasse' },
+      ],
+      missingDocument: [],
+    });
+    expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('confirmed tasse for Lovarini on the account of Berchet: f24 true, no rule', async () => {
+    const store = await f24Store('^PAGAMENTO F24\\b');
+    const confirmed = await f24(store, 'p-f24-f', 'tasse', true);
+    expect(confirmed).toEqual({ status: 'confirmed', operationId: 'c-1', classId: 'mc-f' });
+    expectNoPersonalData(confirmed);
+    expect(await classes(store)).toEqual([
+      {
+        ...base,
+        id: 'mc-f',
+        transactionId: 'f',
+        kind: 'tasse',
+        apartmentId: 'lovarini',
+        f24: true,
+      },
+    ]);
+    expect(await rules(store)).toEqual([]);
+    expect((await run(store)).proposals).toEqual([]);
+  });
+
+  it('f24 with another category is f24-not-tasse, nothing written', async () => {
+    const store = await f24Store('^PAGAMENTO F24\\b');
+    const before = await snapshot(store);
+    expect(await f24(store, 'p-f24-f', 'altro', true)).toEqual({
+      status: 'refused',
+      reason: 'f24-not-tasse',
+    });
+    expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('a p-uscita- confirmed by hand as F24 is one; a p-f24- confirmed with f24 false is not', async () => {
+    const plain = await f24Store();
+    expect((await run(plain)).proposals.map((p) => p.id)).toEqual(['p-uscita-f']);
+    expect(await f24(plain, 'p-uscita-f', 'tasse', true)).toMatchObject({ status: 'confirmed' });
+    expect(await classes(plain)).toMatchObject([{ id: 'mc-f', kind: 'tasse', f24: true }]);
+    expect(await rules(plain)).toEqual([]);
+
+    // A wrong pattern: an ordinary outgoing, with its rule.
+    const wrong = await f24Store('^PAGAMENTO F24\\b');
+    expect(await f24(wrong, 'p-f24-f', 'altro', false)).toEqual({
+      status: 'confirmed',
+      operationId: 'c-1',
+      classId: 'mc-f',
+      ruleId: 'rule-f',
+    });
+    const [cls] = await classes(wrong);
+    expect(cls).toMatchObject({ kind: 'altro', apartmentId: 'lovarini' });
+    expect(cls).not.toHaveProperty('f24');
+  });
+});

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AccountSchema,
+  BankProfileSchema,
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
@@ -8,6 +9,7 @@ import {
   MovementRuleSchema,
   PayerSchema,
   TenantSchema,
+  isF24,
   isoDate,
   reconcileOutgoing,
 } from '../src/index';
@@ -83,6 +85,7 @@ const run = (over: Partial<Parameters<typeof reconcileOutgoing>[0]> = {}) =>
     matches: [],
     used: new Set(),
     operations: [],
+    bankProfiles: [],
     ...over,
   });
 
@@ -358,5 +361,72 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
     };
     expect(run(reversed)).toEqual(run(input));
     expect(run(input).classes.map((c) => c.id)).toEqual(['mc-b', 'mc-c']);
+  });
+});
+
+describe('F24 (plan 3c, task 7, decision 5)', () => {
+  // An invented description: the real text of an F24 at the bank is not verified yet (R129).
+  const profile = BankProfileSchema.parse({
+    ...base,
+    id: 'bp',
+    bank: 'Banca inventata',
+    validFrom: '2020-01-01',
+    container: 'csv',
+    header: { allOf: ['Data'] },
+    columns: { date: 'Data', description: ['Descrizione'], amount: 'Importo' },
+    dateFormat: 'DD/MM/YYYY',
+    f24Pattern: '^PAGAMENTO F24\\b',
+  });
+  const f24 = tx('f', -6700, supplier, { description: 'PAGAMENTO F24 DELEGA 0001' });
+  const proposal = {
+    id: 'p-f24-f',
+    transactionId: 'f',
+    step: 'f24',
+    reason: 'f24',
+    suggestedKind: 'tasse',
+  };
+
+  it('isF24 tests the description with the pattern of the profile, none without one', () => {
+    expect(isF24(f24, profile)).toBe(true);
+    expect(isF24(tx('b', -6700, supplier, { description: 'PAGAMENTO F245' }), profile)).toBe(false);
+    expect(isF24(f24, undefined)).toBe(false);
+    expect(isF24(f24, { ...profile, f24Pattern: undefined })).toBe(false);
+  });
+
+  it('always a p-f24- proposal, even with a valid rule; never an automatic class', () => {
+    expect(run({ transactions: [f24], bankProfiles: [profile] })).toEqual({
+      classes: [],
+      proposals: [proposal],
+      missingDocument: [],
+    });
+    expect(run({ transactions: [f24], bankProfiles: [profile], rules: [rule('rule-a')] })).toEqual({
+      classes: [],
+      proposals: [proposal],
+      missingDocument: [],
+    });
+  });
+
+  it('a profile without f24Pattern, deleted or of another account recognises no F24', () => {
+    const plain = {
+      id: 'p-uscita-f',
+      transactionId: 'f',
+      step: 'uscita',
+      reason: 'new-counterparty',
+    };
+    for (const bankProfiles of [
+      [{ ...profile, f24Pattern: undefined }],
+      [{ ...profile, deleted: true as const }],
+      [{ ...profile, id: 'bp-other' }],
+      [],
+    ]) {
+      expect(run({ transactions: [f24], bankProfiles }).proposals).toEqual([plain]);
+    }
+    // An incoming movement is never an F24: it keeps the path of the income.
+    expect(
+      run({
+        transactions: [tx('in', 6700, supplier, { description: 'PAGAMENTO F24 RIMBORSO' })],
+        bankProfiles: [profile],
+      }),
+    ).toEqual({ classes: [], proposals: [], missingDocument: [] });
   });
 });

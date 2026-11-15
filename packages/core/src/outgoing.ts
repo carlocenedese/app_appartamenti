@@ -8,6 +8,7 @@ import { latestOperationByPath } from './journal';
 import type { Operation } from './journal';
 import type {
   Account,
+  BankProfile,
   BankTransaction,
   Bill,
   BillMatch,
@@ -21,12 +22,14 @@ import type {
 } from './model';
 import { payerKeyOf, validPayers } from './payers';
 import type { ISODate } from './period';
+import { MAX_PATTERN_INPUT } from './safe-pattern';
 import { recordPath } from './store/records';
 import { compareText, foldText } from './text';
 
-export type OutgoingReason = 'new-counterparty' | 'no-counterparty' | 'rule-conflict' | 'undone';
+export type OutgoingReason =
+  'new-counterparty' | 'no-counterparty' | 'rule-conflict' | 'undone' | 'f24';
 
-/** `p-uscita-<transactionId>`: never written by itself. */
+/** `p-uscita-<transactionId>` or `p-f24-<transactionId>`: never written by itself. */
 export interface OutgoingProposal {
   id: string;
   transactionId: string;
@@ -53,6 +56,18 @@ export interface OutgoingInput {
   used: ReadonlySet<string>;
   /** The journal: it tells who deleted a class. */
   operations: Operation[];
+  /** For `f24Pattern`: the live one of the account of a movement. */
+  bankProfiles: BankProfile[];
+}
+
+/**
+ * Whether the description of `tx` matches the `f24Pattern` of `profile` (none without one). The
+ * real text of an F24 at the bank is not verified (R129): it is configuration, not code.
+ */
+export function isF24(tx: BankTransaction, profile: BankProfile | undefined): boolean {
+  if (profile?.f24Pattern === undefined) return false;
+  // The safe subset is measured on this length (R102): a longer description is cut, not skipped.
+  return new RegExp(profile.f24Pattern).test(tx.description.slice(0, MAX_PATTERN_INPUT));
 }
 
 /**
@@ -107,7 +122,9 @@ export function validRules(
  * first by `id`), several pairs a `rule-conflict`, none `new-counterparty` (`no-counterparty`
  * without a key). A movement whose class the latest operation deleted is `outgoing.cancel-auto`
  * is `undone`, never automatic again. An incoming candidate gets a class or nothing (its «chi»
- * of the income stays). `missingDocument`: the movements of the live `utenze` and `condominio`
+ * of the income stays). An outgoing F24 (`isF24` with the live profile of its account) is always
+ * a `p-f24-` proposal suggesting `tasse`, never automatic, whatever the rules (decision 5).
+ * `missingDocument`: the movements of the live `utenze` and `condominio`
  * classes, these included, without a live confirmed match (question 8).
  */
 export function reconcileOutgoing(input: OutgoingInput): {
@@ -135,6 +152,23 @@ export function reconcileOutgoing(input: OutgoingInput): {
     const candidate = outgoingCandidate(tx, input);
     if (candidate === undefined) continue;
     const { direction, key } = candidate;
+    if (direction === 'out') {
+      const account = input.accounts.find((a) => a.id === tx.accountId);
+      const profile = input.bankProfiles.find(
+        (p) => p.deleted !== true && p.id === account?.bankProfileId,
+      );
+      // Always a proposal, even with a valid rule (decision 5).
+      if (isF24(tx, profile)) {
+        proposals.push({
+          id: `p-f24-${tx.id}`,
+          transactionId: tx.id,
+          step: 'f24',
+          reason: 'f24',
+          suggestedKind: 'tasse',
+        });
+        continue;
+      }
+    }
     const valid = undone.has(tx.id) ? [] : validRules(input.rules, tx, direction, key);
     const pairs = new Set(valid.map((r) => `${r.kind}\u0000${r.apartmentId}`));
     const [rule] = valid;

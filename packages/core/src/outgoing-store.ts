@@ -8,6 +8,7 @@ import { checkConsistency, commitChange, latestOperationByPath, readJournal } fr
 import {
   AccountSchema,
   ApartmentSchema,
+  BankProfileSchema,
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
@@ -58,6 +59,7 @@ async function loadOutgoingState(store: Store, alsoUsed: ReadonlySet<string> = n
     matches,
     used: new Set([...alsoUsed, ...uses.keys()]),
     operations: (await readJournal(store)).operations,
+    bankProfiles: (await loadAll(store, 'bankProfile', BankProfileSchema, all)).records,
   };
   return { ...state, result: reconcileOutgoing(state) };
 }
@@ -151,19 +153,24 @@ export async function runOutgoing(
 }
 
 export interface ConfirmOutgoingInput {
-  /** A `p-uscita-` proposal, or the `p-chi-` `new-payer` of an incoming one by IBAN. */
+  /** A `p-uscita-` or `p-f24-` proposal, or the `p-chi-` `new-payer` of an incoming one by IBAN. */
   proposalId: string;
   kind: OutgoingKind;
   apartmentId: string;
   /** False for «solo questa volta» («Mie scelte» 8): no rule is saved. */
   rememberRule: boolean;
+  /**
+   * An F24 (decision 5): `kind` must be `tasse`, the class has `f24: true` and no rule is saved.
+   * False on a `p-f24-` proposal: an ordinary outgoing (the pattern was wrong).
+   */
+  f24?: boolean;
 }
 
 export type ConfirmOutgoingResult =
   | { status: 'confirmed'; operationId: string; classId: string; ruleId?: string }
   | {
       status: 'refused';
-      reason: 'inconsistent-store' | 'unknown-proposal' | 'unknown-apartment';
+      reason: 'inconsistent-store' | 'unknown-proposal' | 'unknown-apartment' | 'f24-not-tasse';
     };
 
 /**
@@ -172,7 +179,8 @@ export type ConfirmOutgoingResult =
  * an incoming candidate (`outgoingCandidate`, so an `iban:` key without a valid payer). Writes
  * `mc-<transactionId>` without `ruleId` and, with `rememberRule` and a key, the rule
  * `rule-<transactionId>` last, in one `outgoing.confirm` operation. `apartmentId` must be a live
- * apartment (`unknown-apartment`).
+ * apartment (`unknown-apartment`), any of them, also for an F24 (question 5). With `f24` the
+ * class is `tasse` (`f24-not-tasse` otherwise) with `f24: true`, and never gets a rule.
  */
 export async function confirmOutgoing(
   store: Store,
@@ -199,12 +207,15 @@ export async function confirmOutgoing(
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
 
   const kind = OutgoingKindSchema.parse(input.kind);
+  const f24 = input.f24 === true;
+  if (f24 && kind !== 'tasse') return refuse('f24-not-tasse');
   const changes: { path: string; before: unknown; after: unknown }[] = [
     classChange(state, {
       id: `mc-${tx.id}`,
       transactionId: tx.id,
       kind,
       apartmentId: input.apartmentId,
+      ...(f24 ? { f24: true as const } : {}),
     }),
   ];
   const { key } = candidate;
@@ -214,7 +225,7 @@ export async function confirmOutgoing(
     (r) => r.kind !== kind || r.apartmentId !== input.apartmentId,
   );
   const rule =
-    input.rememberRule && key !== undefined && !conflict
+    input.rememberRule && !f24 && key !== undefined && !conflict
       ? parseOrThrow(
           MovementRuleSchema,
           {

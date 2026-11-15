@@ -24,6 +24,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import { isoDate, yearMonth } from './period';
 import { normaliseIban } from './iban';
+import { isSafePattern } from './safe-pattern';
 import { foldText } from './text';
 import { SEMVER_PATTERN } from './version';
 
@@ -824,6 +825,8 @@ export const BankProfileSchema = RecordBaseSchema.extend({
   periodPattern: PatternSchema.optional(),
   /** One group: the account number or IBAN written in the file. */
   accountPattern: PatternSchema.optional(),
+  /** Recognises an F24 in the description of a movement (plan 3c, task 7; R129). */
+  f24Pattern: PatternSchema.optional(),
   /**
    * Lines above the header written as "label, value to its right" (the label is compared with
    * `foldText`, the value is the first non-empty cell to its right): the period, the account (one
@@ -872,6 +875,10 @@ export const BankProfileSchema = RecordBaseSchema.extend({
     message: 'accountPattern needs one group',
     path: ['accountPattern'],
   })
+  .refine((p) => p.f24Pattern === undefined || isSafePattern(p.f24Pattern), {
+    message: 'f24Pattern is outside the safe subset of R102',
+    path: ['f24Pattern'],
+  })
   .refine((p) => (p.preamble?.periodFrom === undefined) === (p.preamble?.periodTo === undefined), {
     message: 'preamble needs periodFrom and periodTo together',
     path: ['preamble'],
@@ -894,7 +901,8 @@ export const BankProfileSchema = RecordBaseSchema.extend({
       'columns.amount and signValues; columns.pending needs pendingValues; validFrom must not be ' +
       'after validTo; periodPattern has at least two capture groups, accountPattern at least one; ' +
       'preamble has periodFrom and periodTo together, its account pattern one group, and it does not ' +
-      'coexist with periodPattern (period) or accountPattern (account).',
+      'coexist with periodPattern (period) or accountPattern (account); f24Pattern is in the safe ' +
+      'subset of R102.',
   });
 export type BankProfile = z.infer<typeof BankProfileSchema>;
 
