@@ -46,6 +46,7 @@ qui tra apici inversi, con una nota: la revisione deve verificare che sia davver
 | IBAN di prova (inventato)   | `IT09X0542811101000000000311`       |
 | IBAN di prova (inventato)   | `IT79X0542811101000000000312`       |
 | IBAN di prova (inventato)   | `IT52X0542811101000000000313`       |
+| IBAN di prova (inventato)   | `IT04X0542811101000000000401`       |
 | Codice fiscale (esempio)    | `RSSMRA80A01H501U`                  |
 | POD                         | `IT001E12345678`                    |
 | PDR                         | `12345678901234`                    |
@@ -73,6 +74,11 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 - `fixtures/bank/profilo-sintetico.json`: profilo della banca **ipotetico** (colonne, formati ed
   espressioni inventati, nessuna banca reale), per provare lo schema `BankProfile`. Gli IBAN dei
   test sono inventati con il controllo mod-97 valido (per esempio `IT60X0542811101000000123456`).
+
+## Uscite e giroconti (piano 3c)
+
+- `IT04X0542811101000000000401` è l'IBAN di un fornitore inventato: nei test del piano 3c è la
+  controparte di uscite e rimborsi, mai un conto proprio.
 
 ## Incassi (piano 3b)
 
