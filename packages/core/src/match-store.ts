@@ -11,6 +11,7 @@ import {
   MATCH_WINDOW,
   expectedDebit,
   matchToTransactions,
+  sharedGroupProblem,
   statementPeriodsOf,
   validateMatches,
   matchId,
@@ -223,18 +224,22 @@ export type ConfirmMatchResult =
         | 'empty-parts'
         | 'unknown-item'
         | 'unknown-transaction'
-        | 'transaction-used';
+        | 'transaction-used'
+        | 'duplicate-part'
+        | 'invalid-group';
     }
   | { status: 'refused'; reason: 'invalid-matches'; errors: MatchCheckError[] };
 
 /** The expected amount of an item; for an instalment of a shared notice, its share of the total. */
-function expectedOf(item: Bill | Instalment, instalments: Instalment[]): Cents {
+function expectedOf(item: Bill | Instalment, instalments: Instalment[]): Cents | undefined {
   const shared = 'rata' in item ? item.shared : undefined;
   if (shared === undefined) return expectedDebit(item);
   const { groupId, groupTotal } = shared;
   const group = instalments
     .filter((i) => i.shared?.groupId === groupId)
     .sort((a, b) => compareText(a.id, b.id));
+  // The same check as the automatic matching: an invalid notice has no share to confirm.
+  if (sharedGroupProblem(group) !== undefined) return undefined;
   const shares = splitSharedDebit(
     cents(-groupTotal),
     group.map((i) => ({
@@ -249,8 +254,10 @@ function expectedOf(item: Bill | Instalment, instalments: Instalment[]): Cents {
  * Confirms by hand the matches of `parts` (several items, several movements), `by: 'manual'`, in
  * one `match.confirm` operation. The parts together with the confirmed matches already saved must
  * pass `validateMatches` on their items and movements (R2: the sums must add up). A movement that
- * is excluded, carries a live payment or a class confirmed by hand is `transaction-used`; an
- * automatic class yields as in `runMatch`. Refusals write nothing.
+ * is excluded, carries a live payment or a class confirmed by hand is `transaction-used`; two
+ * parts with the same match id are `duplicate-part`; an instalment of a shared notice that
+ * `sharedGroupProblem` rejects is `invalid-group`; an automatic class yields as in `runMatch`.
+ * Refusals write nothing.
  */
 export async function confirmMatch(
   store: Store,
@@ -282,12 +289,18 @@ export async function confirmMatch(
   }
   const used = (id: string) => state.used.has(id) || byHand(state.classOf.get(id));
   if (input.parts.some((p) => used(p.transactionId))) return refuse('transaction-used');
+  const ids = input.parts.map((p) => matchId(p, p.part, p.transactionId));
+  if (new Set(ids).size !== ids.length) return refuse('duplicate-part');
+  const expected = new Map(
+    input.parts.map((p) => [refKey(p), expectedOf(itemOf(p) as Bill | Instalment, instalments)]),
+  );
+  if ([...expected.values()].includes(undefined)) return refuse('invalid-group');
 
-  const matches = input.parts.map((p) =>
+  const matches = input.parts.map((p, i) =>
     parseOrThrow(
       BillMatchSchema,
       {
-        id: matchId(p, p.part, p.transactionId),
+        id: ids[i],
         v: 1,
         rev: 1,
         ...ref(p),
@@ -302,10 +315,7 @@ export async function confirmMatch(
     ),
   );
   const items = new Map(
-    input.parts.map((p) => [
-      refKey(p),
-      { ...ref(p), expected: expectedOf(itemOf(p) as Bill | Instalment, instalments) },
-    ]),
+    input.parts.map((p) => [refKey(p), { ...ref(p), expected: expected.get(refKey(p)) as Cents }]),
   );
   const { errors } = validateMatches({
     items: [...items.values()],

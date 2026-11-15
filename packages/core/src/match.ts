@@ -122,19 +122,31 @@ export function expectedDebit(item: Bill | Instalment): Cents {
 const payingAccount = (instalment: Instalment): string =>
   instalment.paidFromApartmentId ?? instalment.apartmentId;
 
-function groupNode(groupId: string, group: Instalment[]): ItemNode | InvalidGroup {
-  const members = [...group].sort((a, b) => byText(a.id, b.id));
-  const first = members[0] as Instalment;
-  if (members.length < 2) return { groupId, reason: 'incomplete' };
-  const shared = (instalment: Instalment) => instalment.shared as NonNullable<Instalment['shared']>;
-  const consistent = members.every(
+const shared = (instalment: Instalment) => instalment.shared as NonNullable<Instalment['shared']>;
+
+/**
+ * Why the instalments of one shared notice (all live, same `groupId`) cannot be matched:
+ * `incomplete` with fewer than two, `inconsistent` when they disagree on paying account, due date
+ * or total, or a weight is not positive; `undefined` when the notice is valid.
+ */
+export function sharedGroupProblem(group: Instalment[]): InvalidGroup['reason'] | undefined {
+  const [first] = group;
+  if (first === undefined || group.length < 2) return 'incomplete';
+  const consistent = group.every(
     (member) =>
       payingAccount(member) === payingAccount(first) &&
       member.dueDate === first.dueDate &&
       shared(member).groupTotal === shared(first).groupTotal &&
       shared(member).weight > 0,
   );
-  if (!consistent) return { groupId, reason: 'inconsistent' };
+  return consistent ? undefined : 'inconsistent';
+}
+
+function groupNode(groupId: string, group: Instalment[]): ItemNode | InvalidGroup {
+  const members = [...group].sort((a, b) => byText(a.id, b.id));
+  const first = members[0] as Instalment;
+  const reason = sharedGroupProblem(members);
+  if (reason !== undefined) return { groupId, reason };
   const total = shared(first).groupTotal;
   const parts = splitSharedDebit(
     cents(-total),

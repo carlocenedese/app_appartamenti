@@ -448,6 +448,80 @@ describe('confirmMatch (plan 3c, task 3)', () => {
     expect(operation?.summary).toBe('Confermato un abbinamento: 2 voci.');
   });
 
+  it('fix round 1: duplicate parts, a live payment, a part already saved, an invalid notice', async () => {
+    const store = await build({
+      bill: [bill('b100', 10000, '2027-01-15')],
+      transaction: [tx('tx-a', '2027-01-10', -10000, 'BONIFICO'), tx('tx-p', '2027-01-11', -10000)],
+      payment: [
+        {
+          ...base,
+          id: 'pay-tx-p-1',
+          apartmentId: 'berchet',
+          tenantId: 't1',
+          date: '2027-01-11',
+          amount: -10000,
+          confirmed: true,
+          kind: 'altro',
+          forMonth: '2027-01',
+          source: 'csv',
+          transactionId: 'tx-p',
+        },
+      ],
+    });
+    const before = await snapshot(store);
+    expect(await confirm(store, [part('tx-a', 5000), part('tx-a', 5000)])).toEqual({
+      status: 'refused',
+      reason: 'duplicate-part',
+    });
+    expect(await confirm(store, [part('tx-p', 10000)])).toEqual({
+      status: 'refused',
+      reason: 'transaction-used',
+    });
+    expect(await snapshot(store)).toEqual(before);
+    // A part with the id of a confirmed match already saved counts twice: refused, never replaced.
+    await confirm(store, [part('tx-a', 10000)]);
+    const saved = await snapshot(store);
+    expect(await confirm(store, [part('tx-a', 10000)])).toEqual({
+      status: 'refused',
+      reason: 'invalid-matches',
+      errors: [
+        { code: 'item-over', id: 'b100' },
+        { code: 'transaction-over', id: 'tx-a' },
+      ],
+    });
+    expect(await snapshot(store)).toEqual(saved);
+
+    const notice = (id: string, apartmentId: string, weight: number, groupTotal = 18600) =>
+      instalment(id, '2027-01-20', weight, {
+        kind: 'tari',
+        esercizio: '2027',
+        apartmentId,
+        paidFromApartmentId: 'berchet',
+        shared: { groupId: 'avviso-1', groupTotal, weight },
+      });
+    const tari = (itemId: string, amount: number): ConfirmMatchInput['parts'][number] => ({
+      ...part('tx-t', amount, itemId),
+      itemType: 'instalment',
+    });
+    const cases = [
+      [notice('tari-b', 'berchet', 10075)],
+      [notice('tari-b', 'berchet', 10075), notice('tari-l', 'lovarini', 8525, 18700)],
+      [notice('tari-b', 'berchet', 10075), notice('tari-l', 'lovarini', 0)],
+    ];
+    for (const group of cases) {
+      const s = await build({
+        instalment: group,
+        transaction: [tx('tx-t', '2027-01-21', -18600, 'BONIFICO')],
+      });
+      const untouched = await snapshot(s);
+      expect(await confirm(s, [tari('tari-b', 18600)])).toEqual({
+        status: 'refused',
+        reason: 'invalid-group',
+      });
+      expect(await snapshot(s)).toEqual(untouched);
+    }
+  });
+
   it('refuses a diverged store', async () => {
     const store = await build(records());
     await confirm(store, [part('tx-a', 6000), part('tx-b', 4000)]);
