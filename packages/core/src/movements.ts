@@ -87,9 +87,7 @@ async function liveUsesOf(store: Store, transactionIds: readonly string[]): Prom
     ...(await loadAll(store, 'match', BillMatchSchema)).records.filter(
       (m) => of(m.transactionId) && m.confirmed && m.by !== 'assumed',
     ),
-    ...(await loadAll(store, 'transfer', TransferSchema)).records.filter((t) =>
-      legsOf(t).some(of),
-    ),
+    ...(await loadAll(store, 'transfer', TransferSchema)).records.filter((t) => legsOf(t).some(of)),
   ]
     .map((r) => r.id)
     .sort(compareText);
