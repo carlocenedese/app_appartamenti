@@ -34,13 +34,16 @@ export type TransferDraft = Omit<Transfer, 'v' | 'rev'>;
  * other account with the opposite amount within `TRANSFER_LEG_DAYS`; a movement taken as a leg
  * (or by a proposal) is no candidate any more. Automatic when the pair (from, to) has live
  * confirmed transfers that are not one-off, all with one purpose, and at most one leg.
+ * Before all that, a candidate completes a live transfer of the same pair and direction that
+ * lacks exactly its side, with the same amount and its leg within `TRANSFER_LEG_DAYS` (the
+ * first by `id`; each one once): the same money never makes a second transfer (`completed`).
  */
 export function reconcileTransfers(input: {
   accounts: Account[];
   transactions: BankTransaction[];
   transfers: Transfer[];
   used: ReadonlySet<string>;
-}): { transfers: TransferDraft[]; proposals: TransferProposal[] } {
+}): { transfers: TransferDraft[]; completed: Transfer[]; proposals: TransferProposal[] } {
   const accounts = input.accounts.filter((a) => a.deleted !== true);
   const ids = new Set(accounts.map((a) => a.id));
   const taken = new Set(input.used);
@@ -65,11 +68,37 @@ export function reconcileTransfers(input: {
         compareText(a.id, b.id),
     );
 
+  // A transfer with one leg only (never a manual one): the other statement may come in later.
+  const halves = input.transfers
+    .filter((t) => t.deleted !== true && t.source !== 'manual')
+    .filter((t) => t.outTransactionId === undefined || t.inTransactionId === undefined)
+    .sort((a, b) => compareText(a.id, b.id));
+
   const transfers: TransferDraft[] = [];
+  const completed: Transfer[] = [];
   const proposals: TransferProposal[] = [];
   for (const tx of candidates) {
     if (!free(tx)) continue;
     const other = otherOf(tx) as Account;
+    const outgoing = tx.amount < 0;
+    const fromAccountId = outgoing ? (tx.accountId as string) : other.id;
+    const toAccountId = outgoing ? other.id : (tx.accountId as string);
+    const side = outgoing ? 'outTransactionId' : 'inTransactionId';
+    const half = halves.find(
+      (t) =>
+        !completed.some((c) => c.id === t.id) &&
+        t.fromAccountId === fromAccountId &&
+        t.toAccountId === toAccountId &&
+        t[side] === undefined &&
+        t.amount === Math.abs(tx.amount) &&
+        Math.abs(daysBetween(t.date, tx.date)) <= TRANSFER_LEG_DAYS,
+    );
+    if (half !== undefined) {
+      // The stored record with its other leg; the write gives it the next rev.
+      completed.push({ ...half, [side]: tx.id });
+      taken.add(tx.id);
+      continue;
+    }
     const legIds = input.transactions
       .filter(
         (l) =>
@@ -82,9 +111,6 @@ export function reconcileTransfers(input: {
       .sort(compareText);
     taken.add(tx.id);
     for (const id of legIds) taken.add(id);
-    const outgoing = tx.amount < 0;
-    const fromAccountId = outgoing ? (tx.accountId as string) : other.id;
-    const toAccountId = outgoing ? other.id : (tx.accountId as string);
     const purposes = [
       ...new Set(
         confirmed
@@ -119,7 +145,7 @@ export function reconcileTransfers(input: {
       ...(purposes.length === 1 && purpose !== undefined ? { purpose } : {}),
     });
   }
-  return { transfers, proposals };
+  return { transfers, completed, proposals };
 }
 
 /**

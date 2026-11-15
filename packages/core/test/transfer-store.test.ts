@@ -72,7 +72,7 @@ const confirm = (
   store: MemoryStore,
   proposalId: string,
   purpose: TransferPurpose = 'saldo',
-  extra: { otherLegId?: string; rememberPair?: boolean } = {},
+  extra: { otherLegId?: string; rememberPair?: boolean; legIds?: string[] } = {},
   prefix = 'c',
 ) =>
   confirmTransfer(
@@ -118,6 +118,7 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
     expect(await run(store)).toEqual({
       status: 'reconciled',
       written: 0,
+      completed: 0,
       proposals: [
         {
           id: 'p-giro-o',
@@ -170,6 +171,7 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
     expect(result).toEqual({
       status: 'reconciled',
       written: 1,
+      completed: 0,
       proposals: [expect.objectContaining({ id: 'p-giro-b', reason: 'new-pair', legIds: [] })],
       operationId: 'r-1',
     });
@@ -185,6 +187,7 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
     expect(await run(store, 's')).toEqual({
       status: 'reconciled',
       written: 0,
+      completed: 0,
       proposals: [expect.objectContaining({ id: 'p-giro-b' })],
     });
     expect(await snapshot(store)).toEqual(once);
@@ -196,7 +199,7 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
     const before = await snapshot(store);
     const dry = await run(store, 'd', true);
     expect(await snapshot(store)).toEqual(before);
-    expect(dry).toEqual({ status: 'reconciled', written: 1, proposals: [] });
+    expect(dry).toEqual({ status: 'reconciled', written: 1, completed: 0, proposals: [] });
   });
 
   it('rememberPair false: a one-off, the next one is not automatic', async () => {
@@ -229,6 +232,7 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
     expect(await run(store)).toEqual({
       status: 'reconciled',
       written: 0,
+      completed: 0,
       proposals: [expect.objectContaining({ id: 'p-giro-o3', reason: 'purpose-conflict' })],
     });
   });
@@ -276,6 +280,50 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
     });
   });
 
+  it('one leg confirmed, then the other statement: the transfer is completed, never doubled', async () => {
+    const store = await storeWith(tx('i', 'acc-berchet', '2027-04-07', 20000, LOVARINI));
+    await confirm(store, 'p-giro-i');
+    await put(store, 'transaction', [april[0] as ReturnType<typeof tx>]);
+    expect(await run(store, 'd', true)).toEqual({
+      status: 'reconciled',
+      written: 0,
+      completed: 1,
+      proposals: [],
+    });
+    const result = await run(store);
+    expect(result).toMatchObject({ written: 0, completed: 1, proposals: [], operationId: 'r-1' });
+    expect(await transfers(store)).toEqual([
+      {
+        id: 'tr-i',
+        v: 1,
+        rev: 2,
+        fromAccountId: 'acc-lovarini',
+        toAccountId: 'acc-berchet',
+        amount: 20000,
+        date: '2027-04-07',
+        outTransactionId: 'o',
+        inTransactionId: 'i',
+        purpose: 'saldo',
+        source: 'confirmed',
+      },
+    ]);
+    expect((await readJournal(store)).operations.at(-1)).toMatchObject({
+      kind: 'transfer.reconcile',
+      summary: 'Riconciliati i giroconti: 1 automatico, 0 da rivedere.',
+    });
+    expect(Object.fromEntries(await usesOf(store))).toEqual({ i: ['giroconto'], o: ['giroconto'] });
+    const once = await snapshot(store);
+    expect(await run(store, 's')).toMatchObject({ written: 0, completed: 0 });
+    expect(await snapshot(store)).toEqual(once);
+
+    // Undone, the transfer has its one leg again.
+    await undoOperation(store, 'r-1', 'p1', clock, ids('u'));
+    const [back] = await transfers(store);
+    expect(back).toMatchObject({ id: 'tr-i', inTransactionId: 'i' });
+    expect(back).not.toHaveProperty('outTransactionId');
+    expect(Object.fromEntries(await usesOf(store))).toEqual({ i: ['giroconto'] });
+  });
+
   it('the state changed after the proposal: unknown-proposal or leg-not-allowed, nothing written', async () => {
     // The movement of the proposal excluded.
     const excluded = await storeWith(...april);
@@ -309,15 +357,28 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
     });
     expect(await snapshot(linked)).toEqual(before);
 
-    // The other leg excluded: no longer one of the legs.
+    // The other leg excluded after the proposal: unknown-proposal, with or without otherLegId
+    // (fix round 1, Minor 3); an id that never was a leg stays leg-not-allowed.
     const leg = await storeWith(...april);
     await excludeMovement(leg, { transactionId: 'i', reason: 'doppione' }, 'p1', clock, ids('x'));
     before = await snapshot(leg);
     expect(await confirm(leg, 'p-giro-o', 'saldo', { otherLegId: 'i' })).toEqual({
       status: 'refused',
+      reason: 'unknown-proposal',
+    });
+    expect(await confirm(leg, 'p-giro-o', 'saldo', { legIds: ['i'] })).toEqual({
+      status: 'refused',
+      reason: 'unknown-proposal',
+    });
+    expect(await confirm(leg, 'p-giro-o', 'saldo', { otherLegId: 'x' })).toEqual({
+      status: 'refused',
       reason: 'leg-not-allowed',
     });
     expect(await snapshot(leg)).toEqual(before);
+    // The legs shown are the legs now: confirmed.
+    expect(await confirm(leg, 'p-giro-o', 'saldo', { legIds: [] }, 'k')).toMatchObject({
+      status: 'confirmed',
+    });
     expect(await confirm(leg, 'p-giro-nessuna')).toEqual({
       status: 'refused',
       reason: 'unknown-proposal',

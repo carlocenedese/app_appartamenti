@@ -4,6 +4,7 @@ import {
   BankTransactionSchema,
   TRANSFER_LEG_DAYS,
   TransferSchema,
+  cents,
   reconcileTransfers,
 } from '../src/index';
 import type { Account, BankTransaction, Transfer } from '../src/index';
@@ -49,7 +50,7 @@ const tx = (
     ...extra,
   });
 
-const transfer = (id: string, extra: Partial<Transfer> = {}): Transfer =>
+const transfer = (id: string, extra: Record<string, unknown> = {}): Transfer =>
   TransferSchema.parse({
     ...base,
     id,
@@ -76,6 +77,7 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
     expect(TRANSFER_LEG_DAYS).toBe(5);
     expect(run([out(), inn('2027-04-07')])).toEqual({
       transfers: [],
+      completed: [],
       proposals: [
         {
           id: 'p-giro-o',
@@ -167,12 +169,13 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
       tx('zero', 'acc-lovarini', '2027-04-02', 0, BERCHET),
       inn('2027-04-03'),
     ]);
-    expect(result).toEqual({ transfers: [], proposals: [] });
+    expect(result).toEqual({ transfers: [], completed: [], proposals: [] });
   });
 
   it('skips deleted or used movements, movements without a live account and deleted accounts', () => {
     expect(run([out('2027-04-02', 'gone')].map((t) => ({ ...t, deleted: true })))).toEqual({
       transfers: [],
+      completed: [],
       proposals: [],
     });
     expect(run([out()], [], ['o']).proposals).toEqual([]);
@@ -190,6 +193,81 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
         used: new Set(),
       }).proposals,
     ).toEqual([]);
+  });
+});
+
+describe('reconcileTransfers: completing a transfer with one leg (fix round 1)', () => {
+  // Confirmed with the incoming of Berchet only; the statement of Lovarini comes in later.
+  const half = (extra: Record<string, unknown> = {}) =>
+    transfer('tr-i', {
+      outTransactionId: undefined,
+      inTransactionId: 'i',
+      date: '2027-04-07',
+      ...extra,
+    });
+  const later = (transactions: BankTransaction[], transfers: Transfer[] = [half()]) =>
+    run([inn('2027-04-07'), ...transactions], transfers, ['i']);
+
+  it('the missing outgoing completes it: no new transfer, no proposal', () => {
+    expect(later([out('2027-04-02')])).toEqual({
+      transfers: [],
+      completed: [
+        {
+          id: 'tr-i',
+          v: 1,
+          rev: 1,
+          fromAccountId: 'acc-lovarini',
+          toAccountId: 'acc-berchet',
+          amount: 20000,
+          date: '2027-04-07',
+          outTransactionId: 'o',
+          inTransactionId: 'i',
+          purpose: 'saldo',
+          source: 'confirmed',
+        },
+      ],
+      proposals: [],
+    });
+  });
+
+  it('a missing incoming completes a transfer with the outgoing only, one-off too', () => {
+    const outOnly = transfer('tr-o', { oneOff: true, date: '2027-04-02' });
+    const result = run(
+      [out(), tx('i', 'acc-berchet', '2027-04-07', 20000, LOVARINI)],
+      [outOnly],
+      ['o'],
+    );
+    expect(result.completed).toEqual([
+      expect.objectContaining({ id: 'tr-o', outTransactionId: 'o', inTransactionId: 'i' }),
+    ]);
+    expect(result.transfers).toEqual([]);
+    expect(result.proposals).toEqual([]);
+  });
+
+  it.each([
+    ['6 days before', [out('2027-04-01')], [half()]],
+    ['another amount', [{ ...out('2027-04-02'), amount: cents(-20001) }], [half()]],
+    [
+      'the other direction',
+      [out('2027-04-02')],
+      [half({ fromAccountId: 'acc-berchet', toAccountId: 'acc-lovarini' })],
+    ],
+    ['a transfer with both legs', [out('2027-04-02')], [half({ outTransactionId: 'x' })]],
+    ['a deleted transfer', [out('2027-04-02')], [half({ deleted: true })]],
+  ])('not completed with %s', (_, transactions, transfers) => {
+    expect(later(transactions as BankTransaction[], transfers as Transfer[]).completed).toEqual([]);
+  });
+
+  it('5 days is still the window, across the year too', () => {
+    const across = half({ date: '2028-01-03' });
+    const result = run([{ ...inn('2028-01-03'), id: 'i' }, out('2027-12-29')], [across], ['i']);
+    expect(result.completed).toHaveLength(1);
+  });
+
+  it('one transfer is completed once: a second outgoing is a candidate as usual', () => {
+    const result = later([out('2027-04-02', 'o1'), out('2027-04-03', 'o2')]);
+    expect(result.completed.map((t) => t.outTransactionId)).toEqual(['o1']);
+    expect(result.transfers.map((t) => t.id)).toEqual(['tr-o2']);
   });
 });
 
@@ -214,6 +292,7 @@ describe('reconcileTransfers: automatic after the first confirmation (question 4
           source: 'auto',
         },
       ],
+      completed: [],
       proposals: [],
     });
   });
@@ -262,6 +341,7 @@ describe('reconcileTransfers: automatic after the first confirmation (question 4
     const extra = tx('i2b', 'acc-berchet', '2027-05-06', 15000);
     expect(run([...may, extra], [transfer('tr-o')])).toEqual({
       transfers: [],
+      completed: [],
       proposals: [expect.objectContaining({ reason: 'several-legs', purpose: 'saldo' })],
     });
   });

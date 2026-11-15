@@ -170,6 +170,7 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     expect(result.transfers).toEqual({
       status: 'reconciled',
       written: 0,
+      completed: 0,
       proposals: [
         {
           id: 'p-giro-tx-l-giro',
@@ -234,6 +235,34 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     expect(again.status === 'reconciled' && again.match).not.toHaveProperty('operationId');
     expect(again.status === 'reconciled' && again.income).not.toHaveProperty('operationId');
     expect(await snapshot(plain)).toEqual(once);
+  });
+
+  it('a dry run of the transfers skips the movements the income would take (fix round 1)', async () => {
+    const store = await treConti();
+    // −500,00 € from Lovarini to Berchet two days before the automatic March rent of Berchet,
+    // with the same amount: in a real run the rent is a payment first, so it is no leg.
+    await store.writeJsonAtomic(
+      recordPath('transaction', 'tx-l-giro-mar'),
+      recordSchemas.transaction.parse({
+        id: 'tx-l-giro-mar',
+        v: 1,
+        rev: 1,
+        apartmentId: 'lovarini',
+        accountId: 'acc-lovarini',
+        date: '2027-03-03',
+        amount: -50000,
+        description: 'GIROCONTO',
+        statementHash: 's-l',
+        counterparty: { name: 'Conto Berchet', iban: 'IT85X0542811101000000000301' },
+      }),
+    );
+    const dry = await reconcile(store, 'd', true);
+    const real = await reconcile(store);
+    if (dry.status !== 'reconciled' || real.status !== 'reconciled') throw new Error('refused');
+    expect(real.transfers.proposals).toContainEqual(
+      expect.objectContaining({ id: 'p-giro-tx-l-giro-mar', legIds: [] }),
+    );
+    expect(dry.transfers).toEqual(real.transfers);
   });
 
   it('a dry run writes nothing and says what a real run writes, the credit note included', async () => {

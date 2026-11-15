@@ -118,18 +118,7 @@ export async function runReconcile(
   if ((await checkConsistency(store)).length > 0) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
-  const state = await loadIncomeState(store, options.alsoUsed);
-  const { payments, proposals, skipped } = reconcileIncome(state);
-  const result = {
-    status: 'reconciled' as const,
-    written: payments.length,
-    proposals,
-    skipped: skipped.length,
-    arrears: rentArrears({
-      ...state,
-      payments: [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
-    }),
-  };
+  const { state, payments, result } = await planIncome(store, options.alsoUsed);
   if (options.dryRun === true || payments.length === 0) return result;
 
   const stored = new Map(state.payments.map((p) => [p.id, p]));
@@ -141,7 +130,7 @@ export async function runReconcile(
       profileId,
       kind: 'income.reconcile',
       ...(apartments.size === 1 && apartmentId !== undefined ? { apartmentId } : {}),
-      summary: `Riconciliati gli incassi: ${plural(payments.length, 'automatico', 'automatici')}, ${String(proposals.length)} da rivedere.`,
+      summary: `Riconciliati gli incassi: ${plural(payments.length, 'automatico', 'automatici')}, ${String(result.proposals.length)} da rivedere.`,
       changes: payments.map((p) => ({
         path: recordPath('payment', p.id),
         before: stored.get(p.id),
@@ -152,6 +141,26 @@ export async function runReconcile(
     newId,
   );
   return { ...result, operationId: operation.id };
+}
+
+/**
+ * What `runReconcile` would write on the current state, without checking it or writing: its
+ * result and the automatic payments. `runReconciliation` reads it for a dry run (as `planMatch`).
+ */
+export async function planIncome(store: Store, alsoUsed?: ReadonlySet<string>) {
+  const state = await loadIncomeState(store, alsoUsed);
+  const { payments, proposals, skipped } = reconcileIncome(state);
+  const result = {
+    status: 'reconciled' as const,
+    written: payments.length,
+    proposals,
+    skipped: skipped.length,
+    arrears: rentArrears({
+      ...state,
+      payments: [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
+    }),
+  };
+  return { state, payments, result };
 }
 
 export interface ConfirmIncomeInput {

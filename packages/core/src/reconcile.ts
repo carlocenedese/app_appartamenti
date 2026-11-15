@@ -5,7 +5,7 @@
  * has one use at most, across runs too. Then the transfers (task 5); task 6 adds the outgoings.
  */
 import type { ReconcileRunResult } from './income-store';
-import { runReconcile } from './income-store';
+import { planIncome, runReconcile } from './income-store';
 import { checkConsistency } from './journal';
 import type { MatchRunResult } from './match-store';
 import { planMatch, runMatch } from './match-store';
@@ -29,8 +29,7 @@ export type ReconciliationResult =
 
 /**
  * Runs the phases in order on the store; a refusal stops the phases after it. With `dryRun`
- * nothing is written and the income and transfer phases skip the movements the matching would
- * take.
+ * nothing is written and each phase skips the movements the phases before would take.
  */
 export async function runReconciliation(
   store: Store,
@@ -54,8 +53,17 @@ export async function runReconciliation(
     if (written.status === 'refused') return refused;
     match = written;
   }
-  const income = await runReconcile(store, profileId, clock, newId, { dryRun, alsoUsed });
-  if (income.status === 'refused') return refused;
+  let income: Extract<ReconcileRunResult, { status: 'reconciled' }>;
+  if (dryRun) {
+    // The transfers then skip the movements of the payments the income would write as well.
+    const plan = await planIncome(store, alsoUsed);
+    income = plan.result;
+    alsoUsed = new Set([...alsoUsed, ...plan.payments.flatMap((p) => p.transactionId ?? [])]);
+  } else {
+    const written = await runReconcile(store, profileId, clock, newId, { alsoUsed });
+    if (written.status === 'refused') return refused;
+    income = written;
+  }
   const transfers = await runTransfers(store, profileId, clock, newId, { dryRun, alsoUsed });
   if (transfers.status === 'refused') return refused;
   return { status: 'reconciled', exclusions, match, income, transfers };

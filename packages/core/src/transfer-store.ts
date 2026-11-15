@@ -20,6 +20,7 @@ import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
+import { compareText } from './text';
 import { draftOf, reconcileTransfers } from './transfers';
 import type { TransferDraft, TransferProposal } from './transfers';
 
@@ -62,14 +63,18 @@ export type TransferRunResult =
       status: 'reconciled';
       /** The automatic transfers written; with `dryRun`, the ones that would be written. */
       written: number;
+      /** The transfers with one leg that got their other leg (a new `rev`, never a new record). */
+      completed: number;
       proposals: TransferProposal[];
       operationId?: string;
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
 
 /**
- * Writes the automatic transfers of `reconcileTransfers` in one `transfer.reconcile` operation;
- * none when there are none or with `dryRun`. Running it again on the same state writes nothing.
+ * Writes the automatic transfers of `reconcileTransfers`, and the other leg of the transfers it
+ * completes, in one `transfer.reconcile` operation (both count as automatic in the summary); none
+ * when there is nothing to write or with `dryRun`. Running it again on the same state writes
+ * nothing.
  */
 export async function runTransfers(
   store: Store,
@@ -82,16 +87,22 @@ export async function runTransfers(
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const state = await loadTransferState(store, options.alsoUsed);
-  const { transfers, proposals } = state.result;
-  const result = { status: 'reconciled' as const, written: transfers.length, proposals };
-  if (options.dryRun === true || transfers.length === 0) return result;
+  const { transfers, completed, proposals } = state.result;
+  const writes = [...transfers, ...completed];
+  const result = {
+    status: 'reconciled' as const,
+    written: transfers.length,
+    completed: completed.length,
+    proposals,
+  };
+  if (options.dryRun === true || writes.length === 0) return result;
   const operation = await commitChange(
     store,
     {
       profileId,
       kind: 'transfer.reconcile',
-      summary: `Riconciliati i giroconti: ${plural(transfers.length, 'automatico', 'automatici')}, ${String(proposals.length)} da rivedere.`,
-      changes: transfers.map((t) => changeOf(state.transfers, t)),
+      summary: `Riconciliati i giroconti: ${plural(writes.length, 'automatico', 'automatici')}, ${String(proposals.length)} da rivedere.`,
+      changes: writes.map((t) => changeOf(state.transfers, t)),
     },
     clock,
     newId,
@@ -106,6 +117,8 @@ export interface ConfirmTransferInput {
   otherLegId?: string;
   /** False for «solo questa volta» («Mie scelte» 8): the transfer is `oneOff`. */
   rememberPair: boolean;
+  /** The legs of the proposal as shown: when they differ now, `unknown-proposal`. */
+  legIds?: string[];
 }
 
 export type ConfirmTransferResult =
@@ -113,9 +126,11 @@ export type ConfirmTransferResult =
   | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-proposal' | 'leg-not-allowed' };
 
 /**
- * Confirms the proposal `proposalId` as recomputed on the current state (gone: `unknown-proposal`)
- * with its purpose, in one `transfer.confirm` operation. `otherLegId` must be one of its legs
- * (`leg-not-allowed`); absent, the only leg, or no other leg when there are none or several.
+ * Confirms the proposal `proposalId` as recomputed on the current state with its purpose, in one
+ * `transfer.confirm` operation. The state changed is `unknown-proposal`: the proposal is gone, its
+ * legs differ from `legIds` (when given), or `otherLegId` is a movement that is no leg any more
+ * (used since, or deleted). `otherLegId` must be one of its legs (`leg-not-allowed` for any other
+ * id); absent, the only leg, or no other leg when there are none or several.
  */
 export async function confirmTransfer(
   store: Store,
@@ -130,8 +145,15 @@ export async function confirmTransfer(
   const state = await loadTransferState(store);
   const proposal = state.result.proposals.find((p) => p.id === input.proposalId);
   if (proposal === undefined) return refuse('unknown-proposal');
-  if (input.otherLegId !== undefined && !proposal.legIds.includes(input.otherLegId)) {
-    return refuse('leg-not-allowed');
+  const shown = input.legIds === undefined ? undefined : [...input.legIds].sort(compareText);
+  if (shown !== undefined && shown.join('\u0000') !== proposal.legIds.join('\u0000')) {
+    return refuse('unknown-proposal');
+  }
+  const { otherLegId } = input;
+  if (otherLegId !== undefined && !proposal.legIds.includes(otherLegId)) {
+    const known = state.transactions.find((t) => t.id === otherLegId);
+    const gone = known !== undefined && (known.deleted === true || state.used.has(otherLegId));
+    return refuse(gone ? 'unknown-proposal' : 'leg-not-allowed');
   }
   const legId = input.otherLegId ?? (proposal.legIds.length === 1 ? proposal.legIds[0] : undefined);
   const tx = state.transactions.find((t) => t.id === proposal.transactionId) as BankTransaction;
