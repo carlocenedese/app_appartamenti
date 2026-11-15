@@ -314,8 +314,9 @@ tabella:
 - **Regola troppo larga:** con «l'importo non conta» (domanda 1) una controparte che cambia natura
   (stesso IBAN per servizi diversi) si classifica in silenzio. Visibile nell'elenco degli automatici,
   annullabile.
-- **F24 non riconosciuto** se il pattern è sbagliato: finisce tra le uscite «da rivedere», non in
-  automatico; nessun danno, solo una domanda in più.
+- **F24 non riconosciuto** se il pattern è sbagliato o assente: finisce tra le uscite «da rivedere»,
+  oppure in automatico se una regola copre la controparte; il danno è visibile tra gli automatici e
+  si annulla con `cancelAutomaticClass`.
 - **Giroconto con la controparte senza IBAN:** non riconosciuto, va «da classificare» (piano 3,
   «Rischi»).
 - **Esclusione sbagliata:** un movimento vero escluso non entra in nulla. Si vede nell'elenco degli

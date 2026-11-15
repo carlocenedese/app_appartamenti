@@ -86,7 +86,7 @@ const confirm = (
   store: MemoryStore,
   proposalId: string,
   kind: OutgoingKind = 'altro',
-  extra: { apartmentId?: string; rememberRule?: boolean } = {},
+  extra: { apartmentId?: string; rememberRule?: boolean; f24?: boolean } = {},
   prefix = 'c',
 ) =>
   confirmOutgoing(
@@ -515,6 +515,17 @@ describe('incoming movements without a payer (plan 3c, task 6, question 2)', () 
       reason: 'unknown-proposal',
     });
   });
+
+  it('an incoming movement is never an F24: f24-not-outgoing, nothing written (R129)', async () => {
+    const store = await refunds();
+    await reconcile(store);
+    const before = await snapshot(store);
+    expect(await confirm(store, 'p-chi-r1', 'tasse', { apartmentId: 'pulci', f24: true })).toEqual({
+      status: 'refused',
+      reason: 'f24-not-outgoing',
+    });
+    expect(await snapshot(store)).toEqual(before);
+  });
 });
 
 describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
@@ -621,5 +632,31 @@ describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
     const [cls] = await classes(wrong);
     expect(cls).toMatchObject({ kind: 'altro', apartmentId: 'lovarini' });
     expect(cls).not.toHaveProperty('f24');
+  });
+
+  it('an undone movement recognised later as an F24 is a p-f24- proposal', async () => {
+    const store = await f24Store();
+    await put(store, 'movementRule', [
+      {
+        ...base,
+        id: 'rule-old',
+        direction: 'out',
+        accountId: 'acc-berchet',
+        key: `iban:${SUPPLIER}`,
+        kind: 'altro',
+        apartmentId: 'berchet',
+      },
+    ]);
+    expect((await run(store)).classified).toEqual(['f']);
+    expect(await cancelAutomaticClass(store, 'f', 'p1', clock, ids('x'))).toMatchObject({
+      status: 'cancelled',
+    });
+    expect((await run(store, 'r2')).proposals).toMatchObject([
+      { id: 'p-uscita-f', reason: 'undone' },
+    ]);
+    await put(store, 'bankProfile', [profile('^PAGAMENTO F24\\b')]);
+    expect((await run(store, 'r3')).proposals).toEqual([
+      { id: 'p-f24-f', transactionId: 'f', step: 'f24', reason: 'f24', suggestedKind: 'tasse' },
+    ]);
   });
 });

@@ -404,6 +404,31 @@ describe('F24 (plan 3c, task 7, decision 5)', () => {
       proposals: [proposal],
       missingDocument: [],
     });
+    // Rules in conflict: still the F24 proposal, not rule-conflict.
+    expect(
+      run({
+        transactions: [f24],
+        bankProfiles: [profile],
+        rules: [rule('r1'), rule('r2', { kind: 'tasse' })],
+      }),
+    ).toEqual({ classes: [], proposals: [proposal], missingDocument: [] });
+  });
+
+  it('a description longer than 300 characters is tried on its first 300 (R102)', () => {
+    const ids = (description: string, p = profile) =>
+      run({
+        transactions: [tx('f', -6700, supplier, { description })],
+        bankProfiles: [p],
+      }).proposals.map((x) => x.id);
+    const head = `PAGAMENTO F24 ${'X'.repeat(386)}`;
+    expect(head).toHaveLength(400);
+    expect(ids(head)).toEqual(['p-f24-f']);
+    // Unanchored, the text after character 300 is never seen.
+    const late = { ...profile, f24Pattern: 'PAGAMENTO F24' };
+    const tail = `${'X'.repeat(300)}PAGAMENTO F24${'X'.repeat(87)}`;
+    expect(tail).toHaveLength(400);
+    expect(ids(tail, late)).toEqual(['p-uscita-f']);
+    expect(ids(`${'X'.repeat(287)}PAGAMENTO F24${'X'.repeat(100)}`, late)).toEqual(['p-f24-f']);
   });
 
   it('a profile without f24Pattern, deleted or of another account recognises no F24', () => {

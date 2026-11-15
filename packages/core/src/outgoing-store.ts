@@ -170,7 +170,12 @@ export type ConfirmOutgoingResult =
   | { status: 'confirmed'; operationId: string; classId: string; ruleId?: string }
   | {
       status: 'refused';
-      reason: 'inconsistent-store' | 'unknown-proposal' | 'unknown-apartment' | 'f24-not-tasse';
+      reason:
+        | 'inconsistent-store'
+        | 'unknown-proposal'
+        | 'unknown-apartment'
+        | 'f24-not-tasse'
+        | 'f24-not-outgoing';
     };
 
 /**
@@ -180,7 +185,8 @@ export type ConfirmOutgoingResult =
  * `mc-<transactionId>` without `ruleId` and, with `rememberRule` and a key, the rule
  * `rule-<transactionId>` last, in one `outgoing.confirm` operation. `apartmentId` must be a live
  * apartment (`unknown-apartment`), any of them, also for an F24 (question 5). With `f24` the
- * class is `tasse` (`f24-not-tasse` otherwise) with `f24: true`, and never gets a rule.
+ * class is `tasse` (`f24-not-tasse` otherwise) with `f24: true`, and never gets a rule; an incoming
+ * movement is never an F24 (`f24-not-outgoing`).
  */
 export async function confirmOutgoing(
   store: Store,
@@ -209,6 +215,7 @@ export async function confirmOutgoing(
   const kind = OutgoingKindSchema.parse(input.kind);
   const f24 = input.f24 === true;
   if (f24 && kind !== 'tasse') return refuse('f24-not-tasse');
+  if (f24 && candidate.direction !== 'out') return refuse('f24-not-outgoing'); // R129
   const changes: { path: string; before: unknown; after: unknown }[] = [
     classChange(state, {
       id: `mc-${tx.id}`,
