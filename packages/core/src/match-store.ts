@@ -26,11 +26,12 @@ import {
   MovementClassSchema,
   PaymentSchema,
   StatementSchema,
+  TransferSchema,
 } from './model';
 import type { BankTransaction, Bill, BillMatch, Instalment, MovementClass } from './model';
 import { cents } from './money';
 import type { Cents } from './money';
-import { excludedIds } from './movements';
+import { excludedIds, legsOf } from './movements';
 import { parseOrThrow } from './parse';
 import { splitSharedDebit } from './split';
 import { loadAll } from './store/load';
@@ -74,6 +75,7 @@ async function loadMatchState(store: Store) {
   const all = { includeDeleted: true };
   const classes = (await loadAll(store, 'movementClass', MovementClassSchema, all)).records;
   const payments = live((await loadAll(store, 'payment', PaymentSchema, all)).records);
+  const transfers = live((await loadAll(store, 'transfer', TransferSchema, all)).records);
   return {
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
     statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
@@ -84,10 +86,11 @@ async function loadMatchState(store: Store) {
     classes,
     /** The live class of each movement. */
     classOf: new Map(live(classes).map((c) => [c.transactionId, c])),
-    /** Excluded or paid by a tenant: never matched to a bill. */
+    /** Excluded, paid by a tenant or a leg of a transfer: never matched to a bill. */
     used: new Set([
       ...excludedIds(classes),
       ...payments.flatMap((p) => (p.transactionId === undefined ? [] : [p.transactionId])),
+      ...transfers.flatMap(legsOf),
     ]),
   };
 }
@@ -128,8 +131,8 @@ function changesOf(state: MatchState, written: BillMatch[]) {
 }
 
 /**
- * Matches the live bills and instalments with the live movements that are not excluded and carry
- * no live payment, over the periods of the statements (`statementPeriodsOf`) and the window of
+ * Matches the live bills and instalments with the live movements that are not excluded, carry
+ * no live payment and are no leg of a live transfer, over the periods of the statements (`statementPeriodsOf`) and the window of
  * R30, keeping the matches already saved. Writes the new confirmed automatic matches in one
  * `match.reconcile` operation; none when there are none or with `dryRun`. Running it again on
  * the same state writes nothing.
@@ -263,7 +266,8 @@ function expectedOf(item: Bill | Instalment, instalments: Instalment[]): Cents |
  * Confirms by hand the matches of `parts` (several items, several movements), `by: 'manual'`, in
  * one `match.confirm` operation. The parts together with the confirmed matches already saved must
  * pass `validateMatches` on their items and movements (R2: the sums must add up). A movement that
- * is excluded, carries a live payment or a class confirmed by hand is `transaction-used`; two
+ * is excluded, carries a live payment, is a leg of a live transfer or has a class confirmed by
+ * hand is `transaction-used`; two
  * parts with the same match id are `duplicate-part`; an instalment of a shared notice that
  * `sharedGroupProblem` rejects is `invalid-group`; an automatic class yields as in `runMatch`.
  * Refusals write nothing.

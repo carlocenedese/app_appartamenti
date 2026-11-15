@@ -207,6 +207,17 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     kind: 'escluso',
     excludeReason: 'doppione',
   },
+  transfer: {
+    ...base,
+    id: 'tr-t1',
+    fromAccountId: 'acc-1',
+    toAccountId: 'acc-2',
+    amount: 20000,
+    date: '2027-04-02',
+    outTransactionId: 't1',
+    purpose: 'saldo',
+    source: 'confirmed',
+  },
   supplierProfile: {
     ...base,
     supplier: 'Fornitore Luce',
@@ -302,6 +313,7 @@ describe('recordSchemas', () => {
         'user',
         'tenant',
         'payer',
+        'transfer',
       ].sort(),
     );
   });

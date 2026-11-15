@@ -10,6 +10,7 @@ import {
   PaymentSchema,
   StatementReadError,
   StatementSchema,
+  TransferSchema,
   checkConsistency,
   commitChange,
   excludedIds,
@@ -617,7 +618,11 @@ describe('undoImport with payments', () => {
   });
 
   // Plan 3c, task 4: matches and classes on its movements block too; exclusions do not.
-  const put = (store: MemoryStore, kind: 'match' | 'movementClass', after: { id: string }) =>
+  const put = (
+    store: MemoryStore,
+    kind: 'match' | 'movementClass' | 'transfer',
+    after: { id: string },
+  ) =>
     commitChange(
       store,
       {
@@ -656,11 +661,32 @@ describe('undoImport with payments', () => {
     await put(store, 'match', match('m-open', a, { confirmed: false }));
     await put(store, 'match', match('m-gone', b, { deleted: true }));
     await put(store, 'movementClass', cls(b, { kind: 'utenze', apartmentId: apartment().id }));
+    const transfer = (id: string, leg: Record<string, string>, extra = {}) =>
+      TransferSchema.parse({
+        id,
+        v: 1,
+        rev: 1,
+        fromAccountId: 'acc-x',
+        toAccountId: 'acc-y',
+        amount: 100,
+        date: '2026-10-05',
+        ...leg,
+        purpose: 'saldo',
+        source: 'confirmed',
+        ...extra,
+      });
+    await put(
+      store,
+      'transfer',
+      transfer('tr-in', { outTransactionId: 'other', inTransactionId: a }),
+    );
+    await put(store, 'transfer', transfer('tr-gone', { outTransactionId: b }, { deleted: true }));
+    await put(store, 'transfer', transfer('tr-other', { outTransactionId: 'other' }));
     const before = await snapshot(store);
     expect(await undoImport(store, r.statement.id, 'p1', clock, newId)).toEqual({
       status: 'refused',
       reason: 'dependent-records',
-      recordIds: ['m-auto', 'm-z', `mc-${b}`],
+      recordIds: ['m-auto', 'm-z', `mc-${b}`, 'tr-in'],
     });
     expect(await snapshot(store)).toEqual(before);
     // The payments are checked first.

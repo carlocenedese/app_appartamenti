@@ -10,6 +10,7 @@ import {
   MovementClassSchema,
   PaymentSchema,
   StatementSchema,
+  TransferSchema,
 } from './model';
 import type {
   Account,
@@ -19,6 +20,7 @@ import type {
   MovementClass,
   Payment,
   Statement,
+  Transfer,
 } from './model';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
@@ -33,18 +35,23 @@ export function excludedIds(classes: MovementClass[]): Set<string> {
   );
 }
 
+/** The movements of a transfer: its outgoing and incoming legs, when there. */
+export const legsOf = (t: Transfer): string[] =>
+  [t.outTransactionId, t.inTransactionId].filter((id) => id !== undefined);
+
 /** What a movement is used for: one use at most per movement (plan 3c, «Mie scelte» 1, D2). */
 export type MovementUse = 'escluso' | 'abbinato' | 'pagamento' | 'classificato' | 'giroconto';
 
 /**
  * The uses of each movement from the live records: a class (`escluso` or `classificato`), a
- * confirmed `BillMatch` that is not `assumed` (`abbinato`), a payment (`pagamento`); each use
- * once per movement, in that order.
+ * confirmed `BillMatch` that is not `assumed` (`abbinato`), a payment (`pagamento`), a leg of a
+ * transfer (`giroconto`); each use once per movement, in that order.
  */
 export function movementUses(state: {
   classes: MovementClass[];
   payments: Payment[];
   matches: BillMatch[];
+  transfers: Transfer[];
 }): Map<string, MovementUse[]> {
   const uses = new Map<string, MovementUse[]>();
   const add = (id: string, use: MovementUse) => {
@@ -59,6 +66,9 @@ export function movementUses(state: {
   }
   for (const p of state.payments) {
     if (p.deleted !== true && p.transactionId !== undefined) add(p.transactionId, 'pagamento');
+  }
+  for (const t of state.transfers.filter((r) => r.deleted !== true)) {
+    for (const id of legsOf(t)) add(id, 'giroconto');
   }
   return uses;
 }
@@ -75,8 +85,8 @@ export type ExcludeMovementResult =
  * Excludes the live movement `transactionId` in one `movement.exclude` operation, which writes
  * `mc-<transactionId>` (a deleted one comes back). Refused without writing when the store is not
  * as the journal leaves it, the movement is unknown or deleted, it already has a live class (undo
- * that first), or a live payment or a live confirmed match that is not `assumed` points to it
- * (`has-dependents`, their ids sorted: undo those first, no cascade).
+ * that first), or a live payment, a live confirmed match that is not `assumed` or a live transfer
+ * points to it (`has-dependents`, their ids sorted: undo those first, no cascade).
  */
 export async function excludeMovement(
   store: Store,
@@ -105,6 +115,9 @@ export async function excludeMovement(
     ),
     ...(await loadAll(store, 'match', BillMatchSchema)).records.filter(
       (m) => m.transactionId === tx.id && m.confirmed && m.by !== 'assumed',
+    ),
+    ...(await loadAll(store, 'transfer', TransferSchema)).records.filter((t) =>
+      legsOf(t).includes(tx.id),
     ),
   ]
     .map((r) => r.id)

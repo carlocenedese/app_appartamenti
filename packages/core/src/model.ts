@@ -903,6 +903,49 @@ export const StatementSchema = RecordBaseSchema.extend({
   .meta({ description: 'from must not be after to. The id is the fingerprint of the file.' });
 export type Statement = z.infer<typeof StatementSchema>;
 
+// --- Transfers between own accounts (plan 3c, task 5) ----------------------------------------
+
+/** What a transfer is for: only `saldo` enters the balance between the apartments. */
+export const TransferPurposeSchema = z.enum(['saldo', 'mutuo', 'altro']);
+export type TransferPurpose = z.infer<typeof TransferPurposeSchema>;
+
+/**
+ * Money moved from one own account to another: the outgoing and incoming movements (its legs),
+ * one of them at least, or none for a repayment recorded by hand (`manual`, section 24).
+ */
+export const TransferSchema = RecordBaseSchema.extend({
+  fromAccountId: NonEmptyString,
+  toAccountId: NonEmptyString,
+  amount: z
+    .int()
+    .min(1)
+    .transform((n): Cents => cents(n)),
+  date: ISODateSchema,
+  outTransactionId: NonEmptyString.optional(),
+  inTransactionId: NonEmptyString.optional(),
+  purpose: TransferPurposeSchema,
+  /** `confirmed` by a person, `auto` from a pair confirmed before, `manual` without movements. */
+  source: z.enum(['confirmed', 'auto', 'manual']),
+  /** «Solo questa volta»: the pair does not become automatic. */
+  oneOff: z.literal(true).optional(),
+})
+  .refine((t) => t.fromAccountId !== t.toAccountId, {
+    message: 'The two accounts must differ',
+    path: ['toAccountId'],
+  })
+  .refine(
+    (t) =>
+      (t.source === 'manual') ===
+      (t.outTransactionId === undefined && t.inTransactionId === undefined),
+    { message: 'source is manual exactly when there is no movement', path: ['source'] },
+  )
+  .meta({
+    description:
+      'amount is positive; fromAccountId and toAccountId differ; source is manual if and only if ' +
+      'neither outTransactionId nor inTransactionId is there.',
+  });
+export type Transfer = z.infer<typeof TransferSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -926,6 +969,7 @@ export const recordSchemas = {
   tenant: TenantSchema,
   payer: PayerSchema,
   movementClass: MovementClassSchema,
+  transfer: TransferSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "fromAccountId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "toAccountId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "amount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "date": {
+      "format": "date",
+      "description": "Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists in the month needs a \"format\": \"date\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
+    },
+    "outTransactionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inTransactionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "saldo",
+        "mutuo",
+        "altro"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "confirmed",
+        "auto",
+        "manual"
+      ]
+    },
+    "oneOff": {
+      "type": "boolean",
+      "const": true
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "fromAccountId",
+    "toAccountId",
+    "amount",
+    "date",
+    "purpose",
+    "source"
+  ],
+  "description": "amount is positive; fromAccountId and toAccountId differ; source is manual if and only if neither outTransactionId nor inTransactionId is there."
+}

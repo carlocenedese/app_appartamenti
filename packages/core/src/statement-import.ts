@@ -19,8 +19,10 @@ import {
   MovementClassSchema,
   PaymentSchema,
   StatementSchema,
+  TransferSchema,
 } from './model';
 import type { BankTransaction, Statement } from './model';
+import { legsOf } from './movements';
 import { normaliseIban } from './iban';
 import { parseOrThrow } from './parse';
 import type { ISODate } from './period';
@@ -327,8 +329,8 @@ export async function resolveHeld(
  * held rows), never the movements it only found already there. Refused, writing nothing, when
  * another statement that is not deleted lists one of the movements that would be deleted, or
  * (`dependent-payments`, with the ids) when a live payment of any source points to one of them:
- * the payments are undone first (R114); then (`dependent-records`) for the live confirmed matches
- * and the live classes other than an exclusion on them (R126).
+ * the payments are undone first (R114); then (`dependent-records`) for the live confirmed matches,
+ * the live classes other than an exclusion and the live transfers on them (R126, plan 3c task 5).
  */
 export async function undoImport(
   store: Store,
@@ -379,8 +381,9 @@ export async function undoImport(
     .map((p) => p.id)
     .sort(compareText);
   if (paymentIds.length > 0) return { status: 'refused', reason: 'dependent-payments', paymentIds };
-  // Plan 3c: so do a live confirmed match (not assumed) and a live class that is not an exclusion;
-  // an exclusion stays and survives a new import of the same file («Mie scelte» 4).
+  // Plan 3c: so do a live confirmed match (not assumed), a live class that is not an exclusion and
+  // a live transfer with a leg there; an exclusion stays and survives a new import of the same
+  // file («Mie scelte» 4).
   const goes = (r: { transactionId: string }) =>
     going.has(recordPath('transaction', r.transactionId));
   const recordIds = [
@@ -389,6 +392,9 @@ export async function undoImport(
     ),
     ...(await loadAll(store, 'movementClass', MovementClassSchema)).records.filter(
       (c) => c.kind !== 'escluso' && goes(c),
+    ),
+    ...(await loadAll(store, 'transfer', TransferSchema)).records.filter((t) =>
+      legsOf(t).some((transactionId) => goes({ transactionId })),
     ),
   ]
     .map((r) => r.id)

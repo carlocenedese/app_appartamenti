@@ -2,7 +2,7 @@
  * The reconciliation in phases (plan 3c, task 4; order D2 of plan 3): exclusions (proposals only,
  * never written), matching of bills and instalments, income. Each phase writes its own operation,
  * undone by itself, and skips the movements the phases before used (`movementUses`): a movement
- * has one use at most, across runs too. Tasks 5 and 6 add the transfers and the outgoings.
+ * has one use at most, across runs too. Then the transfers (task 5); task 6 adds the outgoings.
  */
 import type { ReconcileRunResult } from './income-store';
 import { runReconcile } from './income-store';
@@ -12,6 +12,8 @@ import { planMatch, runMatch } from './match-store';
 import type { ExclusionProposal } from './movements';
 import { listExclusionProposals } from './movements';
 import type { Store } from './store/store';
+import type { TransferRunResult } from './transfer-store';
+import { runTransfers } from './transfer-store';
 
 type Matched = Extract<MatchRunResult, { status: 'matched' }>;
 
@@ -21,12 +23,14 @@ export type ReconciliationResult =
       exclusions: ExclusionProposal[];
       match: Matched;
       income: Extract<ReconcileRunResult, { status: 'reconciled' }>;
+      transfers: Extract<TransferRunResult, { status: 'reconciled' }>;
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
 
 /**
  * Runs the phases in order on the store; a refusal stops the phases after it. With `dryRun`
- * nothing is written and the income phase skips the movements the matching would take.
+ * nothing is written and the income and transfer phases skip the movements the matching would
+ * take.
  */
 export async function runReconciliation(
   store: Store,
@@ -52,5 +56,7 @@ export async function runReconciliation(
   }
   const income = await runReconcile(store, profileId, clock, newId, { dryRun, alsoUsed });
   if (income.status === 'refused') return refused;
-  return { status: 'reconciled', exclusions, match, income };
+  const transfers = await runTransfers(store, profileId, clock, newId, { dryRun, alsoUsed });
+  if (transfers.status === 'refused') return refused;
+  return { status: 'reconciled', exclusions, match, income, transfers };
 }

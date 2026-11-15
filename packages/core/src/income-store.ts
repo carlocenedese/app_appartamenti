@@ -18,6 +18,7 @@ import {
   StatementSchema,
   TenancySchema,
   TenantSchema,
+  TransferSchema,
 } from './model';
 import type { Payment } from './model';
 import type { Cents } from './money';
@@ -65,6 +66,7 @@ async function loadIncomeState(store: Store, alsoUsed: ReadonlySet<string> = new
     classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
     payments,
     matches: (await loadAll(store, 'match', BillMatchSchema, all)).records,
+    transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,
   });
   return {
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
@@ -76,7 +78,7 @@ async function loadIncomeState(store: Store, alsoUsed: ReadonlySet<string> = new
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
     operations: (await readJournal(store)).operations,
-    // Excluded, matched or classified movements are left out of the income (plan 3c, D2); a
+    // Excluded, matched, classified movements and transfer legs are left out of the income (plan 3c, D2); a
     // payment is reconcileIncome's own business.
     usedTransactionIds: new Set([
       ...alsoUsed,

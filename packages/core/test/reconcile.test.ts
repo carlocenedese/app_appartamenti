@@ -5,16 +5,22 @@ import {
   BillMatchSchema,
   MovementClassSchema,
   PaymentSchema,
+  TransferSchema,
   cents,
+  commitChange,
+  confirmIncome,
   confirmMatch,
+  confirmTransfer,
   excludeMovement,
   loadAll,
   movementUses,
   readJournal,
   recordPath,
   recordSchemas,
+  runReconcile,
   runReconciliation,
   saveTenant,
+  yearMonth,
 } from '../src/index';
 import type { RecordKind } from '../src/index';
 import { clock, ids, snapshot } from './helpers/income-year';
@@ -48,6 +54,7 @@ async function usesOf(store: MemoryStore) {
     classes: (await loadAll(store, 'movementClass', MovementClassSchema)).records,
     payments: (await loadAll(store, 'payment', PaymentSchema)).records,
     matches: (await loadAll(store, 'match', BillMatchSchema)).records,
+    transfers: (await loadAll(store, 'transfer', TransferSchema)).records,
   });
 }
 
@@ -114,12 +121,40 @@ describe('movementUses (plan 3c, task 4)', () => {
         match('m4', 'assumed-b', { by: 'assumed' }),
         match('m5', 'y', { deleted: true }),
       ],
+      transfers: [
+        TransferSchema.parse({
+          ...base,
+          id: 'tr-g',
+          fromAccountId: 'a1',
+          toAccountId: 'a2',
+          amount: 100,
+          date: '2027-01-01',
+          outTransactionId: 'g-out',
+          inTransactionId: 'g-in',
+          purpose: 'saldo',
+          source: 'confirmed',
+        }),
+        TransferSchema.parse({
+          ...base,
+          id: 'tr-gone',
+          fromAccountId: 'a1',
+          toAccountId: 'a2',
+          amount: 100,
+          date: '2027-01-01',
+          outTransactionId: 'z',
+          purpose: 'saldo',
+          source: 'confirmed',
+          deleted: true,
+        }),
+      ],
     });
     expect(Object.fromEntries(uses)).toEqual({
       e: ['escluso'],
       c: ['classificato'],
       p: ['pagamento'],
       m: ['abbinato'],
+      'g-out': ['giroconto'],
+      'g-in': ['giroconto'],
     });
   });
 });
@@ -131,6 +166,21 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     if (result.status !== 'reconciled') throw new Error('refused');
     const { operations } = await readJournal(store);
     expect(operations.map((o) => o.kind)).toEqual(['match.reconcile', 'income.reconcile']);
+    // The transfer between Lovarini and Berchet: a first pair, so a proposal with its two legs.
+    expect(result.transfers).toEqual({
+      status: 'reconciled',
+      written: 0,
+      proposals: [
+        {
+          id: 'p-giro-tx-l-giro',
+          transactionId: 'tx-l-giro',
+          fromAccountId: 'acc-lovarini',
+          toAccountId: 'acc-berchet',
+          legIds: ['tx-b-giro'],
+          reason: 'new-pair',
+        },
+      ],
+    });
     expect(result.match).toMatchObject({ status: 'matched', written: 3, yielded: 0 });
     expect(result.match.status === 'matched' && result.match.assumed).toEqual([
       { itemType: 'bill', itemId: 'bill-hera-feb' },
@@ -195,6 +245,7 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     if (dry.status !== 'reconciled' || real.status !== 'reconciled') throw new Error('refused');
     expect({ ...dry.match, operationId: real.match.operationId }).toEqual(real.match);
     expect({ ...dry.income, operationId: real.income.operationId }).toEqual(real.income);
+    expect(dry.transfers).toEqual(real.transfers);
   });
 
   it('refuses a diverged store and writes nothing: no phase runs', async () => {
@@ -240,6 +291,122 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     }
     expect(result.income.proposals.map((p) => p.transactionId)).not.toContain('tx-b-nc');
     for (const list of (await usesOf(store)).values()) expect(list).toHaveLength(1);
+  });
+
+  it('a confirmed transfer: both legs are giroconto, one use per movement, run again', async () => {
+    const store = await treConti();
+    expect(
+      await confirmTransfer(
+        store,
+        { proposalId: 'p-giro-tx-l-giro', purpose: 'saldo', rememberPair: true },
+        'p1',
+        clock,
+        ids('g'),
+      ),
+    ).toMatchObject({ status: 'confirmed', transferId: 'tr-tx-l-giro' });
+    const result = await reconcile(store);
+    expect(result).toMatchObject({ transfers: { written: 0, proposals: [] } });
+    const uses = await usesOf(store);
+    for (const list of uses.values()) expect(list).toHaveLength(1);
+    expect(uses.get('tx-l-giro')).toEqual(['giroconto']);
+    expect(uses.get('tx-b-giro')).toEqual(['giroconto']);
+    const once = await snapshot(store);
+    await reconcile(store, 's');
+    expect(await snapshot(store)).toEqual(once);
+  });
+
+  it('a leg of a transfer is never matched to a bill', async () => {
+    const store = await treConti();
+    // A transfer saved on the debit of the condominium instalment (synthetic, by hand).
+    const leg = TransferSchema.parse({
+      id: 'tr-tx-l-cond',
+      v: 1,
+      rev: 1,
+      fromAccountId: 'acc-lovarini',
+      toAccountId: 'acc-berchet',
+      amount: 30000,
+      date: '2027-02-16',
+      outTransactionId: 'tx-l-cond',
+      purpose: 'altro',
+      source: 'confirmed',
+    });
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'transfer.confirm',
+        summary: 'Confermato un giroconto.',
+        changes: [{ path: recordPath('transfer', leg.id), before: undefined, after: leg }],
+      },
+      clock,
+      ids('g'),
+    );
+    const result = await reconcile(store);
+    if (result.status !== 'reconciled') throw new Error('refused');
+    const matches = (await loadAll(store, 'match', BillMatchSchema)).records;
+    expect(matches.map((m) => m.transactionId)).not.toContain('tx-l-cond');
+    for (const list of (await usesOf(store)).values()) expect(list).toHaveLength(1);
+    expect(
+      await confirmMatch(
+        store,
+        {
+          parts: [
+            {
+              itemType: 'instalment',
+              itemId: 'inst-l-cond',
+              transactionId: 'tx-l-cond',
+              amount: cents(-30000),
+              part: 'amount',
+            },
+          ],
+        },
+        'p1',
+        clock,
+        ids('c'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'transaction-used' });
+  });
+
+  it('confirmIncome on a movement matched after the proposal: unknown-proposal (ledger)', async () => {
+    const store = await treConti();
+    const dry = await runReconcile(store, 'p1', clock, ids('d'), { dryRun: true });
+    if (dry.status !== 'reconciled') throw new Error('refused');
+    const proposal = dry.proposals.find((p) => p.transactionId === 'tx-b-nc');
+    if (proposal === undefined) throw new Error('no proposal on the credit');
+    const confirmed = await confirmMatch(
+      store,
+      {
+        parts: [
+          {
+            itemType: 'bill',
+            itemId: 'bill-hera-nc',
+            transactionId: 'tx-b-nc',
+            amount: cents(-1500),
+            part: 'amount',
+          },
+        ],
+      },
+      'p1',
+      clock,
+      ids('c'),
+    );
+    expect(confirmed.status).toBe('confirmed');
+    const before = await snapshot(store);
+    expect(
+      await confirmIncome(
+        store,
+        {
+          proposalId: proposal.id,
+          tenantId: 't-mario',
+          parts: [{ kind: 'altro', forMonth: yearMonth('2027-03'), amount: cents(1500) }],
+          rememberPayer: false,
+        },
+        'p1',
+        clock,
+        ids('i'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'unknown-proposal' });
+    expect(await snapshot(store)).toEqual(before);
   });
 
   it('includes the exclusion proposals (read only)', async () => {
