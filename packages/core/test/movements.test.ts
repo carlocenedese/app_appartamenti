@@ -303,6 +303,9 @@ describe('supersededPending (plan 3c, task 2)', () => {
     const none = (over: Record<string, unknown>) => expect(run(over)).toEqual([]);
     none({ statements: [march, st('april', '2027-04-01', '2027-04-30', [])] }); // does not cover
     none({ statements: [march] }); // no newer statement
+    none({ statements: [april] }); // no statement lists it
+    none({ statements: [{ ...march, deleted: true }, april] }); // the only lister is deleted
+    none({ transactions: [tx({ accountId: undefined })] });
     none({ transactions: [tx({ booked: true })] });
     none({ transactions: [tx({ booked: undefined })] });
     none({ transactions: [tx({ deleted: true })] });
@@ -325,6 +328,16 @@ describe('supersededPending (plan 3c, task 2)', () => {
         },
       ],
     });
+  });
+
+  it('the first and the last day of the covering statement are included', () => {
+    const lister = st('m', '2027-03-01', '2027-03-29', ['tx1']);
+    const edge = (date: string, from: string, to: string) =>
+      run({ transactions: [tx({ date })], statements: [lister, st('n', from, to, [])] });
+    expect(edge('2027-03-30', '2027-03-30', '2027-04-30')).toHaveLength(1);
+    expect(edge('2027-03-30', '2027-03-01', '2027-03-30')).toHaveLength(1);
+    expect(edge('2027-03-30', '2027-03-31', '2027-04-30')).toHaveLength(0);
+    expect(edge('2027-03-30', '2027-03-01', '2027-03-29')).toHaveLength(0);
   });
 
   it('a deleted class does not hide it; the result is sorted by id', () => {

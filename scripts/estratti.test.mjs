@@ -1173,6 +1173,14 @@ describe('pnpm estratti riconcilia: esclusioni proposte (piano 3c, task 2)', () 
       ).toBe(0);
       const [txFile] = readdirSync(join(s.dir, '_app', 'dati', 'transaction'));
       const txId = txFile.replace(/\.json$/, '');
+      // `decidi --tieni` lists the movement in the old statement: the supersession is real.
+      const old = JSON.parse(
+        readFileSync(
+          join(s.dir, '_app', 'dati', 'statement', `${first.json.statementId}.json`),
+          'utf8',
+        ),
+      );
+      expect(old.transactionIds).toEqual([txId]);
       // A newer statement of the same account covers the day and does not list the movement.
       expect(month(s, 'nov.csv', [['06/11/2026', '10,00']], '2026-10-05', '2026-11-30').code).toBe(
         0,

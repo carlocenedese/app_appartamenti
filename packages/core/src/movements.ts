@@ -104,7 +104,7 @@ export interface ExclusionProposal {
 /**
  * The live not-booked movements, of a live account and without a live class, that a newer live
  * statement of the same account covers (`from <= date <= to`) without listing them: "newer" means
- * its `to` is after the `to` of every live statement that lists the movement. Sorted by `id`.
+ * its `to` is after the `to` of every live statement that lists it (at least one must). Sorted by `id`.
  */
 export function supersededPending(input: {
   accounts: Account[];
@@ -129,12 +129,15 @@ export function supersededPending(input: {
     .filter((t) => {
       const same = statements.filter((s) => s.accountId === t.accountId);
       const listing = same.filter((s) => s.transactionIds.includes(t.id));
-      return same.some(
-        (s) =>
-          !s.transactionIds.includes(t.id) &&
-          s.from <= t.date &&
-          t.date <= s.to &&
-          listing.every((l) => s.to > l.to),
+      return (
+        listing.length > 0 &&
+        same.some(
+          (s) =>
+            !s.transactionIds.includes(t.id) &&
+            s.from <= t.date &&
+            t.date <= s.to &&
+            listing.every((l) => s.to > l.to),
+        )
       );
     })
     .map((t) => ({
