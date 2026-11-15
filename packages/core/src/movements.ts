@@ -4,12 +4,14 @@
  */
 import { checkConsistency, commitChange } from './journal';
 import {
+  AccountSchema,
   BankTransactionSchema,
   BillMatchSchema,
   MovementClassSchema,
   PaymentSchema,
+  StatementSchema,
 } from './model';
-import type { ExcludeReason, MovementClass } from './model';
+import type { Account, BankTransaction, ExcludeReason, MovementClass, Statement } from './model';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -89,4 +91,67 @@ export async function excludeMovement(
     newId,
   );
   return { status: 'excluded', operationId: operation.id };
+}
+
+/** A proposal to exclude a pending movement a later statement left out: never written by itself. */
+export interface ExclusionProposal {
+  id: string;
+  transactionId: string;
+  reason: 'pending-superseded';
+  suggestedReason: 'non-contabilizzato';
+}
+
+/**
+ * The live not-booked movements, of a live account and without a live class, that a newer live
+ * statement of the same account covers (`from <= date <= to`) without listing them: "newer" means
+ * its `to` is after the `to` of every live statement that lists the movement. Sorted by `id`.
+ */
+export function supersededPending(input: {
+  accounts: Account[];
+  statements: Statement[];
+  transactions: BankTransaction[];
+  classes: MovementClass[];
+}): ExclusionProposal[] {
+  const accounts = new Set(input.accounts.filter((a) => a.deleted !== true).map((a) => a.id));
+  const statements = input.statements.filter((s) => s.deleted !== true);
+  const classified = new Set(
+    input.classes.filter((c) => c.deleted !== true).map((c) => c.transactionId),
+  );
+  return input.transactions
+    .filter(
+      (t) =>
+        t.deleted !== true &&
+        t.booked === false &&
+        t.accountId !== undefined &&
+        accounts.has(t.accountId) &&
+        !classified.has(t.id),
+    )
+    .filter((t) => {
+      const same = statements.filter((s) => s.accountId === t.accountId);
+      const listing = same.filter((s) => s.transactionIds.includes(t.id));
+      return same.some(
+        (s) =>
+          !s.transactionIds.includes(t.id) &&
+          s.from <= t.date &&
+          t.date <= s.to &&
+          listing.every((l) => s.to > l.to),
+      );
+    })
+    .map((t) => ({
+      id: `p-escl-${t.id}`,
+      transactionId: t.id,
+      reason: 'pending-superseded' as const,
+      suggestedReason: 'non-contabilizzato' as const,
+    }))
+    .sort((a, b) => compareText(a.id, b.id));
+}
+
+/** The exclusion proposals of the store, read only. */
+export async function listExclusionProposals(store: Store): Promise<ExclusionProposal[]> {
+  return supersededPending({
+    accounts: (await loadAll(store, 'account', AccountSchema)).records,
+    statements: (await loadAll(store, 'statement', StatementSchema)).records,
+    transactions: (await loadAll(store, 'transaction', BankTransactionSchema)).records,
+    classes: (await loadAll(store, 'movementClass', MovementClassSchema)).records,
+  });
 }

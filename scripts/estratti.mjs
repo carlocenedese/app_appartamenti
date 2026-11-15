@@ -35,6 +35,7 @@ import {
   confirmIncome,
   excludeMovement,
   importStatement,
+  listExclusionProposals,
   loadAll,
   parseCsv,
   parseEuro,
@@ -420,6 +421,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...extra(p),
       })),
       skipped: result.skipped,
+      // Only id and reason: the movement id, the date and the amount stay out (R124).
+      exclusions: (await listExclusionProposals(store)).map((e) => ({
+        id: e.id,
+        reason: e.reason,
+      })),
       // Only the month without --dettagli (R117): ids are chosen by the user, like tenantIds.
       arrears: result.arrears.map((a) => ({ month: a.month, ...arrearExtra(a) })),
       ...(result.operationId === undefined ? {} : { operationId: result.operationId }),

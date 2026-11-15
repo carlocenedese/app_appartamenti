@@ -1154,3 +1154,46 @@ describe('pnpm estratti escludi (piano 3c, task 1)', () => {
     TIMEOUT,
   );
 });
+
+describe('pnpm estratti riconcilia: esclusioni proposte (piano 3c, task 2)', () => {
+  it(
+    'exclusions ha solo id e motivo; dopo escludi sparisce',
+    async () => {
+      const s = await incomeSetup();
+      const pending = `${incomeHeader}\n05/10/2026;Bonifico da ${NAME};${CAUSALE};850,00;A;;Prenotato\n`;
+      const first = importFile(s, write('pend.csv', pending), [
+        '--dal',
+        '2026-10-01',
+        '--al',
+        '2026-10-31',
+      ]);
+      expect(
+        cli(['decidi', ...s.common, '--estratto', first.json.statementId, '--riga', '2', '--tieni'])
+          .code,
+      ).toBe(0);
+      const [txFile] = readdirSync(join(s.dir, '_app', 'dati', 'transaction'));
+      const txId = txFile.replace(/\.json$/, '');
+      // A newer statement of the same account covers the day and does not list the movement.
+      expect(month(s, 'nov.csv', [['06/11/2026', '10,00']], '2026-10-05', '2026-11-30').code).toBe(
+        0,
+      );
+
+      const run = cli(['riconcilia', ...s.common, '--prova']);
+      expect(run.code).toBe(0);
+      expect(run.json.exclusions).toEqual([{ id: `p-escl-${txId}`, reason: 'pending-superseded' }]);
+      expect(scanText(run.out)).toEqual([]);
+
+      const done = cli([
+        'escludi',
+        ...s.common,
+        '--movimento',
+        txId,
+        '--motivo',
+        'non-contabilizzato',
+      ]);
+      expect(done.code).toBe(0);
+      expect(cli(['riconcilia', ...s.common, '--prova']).json.exclusions).toEqual([]);
+    },
+    TIMEOUT,
+  );
+});

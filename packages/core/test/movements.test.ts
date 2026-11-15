@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AccountSchema,
   BankTransactionSchema,
   BillMatchSchema,
   MovementClassSchema,
@@ -11,13 +12,17 @@ import {
   loadAll,
   readJournal,
   recordPath,
+  StatementSchema,
+  listExclusionProposals,
   runReconcile,
+  supersededPending,
   saveTenant,
   undoOperation,
   yearMonth,
 } from '../src/index';
 import type { MovementClass } from '../src/index';
 import { clock, ids, snapshot, year, yearStore } from './helpers/income-year';
+import { MemoryStore } from './helpers/memory-store';
 
 /** The year, plus `t1`: a second copy of the exact January rent of `t-anna` (a duplicate). */
 async function duplicateStore() {
@@ -229,5 +234,140 @@ describe('excludeMovement (plan 3c, task 1)', () => {
       o.changes.map((c) => c.path),
     );
     expect(paths.some((p) => p.includes('movementClass'))).toBe(false);
+  });
+});
+
+describe('supersededPending (plan 3c, task 2)', () => {
+  const account = AccountSchema.parse({
+    id: 'c1',
+    v: 1,
+    rev: 1,
+    apartmentId: 'a1',
+    label: 'Conto',
+    bankProfileId: 'bp',
+  });
+  const tx = (over: Record<string, unknown> = {}) =>
+    BankTransactionSchema.parse({
+      id: 'tx1',
+      v: 1,
+      rev: 1,
+      apartmentId: 'a1',
+      accountId: 'c1',
+      date: '2027-03-30',
+      amount: -2500,
+      description: 'x',
+      statementHash: 'march',
+      booked: false,
+      ...over,
+    });
+  const st = (id: string, from: string, to: string, ids: string[], over = {}) =>
+    StatementSchema.parse({
+      id,
+      v: 1,
+      rev: 1,
+      accountId: 'c1',
+      bankProfileId: 'bp',
+      fileName: 'f',
+      suggestedPath: 'p',
+      from,
+      to,
+      periodSource: 'file',
+      rowCount: ids.length,
+      transactionIds: ids,
+      held: [],
+      ...over,
+    });
+  const march = st('march', '2027-03-01', '2027-03-31', ['tx1']);
+  const april = st('april', '2027-03-30', '2027-04-30', []);
+  const run = (over: Record<string, unknown> = {}) =>
+    supersededPending({
+      accounts: [account],
+      statements: [march, april],
+      transactions: [tx()],
+      classes: [],
+      ...over,
+    });
+
+  it('proposes a pending movement a newer statement covers without listing it', () => {
+    expect(run()).toEqual([
+      {
+        id: 'p-escl-tx1',
+        transactionId: 'tx1',
+        reason: 'pending-superseded',
+        suggestedReason: 'non-contabilizzato',
+      },
+    ]);
+  });
+
+  it('proposes nothing in the other cases', () => {
+    const none = (over: Record<string, unknown>) => expect(run(over)).toEqual([]);
+    none({ statements: [march, st('april', '2027-04-01', '2027-04-30', [])] }); // does not cover
+    none({ statements: [march] }); // no newer statement
+    none({ transactions: [tx({ booked: true })] });
+    none({ transactions: [tx({ booked: undefined })] });
+    none({ transactions: [tx({ deleted: true })] });
+    none({ statements: [march, { ...april, deleted: true }] });
+    none({ statements: [march, st('older', '2027-02-15', '2027-03-30', [])] }); // older
+    none({ statements: [march, st('same', '2027-03-01', '2027-03-31', [])] }); // same `to`
+    none({ statements: [march, st('other', '2027-03-30', '2027-04-30', [], { accountId: 'c2' })] });
+    none({ statements: [march, st('april', '2027-03-30', '2027-04-30', ['tx1'])] }); // lists it
+    none({ accounts: [{ ...account, deleted: true }] });
+    none({ accounts: [] });
+    none({
+      classes: [
+        {
+          id: 'mc-tx1',
+          v: 1,
+          rev: 1,
+          transactionId: 'tx1',
+          kind: 'escluso',
+          excludeReason: 'doppione',
+        },
+      ],
+    });
+  });
+
+  it('a deleted class does not hide it; the result is sorted by id', () => {
+    const deleted = {
+      id: 'mc-tx1',
+      v: 1,
+      rev: 1,
+      transactionId: 'tx1',
+      kind: 'escluso' as const,
+      excludeReason: 'doppione' as const,
+      deleted: true as const,
+    };
+    expect(run({ classes: [deleted] })).toHaveLength(1);
+    const both = run({
+      statements: [st('m', '2027-03-01', '2027-03-31', ['tx1', 'tx0']), april],
+      transactions: [tx(), tx({ id: 'tx0' })],
+    });
+    expect(both.map((p) => p.id)).toEqual(['p-escl-tx0', 'p-escl-tx1']);
+  });
+
+  it('excluding the movement removes the proposal; a reconciliation writes nothing for it', async () => {
+    const store = new MemoryStore();
+    for (const [kind, r] of [
+      ['account', account],
+      ['statement', march],
+      ['statement', april],
+      ['transaction', tx()],
+    ] as const) {
+      await store.writeJsonAtomic(recordPath(kind, r.id), r);
+    }
+    expect((await listExclusionProposals(store)).map((p) => p.id)).toEqual(['p-escl-tx1']);
+    const before = await snapshot(store);
+    await runReconcile(store, 'p1', clock, ids('r'));
+    expect(await snapshot(store)).toEqual(before);
+
+    const done = await excludeMovement(
+      store,
+      { transactionId: 'tx1', reason: 'non-contabilizzato' },
+      'p1',
+      clock,
+      ids('x'),
+    );
+    expect(done.status).toBe('excluded');
+    expect(await listExclusionProposals(store)).toEqual([]);
   });
 });
