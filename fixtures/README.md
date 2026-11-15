@@ -46,6 +46,7 @@ qui tra apici inversi, con una nota: la revisione deve verificare che sia davver
 | IBAN di prova (inventato)   | `IT09X0542811101000000000311`       |
 | IBAN di prova (inventato)   | `IT79X0542811101000000000312`       |
 | IBAN di prova (inventato)   | `IT52X0542811101000000000313`       |
+| IBAN di prova (inventato)   | `IT04X0542811101000000000401`       |
 | Codice fiscale (esempio)    | `RSSMRA80A01H501U`                  |
 | POD                         | `IT001E12345678`                    |
 | PDR                         | `12345678901234`                    |
@@ -73,6 +74,18 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 - `fixtures/bank/profilo-sintetico.json`: profilo della banca **ipotetico** (colonne, formati ed
   espressioni inventati, nessuna banca reale), per provare lo schema `BankProfile`. Gli IBAN dei
   test sono inventati con il controllo mod-97 valido (per esempio `IT60X0542811101000000123456`).
+
+## Uscite e giroconti (piano 3c)
+
+- `IT04X0542811101000000000401` è l'IBAN di un fornitore inventato: nei test del piano 3c è la
+  controparte di uscite e rimborsi, mai un conto proprio.
+- `fixtures/reconcile/tre-conti.json`: tre conti inventati (Berchet, Lovarini, Pulci, con gli IBAN di
+  prova `…0301`, `…0302` e `IT52A…0001` della tabella sopra), gennaio-marzo 2027. Due estratti di
+  Berchet con un buco a febbraio (la bolletta di febbraio è presunta), bollette con una nota di
+  credito, una rata condominiale con il suo doppione escluso, due inquilini inventati (gli IBAN
+  `…0311` e `…0312`), un giroconto tra Lovarini e Berchet e uscite verso il fornitore inventato
+  `…0401`. `records` sono i record per tipo. La leggono `packages/core/test/reconcile.test.ts` e
+  `scripts/estratti.test.mjs`.
 
 ## Incassi (piano 3b)
 

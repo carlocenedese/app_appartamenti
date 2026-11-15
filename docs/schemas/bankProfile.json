@@ -179,6 +179,11 @@
       "minLength": 1,
       "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
     },
+    "f24Pattern": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Regular expression valid in JavaScript and Python: numbered groups only, no lookbehind (\"(?<=\", \"(?<!\"), no inline flags such as \"(?i)\"."
+    },
     "preamble": {
       "type": "object",
       "properties": {
@@ -250,5 +255,5 @@
     "columns",
     "dateFormat"
   ],
-  "description": "Either columns.amount, or columns.debit and columns.credit together; columns.sign needs columns.amount and signValues; columns.pending needs pendingValues; validFrom must not be after validTo; periodPattern has at least two capture groups, accountPattern at least one; preamble has periodFrom and periodTo together, its account pattern one group, and it does not coexist with periodPattern (period) or accountPattern (account)."
+  "description": "Either columns.amount, or columns.debit and columns.credit together; columns.sign needs columns.amount and signValues; columns.pending needs pendingValues; validFrom must not be after validTo; periodPattern has at least two capture groups, accountPattern at least one; preamble has periodFrom and periodTo together, its account pattern one group, and it does not coexist with periodPattern (period) or accountPattern (account); f24Pattern is in the safe subset of R102."
 }

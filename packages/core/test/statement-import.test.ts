@@ -5,11 +5,15 @@ import {
   AccountSchema,
   BankProfileSchema,
   BankTransactionSchema,
+  BillMatchSchema,
+  MovementClassSchema,
   PaymentSchema,
   StatementReadError,
   StatementSchema,
+  TransferSchema,
   checkConsistency,
   commitChange,
+  excludedIds,
   importStatement,
   isoDate,
   loadAll,
@@ -611,6 +615,106 @@ describe('undoImport with payments', () => {
     });
     await undoOperation(store, op.id, 'p1', clock, newId);
     expect((await undoImport(store, r.statement.id, 'p1', clock, newId)).status).toBe('undone');
+  });
+
+  // Plan 3c, task 4: matches and classes on its movements block too; exclusions do not.
+  const put = (
+    store: MemoryStore,
+    kind: 'match' | 'movementClass' | 'transfer',
+    after: { id: string },
+  ) =>
+    commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: kind === 'match' ? 'match.confirm' : 'movement.exclude',
+        summary: 'x',
+        changes: [{ path: recordPath(kind, after.id), before: undefined, after }],
+      },
+      clock,
+      payIds,
+    );
+  const match = (id: string, transactionId: string, extra = {}) =>
+    BillMatchSchema.parse({
+      id,
+      v: 1,
+      rev: 1,
+      itemType: 'bill',
+      itemId: 'b1',
+      transactionId,
+      transactionDate: '2026-10-05',
+      amount: 100,
+      part: 'amount',
+      confirmed: true,
+      by: 'manual',
+      ...extra,
+    });
+  const cls = (transactionId: string, extra: Record<string, unknown>) =>
+    MovementClassSchema.parse({ id: `mc-${transactionId}`, v: 1, rev: 1, transactionId, ...extra });
+
+  it('refuses with dependent-records: live confirmed matches and classes, sorted; nothing written', async () => {
+    const { store, newId, r, txs } = await imported();
+    const [a, b] = txs.map((t) => t.id).sort();
+    if (a === undefined || b === undefined) throw new Error('x');
+    await put(store, 'match', match('m-z', a));
+    await put(store, 'match', match('m-auto', b, { by: 'auto' }));
+    await put(store, 'match', match('m-open', a, { confirmed: false }));
+    await put(store, 'match', match('m-gone', b, { deleted: true }));
+    await put(store, 'movementClass', cls(b, { kind: 'utenze', apartmentId: apartment().id }));
+    const transfer = (id: string, leg: Record<string, string>, extra = {}) =>
+      TransferSchema.parse({
+        id,
+        v: 1,
+        rev: 1,
+        fromAccountId: 'acc-x',
+        toAccountId: 'acc-y',
+        amount: 100,
+        date: '2026-10-05',
+        ...leg,
+        purpose: 'saldo',
+        source: 'confirmed',
+        ...extra,
+      });
+    await put(
+      store,
+      'transfer',
+      transfer('tr-in', { outTransactionId: 'other', inTransactionId: a }),
+    );
+    await put(store, 'transfer', transfer('tr-gone', { outTransactionId: b }, { deleted: true }));
+    await put(store, 'transfer', transfer('tr-other', { outTransactionId: 'other' }));
+    const before = await snapshot(store);
+    expect(await undoImport(store, r.statement.id, 'p1', clock, newId)).toEqual({
+      status: 'refused',
+      reason: 'dependent-records',
+      recordIds: ['m-auto', 'm-z', `mc-${b}`, 'tr-in'],
+    });
+    expect(await snapshot(store)).toEqual(before);
+    // The payments are checked first.
+    await pay(store, 'pay-a', a);
+    expect(await undoImport(store, r.statement.id, 'p1', clock, newId)).toMatchObject({
+      reason: 'dependent-payments',
+    });
+  });
+
+  it('a live exclusion does not block, and survives the undo and a new import of the file', async () => {
+    const { store, newId, r, txs, accountId, f } = await imported();
+    const [a] = txs.map((t) => t.id).sort();
+    if (a === undefined) throw new Error('x');
+    await put(store, 'movementClass', cls(a, { kind: 'escluso', excludeReason: 'doppione' }));
+    expect((await undoImport(store, r.statement.id, 'p1', clock, newId)).status).toBe('undone');
+    const again = await importStatement(
+      store,
+      { accountId, fileBytes: f.bytes, fileName: 'a', table: f.table, period: OCT },
+      'p1',
+      clock,
+      newId,
+    );
+    expect(again.status).toBe('imported');
+    expect((await live(store)).map((t) => t.id)).toContain(a);
+    const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
+    expect(classes.map((c) => c.id)).toEqual([`mc-${a}`]);
+    expect(excludedIds(classes)).toEqual(new Set([a]));
+    expect(await checkConsistency(store)).toEqual([]);
   });
 });
 

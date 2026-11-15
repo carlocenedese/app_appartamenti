@@ -280,6 +280,8 @@ export function reconcileIncome(
     statements: Statement[];
     /** The journal: it tells who deleted a payment. */
     operations: Operation[];
+    /** Movements already used elsewhere (excluded, plan 3c): no payment, no proposal, no block. */
+    usedTransactionIds?: ReadonlySet<string>;
   },
 ): IncomeResult {
   const handled = new Set<string>();
@@ -300,7 +302,13 @@ export function reconcileIncome(
     }
   }
   const credits = input.transactions
-    .filter((t) => t.deleted !== true && t.amount > 0 && !handled.has(t.id))
+    .filter(
+      (t) =>
+        t.deleted !== true &&
+        t.amount > 0 &&
+        !handled.has(t.id) &&
+        input.usedTransactionIds?.has(t.id) !== true,
+    )
     .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
   const payments: PaymentDraft[] = [];
   const proposals: IncomeProposal[] = [];

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
-import { commitChange, recordPath } from '../packages/core/src/index.ts';
+import { commitChange, recordPath, recordSchemas } from '../packages/core/src/index.ts';
 import { apartment } from '../packages/core/test/helpers/conguaglio-builders.ts';
 import {
   pythonAvailability,
@@ -896,13 +896,13 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-operation']);
       // The apartment of the setup (`seed-1`): an operation annulla-incassi never undoes.
       const other = undo(['--operazione', 'seed-1']);
-      expect(other.json).toMatchObject({ status: 'rejected', reason: 'not-income-operation' });
+      expect(other.json).toMatchObject({ status: 'rejected', reason: 'not-reconcile-operation' });
       expect(other.code).toBe(1);
       const imported = readdirSync(join(s.dir, '_app', 'journal'))
         .map((f) => JSON.parse(readFileSync(join(s.dir, '_app', 'journal', f), 'utf8')))
         .find((o) => o.kind === 'statement.import');
       const refused = undo(['--operazione', imported.id]);
-      expect(refused.json).toMatchObject({ status: 'rejected', reason: 'not-income-operation' });
+      expect(refused.json).toMatchObject({ status: 'rejected', reason: 'not-reconcile-operation' });
       expect(refused.code).toBe(1);
 
       const snap = snapshot(s.dir);
@@ -1004,7 +1004,7 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
   );
 
   it(
-    'riconcilia elenca gli arretrati: solo mesi senza --dettagli, id e nomi con --dettagli',
+    'riconcilia elenca gli arretrati: mese e appartamento senza --dettagli, inquilino con --dettagli',
     async () => {
       const s = await incomeSetup();
       month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
@@ -1017,7 +1017,9 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       month(s, 'nov.csv', [], '2026-11-01', '2026-11-30');
       const plain = cli(['riconcilia', ...s.common, '--prova']);
       expect(plain.json).toMatchObject({ written: 0, proposals: [] });
-      expect(plain.json.arrears).toEqual([{ month: '2026-11' }]);
+      // The id of an apartment is always shown (user1, 15 Nov 2026): a name the user chose, no
+      // personal data; the tenant stays hidden.
+      expect(plain.json.arrears).toEqual([{ month: '2026-11', apartmentId: 'apt' }]);
       const detailed = cli(['riconcilia', ...s.common, '--prova', '--dettagli']);
       expect(detailed.json.arrears).toEqual([
         { month: '2026-11', apartmentId: 'apt', tenantId: 't1', tenantName: NAME },
@@ -1087,6 +1089,903 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       // The amount as a whole number: not a part of a random hexadecimal id (flaky on a chance match).
       expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
       expect(scanText(all)).toEqual([]);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('pnpm estratti escludi (piano 3c, task 1)', () => {
+  it(
+    'escludi: 0 e il movimento sparisce da riconcilia; annulla-incassi lo riporta; rifiuti 1, argomenti 2',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [txFile] = readdirSync(join(s.dir, '_app', 'dati', 'transaction'));
+      const txId = txFile.replace(/\.json$/, '');
+      const escludi = (args) => cli(['escludi', ...s.common, ...args]);
+
+      const snap = snapshot(s.dir);
+      expect(escludi(['--movimento', txId, '--motivo', 'altro']).code).toBe(2);
+      expect(escludi(['--motivo', 'doppione']).code).toBe(2);
+      expect(escludi(['--movimento', txId]).code).toBe(2);
+      expect(escludi(['--movimento', txId, '--motivo', 'doppione', 'x']).code).toBe(2);
+      expect(escludi(['--movimento', txId, '--motivo', 'doppione', '--prova']).code).toBe(2);
+      expect(cli(['riconcilia', ...s.common, '--motivo', 'doppione']).code).toBe(2);
+      const unknown = escludi(['--movimento', 'nessuno', '--motivo', 'doppione']);
+      expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-transaction']);
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const done = escludi(['--movimento', txId, '--motivo', 'doppione']);
+      expect(done.code).toBe(0);
+      expect(done.json).toEqual({ status: 'excluded', operationId: done.json.operationId });
+      expect(cli(['riconcilia', ...s.common]).json).toMatchObject({ written: 0, proposals: [] });
+      const again = escludi(['--movimento', txId, '--motivo', 'non-reale']);
+      expect([again.code, again.json.reason]).toEqual([1, 'already-classified']);
+
+      const back = cli(['annulla-incassi', ...s.common, '--operazione', done.json.operationId]);
+      expect(back.code).toBe(0);
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      expect(proposal).toMatchObject({ step: 'chi', reason: 'new-payer' });
+
+      const part = ['--parte', 'canone:2026-10:850,00'];
+      const conf = cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't1',
+        ...part,
+      ]);
+      const snap2 = snapshot(s.dir);
+      const blocked = escludi(['--movimento', txId, '--motivo', 'non-contabilizzato']);
+      expect(blocked.code).toBe(1);
+      expect(blocked.json).toEqual({
+        status: 'rejected',
+        reason: 'has-dependents',
+        message: 'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
+        recordIds: conf.json.paymentIds,
+      });
+      expect(snapshot(s.dir)).toEqual(snap2);
+
+      const all = [unknown.out, done.out, again.out, back.out, blocked.out].join('');
+      for (const secret of [NAME, CAUSALE, IBAN, LABEL]) expect(all).not.toContain(secret);
+      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
+      expect(scanText(all)).toEqual([]);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('pnpm estratti riconcilia: esclusioni proposte (piano 3c, task 2)', () => {
+  it(
+    'exclusions ha solo id e motivo; dopo escludi sparisce',
+    async () => {
+      const s = await incomeSetup();
+      const pending = `${incomeHeader}\n05/10/2026;Bonifico da ${NAME};${CAUSALE};850,00;A;;Prenotato\n`;
+      const first = importFile(s, write('pend.csv', pending), [
+        '--dal',
+        '2026-10-01',
+        '--al',
+        '2026-10-31',
+      ]);
+      expect(
+        cli(['decidi', ...s.common, '--estratto', first.json.statementId, '--riga', '2', '--tieni'])
+          .code,
+      ).toBe(0);
+      const [txFile] = readdirSync(join(s.dir, '_app', 'dati', 'transaction'));
+      const txId = txFile.replace(/\.json$/, '');
+      // `decidi --tieni` lists the movement in the old statement: the supersession is real.
+      const old = JSON.parse(
+        readFileSync(
+          join(s.dir, '_app', 'dati', 'statement', `${first.json.statementId}.json`),
+          'utf8',
+        ),
+      );
+      expect(old.transactionIds).toEqual([txId]);
+      // A newer statement of the same account covers the day and does not list the movement.
+      expect(month(s, 'nov.csv', [['06/11/2026', '10,00']], '2026-10-05', '2026-11-30').code).toBe(
+        0,
+      );
+
+      const run = cli(['riconcilia', ...s.common, '--prova']);
+      expect(run.code).toBe(0);
+      expect(run.json.exclusions).toEqual([{ id: `p-escl-${txId}`, reason: 'pending-superseded' }]);
+      expect(scanText(run.out)).toEqual([]);
+
+      const done = cli([
+        'escludi',
+        ...s.common,
+        '--movimento',
+        txId,
+        '--motivo',
+        'non-contabilizzato',
+      ]);
+      expect(done.code).toBe(0);
+      expect(cli(['riconcilia', ...s.common, '--prova']).json.exclusions).toEqual([]);
+    },
+    TIMEOUT,
+  );
+});
+
+const TRE = JSON.parse(
+  readFileSync(join(ROOT, 'fixtures', 'reconcile', 'tre-conti.json'), 'utf8'),
+).records;
+/** Writes `records` ({ kind: [record] }) in the data folder `dir`, without a journal. */
+async function putRecords(dir, records) {
+  const store = new FsStore(dir);
+  for (const [kind, list] of Object.entries(records)) {
+    for (const record of list) {
+      await store.writeJsonAtomic(recordPath(kind, record.id), recordSchemas[kind].parse(record));
+    }
+  }
+}
+/**
+ * A data folder holding the records of `tre-conti` and the synthetic bank profile as
+ * `bp-sintetico` (the profile of its accounts, so `importa` works); no journal yet.
+ */
+async function treConti(profile = {}) {
+  const dir = join(root, `d${String((counter += 1))}`);
+  mkdirSync(dir);
+  await putRecords(dir, { ...TRE, bankProfile: [{ ...FIXTURE, id: 'bp-sintetico', ...profile }] });
+  return { dir, common: ['--cartella', dir, '--ora', ORA] };
+}
+const journal = (dir) =>
+  readdirSync(join(dir, '_app', 'journal')).map((f) =>
+    JSON.parse(readFileSync(join(dir, '_app', 'journal', f), 'utf8')),
+  );
+
+describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, task 4)', () => {
+  it(
+    'riconcilia: incassi in cima più match, senza dati; abbina e annulla-riconciliazione',
+    async () => {
+      const s = await treConti();
+      const run = cli(['riconcilia', ...s.common]);
+      expect(run.code).toBe(0);
+      // The leg of the transfer from Lovarini is the transfers' own (fix finale I3), not skipped.
+      expect(run.json).toMatchObject({ status: 'reconciled', written: 2, skipped: 0 });
+      expect(Object.keys(run.json).slice(0, 4)).toEqual([
+        'status',
+        'written',
+        'proposals',
+        'skipped',
+      ]);
+      expect(run.json.exclusions).toEqual([]);
+      const matchOp = journal(s.dir).find((o) => o.kind === 'match.reconcile');
+      expect(run.json.match).toEqual({
+        written: 3,
+        yielded: 0,
+        proposals: [],
+        pending: 0,
+        assumed: 1,
+        invalidGroups: 0,
+        operationId: matchOp.id,
+      });
+      expect(scanText(run.out)).toEqual([]);
+      const secrets = [
+        'Mario Inventato',
+        'Luisa Inventata',
+        'Fornitore Inventato',
+        'ADDEBITO',
+        'BONIFICO',
+        'ACCREDITO',
+        'GIROCONTO',
+        '0542811101',
+        '9999999999',
+      ];
+      for (const secret of secrets) expect(run.out).not.toContain(secret);
+      expect(run.out).not.toMatch(
+        /(?<![0-9a-f])(50000|45000|30000|20000|6300|4000|1500)(?![0-9a-f])/,
+      );
+      expect(run.out).not.toMatch(/[0-9],[0-9]{2}/);
+
+      const abbina = (args) => cli(['abbina', ...s.common, ...args]);
+      const snap = snapshot(s.dir);
+      for (const bad of [
+        [],
+        ['--parte', 'bill:bill-hera-gen:tx-b-hera-gen'],
+        ['--parte', 'fattura:bill-hera-gen:tx-b-hera-gen:63,00'],
+        ['--parte', 'bill:bill-hera-gen:tx-b-hera-gen:sessanta'],
+        ['--parte', 'bill:bill-hera-gen:tx-b-hera-gen:63,00:altro'],
+        ['--parte', 'bill::tx-b-hera-gen:63,00'],
+        ['--parte', 'bill:bill-hera-gen:tx-b-hera-gen:63,00', 'x'],
+      ]) {
+        expect(abbina(bad).code).toBe(2);
+      }
+      expect(cli(['riconcilia', ...s.common, '--parte', 'bill:a:b:1,00']).code).toBe(2);
+      const used = abbina(['--parte', 'bill:bill-hera-gen:tx-l-cond-doppio:63,00']);
+      expect([used.code, used.json.reason]).toEqual([1, 'transaction-used']);
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const undo = cli(['annulla-riconciliazione', ...s.common, '--operazione', matchOp.id]);
+      expect(undo.code).toBe(0);
+      expect(undo.json).toMatchObject({ status: 'undone' });
+      const ok = abbina(['--parte', 'bill:bill-hera-gen:tx-b-hera-gen:63,00']);
+      expect(ok.code).toBe(0);
+      expect(ok.json).toEqual({
+        status: 'confirmed',
+        operationId: ok.json.operationId,
+        matchIds: ['m-bill-bill-hera-gen-amount-tx-b-hera-gen'],
+      });
+      const confirmed = cli([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        ok.json.operationId,
+      ]);
+      expect(confirmed.code).toBe(0);
+      const all = [undo.out, ok.out, confirmed.out, used.out].join('');
+      for (const secret of secrets) expect(all).not.toContain(secret);
+      expect(scanText(all)).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'annulla-riconciliazione di un annulla-pagamento dopo un nuovo uso del movimento: 1 has-dependents (I2)',
+    async () => {
+      const s = await treConti();
+      expect(cli(['riconcilia', ...s.common]).code).toBe(0);
+      const [payment] = readdirSync(join(s.dir, '_app', 'dati', 'payment')).map((f) =>
+        JSON.parse(readFileSync(join(s.dir, '_app', 'dati', 'payment', f), 'utf8')),
+      );
+      const cancel = cli(['annulla-pagamento', ...s.common, '--pagamento', payment.id]);
+      expect(cancel.code).toBe(0);
+      const args = ['--movimento', payment.transactionId, '--motivo', 'doppione'];
+      expect(cli(['escludi', ...s.common, ...args]).code).toBe(0);
+      const snap = snapshot(s.dir);
+      const op = ['--operazione', cancel.json.operationId];
+      const refused = cli(['annulla-riconciliazione', ...s.common, ...op]);
+      expect(refused.code).toBe(1);
+      expect(refused.json).toEqual({
+        status: 'rejected',
+        reason: 'has-dependents',
+        message: 'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
+        recordIds: [`mc-${payment.transactionId}`],
+      });
+      expect(snapshot(s.dir)).toEqual(snap);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'uscita su una regola in conflitto che comincia il giorno del movimento: 1 rule-conflict-dates',
+    async () => {
+      const s = await treConti();
+      const rule = (id, kind, extra = {}) => ({
+        v: 1,
+        rev: 1,
+        id,
+        direction: 'out',
+        accountId: 'acc-pulci',
+        key: 'iban:IT04X0542811101000000000401',
+        kind,
+        apartmentId: 'pulci',
+        ...extra,
+      });
+      await putRecords(s.dir, {
+        movementRule: [
+          rule('rule-a', 'altro'),
+          rule('rule-b', 'utenze', { validFrom: '2027-02-10' }),
+        ],
+      });
+      const snap = snapshot(s.dir);
+      const refused = cli([
+        'uscita',
+        ...s.common,
+        '--proposta',
+        'p-uscita-tx-p-fornitore-feb',
+        '--categoria',
+        'condominio',
+        '--appartamento',
+        'pulci',
+      ]);
+      expect(refused.code).toBe(1);
+      expect(refused.json).toEqual({
+        status: 'rejected',
+        reason: 'rule-conflict-dates',
+        message:
+          'Rifiutato: una regola in conflitto comincia il giorno del movimento o dopo; confermare «solo questa volta».',
+      });
+      expect(snapshot(s.dir)).toEqual(snap);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'annulla-riconciliazione di uno statement.import: 1 not-reconcile-operation',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const imported = journal(s.dir).find((o) => o.kind === 'statement.import');
+      const refused = cli(['annulla-riconciliazione', ...s.common, '--operazione', imported.id]);
+      expect([refused.code, refused.json.reason]).toEqual([1, 'not-reconcile-operation']);
+      const synonym = cli(['annulla-incassi', ...s.common, '--operazione', imported.id]);
+      expect([synonym.code, synonym.json.reason]).toEqual([1, 'not-reconcile-operation']);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
+  const SECRETS = [
+    'Mario Inventato',
+    'Luisa Inventata',
+    'Fornitore Inventato',
+    'ADDEBITO',
+    'BONIFICO',
+    'Bonifico',
+    'GIROCONTO',
+    'Giroconto',
+    'Restituzione',
+    '0542811101',
+    '9999999999',
+    'Banca',
+  ];
+  /** No name, IBAN, description or amount of the fixture in `text` (R107). */
+  const noData = (text) => {
+    for (const secret of SECRETS) expect(text).not.toContain(secret);
+    expect(text).not.toMatch(
+      /(?<![0-9a-f-])(50000|45000|30000|20000|18600|10104|10000|8496|6300|5000|4000|1500|18576)(?![0-9a-f-])/,
+    );
+    expect(text).not.toMatch(/[0-9],[0-9]{2}/);
+    expect(scanText(text)).toEqual([]);
+  };
+  const statement = (rows) =>
+    [incomeHeader, ...rows.map(([d, text, amount]) => `${d};${text};;${amount};D;;`)]
+      .join('\n')
+      .concat('\n');
+  const april = (s, accountId, rows) =>
+    cli([
+      'importa',
+      ...s.common,
+      '--conto',
+      accountId,
+      '--dal',
+      '2027-04-01',
+      '--al',
+      '2027-04-30',
+      write('aprile.csv', statement(rows)),
+    ]);
+  const classes = (dir) =>
+    readdirSync(join(dir, '_app', 'dati', 'movementClass')).map((f) =>
+      JSON.parse(readFileSync(join(dir, '_app', 'dati', 'movementClass', f), 'utf8')),
+    );
+  const NOTES = ['acc-berchet', 'acc-lovarini', 'acc-pulci'].map((accountId) => ({
+    accountId,
+    f24PatternMissing: true,
+    message: 'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
+  }));
+
+  it(
+    'riconcilia propone giroconto e uscita; giroconto e uscita confermati; poi automatici e saldi',
+    async () => {
+      const s = await treConti();
+      const outs = [];
+      const run = (args) => {
+        const r = cli(args);
+        outs.push(r.out);
+        return r;
+      };
+      const first = run(['riconcilia', ...s.common]);
+      expect(first.code).toBe(0);
+      expect(first.json.match.invalidGroups).toBe(0);
+      expect(first.json.transfers).toEqual({
+        written: 0,
+        completed: 0,
+        proposals: [
+          { id: 'p-giro-tx-l-giro', reason: 'new-pair', legCount: 1, legIds: ['tx-b-giro'] },
+        ],
+      });
+      expect(first.json.outgoing).toEqual({
+        written: 0,
+        proposals: [
+          { id: 'p-uscita-tx-p-fornitore-feb', step: 'uscita', reason: 'new-counterparty' },
+        ],
+        missingDocument: 0,
+      });
+      expect(first.json.notes).toEqual(NOTES);
+
+      const snap = snapshot(s.dir);
+      const uscita = ['uscita', ...s.common, '--proposta', 'p-uscita-tx-p-fornitore-feb'];
+      for (const bad of [
+        [...uscita, '--categoria', 'varie', '--appartamento', 'pulci'],
+        [...uscita, '--categoria', 'altro'],
+        [...uscita, '--appartamento', 'pulci'],
+        [...uscita, '--categoria', 'altro', '--appartamento', 'pulci', 'x'],
+        [...uscita, '--categoria', 'altro', '--appartamento', 'pulci', '--scopo', 'saldo'],
+        [...uscita, '--categoria', 'altro', '--appartamento', 'pulci', '--tipo', 'altro'],
+        ['riconcilia', ...s.common, '--scopo', 'saldo'],
+        ['riconcilia', ...s.common, '--f24'],
+        ['riconcilia', ...s.common, '--proposta', 'x'],
+        ['riconcilia', ...s.common, '--inquilino', 'x'],
+        ['riconcilia', ...s.common, '--appartamento', 'x'],
+        ['riconcilia', ...s.common, '--gambe', 'tx-b-giro'],
+        [
+          'giroconto',
+          ...s.common,
+          '--proposta',
+          'p-giro-tx-l-giro',
+          '--scopo',
+          'saldo',
+          '--gambe',
+          '',
+        ],
+        [
+          'giroconto',
+          ...s.common,
+          '--proposta',
+          'p-giro-tx-l-giro',
+          '--scopo',
+          'saldo',
+          '--gambe',
+          'tx-b-giro,',
+        ],
+        [
+          'giroconto',
+          ...s.common,
+          '--proposta',
+          'p-giro-tx-l-giro',
+          '--scopo',
+          'saldo',
+          '--gambe',
+          'tx-b-giro,tx-b-giro',
+        ],
+        [
+          'giroconto',
+          ...s.common,
+          '--proposta',
+          'p-giro-tx-l-giro',
+          '--scopo',
+          'saldo',
+          '--gambe',
+          'tx/b',
+        ],
+        ['saldi', ...s.common, '--categoria', 'altro'],
+        ['giroconto', ...s.common, '--proposta', 'p-giro-tx-l-giro', '--scopo', 'boh'],
+        ['giroconto', ...s.common, '--proposta', 'p-giro-tx-l-giro'],
+        ['giroconto', ...s.common, '--scopo', 'saldo'],
+        ['annulla-uscita', ...s.common],
+        ['annulla-uscita', ...s.common, '--movimento', 'tx-p-fornitore-mar', 'x'],
+      ]) {
+        expect([bad.slice(0, 1), run(bad).code]).toEqual([bad.slice(0, 1), 2]);
+      }
+      const f24 = run([...uscita, '--categoria', 'altro', '--appartamento', 'pulci', '--f24']);
+      expect([f24.code, f24.json.reason]).toEqual([1, 'f24-not-tasse']);
+      const nobody = run([...uscita, '--categoria', 'altro', '--appartamento', 'nessuno']);
+      expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-apartment']);
+      const hand = run(['annulla-uscita', ...s.common, '--movimento', 'tx-p-fornitore-mar']);
+      expect([hand.code, hand.json.reason]).toEqual([1, 'not-automatic']);
+      const none = run(['annulla-uscita', ...s.common, '--movimento', 'tx-l-giro']);
+      expect([none.code, none.json.reason]).toEqual([1, 'unknown-class']);
+      const shownNone = [
+        'giroconto',
+        ...s.common,
+        '--proposta',
+        'p-giro-tx-l-giro',
+        '--scopo',
+        'saldo',
+      ];
+      // Without --gambe the legs shown are none: one leg now is the state changed (R127).
+      const noLegs = run(shownNone);
+      expect([noLegs.code, noLegs.json.reason]).toEqual([1, 'unknown-proposal']);
+      const leg = [...shownNone, '--gambe', 'tx-b-giro'];
+      const notLeg = run([...leg, '--altra-gamba', 'tx-nessuno']);
+      expect([notLeg.code, notLeg.json.reason]).toEqual([1, 'leg-not-allowed']);
+      // A movement used since (here a payment of the income): the state changed (R127).
+      const used = run([...leg, '--altra-gamba', 'tx-b-affitto-gen']);
+      expect([used.code, used.json.reason]).toEqual([1, 'unknown-proposal']);
+      const gone = run([
+        'giroconto',
+        ...s.common,
+        '--proposta',
+        'p-giro-nessuno',
+        '--scopo',
+        'saldo',
+      ]);
+      expect([gone.code, gone.json.reason]).toEqual([1, 'unknown-proposal']);
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const giro = run(leg);
+      expect(giro.code).toBe(0);
+      expect(giro.json).toEqual({
+        status: 'confirmed',
+        operationId: giro.json.operationId,
+        transferId: 'tr-tx-l-giro',
+      });
+      const saved = JSON.parse(
+        readFileSync(join(s.dir, '_app', 'dati', 'transfer', 'tr-tx-l-giro.json'), 'utf8'),
+      );
+      expect([saved.inTransactionId, saved.purpose, saved.oneOff]).toEqual([
+        'tx-b-giro',
+        'saldo',
+        undefined,
+      ]);
+      const out = run([...uscita, '--categoria', 'altro', '--appartamento', 'pulci']);
+      expect(out.code).toBe(0);
+      expect(out.json).toEqual({
+        status: 'confirmed',
+        operationId: out.json.operationId,
+        classId: 'mc-tx-p-fornitore-feb',
+        ruleId: 'rule-tx-p-fornitore-feb',
+      });
+
+      // The second statements: the same pair and the same supplier, now automatic.
+      const iban = {
+        berchet: 'IT85X0542811101000000000301',
+        supplier: 'IT04X0542811101000000000401',
+      };
+      expect(
+        april(s, 'acc-lovarini', [['01/04/2027', `Giroconto ${iban.berchet}`, '200,00']]).code,
+      ).toBe(0);
+      expect(
+        april(s, 'acc-pulci', [['10/04/2027', `Bonifico ${iban.supplier}`, '40,00']]).code,
+      ).toBe(0);
+      const second = run(['riconcilia', ...s.common]);
+      expect(second.code).toBe(0);
+      expect(second.json.transfers).toMatchObject({ written: 1, proposals: [] });
+      expect(second.json.outgoing).toMatchObject({ written: 1, proposals: [], missingDocument: 0 });
+      const ops = journal(s.dir);
+      const transferOp = ops.find((o) => o.kind === 'transfer.reconcile');
+      expect(second.json.transfers.operationId).toBe(transferOp.id);
+      expect(second.json.outgoing.operationId).toBe(
+        ops.find((o) => o.kind === 'outgoing.reconcile').id,
+      );
+      expect(run(['riconcilia', ...s.common]).json).toMatchObject({
+        transfers: { written: 0 },
+        outgoing: { written: 0 },
+      });
+
+      const saldi = run(['saldi', ...s.common]);
+      expect(saldi.code).toBe(0);
+      expect(saldi.json).toEqual({
+        status: 'ok',
+        pairs: [{ creditorApartmentId: 'lovarini', debtorApartmentId: 'berchet', items: 2 }],
+        toSplit: 0,
+        unverified: 0,
+      });
+
+      // The automatic class is cancelled by itself, and the cancellation undone.
+      const auto = classes(s.dir).find((c) => c.ruleId !== undefined && c.deleted !== true);
+      const cancel = run(['annulla-uscita', ...s.common, '--movimento', auto.transactionId]);
+      expect(cancel.code).toBe(0);
+      expect(cancel.json).toEqual({ status: 'cancelled', operationId: cancel.json.operationId });
+      for (const id of [cancel.json.operationId, transferOp.id, giro.json.operationId]) {
+        const undo = run(['annulla-riconciliazione', ...s.common, '--operazione', id]);
+        expect([id, undo.code]).toEqual([id, 0]);
+      }
+      expect(run(['saldi', ...s.common]).json.pairs).toEqual([]);
+      noData(outs.join(''));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'saldi --dettagli dà l’importo e le voci: Lovarini deve a Berchet 185,76 € (esempio del disegno)',
+    async () => {
+      const dir = join(root, `d${String((counter += 1))}`);
+      mkdirSync(dir);
+      const base = { v: 1, rev: 1 };
+      const account = (id, apartmentId) => ({
+        ...base,
+        id,
+        apartmentId,
+        label: 'Conto',
+        bankProfileId: 'bp',
+      });
+      const tx = (id, date, amount) => ({
+        ...base,
+        id,
+        apartmentId: 'berchet',
+        accountId: 'acc-berchet',
+        date,
+        amount,
+        description: 'ADDEBITO',
+        statementHash: 's',
+      });
+      const instalment = (id, extra) => ({
+        ...base,
+        id,
+        kind: 'condominio',
+        esercizio: '2026-27',
+        rateIndex: 1,
+        rateCount: 4,
+        dueDate: '2027-04-01',
+        rata: 30000,
+        quotaProprieta: 0,
+        conguaglioPrec: 0,
+        coversFrom: '2027-04',
+        coversTo: '2027-06',
+        ...extra,
+      });
+      const match = (itemId, transactionId, date, amount, part = 'amount') => ({
+        ...base,
+        id: `m-instalment-${itemId}-${part}-${transactionId}`,
+        itemType: 'instalment',
+        itemId,
+        transactionId,
+        transactionDate: date,
+        amount,
+        part,
+        confirmed: true,
+        by: 'auto',
+      });
+      const tari = { kind: 'tari', esercizio: '2027', coversFrom: '2027-01', coversTo: '2027-12' };
+      const shared = (weight) => ({ groupId: 'avviso-1', groupTotal: 18600, weight });
+      await putRecords(dir, {
+        account: [account('acc-berchet', 'berchet'), account('acc-lovarini', 'lovarini')],
+        instalment: [
+          instalment('tari-b', {
+            ...tari,
+            apartmentId: 'berchet',
+            rata: 10104,
+            shared: shared(10104),
+          }),
+          instalment('tari-l', {
+            ...tari,
+            apartmentId: 'lovarini',
+            paidFromApartmentId: 'berchet',
+            rata: 8496,
+            shared: shared(8496),
+          }),
+          instalment('condo-l', { apartmentId: 'lovarini', paidFromApartmentId: 'berchet' }),
+        ],
+        match: [
+          match('tari-b', 't-tari', '2027-03-31', 10104),
+          match('tari-l', 't-tari', '2027-03-31', 8496),
+          match('condo-l', 't-condo', '2027-04-05', 30000),
+          match('condo-l', 't-comm', '2027-04-05', 80, 'commission'),
+        ],
+        transaction: [
+          tx('t-tari', '2027-03-31', -18600),
+          tx('t-condo', '2027-04-05', -30000),
+          tx('t-comm', '2027-04-05', -80),
+          tx('t-forn', '2027-04-10', -5000),
+        ],
+        movementClass: [
+          {
+            ...base,
+            id: 'mc-t-forn',
+            transactionId: 't-forn',
+            kind: 'altro',
+            apartmentId: 'berchet',
+          },
+        ],
+        transfer: [
+          {
+            ...base,
+            id: 'tr-1',
+            fromAccountId: 'acc-lovarini',
+            toAccountId: 'acc-berchet',
+            amount: 20000,
+            date: '2027-04-20',
+            purpose: 'saldo',
+            source: 'manual',
+          },
+        ],
+      });
+      const common = ['--cartella', dir, '--ora', ORA];
+      const plain = cli(['saldi', ...common]);
+      expect(plain.code).toBe(0);
+      expect(plain.json).toEqual({
+        status: 'ok',
+        pairs: [{ creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', items: 4 }],
+        toSplit: 0,
+        unverified: 0,
+      });
+      noData(plain.out);
+      const details = cli(['saldi', ...common, '--dettagli']);
+      expect(details.code).toBe(0);
+      expect(details.json.pairs).toEqual([
+        {
+          creditorApartmentId: 'berchet',
+          debtorApartmentId: 'lovarini',
+          amount: 18576,
+          items: [
+            expect.objectContaining({ kind: 'rata', amount: 8496, refId: 'tari-l' }),
+            expect.objectContaining({ kind: 'commissione', amount: 80, refId: 'condo-l' }),
+            expect.objectContaining({ kind: 'rata', amount: 30000, refId: 'condo-l' }),
+            expect.objectContaining({ kind: 'giroconto', amount: -20000, refId: 'tr-1' }),
+          ],
+        },
+      ]);
+      expect([details.json.toSplit, details.json.unverified]).toEqual([[], []]);
+      expect(cli(['saldi', ...common, 'x']).code).toBe(2);
+      expect(cli(['saldi', ...common, '--prova']).code).toBe(2);
+
+      // A record changed on disk behind the journal: refused, as every reconciliation (R113).
+      await commitChange(
+        new FsStore(dir),
+        {
+          profileId: 'p1',
+          kind: 'apartment.create',
+          summary: 'x',
+          changes: [
+            { path: recordPath('apartment', 'apt'), before: undefined, after: apartment() },
+          ],
+        },
+        () => ORA,
+        () => 'seed-1',
+      );
+      const file = join(dir, '_app', 'dati', 'apartment', 'apt.json');
+      const changed = { ...JSON.parse(readFileSync(file, 'utf8')), posti: 9 };
+      writeFileSync(file, JSON.stringify(changed));
+      const refused = cli(['saldi', ...common]);
+      expect([refused.code, refused.json.reason]).toEqual([1, 'inconsistent-store']);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'giroconto-manuale e uscita-inquilino: argomenti 2, rifiuti 1, scritture annullabili',
+    async () => {
+      // A profile that recognises the F24: no note (R129).
+      const s = await treConti({ f24Pattern: '^PAGAMENTO F24\\b' });
+      const outs = [];
+      const run = (args) => {
+        const r = cli(args);
+        outs.push(r.out);
+        return r;
+      };
+      const manual = (extra) => [
+        'giroconto-manuale',
+        ...s.common,
+        '--da',
+        'acc-lovarini',
+        '--a',
+        'acc-berchet',
+        '--data',
+        '2027-04-20',
+        '--scopo',
+        'saldo',
+        ...extra,
+      ];
+      const snap = snapshot(s.dir);
+      for (const bad of [
+        manual([]),
+        manual(['--importo', 'cinquanta']),
+        manual(['--importo', '0,00']),
+        manual(['--importo', '-50,00']),
+        manual(['--importo', '50,00', '--data', '2027-13-01']),
+        manual(['--importo', '50,00', '--scopo', 'boh']),
+        manual(['--importo', '50,00', 'x']),
+        manual(['--importo', '50,00', '--dettagli']),
+        ['riconcilia', ...s.common, '--importo', '50,00'],
+      ]) {
+        expect(run(bad).code).toBe(2);
+      }
+      const unknown = run(manual(['--importo', '50,00', '--a', 'acc-nessuno']));
+      expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-account']);
+      const same = run(manual(['--importo', '50,00', '--a', 'acc-lovarini']));
+      expect([same.code, same.json.reason]).toEqual([1, 'same-account']);
+      expect(snapshot(s.dir)).toEqual(snap);
+      const recorded = run(manual(['--importo', '50,00']));
+      expect(recorded.code).toBe(0);
+      expect(recorded.json).toEqual({
+        status: 'recorded',
+        operationId: recorded.json.operationId,
+        transferId: recorded.json.transferId,
+      });
+      const saved = JSON.parse(
+        readFileSync(
+          join(s.dir, '_app', 'dati', 'transfer', `${recorded.json.transferId}.json`),
+          'utf8',
+        ),
+      );
+      expect([saved.amount, saved.source, saved.fromAccountId]).toEqual([
+        5000,
+        'manual',
+        'acc-lovarini',
+      ]);
+      const undo = run([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        recorded.json.operationId,
+      ]);
+      expect(undo.code).toBe(0);
+
+      // A refund to the tenant of Lovarini, from the account of Lovarini.
+      expect(
+        april(s, 'acc-lovarini', [
+          ['15/04/2027', 'Restituzione IT79X0542811101000000000312', '100,00'],
+        ]).code,
+      ).toBe(0);
+      const rec = run(['riconcilia', ...s.common]);
+      const proposal = rec.json.outgoing.proposals.find(
+        (p) => p.id !== 'p-uscita-tx-p-fornitore-feb',
+      );
+      expect(proposal).toMatchObject({ step: 'uscita', reason: 'new-counterparty' });
+      const tenant = (extra) => [
+        'uscita-inquilino',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't-luisa',
+        ...extra,
+      ];
+      const snap2 = snapshot(s.dir);
+      for (const bad of [
+        tenant(['--tipo', 'canone', '--mese', '2027-04']),
+        tenant(['--tipo', 'regalo', '--mese', '2027-04']),
+        tenant(['--tipo', 'caparra', '--mese', '2027-4']),
+        tenant(['--tipo', 'caparra', '--mese', '2027-13']),
+        tenant(['--tipo', 'caparra']),
+        tenant(['--mese', '2027-04']),
+        tenant(['--tipo', 'caparra', '--mese', '2027-04', '--solo-questa-volta']),
+      ]) {
+        expect(run(bad).code).toBe(2);
+      }
+      const other = run([
+        'uscita-inquilino',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't-mario',
+        '--tipo',
+        'caparra',
+        '--mese',
+        '2027-04',
+      ]);
+      expect([other.code, other.json.reason]).toEqual([1, 'tenant-not-allowed']);
+      expect(snapshot(s.dir)).toEqual(snap2);
+      const paid = run(tenant(['--tipo', 'caparra', '--mese', '2027-04']));
+      expect(paid.code).toBe(0);
+      const txId = proposal.id.replace(/^p-uscita-/, '');
+      expect(paid.json).toEqual({
+        status: 'confirmed',
+        operationId: paid.json.operationId,
+        paymentId: `pay-${txId}-1`,
+      });
+      const again = run(tenant(['--tipo', 'caparra', '--mese', '2027-04']));
+      expect([again.code, again.json.reason]).toEqual([1, 'unknown-proposal']);
+      const back = run([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        paid.json.operationId,
+      ]);
+      expect(back.code).toBe(0);
+      expect(rec.json.notes).toEqual([]);
+
+      // «Solo questa volta»: no rule for the outgoing, a oneOff transfer.
+      const once = run([
+        'uscita',
+        ...s.common,
+        '--proposta',
+        'p-uscita-tx-p-fornitore-feb',
+        '--categoria',
+        'altro',
+        '--appartamento',
+        'pulci',
+        '--solo-questa-volta',
+      ]);
+      expect(once.code).toBe(0);
+      expect(once.json).toEqual({
+        status: 'confirmed',
+        operationId: once.json.operationId,
+        classId: 'mc-tx-p-fornitore-feb',
+      });
+      const giro = ['giroconto', ...s.common, '--proposta', 'p-giro-tx-l-giro', '--scopo', 'saldo'];
+      const oneOff = run([...giro, '--gambe', 'tx-b-giro', '--solo-questa-volta']);
+      expect(oneOff.code).toBe(0);
+      const transferFile = join(s.dir, '_app', 'dati', 'transfer', 'tr-tx-l-giro.json');
+      expect(JSON.parse(readFileSync(transferFile, 'utf8')).oneOff).toBe(true);
+      expect(
+        run(['annulla-riconciliazione', ...s.common, '--operazione', oneOff.json.operationId]).code,
+      ).toBe(0);
+
+      // The only leg shown is excluded before the confirmation: the state changed, nothing written.
+      expect(
+        run(['escludi', ...s.common, '--movimento', 'tx-b-giro', '--motivo', 'doppione']).code,
+      ).toBe(0);
+      const snap3 = snapshot(s.dir);
+      const changed = run([...giro, '--gambe', 'tx-b-giro']);
+      expect([changed.code, changed.json.reason]).toEqual([1, 'unknown-proposal']);
+      expect(snapshot(s.dir)).toEqual(snap3);
+      noData(outs.join(''));
     },
     TIMEOUT,
   );

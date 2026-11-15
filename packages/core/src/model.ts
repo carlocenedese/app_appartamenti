@@ -24,6 +24,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import { isoDate, yearMonth } from './period';
 import { normaliseIban } from './iban';
+import { isSafePattern } from './safe-pattern';
 import { foldText } from './text';
 import { SEMVER_PATTERN } from './version';
 
@@ -451,6 +452,82 @@ export const BillMatchSchema = RecordBaseSchema.extend({
 });
 export type BillMatch = z.infer<typeof BillMatchSchema>;
 
+/** What a movement is (plan 3c): left out of everything (`escluso`) or a category of expense. */
+export const MovementKindSchema = z.enum(['escluso', 'utenze', 'tasse', 'condominio', 'altro']);
+export type MovementKind = z.infer<typeof MovementKindSchema>;
+export const OutgoingKindSchema = MovementKindSchema.exclude(['escluso']);
+export type OutgoingKind = z.infer<typeof OutgoingKindSchema>;
+export const ExcludeReasonSchema = z.enum(['doppione', 'non-contabilizzato', 'non-reale']);
+export type ExcludeReason = z.infer<typeof ExcludeReasonSchema>;
+
+/** The one class of a movement (`mc-<transactionId>`): no description, no name. */
+export const MovementClassSchema = RecordBaseSchema.extend({
+  transactionId: NonEmptyString,
+  kind: MovementKindSchema,
+  excludeReason: ExcludeReasonSchema.optional(),
+  /** Where the expense goes; absent for an exclusion. */
+  apartmentId: NonEmptyString.optional(),
+  f24: z.literal(true).optional(),
+  /** The rule that produced it, for an automatic one. */
+  ruleId: NonEmptyString.optional(),
+})
+  .refine((c) => c.id === `mc-${c.transactionId}`, {
+    message: 'The id must be mc-<transactionId>',
+    path: ['id'],
+  })
+  .refine((c) => (c.kind === 'escluso') === (c.excludeReason !== undefined), {
+    message: 'excludeReason is there exactly for kind escluso',
+    path: ['excludeReason'],
+  })
+  .refine((c) => (c.kind === 'escluso') !== (c.apartmentId !== undefined), {
+    message: 'apartmentId is there exactly when kind is not escluso',
+    path: ['apartmentId'],
+  })
+  .refine((c) => c.f24 === undefined || c.kind === 'tasse', {
+    message: 'f24 only with kind tasse',
+    path: ['f24'],
+  })
+  .refine((c) => c.ruleId === undefined || c.kind !== 'escluso', {
+    message: 'An exclusion never comes from a rule',
+    path: ['ruleId'],
+  })
+  .meta({
+    description:
+      'id is mc-<transactionId>. excludeReason is present if and only if kind is escluso; ' +
+      'apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with escluso.',
+  });
+export type MovementClass = z.infer<typeof MovementClassSchema>;
+
+/**
+ * A rule learnt from a confirmation (`rule-<transactionId>`, plan 3c, question 1): the movements
+ * of `accountId` in `direction` whose counterparty has `key` get `kind` and `apartmentId`, from
+ * `validFrom` up to `validTo` (both optional); the amount does not count. Incoming only by IBAN
+ * (question 2); never outgoing on the IBAN of a valid payer (R130).
+ */
+export const MovementRuleSchema = RecordBaseSchema.extend({
+  direction: z.enum(['in', 'out']),
+  accountId: NonEmptyString,
+  key: PayerKeySchema,
+  kind: OutgoingKindSchema,
+  apartmentId: NonEmptyString,
+  /** Set when the rule took the place of older rules in conflict (user1, 15 Nov 2026). */
+  validFrom: ISODateSchema.optional(),
+  validTo: ISODateSchema.optional(),
+})
+  .refine((r) => r.direction === 'out' || r.key.startsWith('iban:'), {
+    message: 'An incoming rule needs an iban key',
+    path: ['key'],
+  })
+  .refine(
+    (r) => r.validFrom === undefined || r.validTo === undefined || notAfter(r.validFrom, r.validTo),
+    { message: 'The rule ends before it starts', path: ['validTo'] },
+  )
+  .meta({
+    description:
+      'With direction in, key must be an iban: key. When both are present, validFrom must not be after validTo.',
+  });
+export type MovementRule = z.infer<typeof MovementRuleSchema>;
+
 /** A note written by a person (not the automatic notes of the app). */
 export const NoteSchema = RecordBaseSchema.extend({
   targetType: z.enum([
@@ -758,6 +835,8 @@ export const BankProfileSchema = RecordBaseSchema.extend({
   periodPattern: PatternSchema.optional(),
   /** One group: the account number or IBAN written in the file. */
   accountPattern: PatternSchema.optional(),
+  /** Recognises an F24 in the description of a movement (plan 3c, task 7; R129). */
+  f24Pattern: PatternSchema.optional(),
   /**
    * Lines above the header written as "label, value to its right" (the label is compared with
    * `foldText`, the value is the first non-empty cell to its right): the period, the account (one
@@ -806,6 +885,10 @@ export const BankProfileSchema = RecordBaseSchema.extend({
     message: 'accountPattern needs one group',
     path: ['accountPattern'],
   })
+  .refine((p) => p.f24Pattern === undefined || isSafePattern(p.f24Pattern), {
+    message: 'f24Pattern is outside the safe subset of R102',
+    path: ['f24Pattern'],
+  })
   .refine((p) => (p.preamble?.periodFrom === undefined) === (p.preamble?.periodTo === undefined), {
     message: 'preamble needs periodFrom and periodTo together',
     path: ['preamble'],
@@ -828,7 +911,8 @@ export const BankProfileSchema = RecordBaseSchema.extend({
       'columns.amount and signValues; columns.pending needs pendingValues; validFrom must not be ' +
       'after validTo; periodPattern has at least two capture groups, accountPattern at least one; ' +
       'preamble has periodFrom and periodTo together, its account pattern one group, and it does not ' +
-      'coexist with periodPattern (period) or accountPattern (account).',
+      'coexist with periodPattern (period) or accountPattern (account); f24Pattern is in the safe ' +
+      'subset of R102.',
   });
 export type BankProfile = z.infer<typeof BankProfileSchema>;
 
@@ -857,6 +941,49 @@ export const StatementSchema = RecordBaseSchema.extend({
   .meta({ description: 'from must not be after to. The id is the fingerprint of the file.' });
 export type Statement = z.infer<typeof StatementSchema>;
 
+// --- Transfers between own accounts (plan 3c, task 5) ----------------------------------------
+
+/** What a transfer is for: only `saldo` enters the balance between the apartments. */
+export const TransferPurposeSchema = z.enum(['saldo', 'mutuo', 'altro']);
+export type TransferPurpose = z.infer<typeof TransferPurposeSchema>;
+
+/**
+ * Money moved from one own account to another: the outgoing and incoming movements (its legs),
+ * one of them at least, or none for a repayment recorded by hand (`manual`, section 24).
+ */
+export const TransferSchema = RecordBaseSchema.extend({
+  fromAccountId: NonEmptyString,
+  toAccountId: NonEmptyString,
+  amount: z
+    .int()
+    .min(1)
+    .transform((n): Cents => cents(n)),
+  date: ISODateSchema,
+  outTransactionId: NonEmptyString.optional(),
+  inTransactionId: NonEmptyString.optional(),
+  purpose: TransferPurposeSchema,
+  /** `confirmed` by a person, `auto` from a pair confirmed before, `manual` without movements. */
+  source: z.enum(['confirmed', 'auto', 'manual']),
+  /** «Solo questa volta»: the pair does not become automatic. */
+  oneOff: z.literal(true).optional(),
+})
+  .refine((t) => t.fromAccountId !== t.toAccountId, {
+    message: 'The two accounts must differ',
+    path: ['toAccountId'],
+  })
+  .refine(
+    (t) =>
+      (t.source === 'manual') ===
+      (t.outTransactionId === undefined && t.inTransactionId === undefined),
+    { message: 'source is manual exactly when there is no movement', path: ['source'] },
+  )
+  .meta({
+    description:
+      'amount is positive; fromAccountId and toAccountId differ; source is manual if and only if ' +
+      'neither outTransactionId nor inTransactionId is there.',
+  });
+export type Transfer = z.infer<typeof TransferSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -879,6 +1006,9 @@ export const recordSchemas = {
   statement: StatementSchema,
   tenant: TenantSchema,
   payer: PayerSchema,
+  movementClass: MovementClassSchema,
+  movementRule: MovementRuleSchema,
+  transfer: TransferSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

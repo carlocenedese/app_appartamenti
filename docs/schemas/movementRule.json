@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "in",
+        "out"
+      ]
+    },
+    "accountId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "key": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "utenze",
+        "tasse",
+        "condominio",
+        "altro"
+      ]
+    },
+    "apartmentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "validFrom": {
+      "format": "date",
+      "description": "Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists in the month needs a \"format\": \"date\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
+    },
+    "validTo": {
+      "format": "date",
+      "description": "Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists in the month needs a \"format\": \"date\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "direction",
+    "accountId",
+    "key",
+    "kind",
+    "apartmentId"
+  ],
+  "description": "With direction in, key must be an iban: key. When both are present, validFrom must not be after validTo."
+}

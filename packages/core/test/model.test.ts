@@ -14,6 +14,8 @@ import {
   BillSchema,
   ContractSchema,
   InstalmentSchema,
+  MovementClassSchema,
+  MovementRuleSchema,
   NoteSchema,
   PaymentSchema,
   SupplierProfileSchema,
@@ -199,6 +201,33 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     confirmed: true,
     by: 'auto',
   },
+  movementClass: {
+    ...base,
+    id: 'mc-t1',
+    transactionId: 't1',
+    kind: 'escluso',
+    excludeReason: 'doppione',
+  },
+  movementRule: {
+    ...base,
+    id: 'rule-t1',
+    direction: 'out',
+    accountId: 'acc-1',
+    key: 'iban:IT60X0542811101000000123456',
+    kind: 'altro',
+    apartmentId: 'apt-1',
+  },
+  transfer: {
+    ...base,
+    id: 'tr-t1',
+    fromAccountId: 'acc-1',
+    toAccountId: 'acc-2',
+    amount: 20000,
+    date: '2027-04-02',
+    outTransactionId: 't1',
+    purpose: 'saldo',
+    source: 'confirmed',
+  },
   supplierProfile: {
     ...base,
     supplier: 'Fornitore Luce',
@@ -284,6 +313,8 @@ describe('recordSchemas', () => {
         'contract',
         'instalment',
         'match',
+        'movementClass',
+        'movementRule',
         'note',
         'payment',
         'supplierProfile',
@@ -293,6 +324,7 @@ describe('recordSchemas', () => {
         'user',
         'tenant',
         'payer',
+        'transfer',
       ].sort(),
     );
   });
@@ -310,6 +342,8 @@ describe('recordSchemas', () => {
     expect(recordSchemas.match).toBe(BillMatchSchema);
     expect(recordSchemas.note).toBe(NoteSchema);
     expect(recordSchemas.supplierProfile).toBe(SupplierProfileSchema);
+    expect(recordSchemas.movementClass).toBe(MovementClassSchema);
+    expect(recordSchemas.movementRule).toBe(MovementRuleSchema);
   });
 });
 
@@ -1317,5 +1351,43 @@ describe('tenant, payer and rentLateDays (plan 3b)', () => {
     expect([0, 10, 31].map(parse)).toEqual([true, true, true]);
     expect(ApartmentSchema.safeParse(validRecords.apartment).success).toBe(true);
     expect(DEFAULT_RENT_LATE_DAYS).toBe(10);
+  });
+});
+
+describe('MovementClassSchema (plan 3c, task 1)', () => {
+  const ok = (changes: Record<string, unknown>) =>
+    MovementClassSchema.safeParse(changed(validRecords.movementClass, changes)).success;
+
+  it('accepts an exclusion with its reason, and a category with its apartment', () => {
+    expect(
+      MovementClassSchema.parse({
+        id: 'mc-t1',
+        v: 1,
+        rev: 1,
+        transactionId: 't1',
+        kind: 'escluso',
+        excludeReason: 'doppione',
+      }),
+    ).toMatchObject({ kind: 'escluso', excludeReason: 'doppione' });
+    expect(ok({ kind: 'utenze', excludeReason: undefined, apartmentId: 'apt-1' })).toBe(true);
+    expect(ok({ kind: 'tasse', excludeReason: undefined, apartmentId: 'apt-1', f24: true })).toBe(
+      true,
+    );
+    expect(ok({ kind: 'altro', excludeReason: undefined, apartmentId: 'a', ruleId: 'r' })).toBe(
+      true,
+    );
+  });
+
+  it('refuses what the refinements forbid', () => {
+    expect(ok({ excludeReason: undefined })).toBe(false);
+    expect(ok({ apartmentId: 'apt-1' })).toBe(false);
+    expect(ok({ kind: 'utenze', excludeReason: undefined })).toBe(false);
+    expect(ok({ kind: 'utenze', apartmentId: 'apt-1' })).toBe(false);
+    expect(ok({ kind: 'altro', excludeReason: undefined, apartmentId: 'a', f24: true })).toBe(
+      false,
+    );
+    expect(ok({ ruleId: 'r' })).toBe(false);
+    expect(ok({ id: 'mc-t2' })).toBe(false);
+    expect(ok({ excludeReason: 'altro' })).toBe(false);
   });
 });

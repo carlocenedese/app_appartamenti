@@ -15,10 +15,14 @@ import {
   ApartmentSchema,
   BankProfileSchema,
   BankTransactionSchema,
+  BillMatchSchema,
+  MovementClassSchema,
   PaymentSchema,
   StatementSchema,
+  TransferSchema,
 } from './model';
 import type { BankTransaction, Statement } from './model';
+import { legsOf } from './movements';
 import { normaliseIban } from './iban';
 import { parseOrThrow } from './parse';
 import type { ISODate } from './period';
@@ -325,7 +329,8 @@ export async function resolveHeld(
  * held rows), never the movements it only found already there. Refused, writing nothing, when
  * another statement that is not deleted lists one of the movements that would be deleted, or
  * (`dependent-payments`, with the ids) when a live payment of any source points to one of them:
- * the payments are undone first (R114).
+ * the payments are undone first (R114); then (`dependent-records`) for the live confirmed matches,
+ * the live classes other than an exclusion and the live transfers on them (R126, plan 3c task 5).
  */
 export async function undoImport(
   store: Store,
@@ -337,6 +342,7 @@ export async function undoImport(
   | { status: 'undone'; operation: Operation }
   | { status: 'refused'; reason: 'shared-transactions' | 'held-duplicates' | 'later-changes' }
   | { status: 'refused'; reason: 'dependent-payments'; paymentIds: string[] }
+  | { status: 'refused'; reason: 'dependent-records'; recordIds: string[] }
 > {
   const path = recordPath('statement', statementId);
   const { operations } = await readJournal(store);
@@ -375,6 +381,25 @@ export async function undoImport(
     .map((p) => p.id)
     .sort(compareText);
   if (paymentIds.length > 0) return { status: 'refused', reason: 'dependent-payments', paymentIds };
+  // Plan 3c: so do a live confirmed match (not assumed), a live class that is not an exclusion and
+  // a live transfer with a leg there; an exclusion stays and survives a new import of the same
+  // file («Mie scelte» 4).
+  const goes = (r: { transactionId: string }) =>
+    going.has(recordPath('transaction', r.transactionId));
+  const recordIds = [
+    ...(await loadAll(store, 'match', BillMatchSchema)).records.filter(
+      (m) => m.confirmed && m.by !== 'assumed' && goes(m),
+    ),
+    ...(await loadAll(store, 'movementClass', MovementClassSchema)).records.filter(
+      (c) => c.kind !== 'escluso' && goes(c),
+    ),
+    ...(await loadAll(store, 'transfer', TransferSchema)).records.filter((t) =>
+      legsOf(t).some((transactionId) => goes({ transactionId })),
+    ),
+  ]
+    .map((r) => r.id)
+    .sort(compareText);
+  if (recordIds.length > 0) return { status: 'refused', reason: 'dependent-records', recordIds };
 
   // A held row of another statement of the same account that looks like a movement going away
   // (waiting, or excluded) leans on it: deleting it would lose the payment.

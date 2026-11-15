@@ -11,14 +11,18 @@ import {
   AccountSchema,
   ApartmentSchema,
   BankTransactionSchema,
+  BillMatchSchema,
+  MovementClassSchema,
   PayerSchema,
   PaymentSchema,
   StatementSchema,
   TenancySchema,
   TenantSchema,
+  TransferSchema,
 } from './model';
 import type { Payment } from './model';
 import type { Cents } from './money';
+import { movementUses } from './movements';
 import { parseOrThrow } from './parse';
 import { firstPresenceDay } from './payers';
 import type { YearMonth } from './period';
@@ -51,19 +55,35 @@ export async function saveTenant(
   );
 }
 
-/** Every record the reconciliation reads, deleted ones included (it filters them itself), and the journal. */
-async function loadIncomeState(store: Store) {
+/**
+ * Every record the reconciliation reads, deleted ones included (it filters them itself), and the
+ * journal; `alsoUsed` are movements a phase before would use (a dry run writes nothing).
+ */
+async function loadIncomeState(store: Store, alsoUsed: ReadonlySet<string> = new Set()) {
   const all = { includeDeleted: true };
+  const payments = (await loadAll(store, 'payment', PaymentSchema, all)).records;
+  const uses = movementUses({
+    classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
+    payments,
+    matches: (await loadAll(store, 'match', BillMatchSchema, all)).records,
+    transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,
+  });
   return {
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
     apartments: (await loadAll(store, 'apartment', ApartmentSchema, all)).records,
     tenancies: (await loadAll(store, 'tenancy', TenancySchema, all)).records,
     tenants: (await loadAll(store, 'tenant', TenantSchema, all)).records,
     payers: (await loadAll(store, 'payer', PayerSchema, all)).records,
-    payments: (await loadAll(store, 'payment', PaymentSchema, all)).records,
+    payments,
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
     operations: (await readJournal(store)).operations,
+    // Excluded, matched, classified movements and transfer legs are left out of the income (plan 3c, D2); a
+    // payment is reconcileIncome's own business.
+    usedTransactionIds: new Set([
+      ...alsoUsed,
+      ...[...uses].filter(([, list]) => list.some((u) => u !== 'pagamento')).map(([id]) => id),
+    ]),
   };
 }
 
@@ -86,29 +106,19 @@ export type ReconcileRunResult =
 /**
  * Writes the automatic payments of `reconcileIncome` in one `income.reconcile` operation; none
  * when there are none or with `dryRun`. Running it again on the same state writes nothing.
+ * `alsoUsed`: movements to skip as well (the matches a dry run of `runReconciliation` would write).
  */
 export async function runReconcile(
   store: Store,
   profileId: string,
   clock: () => string,
   newId: () => string,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; alsoUsed?: ReadonlySet<string> } = {},
 ): Promise<ReconcileRunResult> {
   if ((await checkConsistency(store)).length > 0) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
-  const state = await loadIncomeState(store);
-  const { payments, proposals, skipped } = reconcileIncome(state);
-  const result = {
-    status: 'reconciled' as const,
-    written: payments.length,
-    proposals,
-    skipped: skipped.length,
-    arrears: rentArrears({
-      ...state,
-      payments: [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
-    }),
-  };
+  const { state, payments, result } = await planIncome(store, options.alsoUsed);
   if (options.dryRun === true || payments.length === 0) return result;
 
   const stored = new Map(state.payments.map((p) => [p.id, p]));
@@ -120,7 +130,7 @@ export async function runReconcile(
       profileId,
       kind: 'income.reconcile',
       ...(apartments.size === 1 && apartmentId !== undefined ? { apartmentId } : {}),
-      summary: `Riconciliati gli incassi: ${plural(payments.length, 'automatico', 'automatici')}, ${String(proposals.length)} da rivedere.`,
+      summary: `Riconciliati gli incassi: ${plural(payments.length, 'automatico', 'automatici')}, ${String(result.proposals.length)} da rivedere.`,
       changes: payments.map((p) => ({
         path: recordPath('payment', p.id),
         before: stored.get(p.id),
@@ -131,6 +141,26 @@ export async function runReconcile(
     newId,
   );
   return { ...result, operationId: operation.id };
+}
+
+/**
+ * What `runReconcile` would write on the current state, without checking it or writing: its
+ * result and the automatic payments. `runReconciliation` reads it for a dry run (as `planMatch`).
+ */
+export async function planIncome(store: Store, alsoUsed?: ReadonlySet<string>) {
+  const state = await loadIncomeState(store, alsoUsed);
+  const { payments, proposals, skipped } = reconcileIncome(state);
+  const result = {
+    status: 'reconciled' as const,
+    written: payments.length,
+    proposals,
+    skipped: skipped.length,
+    arrears: rentArrears({
+      ...state,
+      payments: [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
+    }),
+  };
+  return { state, payments, result };
 }
 
 export interface ConfirmIncomeInput {

@@ -242,6 +242,15 @@ describe('the profile of the bank list of operations', () => {
     expect(() => withPreamble({ rowCount: { label: '' } })).toThrow();
     expect(withPreamble({}).preamble).toEqual({});
   });
+
+  // An invented text: the real description of an F24 at the bank is not verified yet (R129).
+  it('takes an f24Pattern only in the safe subset (plan 3c, task 7)', () => {
+    const f24 = (f24Pattern: string) => BankProfileSchema.safeParse({ ...real, f24Pattern });
+    expect(f24('^PAGAMENTO F24\\b').success).toBe(true);
+    expect(f24('(a+)+').success).toBe(false);
+    expect(f24('(?<=x)F24').success).toBe(false);
+    expect(f24('F24(').success).toBe(false);
+  });
 });
 
 describe('importing the bank list of operations', () => {

@@ -28,7 +28,7 @@
  * The result never depends on the order of the input: everything is sorted by id.
  */
 import { BillMatchSchema } from './model';
-import type { BankTransaction, Bill, BillMatch, Instalment } from './model';
+import type { Account, BankTransaction, Bill, BillMatch, Instalment, Statement } from './model';
 import { commissionLinks, commissionParts } from './commission';
 import { cents } from './money';
 import type { Cents } from './money';
@@ -122,19 +122,31 @@ export function expectedDebit(item: Bill | Instalment): Cents {
 const payingAccount = (instalment: Instalment): string =>
   instalment.paidFromApartmentId ?? instalment.apartmentId;
 
-function groupNode(groupId: string, group: Instalment[]): ItemNode | InvalidGroup {
-  const members = [...group].sort((a, b) => byText(a.id, b.id));
-  const first = members[0] as Instalment;
-  if (members.length < 2) return { groupId, reason: 'incomplete' };
-  const shared = (instalment: Instalment) => instalment.shared as NonNullable<Instalment['shared']>;
-  const consistent = members.every(
+const shared = (instalment: Instalment) => instalment.shared as NonNullable<Instalment['shared']>;
+
+/**
+ * Why the instalments of one shared notice (all live, same `groupId`) cannot be matched:
+ * `incomplete` with fewer than two, `inconsistent` when they disagree on paying account, due date
+ * or total, or a weight is not positive; `undefined` when the notice is valid.
+ */
+export function sharedGroupProblem(group: Instalment[]): InvalidGroup['reason'] | undefined {
+  const [first] = group;
+  if (first === undefined || group.length < 2) return 'incomplete';
+  const consistent = group.every(
     (member) =>
       payingAccount(member) === payingAccount(first) &&
       member.dueDate === first.dueDate &&
       shared(member).groupTotal === shared(first).groupTotal &&
       shared(member).weight > 0,
   );
-  if (!consistent) return { groupId, reason: 'inconsistent' };
+  return consistent ? undefined : 'inconsistent';
+}
+
+function groupNode(groupId: string, group: Instalment[]): ItemNode | InvalidGroup {
+  const members = [...group].sort((a, b) => byText(a.id, b.id));
+  const first = members[0] as Instalment;
+  const reason = sharedGroupProblem(members);
+  if (reason !== undefined) return { groupId, reason };
   const total = shared(first).groupTotal;
   const parts = splitSharedDebit(
     cents(-total),
@@ -270,6 +282,40 @@ function solve(
   return solution;
 }
 
+/** The id of a match: one per item, part and movement. */
+export const matchId = (
+  item: MatchItemRef,
+  part: BillMatch['part'],
+  transactionId: string,
+): string => `m-${item.itemType}-${item.itemId}-${part}-${transactionId}`;
+
+/** Days a debit may come before and after the due date (R30). */
+export const MATCH_WINDOW = { daysBefore: 5, daysAfter: 10 } as const;
+
+/**
+ * One period per live statement of a live account, in the apartment of the account (R106),
+ * sorted by apartment, `from` and `to`. Never merged: a gap between two statements stays
+ * uncovered, so its items are assumed paid.
+ */
+export function statementPeriodsOf(
+  accounts: Account[],
+  statements: Statement[],
+): MatchInput['statementPeriods'] {
+  const apartmentOf = new Map(
+    accounts.filter((a) => a.deleted !== true).map((a) => [a.id, a.apartmentId]),
+  );
+  return statements
+    .filter((s) => s.deleted !== true)
+    .flatMap((s) => {
+      const apartmentId = apartmentOf.get(s.accountId);
+      return apartmentId === undefined ? [] : [{ apartmentId, from: s.from, to: s.to }];
+    })
+    .sort(
+      (a, b) =>
+        byText(a.apartmentId, b.apartmentId) || byText(a.from, b.from) || byText(a.to, b.to),
+    );
+}
+
 function makeMatch(
   item: MatchItemRef,
   part: BillMatch['part'],
@@ -279,7 +325,7 @@ function makeMatch(
   by: BillMatch['by'],
 ): BillMatch {
   return BillMatchSchema.parse({
-    id: `m-${item.itemType}-${item.itemId}-${part}-${transaction.id}`,
+    id: matchId(item, part, transaction.id),
     v: 1,
     rev: 1,
     itemType: item.itemType,

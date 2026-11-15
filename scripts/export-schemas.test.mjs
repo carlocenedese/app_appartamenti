@@ -28,6 +28,8 @@ describe('writeJsonSchemas', () => {
       'extractionResult',
       'instalment',
       'match',
+      'movementClass',
+      'movementRule',
       'note',
       'operation',
       'payer',
@@ -38,6 +40,7 @@ describe('writeJsonSchemas', () => {
       'tenancy',
       'tenant',
       'transaction',
+      'transfer',
       'user',
       'workspace',
     ].map((kind) => `${kind}.json`);
