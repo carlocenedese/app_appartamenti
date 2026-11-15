@@ -4,7 +4,7 @@
  * Proposals are recomputed, never stored, and carry ids, constant reasons and categories only.
  */
 import { normaliseIban } from './iban';
-import { latestOperationByPath } from './journal';
+import { latestOperationByPath, undoTargetOf } from './journal';
 import type { Operation } from './journal';
 import type {
   Account,
@@ -121,8 +121,9 @@ export function validRules(
  * valid rules of a movement: live, same account, same direction, same key, `validTo` absent or
  * not before its date (question 1); one pair (kind, apartment) is a class with the rule (the
  * first by `id`), several pairs a `rule-conflict`, none `new-counterparty` (`no-counterparty`
- * without a key). A movement whose class the latest operation deleted is `outgoing.cancel-auto`
- * is `undone`, never automatic again. An incoming candidate gets a class or nothing (its «chi»
+ * without a key). A movement whose deleted class has an `outgoing.cancel-auto` in force in its
+ * history is `undone`, never automatic again, unless the undo of a whole `outgoing.reconcile`
+ * deleted it last (as R118). An incoming candidate gets a class or nothing (its «chi»
  * of the income stays). An outgoing F24 (`isF24` with the live profile of its account) is always
  * a `p-f24-` proposal suggesting `tasse`, never automatic, whatever the rules (decision 5).
  * `missingDocument`: the movements of the live `utenze` and `condominio`
@@ -134,14 +135,24 @@ export function reconcileOutgoing(input: OutgoingInput): {
   missingDocument: string[];
 } {
   const latest = latestOperationByPath(input.operations);
+  const operationById = new Map(input.operations.map((o) => [o.id, o]));
+  // As R118 for the payments (I5 of the final review): only the undo of a whole reconciliation
+  // puts a deleted class back to normal; a cancel-auto in force in its history makes it `undone`.
+  const isUndone = (c: MovementClass): boolean => {
+    const path = recordPath('movementClass', c.id);
+    const by = latest.get(path);
+    if (by?.kind === 'undo' && operationById.get(by.undoes ?? '')?.kind === 'outgoing.reconcile') {
+      return false;
+    }
+    return input.operations.some(
+      (o) =>
+        o.kind === 'outgoing.cancel-auto' &&
+        o.changes.some((change) => change.path === path) &&
+        undoTargetOf(input.operations, o) !== undefined,
+    );
+  };
   const undone = new Set(
-    input.classes
-      .filter(
-        (c) =>
-          c.deleted === true &&
-          latest.get(recordPath('movementClass', c.id))?.kind === 'outgoing.cancel-auto',
-      )
-      .map((c) => c.transactionId),
+    input.classes.filter((c) => c.deleted === true && isUndone(c)).map((c) => c.transactionId),
   );
   const suppliers = [...input.bills, ...input.supplierProfiles]
     .filter((r) => r.deleted !== true)

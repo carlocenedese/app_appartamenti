@@ -997,4 +997,74 @@ describe('undo of a cancellation after a new use of its movement (final fix wave
     if (confirmed.status !== 'confirmed') throw new Error(confirmed.reason);
     expect(await undoBlockedBy(store, op)).toEqual([confirmed.transferId]);
   });
+
+  it('I5: after a cancel-auto, an undone exclusion or confirmation leaves the movement undone', async () => {
+    const outgoingOf = async (store: MemoryStore, prefix: string) => {
+      const run = await reconcile(store, prefix);
+      if (run.status !== 'reconciled') throw new Error('refused');
+      return run.outgoing;
+    };
+    const excluded = await cancelledClass();
+    const exclusion = await excludeMovement(
+      excluded.store,
+      { transactionId: enel.id, reason: 'doppione' },
+      'p1',
+      clock,
+      ids('e'),
+    );
+    if (exclusion.status !== 'excluded') throw new Error('not excluded');
+    await undoOperation(excluded.store, exclusion.operationId, 'p1', clock, ids('u'));
+    const first = await outgoingOf(excluded.store, 's');
+    expect(first.classified).not.toContain(enel.id);
+    expect(first.proposals).toContainEqual(
+      expect.objectContaining({ transactionId: enel.id, reason: 'undone' }),
+    );
+
+    const confirmed = await cancelledClass();
+    const by = await confirmOutgoing(
+      confirmed.store,
+      {
+        proposalId: `p-uscita-${enel.id}`,
+        kind: 'utenze',
+        apartmentId: 'pulci',
+        rememberRule: false,
+      },
+      'p1',
+      clock,
+      ids('k'),
+    );
+    if (by.status !== 'confirmed') throw new Error('not confirmed');
+    await undoOperation(confirmed.store, by.operationId, 'p1', clock, ids('u'));
+    const second = await outgoingOf(confirmed.store, 's');
+    expect(second.classified).not.toContain(enel.id);
+    expect(second.proposals).toContainEqual(
+      expect.objectContaining({ transactionId: enel.id, reason: 'undone' }),
+    );
+  });
+
+  it('I5: the undo of the whole outgoing.reconcile puts the movement back to normal', async () => {
+    const store = await treConti();
+    await confirmOutgoing(
+      store,
+      {
+        proposalId: 'p-uscita-tx-p-fornitore-feb',
+        kind: 'altro',
+        apartmentId: 'pulci',
+        rememberRule: true,
+      },
+      'p1',
+      clock,
+      ids('o'),
+    );
+    await store.writeJsonAtomic(
+      recordPath('transaction', enel.id),
+      recordSchemas.transaction.parse(enel),
+    );
+    const run = await reconcile(store);
+    if (run.status !== 'reconciled' || run.outgoing.operationId === undefined)
+      throw new Error('no run');
+    await undoOperation(store, run.outgoing.operationId, 'p1', clock, ids('u'));
+    const again = await reconcile(store, 's');
+    expect(again).toMatchObject({ outgoing: { classified: [enel.id] } });
+  });
 });
