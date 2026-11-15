@@ -11,6 +11,7 @@ import {
   AccountSchema,
   ApartmentSchema,
   BankTransactionSchema,
+  MovementClassSchema,
   PayerSchema,
   PaymentSchema,
   StatementSchema,
@@ -19,6 +20,7 @@ import {
 } from './model';
 import type { Payment } from './model';
 import type { Cents } from './money';
+import { excludedIds } from './movements';
 import { parseOrThrow } from './parse';
 import { firstPresenceDay } from './payers';
 import type { YearMonth } from './period';
@@ -64,6 +66,10 @@ async function loadIncomeState(store: Store) {
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
     operations: (await readJournal(store)).operations,
+    // The excluded movements are left out of the income (plan 3c).
+    usedTransactionIds: excludedIds(
+      (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
+    ),
   };
 }
 

@@ -38,3 +38,4 @@ export * from './payers';
 export * from './rent-month';
 export * from './income';
 export * from './income-store';
+export * from './movements';

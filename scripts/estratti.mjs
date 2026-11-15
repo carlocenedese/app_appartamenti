@@ -7,7 +7,8 @@
 // description or a path, unless `--dettagli` asks for the held rows. Every message is constant.
 // Plan 3b, task 8 adds inquilino, riconcilia, conferma and ripara (repairs what an interrupted
 // operation left: `checkConsistency` blocks every reconciliation until then); plan 3b-bis adds
-// annulla-pagamento (cancels one automatic payment: its movement goes back to review, R121).
+// annulla-pagamento (cancels one automatic payment: its movement goes back to review, R121); plan
+// 3c adds escludi (excludes one movement written by an import; annulla-incassi takes it back).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -21,6 +22,7 @@ import {
   AccountSchema,
   BankProfileSchema,
   CsvError,
+  ExcludeReasonSchema,
   ISODateSchema,
   StatementReadError,
   StatementTableSchema,
@@ -31,6 +33,7 @@ import {
   cancelAutomaticPayment,
   checkConsistency,
   confirmIncome,
+  excludeMovement,
   importStatement,
   loadAll,
   parseCsv,
@@ -85,12 +88,16 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-income-operation':
-    'Rifiutato: si annullano solo le operazioni degli incassi (riconciliazione, conferma o pagamento annullato).',
+    'Rifiutato: si annullano solo riconciliazioni e conferme degli incassi, pagamenti annullati ed esclusioni.',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
   'already-undone': 'Rifiutato: l’operazione è già stata annullata.',
   'has-dependents': 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
+  'movement-has-dependents':
+    'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
+  'unknown-transaction': 'Rifiutato: movimento sconosciuto o cancellato.',
+  'already-classified': 'Rifiutato: il movimento è già escluso o classificato: annullarlo prima.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
 };
 
@@ -129,6 +136,8 @@ const OPTIONS = {
   inquilino: { type: 'string' },
   operazione: { type: 'string' },
   pagamento: { type: 'string' },
+  movimento: { type: 'string' },
+  motivo: { type: 'string' },
   parte: { type: 'string', multiple: true },
   'solo-questa-volta': { type: 'boolean' },
 };
@@ -447,7 +456,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const { operations } = await readJournal(store);
     const target = operations.find((o) => o.id === values.operazione);
     if (target === undefined) throw new Stop('rejected', 'unknown-operation');
-    if (!['income.reconcile', 'income.confirm', 'income.cancel-payment'].includes(target.kind)) {
+    const kinds = [
+      'income.reconcile',
+      'income.confirm',
+      'income.cancel-payment',
+      'movement.exclude',
+    ];
+    if (!kinds.includes(target.kind)) {
       throw new Stop('rejected', 'not-income-operation');
     }
     try {
@@ -468,6 +483,29 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const result = await cancelAutomaticPayment(store, values.pagamento, who, clock, newId);
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     return { status: 'cancelled', operationId: result.operationId };
+  }
+
+  if (name === 'escludi') {
+    need(values, 'movimento', 'motivo');
+    if (positionals.length > 0 || !ExcludeReasonSchema.safeParse(values.motivo).success) {
+      throw invalid('bad-arguments');
+    }
+    const result = await excludeMovement(
+      store,
+      { transactionId: values.movimento, reason: values.motivo },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused' && result.reason === 'has-dependents') {
+      // The reason is the core's; the message is the one of a movement, not of an operation.
+      throw new Stop('rejected', result.reason, {
+        message: MESSAGES['movement-has-dependents'],
+        recordIds: result.recordIds,
+      });
+    }
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return { status: 'excluded', operationId: result.operationId };
   }
 
   if (name === 'ripara') {
@@ -528,6 +566,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'ripara',
         'annulla-incassi',
         'annulla-pagamento',
+        'escludi',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -546,6 +585,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       parte: ['conferma'],
       'solo-questa-volta': ['conferma'],
       pagamento: ['annulla-pagamento'],
+      movimento: ['escludi'],
+      motivo: ['escludi'],
     };
     for (const [option, commands] of Object.entries(only)) {
       if (values[option] !== undefined && !commands.includes(name)) throw invalid('bad-arguments');

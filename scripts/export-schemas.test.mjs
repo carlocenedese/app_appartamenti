@@ -28,6 +28,7 @@ describe('writeJsonSchemas', () => {
       'extractionResult',
       'instalment',
       'match',
+      'movementClass',
       'note',
       'operation',
       'payer',

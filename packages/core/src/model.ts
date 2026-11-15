@@ -451,6 +451,52 @@ export const BillMatchSchema = RecordBaseSchema.extend({
 });
 export type BillMatch = z.infer<typeof BillMatchSchema>;
 
+/** What a movement is (plan 3c): left out of everything (`escluso`) or a category of expense. */
+export const MovementKindSchema = z.enum(['escluso', 'utenze', 'tasse', 'condominio', 'altro']);
+export type MovementKind = z.infer<typeof MovementKindSchema>;
+export const OutgoingKindSchema = MovementKindSchema.exclude(['escluso']);
+export type OutgoingKind = z.infer<typeof OutgoingKindSchema>;
+export const ExcludeReasonSchema = z.enum(['doppione', 'non-contabilizzato', 'non-reale']);
+export type ExcludeReason = z.infer<typeof ExcludeReasonSchema>;
+
+/** The one class of a movement (`mc-<transactionId>`): no description, no name. */
+export const MovementClassSchema = RecordBaseSchema.extend({
+  transactionId: NonEmptyString,
+  kind: MovementKindSchema,
+  excludeReason: ExcludeReasonSchema.optional(),
+  /** Where the expense goes; absent for an exclusion. */
+  apartmentId: NonEmptyString.optional(),
+  f24: z.literal(true).optional(),
+  /** The rule that produced it, for an automatic one. */
+  ruleId: NonEmptyString.optional(),
+})
+  .refine((c) => c.id === `mc-${c.transactionId}`, {
+    message: 'The id must be mc-<transactionId>',
+    path: ['id'],
+  })
+  .refine((c) => (c.kind === 'escluso') === (c.excludeReason !== undefined), {
+    message: 'excludeReason is there exactly for kind escluso',
+    path: ['excludeReason'],
+  })
+  .refine((c) => (c.kind === 'escluso') !== (c.apartmentId !== undefined), {
+    message: 'apartmentId is there exactly when kind is not escluso',
+    path: ['apartmentId'],
+  })
+  .refine((c) => c.f24 === undefined || c.kind === 'tasse', {
+    message: 'f24 only with kind tasse',
+    path: ['f24'],
+  })
+  .refine((c) => c.ruleId === undefined || c.kind !== 'escluso', {
+    message: 'An exclusion never comes from a rule',
+    path: ['ruleId'],
+  })
+  .meta({
+    description:
+      'id is mc-<transactionId>. excludeReason is present if and only if kind is escluso; ' +
+      'apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with escluso.',
+  });
+export type MovementClass = z.infer<typeof MovementClassSchema>;
+
 /** A note written by a person (not the automatic notes of the app). */
 export const NoteSchema = RecordBaseSchema.extend({
   targetType: z.enum([
@@ -879,6 +925,7 @@ export const recordSchemas = {
   statement: StatementSchema,
   tenant: TenantSchema,
   payer: PayerSchema,
+  movementClass: MovementClassSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

@@ -299,6 +299,34 @@ describe('reconcileIncome, phase «che cosa»', () => {
     expect(free.proposals).toEqual([]);
   });
 
+  it('a used (excluded) movement gives no payment, no proposal, and blocks nothing (plan 3c)', () => {
+    const payments = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'].map((m) =>
+      payment({ id: `pm-${m}`, forMonth: `2026-${m}` }),
+    );
+    // October paid by hand: the October transfer is a duplicate, not a payment.
+    const transactions = [tx('x-oct', '2026-10-05', 50000), tx('x-nov', '2026-11-03')];
+    const kept = reconcileIncome(input({ payments, transactions }));
+    expect(kept.proposals.map((p) => [p.id, p.reason])).toContainEqual([
+      'p-cosa-x-nov',
+      'earlier-open',
+    ]);
+    const result = reconcileIncome(
+      input({ payments, transactions, usedTransactionIds: new Set(['x-oct']) }),
+    );
+    expect(result.payments).toEqual([auto('x-nov', '2026-11-03', '2026-11')]);
+    expect(result.proposals).toEqual([]);
+    expect(result.skipped).toEqual([]);
+    // An exact credit that is used gives nothing either.
+    const exact = reconcileIncome(
+      input({
+        payments,
+        transactions: [tx('x-nov', '2026-11-03')],
+        usedTransactionIds: new Set(['x-nov']),
+      }),
+    );
+    expect([exact.payments, exact.proposals]).toEqual([[], []]);
+  });
+
   it('a room change uses the presence of the chosen month', () => {
     const tenancies = [
       tenancy({ id: 'ten1', to: '2026-03' }),

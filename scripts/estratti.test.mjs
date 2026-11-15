@@ -1091,3 +1091,66 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
     TIMEOUT,
   );
 });
+
+describe('pnpm estratti escludi (piano 3c, task 1)', () => {
+  it(
+    'escludi: 0 e il movimento sparisce da riconcilia; annulla-incassi lo riporta; rifiuti 1, argomenti 2',
+    async () => {
+      const s = await incomeSetup();
+      month(s, 'ott.csv', [['05/10/2026', '850,00']], '2026-10-01', '2026-10-31');
+      const [txFile] = readdirSync(join(s.dir, '_app', 'dati', 'transaction'));
+      const txId = txFile.replace(/\.json$/, '');
+      const escludi = (args) => cli(['escludi', ...s.common, ...args]);
+
+      const snap = snapshot(s.dir);
+      expect(escludi(['--movimento', txId, '--motivo', 'altro']).code).toBe(2);
+      expect(escludi(['--motivo', 'doppione']).code).toBe(2);
+      expect(escludi(['--movimento', txId]).code).toBe(2);
+      expect(escludi(['--movimento', txId, '--motivo', 'doppione', 'x']).code).toBe(2);
+      expect(escludi(['--movimento', txId, '--motivo', 'doppione', '--prova']).code).toBe(2);
+      expect(cli(['riconcilia', ...s.common, '--motivo', 'doppione']).code).toBe(2);
+      const unknown = escludi(['--movimento', 'nessuno', '--motivo', 'doppione']);
+      expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-transaction']);
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const done = escludi(['--movimento', txId, '--motivo', 'doppione']);
+      expect(done.code).toBe(0);
+      expect(done.json).toEqual({ status: 'excluded', operationId: done.json.operationId });
+      expect(cli(['riconcilia', ...s.common]).json).toMatchObject({ written: 0, proposals: [] });
+      const again = escludi(['--movimento', txId, '--motivo', 'non-reale']);
+      expect([again.code, again.json.reason]).toEqual([1, 'already-classified']);
+
+      const back = cli(['annulla-incassi', ...s.common, '--operazione', done.json.operationId]);
+      expect(back.code).toBe(0);
+      const [proposal] = cli(['riconcilia', ...s.common]).json.proposals;
+      expect(proposal).toMatchObject({ step: 'chi', reason: 'new-payer' });
+
+      const part = ['--parte', 'canone:2026-10:850,00'];
+      const conf = cli([
+        'conferma',
+        ...s.common,
+        '--proposta',
+        proposal.id,
+        '--inquilino',
+        't1',
+        ...part,
+      ]);
+      const snap2 = snapshot(s.dir);
+      const blocked = escludi(['--movimento', txId, '--motivo', 'non-contabilizzato']);
+      expect(blocked.code).toBe(1);
+      expect(blocked.json).toEqual({
+        status: 'rejected',
+        reason: 'has-dependents',
+        message: 'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
+        recordIds: conf.json.paymentIds,
+      });
+      expect(snapshot(s.dir)).toEqual(snap2);
+
+      const all = [unknown.out, done.out, again.out, back.out, blocked.out].join('');
+      for (const secret of [NAME, CAUSALE, IBAN, LABEL]) expect(all).not.toContain(secret);
+      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
+      expect(scanText(all)).toEqual([]);
+    },
+    TIMEOUT,
+  );
+});

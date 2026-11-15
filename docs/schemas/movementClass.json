@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "transactionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "escluso",
+        "utenze",
+        "tasse",
+        "condominio",
+        "altro"
+      ]
+    },
+    "excludeReason": {
+      "type": "string",
+      "enum": [
+        "doppione",
+        "non-contabilizzato",
+        "non-reale"
+      ]
+    },
+    "apartmentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "f24": {
+      "type": "boolean",
+      "const": true
+    },
+    "ruleId": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "transactionId",
+    "kind"
+  ],
+  "description": "id is mc-<transactionId>. excludeReason is present if and only if kind is escluso; apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with escluso."
+}
