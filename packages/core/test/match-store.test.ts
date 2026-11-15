@@ -134,6 +134,7 @@ describe('runMatch (plan 3c, task 3)', () => {
       pending: [{ itemType: 'instalment', itemId: 'i-mar' }],
       ambiguous: [],
       assumed: [{ itemType: 'instalment', itemId: 'i-feb' }],
+      invalidGroups: [],
       operationId: 'r-1',
     });
     expect(await matches(store)).toEqual([
@@ -514,6 +515,12 @@ describe('confirmMatch (plan 3c, task 3)', () => {
         transaction: [tx('tx-t', '2027-01-21', -18600, 'BONIFICO')],
       });
       const untouched = await snapshot(s);
+      // The run shows the invalid notice (its instalments stay pending), R125 and task 10.
+      expect(await run(s, 'g', true)).toMatchObject({
+        invalidGroups: [
+          { groupId: 'avviso-1', reason: group.length === 1 ? 'incomplete' : 'inconsistent' },
+        ],
+      });
       expect(await confirm(s, [tari('tari-b', 18600)])).toEqual({
         status: 'refused',
         reason: 'invalid-group',

@@ -10,7 +10,8 @@
 // annulla-pagamento (cancels one automatic payment: its movement goes back to review, R121); plan
 // 3c adds escludi (excludes one movement written by an import), abbina (confirms a match of bills
 // and instalments by hand) and annulla-riconciliazione (undoes one operation of the
-// reconciliation; annulla-incassi is its synonym, R116); riconcilia runs every phase (R126).
+// reconciliation; annulla-incassi is its synonym, R116); riconcilia runs every phase (R126);
+// uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -29,19 +30,28 @@ import {
   StatementReadError,
   StatementTableSchema,
   BankTransactionSchema,
+  OutgoingKindSchema,
   TenantSchema,
+  TransferPurposeSchema,
   TimestampSchema,
   YearMonthSchema,
+  cancelAutomaticClass,
   cancelAutomaticPayment,
   checkConsistency,
   confirmIncome,
   confirmMatch,
+  confirmOutgoing,
+  confirmTenantOutgoing,
+  confirmTransfer,
   excludeMovement,
   importStatement,
+  loadAccountBalances,
   loadAll,
   parseCsv,
   parseEuro,
+  planTransfers,
   readJournal,
+  recordManualTransfer,
   repairDiverged,
   resolveHeld,
   runReconciliation,
@@ -93,7 +103,7 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti).',
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -108,6 +118,15 @@ const MESSAGES = {
   'duplicate-part': 'Rifiutato: la stessa parte compare due volte.',
   'invalid-group': 'Rifiutato: l’avviso comune della rata non è valido.',
   'invalid-matches': 'Rifiutato: le somme dell’abbinamento non tornano.',
+  'unknown-class': 'Rifiutato: il movimento non ha una classificazione.',
+  'class-not-automatic': 'Rifiutato: non è una classificazione automatica di una riconciliazione.',
+  'f24-not-tasse': 'Rifiutato: un F24 va nella categoria «tasse».',
+  'f24-not-outgoing': 'Rifiutato: un F24 è solo un’uscita.',
+  'leg-not-allowed': 'Rifiutato: il movimento indicato non è una gamba di questo giroconto.',
+  'same-account': 'Rifiutato: i due conti sono lo stesso conto.',
+  'invalid-amount': 'Rifiutato: l’importo deve essere positivo.',
+  'f24-pattern-missing':
+    'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
 };
 
@@ -150,7 +169,36 @@ const OPTIONS = {
   motivo: { type: 'string' },
   parte: { type: 'string', multiple: true },
   'solo-questa-volta': { type: 'boolean' },
+  categoria: { type: 'string' },
+  f24: { type: 'boolean' },
+  tipo: { type: 'string' },
+  mese: { type: 'string' },
+  scopo: { type: 'string' },
+  'altra-gamba': { type: 'string' },
+  da: { type: 'string' },
+  a: { type: 'string' },
+  importo: { type: 'string' },
+  data: { type: 'string' },
 };
+
+/** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
+const TENANT_KINDS = ['caparra', 'conguaglio', 'altro'];
+/** The operations `annulla-riconciliazione` undoes (R116, R126, R132). */
+const RECONCILE_KINDS = [
+  'income.reconcile',
+  'income.confirm',
+  'income.cancel-payment',
+  'movement.exclude',
+  'match.reconcile',
+  'match.confirm',
+  'outgoing.reconcile',
+  'outgoing.confirm',
+  'outgoing.cancel-auto',
+  'outgoing.tenant',
+  'transfer.reconcile',
+  'transfer.confirm',
+  'transfer.manual',
+];
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
 
@@ -417,13 +465,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
       dryRun: values.prova === true,
     });
     if (run.status === 'refused') throw new Stop('rejected', run.reason);
-    const { income: result, match } = run;
+    const { income: result, match, transfers, outgoing } = run;
     let extra = () => ({});
     let arrearExtra = () => ({});
+    let txExtra = () => ({});
     if (values.dettagli === true) {
       const all = { includeDeleted: true };
       const txs = (await loadAll(store, 'transaction', BankTransactionSchema, all)).records;
       const tenants = (await loadAll(store, 'tenant', TenantSchema, all)).records;
+      txExtra = (p) => {
+        const tx = txs.find((t) => t.id === p.transactionId);
+        return {
+          transactionId: p.transactionId,
+          date: tx?.date,
+          amount: tx?.amount,
+          description: tx?.description,
+        };
+      };
       arrearExtra = (a) => ({
         apartmentId: a.apartmentId,
         tenantId: a.tenantId,
@@ -440,6 +498,15 @@ async function command(name, values, positionals, store, who, clock, newId) {
         };
       };
     }
+    // No F24 is recognised while the profile of the account has no f24Pattern (R129): say so.
+    const profiles = (await loadAll(store, 'bankProfile', BankProfileSchema)).records;
+    const notes = (await loadAll(store, 'account', AccountSchema)).records
+      .filter((a) => profiles.find((p) => p.id === a.bankProfileId)?.f24Pattern === undefined)
+      .map((a) => ({
+        accountId: a.id,
+        f24PatternMissing: true,
+        message: MESSAGES['f24-pattern-missing'],
+      }));
     return {
       status: 'reconciled',
       written: result.written,
@@ -468,8 +535,182 @@ async function command(name, values, positionals, store, who, clock, newId) {
         proposals: match.proposals.map((p) => ({ id: p.id, reason: p.reason })),
         pending: match.pending.length,
         assumed: match.assumed.length,
+        invalidGroups: match.invalidGroups.length,
         ...(match.operationId === undefined ? {} : { operationId: match.operationId }),
       },
+      // Ids, reasons and counts only (R132); the movements and the legs with --dettagli.
+      transfers: {
+        written: transfers.written,
+        completed: transfers.completed,
+        proposals: transfers.proposals.map((p) => ({
+          id: p.id,
+          reason: p.reason,
+          legCount: p.legIds.length,
+          ...(values.dettagli === true ? { legIds: p.legIds, ...txExtra(p) } : {}),
+        })),
+        ...(transfers.operationId === undefined ? {} : { operationId: transfers.operationId }),
+      },
+      outgoing: {
+        written: outgoing.written,
+        proposals: outgoing.proposals.map((p) => ({
+          id: p.id,
+          step: p.step,
+          reason: p.reason,
+          ...(p.suggestedKind === undefined ? {} : { suggestedKind: p.suggestedKind }),
+          ...txExtra(p),
+        })),
+        missingDocument: outgoing.missingDocument.length,
+        ...(outgoing.operationId === undefined ? {} : { operationId: outgoing.operationId }),
+      },
+      notes,
+    };
+  }
+
+  if (name === 'uscita') {
+    need(values, 'proposta', 'categoria', 'appartamento');
+    if (positionals.length > 0 || !OutgoingKindSchema.safeParse(values.categoria).success) {
+      throw invalid('bad-arguments');
+    }
+    const result = await confirmOutgoing(
+      store,
+      {
+        proposalId: values.proposta,
+        kind: values.categoria,
+        apartmentId: values.appartamento,
+        rememberRule: values['solo-questa-volta'] !== true,
+        f24: values.f24 === true,
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: 'confirmed',
+      operationId: result.operationId,
+      classId: result.classId,
+      ...(result.ruleId === undefined ? {} : { ruleId: result.ruleId }),
+    };
+  }
+
+  if (name === 'annulla-uscita') {
+    need(values, 'movimento');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await cancelAutomaticClass(store, values.movimento, who, clock, newId);
+    if (result.status === 'refused' && result.reason === 'not-automatic') {
+      // The reason is the core's; the message is the one of a class, not of a payment.
+      throw new Stop('rejected', result.reason, { message: MESSAGES['class-not-automatic'] });
+    }
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return { status: 'cancelled', operationId: result.operationId };
+  }
+
+  if (name === 'uscita-inquilino') {
+    need(values, 'proposta', 'inquilino', 'tipo', 'mese');
+    if (
+      positionals.length > 0 ||
+      !TENANT_KINDS.includes(values.tipo) ||
+      !YearMonthSchema.safeParse(values.mese).success
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await confirmTenantOutgoing(
+      store,
+      {
+        proposalId: values.proposta,
+        tenantId: values.inquilino,
+        kind: values.tipo,
+        forMonth: values.mese,
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return { status: 'confirmed', operationId: result.operationId, paymentId: result.paymentId };
+  }
+
+  if (name === 'giroconto') {
+    need(values, 'proposta', 'scopo');
+    if (positionals.length > 0 || !TransferPurposeSchema.safeParse(values.scopo).success) {
+      throw invalid('bad-arguments');
+    }
+    // The legs as recomputed now, always given (R127): when they change before the confirmation
+    // writes, the core refuses `unknown-proposal`.
+    const shown = (await planTransfers(store)).proposals.find((p) => p.id === values.proposta);
+    const result = await confirmTransfer(
+      store,
+      {
+        proposalId: values.proposta,
+        purpose: values.scopo,
+        rememberPair: values['solo-questa-volta'] !== true,
+        legIds: shown?.legIds ?? [],
+        ...(values['altra-gamba'] === undefined ? {} : { otherLegId: values['altra-gamba'] }),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return { status: 'confirmed', operationId: result.operationId, transferId: result.transferId };
+  }
+
+  if (name === 'giroconto-manuale') {
+    need(values, 'da', 'a', 'importo', 'data', 'scopo');
+    const date = ISODateSchema.safeParse(values.data);
+    if (
+      positionals.length > 0 ||
+      !date.success ||
+      !TransferPurposeSchema.safeParse(values.scopo).success
+    ) {
+      throw invalid('bad-arguments');
+    }
+    let amount;
+    try {
+      amount = parseEuro(values.importo);
+    } catch {
+      throw invalid('bad-arguments');
+    }
+    if (amount <= 0) throw invalid('bad-arguments');
+    const result = await recordManualTransfer(
+      store,
+      {
+        fromAccountId: values.da,
+        toAccountId: values.a,
+        amount,
+        date: date.data,
+        purpose: values.scopo,
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return { status: 'recorded', operationId: result.operationId, transferId: result.transferId };
+  }
+
+  if (name === 'saldi') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await loadAccountBalances(store);
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    // Without --dettagli only the apartments of each pair and counts: no amount, no date (R132).
+    if (values.dettagli === true) {
+      return {
+        status: 'ok',
+        pairs: result.pairs,
+        toSplit: result.toSplit,
+        unverified: result.unverified,
+      };
+    }
+    return {
+      status: 'ok',
+      pairs: result.pairs.map((p) => ({
+        creditorApartmentId: p.creditorApartmentId,
+        debtorApartmentId: p.debtorApartmentId,
+        items: p.items.length,
+      })),
+      toSplit: result.toSplit.length,
+      unverified: result.unverified.length,
     };
   }
 
@@ -523,15 +764,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const { operations } = await readJournal(store);
     const target = operations.find((o) => o.id === values.operazione);
     if (target === undefined) throw new Stop('rejected', 'unknown-operation');
-    const kinds = [
-      'income.reconcile',
-      'income.confirm',
-      'income.cancel-payment',
-      'movement.exclude',
-      'match.reconcile',
-      'match.confirm',
-    ];
-    if (!kinds.includes(target.kind)) {
+    if (!RECONCILE_KINDS.includes(target.kind)) {
       throw new Stop('rejected', 'not-reconcile-operation');
     }
     try {
@@ -642,6 +875,12 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'annulla-pagamento',
         'escludi',
         'abbina',
+        'uscita',
+        'annulla-uscita',
+        'uscita-inquilino',
+        'giroconto',
+        'giroconto-manuale',
+        'saldi',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -656,12 +895,25 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa'],
+      dettagli: ['riconcilia', 'importa', 'saldi'],
       parte: ['conferma', 'abbina'],
-      'solo-questa-volta': ['conferma'],
+      'solo-questa-volta': ['conferma', 'uscita', 'giroconto'],
       pagamento: ['annulla-pagamento'],
-      movimento: ['escludi'],
+      movimento: ['escludi', 'annulla-uscita'],
       motivo: ['escludi'],
+      proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
+      inquilino: ['conferma', 'uscita-inquilino'],
+      appartamento: ['conto', 'uscita'],
+      categoria: ['uscita'],
+      f24: ['uscita'],
+      tipo: ['uscita-inquilino'],
+      mese: ['uscita-inquilino'],
+      scopo: ['giroconto', 'giroconto-manuale'],
+      'altra-gamba': ['giroconto'],
+      da: ['giroconto-manuale'],
+      a: ['giroconto-manuale'],
+      importo: ['giroconto-manuale'],
+      data: ['giroconto-manuale'],
     };
     for (const [option, commands] of Object.entries(only)) {
       if (values[option] !== undefined && !commands.includes(name)) throw invalid('bad-arguments');

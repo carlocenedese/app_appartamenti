@@ -59,6 +59,8 @@ export type MatchRunResult =
       pending: MatchItemRef[];
       ambiguous: MatchResult['ambiguous'];
       assumed: MatchItemRef[];
+      /** The shared notices left out (their instalments stay in `pending`). */
+      invalidGroups: MatchResult['invalidGroups'];
       operationId?: string;
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
@@ -213,6 +215,7 @@ export async function planMatch(store: Store) {
     pending: result.pending,
     ambiguous: result.ambiguous,
     assumed: fresh.filter((m) => m.by === 'assumed').map(ref),
+    invalidGroups: result.invalidGroups,
   };
   return { run, written, changes, where };
 }
