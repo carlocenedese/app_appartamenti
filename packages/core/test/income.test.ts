@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { collectedForfait, SettlementInputError } from '../src/conguaglio';
-import { coveredMonths, reconcileIncome } from '../src/income';
+import { coveredMonths, reconcileIncome, rentArrears } from '../src/income';
+import { OperationSchema } from '../src/journal';
+import { recordPath } from '../src/store/records';
 import type { IncomeContext } from '../src/income';
 import {
   AccountSchema,
@@ -9,6 +11,7 @@ import {
   PaymentSchema,
   StatementSchema,
   TenancySchema,
+  TenantSchema,
 } from '../src/model';
 import type { BankTransaction, Statement } from '../src/model';
 import type { YearMonth } from '../src/period';
@@ -21,6 +24,8 @@ const OWN_B = ibanEndingWith('2');
 const OWN_C = ibanEndingWith('3');
 const PAYER_IBAN = ibanEndingWith('77');
 const OTHER_IBAN = ibanEndingWith('78');
+// One digit changed at run time: never a whole invented IBAN in the file.
+const BAD_IBAN = PAYER_IBAN.replace(/\d$/, (d) => String((Number(d) + 1) % 10));
 
 const account = (id: string, apartmentId: string, iban: string) =>
   AccountSchema.parse({ ...base, id, apartmentId, label: 'Conto', bankProfileId: 'bp1', iban });
@@ -102,8 +107,25 @@ const input = (over: Partial<Input> = {}): Input => ({
   payments: [],
   transactions: [],
   statements: [statement()],
+  operations: [],
   ...over,
 });
+
+/** A journal operation that leaves each payment as given (the `after` of its change). */
+const op = (id: string, kind: string, after: object[], undoes?: string) =>
+  OperationSchema.parse({
+    id,
+    v: 1,
+    at: '2026-11-14T09:00:00.000Z',
+    profileId: 'p1',
+    kind,
+    summary: 'x',
+    changes: after.map((a) => ({
+      path: recordPath('payment', (a as { id: string }).id),
+      after: a,
+    })),
+    ...(undoes === undefined ? {} : { undoes }),
+  });
 
 const auto = (transactionId: string, date: string, forMonth: string, amount = 45000) => ({
   id: `pay-${transactionId}`,
@@ -480,14 +502,19 @@ describe('reconcileIncome, phase «che cosa»', () => {
     expect(elsewhere.payments).toEqual([auto('x-nov', '2026-11-03', '2026-10')]);
   });
 
-  it('an undone automatic payment makes only that transaction undone, never automatic again', () => {
+  it('an undone confirmation makes only that transaction undone, never automatic again', () => {
     const t2 = [payer(), payer({ id: 'pr2', key: `iban:${OTHER_IBAN}`, tenantId: 't2' })];
     const result = reconcileIncome(
       input({
         payers: t2,
         tenancies: [tenancy({}), tenancy({ id: 'ten2', tenantId: 't2', room: 'B' })],
         payments: [
-          payment({ ...auto('x2', '2026-02-03', '2026-02'), rev: 2, deleted: true }),
+          payment({
+            ...auto('x2', '2026-02-03', '2026-02'),
+            id: 'pay-x2-1',
+            rev: 2,
+            deleted: true,
+          }),
           payment({ id: 'pm-y2', transactionId: 'y2', deleted: true }),
         ],
         transactions: [
@@ -508,7 +535,14 @@ describe('reconcileIncome, phase «che cosa»', () => {
       input({
         payers: t2,
         tenancies: [tenancy({}), tenancy({ id: 'ten2', tenantId: 't2', room: 'B' })],
-        payments: [payment({ ...auto('x2', '2026-02-03', '2026-02'), rev: 2, deleted: true })],
+        payments: [
+          payment({
+            ...auto('x2', '2026-02-03', '2026-02'),
+            id: 'pay-x2-1',
+            rev: 2,
+            deleted: true,
+          }),
+        ],
         transactions: [
           tx('x1', '2026-01-05'),
           tx('x2', '2026-02-03'),
@@ -523,6 +557,98 @@ describe('reconcileIncome, phase «che cosa»', () => {
     expect(result.proposals.map((p) => [p.id, p.reason])).toEqual([
       ['p-cosa-x2', 'undone'],
       ['p-cosa-x3', 'earlier-open'],
+    ]);
+  });
+
+  describe('which deletion makes a transaction undone (R118, user1, 15 Nov 2026)', () => {
+    const transactions = [tx('x1', '2026-01-05'), tx('x2', '2026-02-03'), tx('x3', '2026-03-03')];
+    const first = reconcileIncome(input({ transactions }));
+    const live = first.payments.map((p) => payment({ ...p }));
+    const gone = live.map((p) => payment({ ...p, rev: 2, deleted: true }));
+    const reconcile = op('r1', 'income.reconcile', live);
+
+    it('undoing the whole reconciliation: back to automatic, never undone', () => {
+      expect(first.payments.map((p) => p.id)).toEqual(['pay-x1', 'pay-x2', 'pay-x3']);
+      const operations = [reconcile, op('u1', 'undo', gone, 'r1')];
+      expect(reconcileIncome(input({ transactions, payments: gone, operations }))).toEqual(first);
+    });
+
+    it('a reconciliation of one payment undone whole: back to automatic', () => {
+      const one = [tx('x1', '2026-01-05')];
+      const [p1] = reconcileIncome(input({ transactions: one })).payments;
+      if (p1 === undefined) throw new Error('none');
+      const deleted = payment({ ...p1, rev: 2, deleted: true });
+      const operations = [
+        op('r1', 'income.reconcile', [payment({ ...p1 })]),
+        op('u1', 'undo', [deleted], 'r1'),
+      ];
+      expect(
+        reconcileIncome(input({ transactions: one, payments: [deleted], operations })).payments,
+      ).toEqual([p1]);
+    });
+
+    it('one automatic payment cancelled by itself: undone, the others stay', () => {
+      const [, x2] = gone;
+      if (x2 === undefined) throw new Error('none');
+      const payments = [live[0], x2, live[2]].filter((p) => p !== undefined);
+      const operations = [reconcile, op('c1', 'income.cancel-payment', [x2])];
+      const result = reconcileIncome(input({ transactions, payments, operations }));
+      expect(result.payments).toEqual([]);
+      expect(result.proposals).toEqual([cosa('x2', 'undone')]);
+    });
+
+    it('a deleted csv payment that no operation explains is undone (the safe side)', () => {
+      const result = reconcileIncome(input({ transactions, payments: gone }));
+      expect(result.payments).toEqual([]);
+      expect(result.proposals.map((p) => [p.id, p.reason])).toEqual([
+        ['p-cosa-x1', 'undone'],
+        ['p-cosa-x2', 'undone'],
+        ['p-cosa-x3', 'undone'],
+      ]);
+    });
+  });
+
+  it('a payer of a deleted tenant does not count: once automatic, now a «chi» (user1, 15 Nov 2026)', () => {
+    const transactions = [tx('x1', '2026-01-05')];
+    expect(reconcileIncome(input({ transactions })).payments).toEqual([
+      auto('x1', '2026-01-05', '2026-01'),
+    ]);
+    const tenants = [
+      TenantSchema.parse({ ...base, id: 't1', name: 'Nome Inventato', deleted: true }),
+    ];
+    const result = reconcileIncome(input({ transactions, tenants }));
+    expect(result.payments).toEqual([]);
+    expect(result.proposals).toEqual([
+      {
+        id: 'p-chi-x1',
+        transactionId: 'x1',
+        step: 'chi',
+        reason: 'new-payer',
+        tenantIds: ['t1'],
+        key: `iban:${PAYER_IBAN}`,
+      },
+    ]);
+  });
+
+  it('an invalid IBAN is never automatic, also with a name payer: invalid-iban (user1, 15 Nov 2026)', () => {
+    const named = {
+      ...tx('x1', '2026-01-05'),
+      counterparty: { iban: BAD_IBAN, name: 'Nome Inventato' },
+    };
+    const payers = [payer({ key: 'name:nome inventato' })];
+    // Without the IBAN the name payer is enough.
+    const plain = { ...named, counterparty: { name: 'Nome Inventato' } };
+    expect(reconcileIncome(input({ payers, transactions: [plain] })).payments).toHaveLength(1);
+    const result = reconcileIncome(input({ payers, transactions: [named] }));
+    expect(result.payments).toEqual([]);
+    expect(result.proposals).toEqual([
+      {
+        id: 'p-chi-x1',
+        transactionId: 'x1',
+        step: 'chi',
+        reason: 'invalid-iban',
+        tenantIds: ['t1'],
+      },
     ]);
   });
 
@@ -574,5 +700,66 @@ describe('reconcileIncome, phase «che cosa»', () => {
     );
     expect(again.payments).toEqual([]);
     expect(again.proposals).toEqual(ordered.proposals);
+  });
+});
+
+describe('rentArrears (user1, 15 Nov 2026)', () => {
+  it('lists the months covered in full, with a presence, without a live rent payment', () => {
+    // Feb-Mar imported and reconciled first, January afterwards without a transfer (I2).
+    const later = [statement({ from: '2026-02-01', to: '2026-03-31' })];
+    const transactions = [tx('x2', '2026-02-03'), tx('x3', '2026-03-02')];
+    const first = reconcileIncome(input({ statements: later, transactions }));
+    expect(first.payments.map((p) => p.forMonth)).toEqual(['2026-02', '2026-03']);
+    const payments = first.payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }));
+    const all = [...later, statement({ id: 's0', from: '2026-01-01', to: '2026-01-31' })];
+    expect(rentArrears(input({ statements: later, payments }))).toEqual([]);
+    expect(rentArrears(input({ statements: all, payments }))).toEqual([
+      { apartmentId: 'a1', tenantId: 't1', month: '2026-01' },
+    ]);
+    // Only a list: the automatic payments do not change.
+    expect(reconcileIncome(input({ statements: all, transactions, payments })).payments).toEqual(
+      [],
+    );
+  });
+
+  it('skips a tenant whose record is deleted, even with a live presence (user1, 15 Nov 2026)', () => {
+    const tenants = [
+      TenantSchema.parse({ ...base, id: 't1', name: 'Nome Inventato', rev: 2, deleted: true }),
+      TenantSchema.parse({ ...base, id: 't2', name: 'Altro Nome' }),
+    ];
+    const tenancies = [tenancy({}), tenancy({ id: 'ten2', tenantId: 't2', room: 'B' })];
+    const statements = [statement({ from: '2026-01-01', to: '2026-01-31' })];
+    expect(rentArrears(input({ tenants, tenancies, statements }))).toEqual([
+      { apartmentId: 'a1', tenantId: 't2', month: '2026-01' },
+    ]);
+  });
+
+  it('skips partial months, deleted presences and statements, other rent, months outside a presence', () => {
+    const result = rentArrears(
+      input({
+        tenancies: [
+          tenancy({ to: '2026-02' }),
+          tenancy({ id: 'ten2', tenantId: 't2', room: 'B', from: '2026-02' }),
+          tenancy({ id: 'ten3', tenantId: 't3', room: 'C', deleted: true }),
+          tenancy({ id: 'ten4', tenantId: 't4', apartmentId: 'a2', room: 'D' }),
+        ],
+        statements: [
+          statement({ from: '2026-01-01', to: '2026-03-15' }),
+          statement({ id: 's2', from: '2026-04-01', to: '2026-04-30', deleted: true }),
+          statement({ id: 's3', accountId: 'c2', from: '2026-01-01', to: '2026-01-31' }),
+        ],
+        payments: [
+          payment({ id: 'pm1', forMonth: '2026-01' }),
+          payment({ id: 'pm2', tenantId: 't2', kind: 'altro', forMonth: '2026-02' }),
+          payment({ id: 'pm3', tenantId: 't2', forMonth: '2026-02', apartmentId: 'a2' }),
+          payment({ id: 'pm4', forMonth: '2026-02', deleted: true }),
+          payment({ id: 'pm5', tenantId: 't4', apartmentId: 'a2', date: '2026-01-31' }),
+        ],
+      }),
+    );
+    expect(result).toEqual([
+      { apartmentId: 'a1', tenantId: 't1', month: '2026-02' },
+      { apartmentId: 'a1', tenantId: 't2', month: '2026-02' },
+    ]);
   });
 });

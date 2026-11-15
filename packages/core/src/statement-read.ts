@@ -422,7 +422,10 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
     }
 
     const name = exec(nameRe, description)?.[1]?.trim();
-    const iban = normaliseIban(exec(ibanRe, description)?.[1] ?? '');
+    // An IBAN that is not valid is kept as read, so `whoPaid` gives `invalid-iban` (user1,
+    // 15 Nov 2026, R102, R120); the identity of the movement never depends on it (R100).
+    const readIban = exec(ibanRe, description)?.[1]?.trim() ?? '';
+    const iban = readIban === '' ? undefined : (normaliseIban(readIban) ?? readIban);
     if (name !== undefined && name !== '') entry.counterparty = { name };
     if (iban !== undefined) entry.counterparty = { ...entry.counterparty, iban };
     result.rows.push(entry);

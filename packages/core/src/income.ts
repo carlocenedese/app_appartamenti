@@ -4,6 +4,8 @@
  */
 import { checkTenantOverlaps, isPresent } from './conguaglio';
 import { normaliseIban } from './iban';
+import { latestOperationByPath } from './journal';
+import type { Operation } from './journal';
 import { DEFAULT_RENT_LATE_DAYS } from './model';
 import type {
   Account,
@@ -20,6 +22,7 @@ import { nameInText, nameKeyOf, payerKeyOf, validPayers } from './payers';
 import { addDays, addMonths, daysBetween, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { chooseRentMonth } from './rent-month';
+import { recordPath } from './store/records';
 import { compareText } from './text';
 
 /** Live and deleted records alike: the functions filter. */
@@ -37,7 +40,7 @@ export type WhoResult =
   | { kind: 'known'; tenantId: string; key: PayerKey }
   | {
       kind: 'ask';
-      reason: 'new-payer' | 'multi-tenant' | 'name-only-payer';
+      reason: 'new-payer' | 'multi-tenant' | 'name-only-payer' | 'invalid-iban';
       tenantIds: string[];
       key?: PayerKey;
     };
@@ -54,15 +57,30 @@ export function whoPaid(tx: BankTransaction, ctx: IncomeContext): WhoResult {
     return { kind: 'skip', reason: 'own-account' };
   }
 
+  const order = candidateOrder(tx, account.apartmentId, ctx);
+  const present = new Set(
+    ctx.tenancies
+      .filter((t) => t.deleted !== true && t.apartmentId === account.apartmentId)
+      .map((t) => t.tenantId),
+  );
+  // An IBAN that is there but not valid is never automatic and never falls back on the name key:
+  // a «chi» without key, so no payer is saved for it (user1, 15 Nov 2026, R120). Blank is no IBAN.
+  if (iban === undefined && (tx.counterparty?.iban ?? '').trim() !== '') {
+    return { kind: 'ask', reason: 'invalid-iban', tenantIds: order([...present]) };
+  }
+
   const key = payerKeyOf(tx.counterparty);
   const keyField = key === undefined ? {} : { key };
-  const order = candidateOrder(tx, account.apartmentId, ctx);
-  const valid = key === undefined ? [] : validPayers(ctx.payers, key, tx.date);
+  const valid = key === undefined ? [] : validPayers(ctx.payers, key, tx.date, ctx.tenants);
+  // A live payer of a deleted tenant is no candidate, but keeps the key from being automatic
+  // while it is valid (user1, 15 Nov 2026, R119).
+  const blocked =
+    key !== undefined && validPayers(ctx.payers, key, tx.date, []).length > valid.length;
   const [only] = valid;
-  if (valid.length === 1 && only !== undefined && key !== undefined) {
+  if (valid.length === 1 && !blocked && only !== undefined && key !== undefined) {
     return { kind: 'known', tenantId: only.tenantId, key };
   }
-  if (valid.length > 1) {
+  if (valid.length > 1 || (blocked && valid.length > 0)) {
     return {
       kind: 'ask',
       reason: 'multi-tenant',
@@ -71,14 +89,10 @@ export function whoPaid(tx: BankTransaction, ctx: IncomeContext): WhoResult {
     };
   }
 
-  const present = new Set(
-    ctx.tenancies
-      .filter((t) => t.deleted !== true && t.apartmentId === account.apartmentId)
-      .map((t) => t.tenantId),
-  );
   // Decision B: a name payer does not hold for a row with an IBAN, but puts its tenants on top.
   const nameKey = iban === undefined ? undefined : nameKeyOf(tx.counterparty);
-  const byName = nameKey === undefined ? [] : validPayers(ctx.payers, nameKey, tx.date);
+  const byName =
+    nameKey === undefined ? [] : validPayers(ctx.payers, nameKey, tx.date, ctx.tenants);
   if (byName.length > 0) {
     const top = new Set(byName.map((p) => p.tenantId));
     return {
@@ -148,6 +162,7 @@ export type IncomeReason =
   | 'new-payer'
   | 'multi-tenant'
   | 'name-only-payer'
+  | 'invalid-iban'
   | 'amount-differs'
   | 'late'
   | 'month-paid'
@@ -202,24 +217,87 @@ export function coveredMonths(
   return months;
 }
 
+export interface RentArrear {
+  apartmentId: string;
+  tenantId: string;
+  month: YearMonth;
+}
+
+/**
+ * The arrears (user1, 15 Nov 2026, R117): each month covered in full by the live statements of an
+ * account of the apartment (`coveredMonths`) in which the tenant (not deleted) has a live presence there and no
+ * live `canone` payment for it there (`forMonth`, else the month of the date). Only a list: it
+ * changes no calculation and no proposal. Sorted by apartment, tenant, month.
+ */
+export function rentArrears(
+  input: Pick<IncomeContext, 'accounts' | 'tenancies' | 'tenants' | 'payments'> & {
+    statements: Statement[];
+  },
+): RentArrear[] {
+  const out = new Map<string, RentArrear>();
+  const gone = new Set(input.tenants.filter((t) => t.deleted === true).map((t) => t.id));
+  const apartmentIds = new Set(
+    input.accounts.filter((a) => a.deleted !== true).map((a) => a.apartmentId),
+  );
+  for (const apartmentId of apartmentIds) {
+    const covered = coveredMonths(input, apartmentId);
+    const paid = new Set(
+      input.payments
+        .filter((p) => p.deleted !== true && p.kind === 'canone' && p.apartmentId === apartmentId)
+        .map((p) => `${p.tenantId}\u0000${p.forMonth ?? p.date.slice(0, 7)}`),
+    );
+    for (const t of input.tenancies) {
+      if (t.deleted === true || t.apartmentId !== apartmentId || gone.has(t.tenantId)) continue;
+      for (const month of covered) {
+        const key = `${t.tenantId}\u0000${month}`;
+        if (isPresent(t, month) && !paid.has(key)) {
+          out.set(`${apartmentId}\u0000${key}`, { apartmentId, tenantId: t.tenantId, month });
+        }
+      }
+    }
+  }
+  return [...out.values()].sort(
+    (a, b) =>
+      compareText(a.apartmentId, b.apartmentId) ||
+      compareText(a.tenantId, b.tenantId) ||
+      compareText(a.month, b.month),
+  );
+}
+
 /**
  * Turns the live credits without a live payment into automatic rent payments (R4 strict: one
  * payer, the oldest month to pay, exact rent plus flat charge) or proposals, in order of date
  * then id. Earlier automatic payments of the run count as paid; an earlier «che cosa» proposal
  * of the same tenant, or an earlier «chi» proposal listing the tenant in the same apartment,
- * blocks the later ones (`earlier-open`, decision C). A transaction whose automatic payment was
- * undone (a deleted `csv` payment for it) is never automatic again (`undone`). Everything sorted
+ * blocks the later ones (`earlier-open`, decision C). A transaction with a deleted `csv` payment
+ * is never automatic again (`undone`), unless the operation of `operations` that deleted it is the
+ * undo of a whole `income.reconcile`: then it is handled as any other (R118). Everything sorted
  * by id.
  */
 export function reconcileIncome(
-  input: IncomeContext & { transactions: BankTransaction[]; statements: Statement[] },
+  input: IncomeContext & {
+    transactions: BankTransaction[];
+    statements: Statement[];
+    /** The journal: it tells who deleted a payment. */
+    operations: Operation[];
+  },
 ): IncomeResult {
   const handled = new Set<string>();
   const undone = new Set<string>();
+  const latest = latestOperationByPath(input.operations);
+  const operationById = new Map(input.operations.map((o) => [o.id, o]));
   for (const p of input.payments) {
     if (p.transactionId === undefined) continue;
     if (p.deleted !== true) handled.add(p.transactionId);
-    else if (p.source === 'csv') undone.add(p.transactionId);
+    else if (p.source === 'csv') {
+      // The latest operation on the record deleted it (R118, user1, 15 Nov 2026): only the undo of
+      // a whole reconciliation puts the movement back to normal; an undone confirmation, a
+      // payment cancelled by itself or a deletion no operation explains make it `undone`.
+      const by = latest.get(recordPath('payment', p.id));
+      const whole =
+        by?.kind === 'undo' && operationById.get(by.undoes ?? '')?.kind === 'income.reconcile';
+      if (!whole) undone.add(p.transactionId);
+    }
   }
   const credits = input.transactions
     .filter((t) => t.deleted !== true && t.amount > 0 && !handled.has(t.id))

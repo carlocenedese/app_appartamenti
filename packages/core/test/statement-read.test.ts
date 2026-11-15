@@ -188,7 +188,7 @@ describe('readStatementTable', () => {
     expect(r.rows.map((x) => x.booked)).toEqual([false, true, true]);
   });
 
-  it('reads counterparty and IBAN from the description; an invalid IBAN stays out', () => {
+  it('reads counterparty and IBAN from the description; an invalid IBAN is kept as read (user1, 15 Nov 2026)', () => {
     const r = readStatementTable(
       table(
         HEADER,
@@ -208,7 +208,8 @@ describe('readStatementTable', () => {
       name: 'Mario Rossi',
       iban: 'IT60X0542811101000000123456',
     });
-    expect(r.rows[1]?.counterparty).toEqual({ name: 'Mario Rossi' });
+    // Kept so that `whoPaid` sees it and gives `invalid-iban` (R102, R120).
+    expect(r.rows[1]?.counterparty).toEqual({ name: 'Mario Rossi', iban: BAD_IBAN });
     expect(r.rows[2]?.counterparty).toBeUndefined();
   });
 

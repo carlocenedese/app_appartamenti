@@ -6,7 +6,8 @@
 // The output is one JSON line with a status, counts and ids: never a name, an IBAN, an amount, a
 // description or a path, unless `--dettagli` asks for the held rows. Every message is constant.
 // Plan 3b, task 8 adds inquilino, riconcilia, conferma and ripara (repairs what an interrupted
-// operation left: `checkConsistency` blocks every reconciliation until then).
+// operation left: `checkConsistency` blocks every reconciliation until then); plan 3b-bis adds
+// annulla-pagamento (cancels one automatic payment: its movement goes back to review, R121).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -27,6 +28,7 @@ import {
   TenantSchema,
   TimestampSchema,
   YearMonthSchema,
+  cancelAutomaticPayment,
   checkConsistency,
   confirmIncome,
   importStatement,
@@ -83,7 +85,9 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-income-operation':
-    'Rifiutato: si annullano solo le operazioni degli incassi (riconciliazione o conferma).',
+    'Rifiutato: si annullano solo le operazioni degli incassi (riconciliazione, conferma o pagamento annullato).',
+  'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
+  'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
   'already-undone': 'Rifiutato: l’operazione è già stata annullata.',
   'has-dependents': 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
@@ -124,6 +128,7 @@ const OPTIONS = {
   proposta: { type: 'string' },
   inquilino: { type: 'string' },
   operazione: { type: 'string' },
+  pagamento: { type: 'string' },
   parte: { type: 'string', multiple: true },
   'solo-questa-volta': { type: 'boolean' },
 };
@@ -372,10 +377,16 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const result = await runReconcile(store, who, clock, newId, { dryRun: values.prova === true });
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     let extra = () => ({});
+    let arrearExtra = () => ({});
     if (values.dettagli === true) {
       const all = { includeDeleted: true };
       const txs = (await loadAll(store, 'transaction', BankTransactionSchema, all)).records;
       const tenants = (await loadAll(store, 'tenant', TenantSchema, all)).records;
+      arrearExtra = (a) => ({
+        apartmentId: a.apartmentId,
+        tenantId: a.tenantId,
+        tenantName: tenants.find((t) => t.id === a.tenantId)?.name ?? a.tenantId,
+      });
       extra = (p) => {
         const tx = txs.find((t) => t.id === p.transactionId);
         return {
@@ -400,6 +411,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...extra(p),
       })),
       skipped: result.skipped,
+      // Only the month without --dettagli (R117): ids are chosen by the user, like tenantIds.
+      arrears: result.arrears.map((a) => ({ month: a.month, ...arrearExtra(a) })),
       ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
     };
   }
@@ -434,7 +447,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const { operations } = await readJournal(store);
     const target = operations.find((o) => o.id === values.operazione);
     if (target === undefined) throw new Stop('rejected', 'unknown-operation');
-    if (!['income.reconcile', 'income.confirm'].includes(target.kind)) {
+    if (!['income.reconcile', 'income.confirm', 'income.cancel-payment'].includes(target.kind)) {
       throw new Stop('rejected', 'not-income-operation');
     }
     try {
@@ -447,6 +460,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
       throw error;
     }
+  }
+
+  if (name === 'annulla-pagamento') {
+    need(values, 'pagamento');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await cancelAutomaticPayment(store, values.pagamento, who, clock, newId);
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return { status: 'cancelled', operationId: result.operationId };
   }
 
   if (name === 'ripara') {
@@ -506,6 +527,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'conferma',
         'ripara',
         'annulla-incassi',
+        'annulla-pagamento',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -523,6 +545,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       dettagli: ['riconcilia', 'importa'],
       parte: ['conferma'],
       'solo-questa-volta': ['conferma'],
+      pagamento: ['annulla-pagamento'],
     };
     for (const [option, commands] of Object.entries(only)) {
       if (values[option] !== undefined && !commands.includes(name)) throw invalid('bad-arguments');

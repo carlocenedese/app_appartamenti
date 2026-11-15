@@ -3,9 +3,9 @@
  * confirmation of a proposal, each one operation of the journal. Nothing is written while
  * `checkConsistency` reports a problem (R106, R107). Summaries carry counts only.
  */
-import { reconcileIncome } from './income';
-import type { IncomeProposal } from './income';
-import { checkConsistency, commitChange } from './journal';
+import { reconcileIncome, rentArrears } from './income';
+import type { IncomeProposal, RentArrear } from './income';
+import { checkConsistency, commitChange, latestOperationByPath, readJournal } from './journal';
 import type { Operation } from './journal';
 import {
   AccountSchema,
@@ -51,7 +51,7 @@ export async function saveTenant(
   );
 }
 
-/** Every record the reconciliation reads, deleted ones included (it filters them itself). */
+/** Every record the reconciliation reads, deleted ones included (it filters them itself), and the journal. */
 async function loadIncomeState(store: Store) {
   const all = { includeDeleted: true };
   return {
@@ -63,6 +63,7 @@ async function loadIncomeState(store: Store) {
     payments: (await loadAll(store, 'payment', PaymentSchema, all)).records,
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
+    operations: (await readJournal(store)).operations,
   };
 }
 
@@ -76,6 +77,8 @@ export type ReconcileRunResult =
       written: number;
       proposals: IncomeProposal[];
       skipped: number;
+      /** The arrears (`rentArrears`) with the automatic payments of the run counted as paid. */
+      arrears: RentArrear[];
       operationId?: string;
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
@@ -101,6 +104,10 @@ export async function runReconcile(
     written: payments.length,
     proposals,
     skipped: skipped.length,
+    arrears: rentArrears({
+      ...state,
+      payments: [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
+    }),
   };
   if (options.dryRun === true || payments.length === 0) return result;
 
@@ -258,4 +265,47 @@ export async function confirmIncome(
     paymentIds: payments.map((p) => p.id),
     ...(payer === undefined ? {} : { payerId: payer.id }),
   };
+}
+
+export type CancelPaymentResult =
+  | { status: 'cancelled'; operationId: string }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-payment' | 'not-automatic' };
+
+/**
+ * Cancels one automatic payment by itself (user1, 15 Nov 2026, R121): an `income.cancel-payment`
+ * operation that deletes it, which `undoOperation` takes back. Its movement is then `undone` and
+ * never automatic again (R118). Only a live `csv` payment whose latest change is an
+ * `income.reconcile` is automatic (`not-automatic` otherwise); an unknown or deleted one is
+ * `unknown-payment`.
+ */
+export async function cancelAutomaticPayment(
+  store: Store,
+  paymentId: string,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<CancelPaymentResult> {
+  const refuse = (reason: Extract<CancelPaymentResult, { status: 'refused' }>['reason']) =>
+    ({ status: 'refused', reason }) as const;
+  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  const payment = (await loadAll(store, 'payment', PaymentSchema)).records.find(
+    (p) => p.id === paymentId,
+  );
+  if (payment === undefined) return refuse('unknown-payment');
+  const path = recordPath('payment', payment.id);
+  const by = latestOperationByPath((await readJournal(store)).operations).get(path);
+  if (payment.source !== 'csv' || by?.kind !== 'income.reconcile') return refuse('not-automatic');
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'income.cancel-payment',
+      apartmentId: payment.apartmentId,
+      summary: 'Annullato un pagamento automatico.',
+      changes: [{ path, before: payment, after: undefined }],
+    },
+    clock,
+    newId,
+  );
+  return { status: 'cancelled', operationId: operation.id };
 }
