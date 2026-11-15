@@ -18,6 +18,7 @@ import {
   PayerSchema,
   PaymentSchema,
   SupplierProfileSchema,
+  TenancySchema,
   TenantSchema,
   TransferSchema,
 } from './model';
@@ -26,6 +27,8 @@ import { movementUses } from './movements';
 import { outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
 import type { MovementClassDraft, OutgoingProposal } from './outgoing';
 import { parseOrThrow } from './parse';
+import { firstPresenceDay } from './payers';
+import type { YearMonth } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -274,6 +277,89 @@ export async function confirmOutgoing(
     classId: `mc-${tx.id}`,
     ...(rule === undefined ? {} : { ruleId: rule.id }),
   };
+}
+
+export interface ConfirmTenantOutgoingInput {
+  /** A `p-uscita-` proposal of an outgoing movement. */
+  proposalId: string;
+  tenantId: string;
+  /** Never `canone`: the rent is an income. */
+  kind: 'caparra' | 'conguaglio' | 'altro';
+  forMonth: YearMonth;
+}
+
+export type ConfirmTenantOutgoingResult =
+  | { status: 'confirmed'; operationId: string; paymentId: string }
+  | {
+      status: 'refused';
+      reason: 'inconsistent-store' | 'unknown-proposal' | 'tenant-not-allowed';
+    };
+
+/**
+ * Registers the outgoing `proposalId` (a `p-uscita-` recomputed on the current state, gone since:
+ * `unknown-proposal`) as a payment to a tenant (question 9, R130): `pay-<transactionId>-1` with
+ * the negative amount of the movement, the apartment of its account, `confirmed` and `source`
+ * `csv`, in one `outgoing.tenant` operation. Always by hand, never from a rule, and no rule is
+ * saved. The tenant must be live with a presence in that apartment (`tenant-not-allowed`).
+ */
+export async function confirmTenantOutgoing(
+  store: Store,
+  input: ConfirmTenantOutgoingInput,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<ConfirmTenantOutgoingResult> {
+  const refuse = (reason: Extract<ConfirmTenantOutgoingResult, { status: 'refused' }>['reason']) =>
+    ({ status: 'refused', reason }) as const;
+  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  const state = await loadOutgoingState(store);
+  const proposal = state.result.proposals.find(
+    (p) => p.id === input.proposalId && p.step === 'uscita',
+  );
+  const tx = state.transactions.find((t) => t.id === proposal?.transactionId);
+  const apartmentId = state.accounts.find((a) => a.id === tx?.accountId)?.apartmentId;
+  if (tx === undefined || apartmentId === undefined) return refuse('unknown-proposal');
+  const tenancies = (await loadAll(store, 'tenancy', TenancySchema, { includeDeleted: true }))
+    .records;
+  const live = state.tenants.some((t) => t.id === input.tenantId && t.deleted !== true);
+  if (!live || firstPresenceDay(tenancies, input.tenantId, apartmentId) === undefined) {
+    return refuse('tenant-not-allowed');
+  }
+  const payment = parseOrThrow(
+    PaymentSchema,
+    {
+      id: `pay-${tx.id}-1`,
+      v: 1,
+      rev: 1,
+      apartmentId,
+      tenantId: input.tenantId,
+      date: tx.date,
+      amount: tx.amount,
+      confirmed: true,
+      kind: input.kind,
+      forMonth: input.forMonth,
+      source: 'csv',
+      transactionId: tx.id,
+    },
+    'payment',
+  );
+  const path = recordPath('payment', payment.id);
+  const before = (
+    await loadAll(store, 'payment', PaymentSchema, { includeDeleted: true })
+  ).records.find((p) => p.id === payment.id);
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'outgoing.tenant',
+      apartmentId,
+      summary: "Registrata un'uscita verso un inquilino.",
+      changes: [{ path, before, after: payment }],
+    },
+    clock,
+    newId,
+  );
+  return { status: 'confirmed', operationId: operation.id, paymentId: payment.id };
 }
 
 export type CancelClassResult =

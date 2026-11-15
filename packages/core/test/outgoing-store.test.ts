@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   MovementClassSchema,
   MovementRuleSchema,
+  PaymentSchema,
   cancelAutomaticClass,
   confirmOutgoing,
+  confirmTenantOutgoing,
   excludeMovement,
   loadAll,
+  planIncome,
   readJournal,
   recordPath,
   recordSchemas,
@@ -14,6 +17,7 @@ import {
   undoOperation,
 } from '../src/index';
 import type { OutgoingKind, RecordKind } from '../src/index';
+import type { YearMonth } from '../src/period';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
@@ -659,4 +663,142 @@ describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
       { id: 'p-f24-f', transactionId: 'f', step: 'f24', reason: 'f24', suggestedKind: 'tasse' },
     ]);
   });
+});
+
+describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
+  const tenant = (id: string, extra: Record<string, unknown> = {}) => ({
+    ...base,
+    id,
+    name: 'Inquilino Inventato',
+    ...extra,
+  });
+  const tenancy = (id: string, tenantId: string) => ({
+    ...base,
+    id,
+    apartmentId: 'berchet',
+    tenantId,
+    from: '2026-01',
+    monthlyRent: 50000,
+    monthlyForfait: 0,
+  });
+  async function withTenants(...transactions: ReturnType<typeof tx>[]) {
+    const store = await storeWith(...transactions);
+    await put(store, 'tenant', [tenant('t1'), tenant('t2'), tenant('t3', { deleted: true })]);
+    await put(store, 'tenancy', [tenancy('n1', 't1'), tenancy('n3', 't3')]);
+    return store;
+  }
+  const give = (
+    store: MemoryStore,
+    proposalId: string,
+    tenantId = 't1',
+    kind: 'caparra' | 'conguaglio' | 'altro' = 'caparra',
+  ) =>
+    confirmTenantOutgoing(
+      store,
+      { proposalId, tenantId, kind, forMonth: '2027-03' as YearMonth },
+      'p1',
+      clock,
+      ids('t'),
+    );
+  const payments = async (store: MemoryStore) =>
+    (await loadAll(store, 'payment', PaymentSchema, { includeDeleted: true })).records;
+
+  it('caparra 600,00 + 5,40 - 67,00: a -538,40 payment, one use, nothing left to propose', async () => {
+    const store = await withTenants(tx('x', '2027-03-05', -53840, { name: 'Inquilino Inventato' }));
+    const result = await give(store, 'p-uscita-x');
+    expect(result).toEqual({ status: 'confirmed', operationId: 't-1', paymentId: 'pay-x-1' });
+    expect(await payments(store)).toMatchObject([
+      {
+        id: 'pay-x-1',
+        apartmentId: 'berchet',
+        tenantId: 't1',
+        date: '2027-03-05',
+        amount: -53840,
+        confirmed: true,
+        kind: 'caparra',
+        forMonth: '2027-03',
+        source: 'csv',
+        transactionId: 'x',
+      },
+    ]);
+    const op = (await readJournal(store)).operations.find((o) => o.id === 't-1');
+    expect(op).toMatchObject({
+      kind: 'outgoing.tenant',
+      apartmentId: 'berchet',
+      summary: "Registrata un'uscita verso un inquilino.",
+    });
+    const again = await run(store);
+    expect(again.proposals).toEqual([]);
+    expect(again.written).toBe(0);
+    expect((await planIncome(store)).result.proposals).toEqual([]);
+    expect(await give(store, 'p-uscita-x')).toEqual({
+      status: 'refused',
+      reason: 'unknown-proposal',
+    });
+    expect(await confirm(store, 'p-uscita-x')).toEqual({
+      status: 'refused',
+      reason: 'unknown-proposal',
+    });
+    expect(
+      await excludeMovement(
+        store,
+        { transactionId: 'x', reason: 'doppione' },
+        'p1',
+        clock,
+        ids('e'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'has-dependents', recordIds: ['pay-x-1'] });
+  });
+
+  it('refusals write nothing: tenant without presence or deleted, unknown proposal, F24, income', async () => {
+    const store = await withTenants(
+      tx('x', '2027-03-05', -53840),
+      tx('i', '2027-03-06', 1000, { iban: SUPPLIER }),
+    );
+    const before = await snapshot(store);
+    for (const tenantId of ['t2', 't3', 'nessuno']) {
+      expect(await give(store, 'p-uscita-x', tenantId)).toEqual({
+        status: 'refused',
+        reason: 'tenant-not-allowed',
+      });
+    }
+    for (const id of ['p-uscita-nessuno', 'p-uscita-i', 'p-f24-x', 'p-chi-i']) {
+      expect(await give(store, id)).toEqual({ status: 'refused', reason: 'unknown-proposal' });
+    }
+    expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('never from a rule: a rule on the counterparty makes a class, not a payment', async () => {
+    const store = await withTenants(
+      tx('a', '2027-01-10', -1000, supplier),
+      tx('b', '2027-02-10', -1000, supplier),
+    );
+    await confirm(store, 'p-uscita-a');
+    await run(store, 'r2');
+    expect(await payments(store)).toEqual([]);
+    expect((await classes(store)).map((c) => c.id)).toEqual(['mc-a', 'mc-b']);
+    // A movement with a class is used: no tenant outgoing any more.
+    expect(await give(store, 'p-uscita-b')).toEqual({
+      status: 'refused',
+      reason: 'unknown-proposal',
+    });
+  });
+
+  it('inconsistent store: refused, and kind canone is no type', async () => {
+    const store = await diverged();
+    expect(await give(store, 'p-uscita-x')).toEqual({
+      status: 'refused',
+      reason: 'inconsistent-store',
+    });
+    const input = { proposalId: 'p-uscita-x', tenantId: 't1', forMonth: '2027-03' as YearMonth };
+    const rent = { ...input, kind: 'canone' } as const;
+    // canone is the rent: not an outgoing to a tenant
+    // @ts-expect-error not assignable to the kinds of an outgoing
+    void confirmTenantOutgoing(await withTenants(), rent, 'p1', clock, ids('k'));
+  });
+  async function diverged() {
+    const store = await withTenants(tx('x', '2027-03-05', -53840));
+    await diverge(store, 'x');
+    return store;
+  }
 });
