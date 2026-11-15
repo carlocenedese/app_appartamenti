@@ -1346,6 +1346,50 @@ describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, t
   );
 
   it(
+    'uscita su una regola in conflitto che comincia il giorno del movimento: 1 rule-conflict-dates',
+    async () => {
+      const s = await treConti();
+      const rule = (id, kind, extra = {}) => ({
+        v: 1,
+        rev: 1,
+        id,
+        direction: 'out',
+        accountId: 'acc-pulci',
+        key: 'iban:IT04X0542811101000000000401',
+        kind,
+        apartmentId: 'pulci',
+        ...extra,
+      });
+      await putRecords(s.dir, {
+        movementRule: [
+          rule('rule-a', 'altro'),
+          rule('rule-b', 'utenze', { validFrom: '2027-02-10' }),
+        ],
+      });
+      const snap = snapshot(s.dir);
+      const refused = cli([
+        'uscita',
+        ...s.common,
+        '--proposta',
+        'p-uscita-tx-p-fornitore-feb',
+        '--categoria',
+        'condominio',
+        '--appartamento',
+        'pulci',
+      ]);
+      expect(refused.code).toBe(1);
+      expect(refused.json).toEqual({
+        status: 'rejected',
+        reason: 'rule-conflict-dates',
+        message:
+          'Rifiutato: una regola in conflitto comincia il giorno del movimento o dopo; confermare «solo questa volta».',
+      });
+      expect(snapshot(s.dir)).toEqual(snap);
+    },
+    TIMEOUT,
+  );
+
+  it(
     'annulla-riconciliazione di uno statement.import: 1 not-reconcile-operation',
     async () => {
       const s = await incomeSetup();

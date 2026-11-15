@@ -18,6 +18,8 @@ import {
 } from '../src/index';
 import type { OutgoingKind, RecordKind } from '../src/index';
 import type { YearMonth } from '../src/period';
+import { addDays } from '../src/period';
+import type { ISODate } from '../src/period';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
@@ -61,6 +63,7 @@ const tx = (
   ...(counterparty === undefined ? {} : { counterparty }),
 });
 const supplier = { name: 'Fornitore Inventato', iban: SUPPLIER };
+const addDaysText = (date: string, days: number): string => addDays(date as ISODate, days);
 
 async function put(
   store: MemoryStore,
@@ -393,6 +396,76 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
       expect((await rules(next)).find((r) => r.id === 'rule-b')).toMatchObject({
         validFrom: '2028-02-10',
         validTo: '2028-02-10',
+      });
+    });
+
+    it('an older movement confirmed later: its rule ends the day before the next rule (user1, 15 Nov 2026)', async () => {
+      const store = await conflicted();
+      await confirm(store, 'p-uscita-y', 'condominio');
+      await put(store, 'transaction', [tx('old', '2028-01-10', -4200, supplier)]);
+      const dates = async () =>
+        (await rules(store))
+          .filter((r) => r.deleted !== true)
+          .map((r) => [r.id, r.validFrom, r.validTo]);
+      const before = await dates();
+      expect(await confirm(store, 'p-uscita-old', 'tasse', {}, 'o')).toEqual({
+        status: 'confirmed',
+        operationId: 'o-1',
+        classId: 'mc-old',
+        ruleId: 'rule-old',
+      });
+      expect((await rules(store)).map((r) => [r.id, r.validFrom, r.validTo])).toEqual([
+        ['rule-a', undefined, '2028-01-09'],
+        ['rule-b', undefined, '2028-01-09'],
+        ['rule-old', '2028-01-10', '2028-02-09'],
+        ['rule-y', '2028-02-10', undefined],
+      ]);
+      await put(store, 'transaction', [
+        tx('jan', '2028-01-20', -4200, supplier),
+        tx('feb', '2028-02-10', -4200, supplier),
+      ]);
+      const next = await run(store, 's');
+      expect(next).toMatchObject({ written: 2, classified: ['feb', 'jan'], proposals: [] });
+      const byTx = new Map((await classes(store)).map((c) => [c.transactionId, c.ruleId]));
+      expect([byTx.get('jan'), byTx.get('feb')]).toEqual(['rule-old', 'rule-y']);
+      // Undone (the run first), everything is as before the confirmation.
+      await undoOperation(store, 's-1', 'p1', clock, ids('u'));
+      await undoOperation(store, 'o-1', 'p1', clock, ids('v'));
+      expect(await dates()).toEqual(before);
+      expect(before.map(([id]) => id)).toEqual(['rule-a', 'rule-b', 'rule-y']);
+    });
+
+    it.each([
+      ['2027-03-01', '2027-02-28'],
+      ['2028-01-01', '2027-12-31'],
+    ])('closes on a month or year boundary: from %s the old rules end on %s', async (date, end) => {
+      const store = await conflicted(date);
+      await confirm(store, 'p-uscita-y', 'condominio');
+      expect((await rules(store)).map((r) => [r.id, r.validFrom, r.validTo])).toEqual([
+        ['rule-a', undefined, end],
+        ['rule-b', undefined, end],
+        ['rule-y', date, undefined],
+      ]);
+      // An older movement with no conflict: its new rule ends the day before the next one.
+      const fresh = await storeWith(tx('old', addDaysText(date, -20), -4200, supplier));
+      await put(fresh, 'movementRule', [rule('rule-n', 'altro', { validFrom: date })]);
+      expect(await confirm(fresh, 'p-uscita-old', 'utenze')).toMatchObject({ ruleId: 'rule-old' });
+      expect((await rules(fresh)).find((r) => r.id === 'rule-old')).toMatchObject({
+        validFrom: addDaysText(date, -20),
+        validTo: end,
+      });
+    });
+
+    it('older movement imported later: a rule valid from after its date does not count', async () => {
+      const store = await storeWith(tx('old', '2028-01-10', -4200, supplier));
+      await put(store, 'movementRule', [
+        rule('rule-a', 'altro', { validTo: '2028-02-09' }),
+        rule('rule-y', 'condominio', { validFrom: '2028-02-10' }),
+      ]);
+      expect(await run(store)).toMatchObject({ written: 1, classified: ['old'], proposals: [] });
+      expect((await classes(store)).find((c) => c.id === 'mc-old')).toMatchObject({
+        kind: 'altro',
+        ruleId: 'rule-a',
       });
     });
   });
@@ -873,20 +946,61 @@ describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
-  it('never from a rule: a rule on the counterparty makes a class, not a payment', async () => {
+  it('never from a rule: no out rule on the IBAN of a valid payer, applied or saved (R130)', async () => {
+    const tenantIban = { name: 'Inquilino Inventato', iban: TENANT };
     const store = await withTenants(
-      tx('a', '2027-01-10', -1000, supplier),
-      tx('b', '2027-02-10', -1000, supplier),
+      tx('a', '2027-01-10', -1000, tenantIban),
+      tx('b', '2027-02-10', -1000, tenantIban),
     );
-    await confirm(store, 'p-uscita-a');
-    await run(store, 'r2');
-    expect(await payments(store)).toEqual([]);
-    expect((await classes(store)).map((c) => c.id)).toEqual(['mc-a', 'mc-b']);
-    // A movement with a class is used: no tenant outgoing any more.
-    expect(await give(store, 'p-uscita-b')).toEqual({
-      status: 'refused',
-      reason: 'unknown-proposal',
+    await put(store, 'payer', [
+      {
+        ...base,
+        id: 'pr-t1',
+        key: `iban:${TENANT}`,
+        tenantId: 't1',
+        validFrom: '2026-01-01',
+        source: 'confirmed',
+      },
+    ]);
+    // The confirmation classifies that movement only: no rule, even with rememberRule.
+    expect(await confirm(store, 'p-uscita-a')).toEqual({
+      status: 'confirmed',
+      operationId: 'c-1',
+      classId: 'mc-a',
     });
+    expect(await rules(store)).toEqual([]);
+    // A rule saved before on that key (by hand here) is never applied while the payer is valid.
+    await put(store, 'movementRule', [
+      {
+        ...base,
+        id: 'rule-t',
+        direction: 'out',
+        accountId: 'acc-berchet',
+        key: `iban:${TENANT}`,
+        kind: 'altro',
+        apartmentId: 'berchet',
+      },
+    ]);
+    const after = await run(store, 'r2');
+    expect(after).toMatchObject({ written: 0, classified: [] });
+    expect(after.proposals.map((p) => p.id)).toEqual(['p-uscita-b']);
+    expect(await payments(store)).toEqual([]);
+    expect((await classes(store)).map((c) => c.id)).toEqual(['mc-a']);
+    // It stays a proposal to confirm, here as an outgoing to the tenant.
+    expect(await give(store, 'p-uscita-b')).toMatchObject({ status: 'confirmed' });
+    // Before the payer is valid the rule holds as any other.
+    const early = await withTenants(tx('e', '2025-12-10', -1000, tenantIban));
+    await put(early, 'payer', [
+      {
+        ...base,
+        id: 'pr-t1',
+        key: `iban:${TENANT}`,
+        tenantId: 't1',
+        validFrom: '2026-01-01',
+        source: 'confirmed',
+      },
+    ]);
+    expect(await confirm(early, 'p-uscita-e')).toMatchObject({ ruleId: 'rule-e' });
   });
 
   it('inconsistent store: refused, and kind canone is no type', async () => {
@@ -897,9 +1011,14 @@ describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
     });
     const input = { proposalId: 'p-uscita-x', tenantId: 't1', forMonth: '2027-03' as YearMonth };
     const rent = { ...input, kind: 'canone' } as const;
-    // canone is the rent: not an outgoing to a tenant
-    // @ts-expect-error not assignable to the kinds of an outgoing
-    void confirmTenantOutgoing(await withTenants(), rent, 'p1', clock, ids('k'));
+    const fresh = await withTenants(tx('x', '2027-03-05', -53840));
+    const before = await snapshot(fresh);
+    // canone is the rent, not an outgoing to a tenant: refused at run time too (no cast needed).
+    expect(
+      // @ts-expect-error not assignable to the kinds of an outgoing
+      await confirmTenantOutgoing(fresh, rent, 'p1', clock, ids('k')),
+    ).toEqual({ status: 'refused', reason: 'invalid-kind' });
+    expect(await snapshot(fresh)).toEqual(before);
   });
   async function diverged() {
     const store = await withTenants(tx('x', '2027-03-05', -53840));

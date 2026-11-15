@@ -3,6 +3,7 @@
  * its rule and the cancellation of one automatic class, each one operation of the journal.
  * Nothing is written while `checkConsistency` reports a problem (R113). Summaries carry counts.
  */
+import { z } from 'zod';
 import { planIncome } from './income-store';
 import { checkConsistency, commitChange, latestOperationByPath, readJournal } from './journal';
 import {
@@ -24,7 +25,7 @@ import {
 } from './model';
 import type { OutgoingKind } from './model';
 import { movementUses } from './movements';
-import { outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
+import { isPayerIban, outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
 import type { MovementClassDraft, OutgoingProposal } from './outgoing';
 import { parseOrThrow } from './parse';
 import { firstPresenceDay } from './payers';
@@ -33,6 +34,7 @@ import type { ISODate, YearMonth } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
+import { compareText } from './text';
 
 const plural = (n: number, one: string, many: string): string =>
   `${String(n)} ${n === 1 ? one : many}`;
@@ -194,7 +196,10 @@ export type ConfirmOutgoingResult =
  * movement is never an F24 (`f24-not-outgoing`). The new rule closes the valid rules in conflict
  * with it (another category or apartment) with `validTo` the day before the movement and starts
  * itself on the movement (`validFrom`), in the same operation; one of them starting on or after
- * the movement is `rule-conflict-dates` (user1, 15 Nov 2026).
+ * the movement is `rule-conflict-dates` (user1, 15 Nov 2026). On an older movement the new rule
+ * also ends (`validTo`) the day before the nearest live rule of the same key, account and
+ * direction that starts after the movement. No rule on the IBAN of a valid payer (R130): the
+ * confirmation then classifies that movement only.
  */
 export async function confirmOutgoing(
   store: Store,
@@ -234,7 +239,7 @@ export async function confirmOutgoing(
     }),
   ];
   const { key } = candidate;
-  const remember = input.rememberRule && !f24 && key !== undefined;
+  const remember = input.rememberRule && !f24 && key !== undefined && !isPayerIban(tx, key, state);
   // A new rule closes the live rules in conflict with it (same key, account and direction,
   // another category or apartment) the day before the movement (user1, 15 Nov 2026): from then
   // on the newer rule holds. One that starts on or after the movement is not decided here.
@@ -247,6 +252,21 @@ export async function confirmOutgoing(
   if (closed.some((r) => r.validFrom !== undefined && r.validFrom > dayBefore)) {
     return refuse('rule-conflict-dates');
   }
+  // An older movement (user1, 15 Nov 2026, «the most recent» by the date of the movement): the
+  // new rule ends the day before the nearest live rule of the same key that starts after it.
+  const next = remember
+    ? state.rules
+        .filter(
+          (r): r is typeof r & { validFrom: ISODate } =>
+            r.deleted !== true &&
+            r.accountId === tx.accountId &&
+            r.direction === candidate.direction &&
+            r.key === key &&
+            r.validFrom !== undefined &&
+            r.validFrom > tx.date,
+        )
+        .sort((a, b) => compareText(a.validFrom, b.validFrom))[0]
+    : undefined;
   for (const r of closed) {
     changes.push({
       path: recordPath('movementRule', r.id),
@@ -266,7 +286,8 @@ export async function confirmOutgoing(
           key,
           kind,
           apartmentId: input.apartmentId,
-          ...(closed.length > 0 ? { validFrom: tx.date } : {}),
+          ...(closed.length > 0 || next !== undefined ? { validFrom: tx.date } : {}),
+          ...(next === undefined ? {} : { validTo: addDays(next.validFrom, -1) }),
         },
         'movementRule',
       )
@@ -312,15 +333,19 @@ export type ConfirmTenantOutgoingResult =
   | { status: 'confirmed'; operationId: string; paymentId: string }
   | {
       status: 'refused';
-      reason: 'inconsistent-store' | 'unknown-proposal' | 'tenant-not-allowed';
+      reason: 'inconsistent-store' | 'invalid-kind' | 'unknown-proposal' | 'tenant-not-allowed';
     };
+
+/** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
+const TenantOutgoingKindSchema = z.enum(['caparra', 'conguaglio', 'altro']);
 
 /**
  * Registers the outgoing `proposalId` (a `p-uscita-` recomputed on the current state, gone since:
  * `unknown-proposal`) as a payment to a tenant (question 9, R130): `pay-<transactionId>-1` with
  * the negative amount of the movement, the apartment of its account, `confirmed` and `source`
  * `csv`, in one `outgoing.tenant` operation. Always by hand, never from a rule, and no rule is
- * saved. The tenant must be live with a presence in that apartment (`tenant-not-allowed`).
+ * saved. The tenant must be live with a presence in that apartment (`tenant-not-allowed`); a
+ * `kind` outside `caparra`, `conguaglio`, `altro` is `invalid-kind`.
  */
 export async function confirmTenantOutgoing(
   store: Store,
@@ -332,6 +357,8 @@ export async function confirmTenantOutgoing(
   const refuse = (reason: Extract<ConfirmTenantOutgoingResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  // The type says it already; a caller in plain JavaScript could still pass `canone`.
+  if (!TenantOutgoingKindSchema.safeParse(input.kind).success) return refuse('invalid-kind');
   const state = await loadOutgoingState(store);
   const proposal = state.result.proposals.find(
     (p) => p.id === input.proposalId && p.step === 'uscita',

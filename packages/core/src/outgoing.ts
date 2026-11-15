@@ -93,6 +93,21 @@ export function outgoingCandidate(
 }
 
 /**
+ * Whether `key` is the IBAN of a payer valid on the date of `tx` (R130, user1, 15 Nov 2026): no
+ * `out` rule on it is ever applied or saved, such an outgoing is always confirmed by hand.
+ */
+export function isPayerIban(
+  tx: BankTransaction,
+  key: PayerKey | undefined,
+  ctx: Pick<OutgoingInput, 'payers' | 'tenants'>,
+): boolean {
+  return (
+    key?.startsWith('iban:') === true &&
+    validPayers(ctx.payers, key, tx.date as ISODate, ctx.tenants).length > 0
+  );
+}
+
+/**
  * The valid rules of `tx` (question 1), by `id`: live, same account, same direction, same key,
  * `validFrom` absent or not after its date, `validTo` absent or not before it; none without a key. The amount does not count.
  */
@@ -125,7 +140,8 @@ export function validRules(
  * history is `undone`, never automatic again, unless the undo of a whole `outgoing.reconcile`
  * deleted it last (as R118). An incoming candidate gets a class or nothing (its «chi»
  * of the income stays). An outgoing F24 (`isF24` with the live profile of its account) is always
- * a `p-f24-` proposal suggesting `tasse`, never automatic, whatever the rules (decision 5).
+ * a `p-f24-` proposal suggesting `tasse`, never automatic, whatever the rules (decision 5). An
+ * outgoing to the IBAN of a valid payer is never automatic either (`isPayerIban`, R130).
  * `missingDocument`: the movements of the live `utenze` and `condominio`
  * classes, these included, without a live confirmed match (question 8).
  */
@@ -181,7 +197,10 @@ export function reconcileOutgoing(input: OutgoingInput): {
         continue;
       }
     }
-    const valid = undone.has(tx.id) ? [] : validRules(input.rules, tx, direction, key);
+    const valid =
+      undone.has(tx.id) || isPayerIban(tx, key, input)
+        ? []
+        : validRules(input.rules, tx, direction, key);
     const pairs = new Set(valid.map((r) => `${r.kind}\u0000${r.apartmentId}`));
     const [rule] = valid;
     if (pairs.size === 1 && rule !== undefined) {
