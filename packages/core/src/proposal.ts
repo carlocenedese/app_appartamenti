@@ -9,7 +9,8 @@
  */
 import type { ExtractedField, ExtractionResult } from './extraction';
 import type { Bill, Consumption, Instalment, Supply, Tenancy } from './model';
-import { splitCents } from './money';
+import { exceeds, yearBeforeBill } from './consumption';
+import { cents, splitCents } from './money';
 import type { Cents } from './money';
 import { lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
@@ -159,46 +160,12 @@ function missingField(name: FieldName): ProposalCheck {
 
 // --- Consumption ------------------------------------------------------------------------------
 
-/** A decimal quantity `"123.4"` as an integer scaled by 10^scale. */
-function scaled(quantity: string, scale: number): bigint {
-  const [whole = '0', fraction = ''] = quantity.split('.');
-  return BigInt(whole + fraction.padEnd(scale, '0'));
-}
-
-const decimals = (quantity: string): number => quantity.split('.')[1]?.length ?? 0;
-
-/**
- * True when `current` exceeds `previous` by more than `percent` %. Computed on integers, so the
- * threshold itself is never flagged by a rounding error; the percentage keeps 4 decimals.
- */
-function exceeds(current: string, previous: string, percent: number): boolean {
-  const scale = Math.max(decimals(current), decimals(previous));
-  const base = 1_000_000n; // 100 % with 4 decimals
-  const threshold = BigInt(Math.round(percent * 10_000));
-  return scaled(current, scale) * base > scaled(previous, scale) * (base + threshold);
-}
-
 function consumptionCheck(
   bill: { apartmentId: string; category: string; periodStart: ISODate; periodEnd: ISODate },
   consumption: Consumption,
   ctx: ProposalContext,
 ): ProposalCheck[] {
-  const yearBefore = monthsInPeriod(bill.periodStart, bill.periodEnd)
-    .map((month) => `${Number(month.slice(0, 4)) - 1}${month.slice(4)}`)
-    .join(',');
-  const unit = foldText(consumption.unit);
-  const previous = ctx.bills
-    .filter(
-      (b) =>
-        b.deleted !== true &&
-        b.apartmentId === bill.apartmentId &&
-        b.category === bill.category &&
-        b.consumption !== undefined &&
-        foldText(b.consumption.unit) === unit &&
-        b.periodStart <= b.periodEnd &&
-        monthsInPeriod(b.periodStart, b.periodEnd).join(',') === yearBefore,
-    )
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+  const previous = yearBeforeBill({ ...bill, id: '', amount: cents(0), consumption }, ctx.bills);
   if (previous?.consumption === undefined) return [];
   const before = previous.consumption.quantity;
   return exceeds(consumption.quantity, before, ctx.thresholds.consumptionAnomalyPercent)
