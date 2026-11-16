@@ -405,13 +405,8 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     ...extra,
   });
   /** The fixture without its settlement payments, plus `payments`. */
-  function withPayments(
-    payments: Pay[],
-    next: Pick<ExcelInput, 'nextPeriodFrom'> = { nextPeriodFrom: yearMonth('2027-10') },
-  ) {
-    const input: ExcelInput = fixtureInput();
-    delete input.nextPeriodFrom;
-    Object.assign(input, next);
+  function withPayments(payments: Pay[], periods: ExcelInput['periods'] = fixtureInput().periods) {
+    const input: ExcelInput = { ...fixtureInput(), periods };
     input.payments = [...input.payments.filter((p) => p.kind !== 'conguaglio'), ...payments];
     return input;
   }
@@ -477,7 +472,8 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     const input = withPayments([
       conguaglio('c1', 'ten-a', { forMonth: yearMonth('2027-10'), date: isoDate('2027-05-01') }),
       conguaglio('c2', 'ten-a', { date: isoDate('2026-09-30') }),
-      conguaglio('c3', 'ten-a', { date: isoDate('2027-10-01') }),
+      // After the end of the next period (D11).
+      conguaglio('c3', 'ten-a', { date: isoDate('2028-10-01') }),
       conguaglio('c4', 'ten-a', { date: isoDate('2027-01-01'), kind: 'caparra' }),
       conguaglio('c5', 'ten-a', { date: isoDate('2027-01-01'), confirmed: false }),
       conguaglio('c6', 'ten-a', { date: isoDate('2027-01-01'), apartmentId: 'apt-sud' }),
@@ -490,13 +486,41 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     ]);
   });
 
+  it('counts a payment without month up to the end of the next period, once (D11)', () => {
+    const due = dueOf('ten-a');
+    const late = withPayments([
+      conguaglio('c1', 'ten-a', { date: isoDate('2028-09-30'), amount: cents(due) }),
+    ]);
+    expect(anna(late)).toEqual([due, due, 0, 'saldato']);
+    // The same payment does not count in the next period.
+    const next = {
+      ...late,
+      period: { label: '2027-28', from: yearMonth('2027-10'), to: yearMonth('2028-09') },
+    };
+    const versamenti = rowsOf(sheets(next).get('Versamenti conguaglio')).slice(1);
+    expect(versamenti.map((r) => r[1])).toEqual([]);
+  });
+
   it('counts any later date when there is no next period', () => {
     const due = dueOf('ten-a');
     const input = withPayments(
       [conguaglio('c1', 'ten-a', { date: isoDate('2031-01-01'), amount: cents(due) })],
-      {},
+      [{ from: yearMonth('2026-10'), to: yearMonth('2027-09') }],
     );
     expect(anna(input)).toEqual([due, due, 0, 'saldato']);
+  });
+
+  it('gives a date in two periods to the one that starts last (D13)', () => {
+    const due = dueOf('ten-a');
+    const periods = [
+      { from: yearMonth('2026-10'), to: yearMonth('2027-09') },
+      { from: yearMonth('2027-03'), to: yearMonth('2032-02') },
+    ];
+    const may = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-05-10') })], periods);
+    expect(anna(may)).toEqual([due, 0, due, 'da pagare']);
+    // After the end of 2026-27 it goes back to the period that ended (D11).
+    const nov = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-11-10') })], periods);
+    expect(anna(nov)).toEqual([due, 1000, due - 1000, 'parziale']);
   });
 
   it('sums paid and residual in the total, and leaves the empty beds blank', () => {

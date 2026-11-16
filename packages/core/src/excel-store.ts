@@ -62,17 +62,16 @@ export async function loadExcelInput(
     return refuse('ambiguous-period');
   }
 
-  // The first month of the next settlement period (R172).
-  const [nextPeriodFrom] = all
-    .map((p) => p.from)
-    .filter((from) => from > period.to)
-    .sort(compareText);
+  // Every settlement period, once and in order (R177).
+  const spans = [
+    ...new Map(all.map((p) => [`${p.from}/${p.to}`, { from: p.from, to: p.to }])).values(),
+  ].sort((a, b) => compareText(a.from, b.from) || compareText(a.to, b.to));
   return {
     status: 'ok',
     input: {
       apartment,
       period: { label: period.label, from: period.from, to: period.to },
-      ...(nextPeriodFrom === undefined ? {} : { nextPeriodFrom }),
+      periods: spans,
       tenants: await records('tenant', TenantSchema),
       tenancies: own(await records('tenancy', TenancySchema)),
       bills: own(await records('bill', BillSchema)),

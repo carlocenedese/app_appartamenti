@@ -56,7 +56,10 @@ export function fixtureInput(fixture: ExcelFixture = FIXTURE): ExcelInput {
     payments: copy.payments,
     tenants: copy.tenants,
     // The contract goes on for one more lease year (what `loadExcelInput` finds).
-    nextPeriodFrom: yearMonth('2027-10'),
+    periods: [
+      { from: yearMonth('2026-10'), to: yearMonth('2027-09') },
+      { from: yearMonth('2027-10'), to: yearMonth('2028-09') },
+    ],
   };
 }
 

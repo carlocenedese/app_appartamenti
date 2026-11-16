@@ -1,7 +1,7 @@
 # Piano 5: Excel dei conguagli per appartamento e annualità (disegno)
 
 Stato: **approvato da user1 il 16 novembre 2026** con le risposte alle domande 1, 3-10 (sotto, «Domande
-per user1»; restano aperte la 2 e le nuove 11-12); i task 1-7 sono uniti, le risposte sono i task 8-11
+per user1»; resta aperta la 2) e alle domande 11-15 (seconda risposta, task 12-14); i task 1-7 sono uniti, le risposte sono i task 8-11
 del piano. Il piano copre
 il core (`packages/core`) e una riga di comando (`pnpm excel`); **niente schermate e niente veste
 grafica**. Riferimenti: `docs/spec.md` sezioni 5, 6, 9 («Spese condominiali»), 12, 19, 20, 26, 27, 29
@@ -283,7 +283,7 @@ fuori (o com'è indicato) e il resto procede.
 10. **Nessuna libreria xlsx** (zip e XML scritti da noi, sopra): approvi? Ripiego `fflate` (MIT) solo
     se Excel rifiutasse il file.
     **Risposta di user1: nessuna libreria.**
-11. **(Nuova, aperta.) Fino a quando conta un versamento senza mese indicato?** La risposta 3 dice
+11. **(Nuova.) Fino a quando conta un versamento senza mese indicato?** La risposta 3 dice
     «la data nel periodo o dopo la sua fine fino al periodo successivo». La leggo come «fino al
     giorno prima dell'inizio del periodo successivo» (R172): così un bonifico non conta mai per due
     periodi. Ma con annualità consecutive il conguaglio del 2026-27, pagato a novembre 2027 senza
@@ -292,23 +292,32 @@ fuori (o com'è indicato) e il resto procede.
     serve il mese indicato (`forMonth` `2027-09` o un altro mese del periodo). Va bene, o preferisci
     una finestra dopo la fine (per esempio fino alla fine del periodo successivo, contando il
     bonifico una volta sola)? Senza periodo successivo (ultimo contratto) la finestra non ha fine.
-12. **(Nuova, aperta.) Stato con versato oltre il dovuto.** Conguaglio 100,00 €, versati 120,00 €
+    **Risposta di user1 (D11): senza mese indicato conta fino alla fine del periodo successivo, una
+    volta sola** (R177, task 12).
+12. **(Nuova.) Stato con versato oltre il dovuto.** Conguaglio 100,00 €, versati 120,00 €
     dal CSV: residuo −20,00 €. La sezione 27 ha solo «saldato, parziale, da pagare»: oggi scrivo
     «parziale» (R172). Vuoi un'altra parola (per esempio «versato in più») o un'altra regola?
+    **Risposta di user1 (D12): «versato in più».** R178, task 13.
 13. **(Nuova, dalla revisione.) Periodi che si sovrappongono.** Il periodo successivo è il primo
     che inizia dopo la fine di questo; un contratto che inizia prima della fine (per esempio un
     3+2 da 2027-03 accanto all'annualità 2026-27) non chiude la finestra, quindi un bonifico senza
     mese del 10/05/2027 di 80,00 € conta nel 2026-27 e anche nel periodo del nuovo contratto. Come
     vanno scelti i periodi in questo caso?
+    **Risposta di user1 (D13): conta nel periodo che inizia per ultimo tra quelli che lo contengono**
+    (R177, task 12).
 14. **(Nuova, dalla revisione.) Casi strani dello stato.** Oggi: conguaglio 0,00 € e nessun
     versamento → «saldato»; conguaglio 100,00 €, bonifici +50,00 € e −50,00 € → versato 0 → «da
     pagare»; credito dell'inquilino −40,00 € e nessuna restituzione → «da pagare» (ma siamo noi a
     dover pagare). Vanno bene queste parole?
+    **Risposta di user1 (D14): il credito non ancora restituito è «da restituire»**; il resto resta
+    com'è (0 senza versamenti «saldato», +50/−50 «da pagare»). R178, task 13.
 15. **(Nuova, dalla revisione.) Voci pagate elencate come «in attesa».** L'elenco in fondo al foglio
     Bollette riporta tutte le voci che `calcConguaglio` tiene fuori, anche quelle con l'addebito nel
     CSV ma ferme per un altro motivo (importo diverso, quota della proprietà più grande della rata).
     Esempio: rata di condominio 300,00 € addebitata, ma la quota della proprietà è 320,00 € → è
     elencata come «in attesa di pagamento». Serve un'altra intestazione o un motivo?
+    **Risposta di user1 (D15): una colonna «Motivo»** con «in attesa di pagamento», «importo
+    diverso» o «quota maggiore della rata». R179, task 14.
 
 ## Mie scelte (da controllare)
 

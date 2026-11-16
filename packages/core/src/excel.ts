@@ -195,10 +195,30 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
 export interface ExcelInput extends ConguaglioInput {
   tenants: Tenant[];
   /**
-   * First month of the next settlement period of the apartment, if any: a settlement payment
-   * without `forMonth` counts for this period up to the month before (R172).
+   * Every settlement period of the apartment (this one included), to give a settlement payment
+   * without `forMonth` to one period only (R177); without it, only `period` is known.
    */
-  nextPeriodFrom?: YearMonth;
+  periods?: { from: YearMonth; to: YearMonth }[];
+}
+
+type Span = { from: YearMonth; to: YearMonth };
+
+/**
+ * The settlement period a payment of `month` without `forMonth` belongs to (R177, user1's D11 and
+ * D13): a period takes the months from its start to the end of the next one (the first that starts
+ * after it; none: no end). Among the periods that take `month`, one already ended gets it (the
+ * latest starting); otherwise the one that starts last.
+ */
+export function settlementPeriodOf(month: YearMonth, periods: readonly Span[]): Span | undefined {
+  const sorted = [...periods].sort(
+    (a, b) => compareText(a.from, b.from) || compareText(a.to, b.to),
+  );
+  const takes = sorted.filter((p) => {
+    const next = sorted.find((q) => q.from > p.from);
+    return p.from <= month && (next === undefined || month <= next.to);
+  });
+  const ended = takes.filter((p) => p.to < month);
+  return (ended.length > 0 ? ended : takes).at(-1);
 }
 
 export type SettlementStatus = 'saldato' | 'parziale' | 'da pagare';
@@ -436,12 +456,13 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const payments = live(input.payments).filter(
     (p) => p.confirmed && p.apartmentId === apartment.id,
   );
-  // Question 3, R172: the month given, else the date from the start up to the next period.
-  const inSettlement = (p: Payment) =>
-    p.forMonth !== undefined
-      ? p.forMonth >= period.from && p.forMonth <= period.to
-      : p.date.slice(0, 7) >= period.from &&
-        (input.nextPeriodFrom === undefined || p.date.slice(0, 7) < input.nextPeriodFrom);
+  // Question 3, R172, R177: the month given, else the period the date belongs to.
+  const spans = input.periods ?? [period];
+  const inSettlement = (p: Payment) => {
+    if (p.forMonth !== undefined) return p.forMonth >= period.from && p.forMonth <= period.to;
+    const home = settlementPeriodOf(p.date.slice(0, 7) as YearMonth, spans);
+    return home?.from === period.from && home.to === period.to;
+  };
   const settlementPayments = payments
     .filter((p) => p.kind === 'conguaglio' && settled.has(p.tenantId) && inSettlement(p))
     .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));

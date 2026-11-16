@@ -292,3 +292,26 @@ SHA-256 del file della fixture cambia a ogni task che cambia il file: si aggiorn
 - **Copertura del disegno:** obiettivi 1 (modello puro) → Task 4-5; 2 (scrittore deterministico) → Task 1-2; 3 (caricamento con le assunte) → Task 6; 4 (`pnpm excel`) → Task 7; 5 (andata e ritorno Python) → Task 3. Decisioni 1-11: 1 → Task 5 (Bollette e Conguagli); 2 → Task 4-5 (quote dal core, totali su tutte le righe); 3 → Task 4 (fuori i `pending`) e 6 (assunte); 4 → Task 4 (importo addebitato, commissione); 5 → Task 4 (parte degli inquilini, una voce) e 5 (colonna Condominio); 6 → Task 4 (nota); 7 → Task 4 (`fileName`); 8 → Task 5 (ordine e mesi); 9 → Task 2 (formati); 10 → Task 6-7 (periodo dal contratto, nessuna sovrascrittura); 11 → Task 1-2 (nessuna libreria). Domande aperte: nessun task le decide (Review Focus 2).
 - **Firme coerenti:** `zipStored` (Task 1) è usato solo da `writeXlsx` (Task 2); `XlsxWorkbook` (Task 2) è prodotto da `buildConguaglioWorkbook` (Task 5) e scritto da `writeXlsx` nel Task 7; `ExcelItem` (Task 4) entra nel foglio Bollette (Task 5); `ExcelInput` (Task 5) è il risultato di `loadExcelInput` (Task 6); `assumedMatches` (Task 6) entra in `ExcelInput.matches`.
 - **Review Focus nei test:** 1 → Task 4; 2 → Task 5; 3 → Task 1, 2, 5; 4 → Task 2, 3; 5 → Task 7.
+
+## Seconda risposta di user1 (16 novembre 2026): task 12-14
+
+Domande 11-15 del disegno; regole R177-R179 (R180-R183 sono di un altro ramo).
+
+### Task 12: un versamento senza mese in un periodo solo (D11, D13)
+
+`ExcelInput.periods` (tutti i periodi di conguaglio dei contratti vivi dell'appartamento, al posto di
+`nextPeriodFrom`; `loadExcelInput` li dà in ordine, senza doppioni) e `settlementPeriodOf(mese,
+periodi)`: un periodo prende i mesi dal suo inizio alla fine del successivo (il primo che inizia dopo
+il suo inizio; nessuno: senza fine); tra i periodi che prendono il mese vince uno già finito (quello
+che inizia per ultimo), altrimenti quello che inizia per ultimo. Test: fine del periodo successivo
+compresa, il mese dopo no, conta una volta sola, periodi sovrapposti.
+
+### Task 13: parole dello stato (D12, D14)
+
+`versato in più` (versato oltre il conguaglio, stesso segno) e `da restituire` (credito
+dell'inquilino e nulla restituito); il resto come R172.
+
+### Task 14: colonna «Motivo» delle voci in attesa (D15)
+
+Nell'elenco in fondo al foglio Bollette la colonna Motivo (dopo Periodo al): `in attesa di pagamento`
+(nessun addebito), `importo diverso`, `quota maggiore della rata`, dal `reason` di `calcConguaglio`.
