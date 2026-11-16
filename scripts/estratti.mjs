@@ -13,7 +13,9 @@
 // reconciliation; annulla-incassi is its synonym, R116); riconcilia runs every phase (R126);
 // uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132);
 // plan 3d adds imu-atteso (the expected IMU of an apartment and year), imu-f24 (an F24
-// assigned to an IMU rate by hand) and imu (the check of the rates).
+// assigned to an IMU rate by hand) and imu (the check of the rates); plan 7 adds contratto (a
+// lease contract), contratto-canone (an entry of its rent history) and contratti (the contracts
+// and their read-only checks).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -48,6 +50,7 @@ import {
   confirmTransfer,
   excludeMovement,
   importStatement,
+  loadContractChecks,
   loadAccountBalances,
   loadImuRates,
   loadAll,
@@ -60,6 +63,8 @@ import {
   runReconciliation,
   saveAccount,
   saveBankProfile,
+  saveContract,
+  setContractRent,
   saveTenant,
   setImuYear,
   assignImuF24,
@@ -112,7 +117,7 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU).',
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -143,6 +148,16 @@ const MESSAGES = {
   'payer-not-in-group': 'Rifiutato: l’appartamento del conto non è nel gruppo in questo anno.',
   'rate-already-paid': 'Rifiutato: un altro F24 è già assegnato a questa rata.',
   'imu-to-reconcile': 'Rata IMU da riconciliare: controllare gli importi attesi (imu-atteso).',
+  'unknown-tenancy': 'Rifiutato: una presenza indicata non esiste o è di un altro appartamento.',
+  'unknown-deposit':
+    'Rifiutato: una caparra indicata non è un pagamento «caparra» di questo appartamento.',
+  'rent-outside-contract':
+    'Rifiutato: le nuove date lasciano fuori una voce del canone già scritta.',
+  'unknown-contract': 'Rifiutato: contratto sconosciuto o cancellato.',
+  'month-outside-contract': 'Rifiutato: il mese è fuori dalle date del contratto.',
+  'bad-amount': 'Rifiutato: il canone deve essere positivo e l’acconto non negativo.',
+  'rent-differs':
+    'Canone del contratto diverso dal totale delle presenze: controllare il contratto o le presenze.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -202,6 +217,22 @@ const OPTIONS = {
   gruppo: { type: 'string' },
   totale: { type: 'string' },
   rata: { type: 'string', multiple: true },
+  inizio: { type: 'string' },
+  fine: { type: 'string' },
+  conguaglio: { type: 'string' },
+  concordato: { type: 'boolean' },
+  studenti: { type: 'boolean' },
+  durata: { type: 'string' },
+  firmato: { type: 'string' },
+  'codice-registrazione': { type: 'string' },
+  registrato: { type: 'string' },
+  regime: { type: 'string' },
+  'aliquota-cedolare': { type: 'string' },
+  presenze: { type: 'string' },
+  caparre: { type: 'string' },
+  contratto: { type: 'string' },
+  canone: { type: 'string' },
+  acconto: { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -223,6 +254,8 @@ const RECONCILE_KINDS = [
   'transfer.manual',
   'imu.expected',
   'imu.assign',
+  'contract.save',
+  'contract.rent',
 ];
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
@@ -274,6 +307,37 @@ function parseRate(text) {
     ...(dueDate === '' ? {} : { dueDate: date.data }),
   };
 }
+
+/** `<id>,<id>` as `--gambe` (R132): an empty, repeated or unsafe id is a bad argument. */
+function idList(text) {
+  if (text === undefined) return undefined;
+  const list = text.split(',');
+  if (list.some((id) => !/^[A-Za-z0-9_-]{1,128}$/.test(id)) || new Set(list).size !== list.length) {
+    throw invalid('bad-arguments');
+  }
+  return list;
+}
+
+/** A percentage `10` or `10,5` (at most two decimals) as whole basis points, 1..10000. */
+function basisPoints(text) {
+  const found = /^([0-9]{1,3})(?:,([0-9]{1,2}))?$/.exec(text);
+  if (found === null) throw invalid('bad-arguments');
+  const bp = Number(found[1]) * 100 + Number((found[2] ?? '').padEnd(2, '0'));
+  if (bp < 1 || bp > 10000) throw invalid('bad-arguments');
+  return bp;
+}
+
+const month = (text) => {
+  const parsed = YearMonthSchema.safeParse(text);
+  if (!parsed.success) throw invalid('bad-arguments');
+  return parsed.data;
+};
+const day = (text) => {
+  const parsed = ISODateSchema.safeParse(text);
+  if (!parsed.success) throw invalid('bad-arguments');
+  return parsed.data;
+};
+const optional = (key, value) => (value === undefined ? {} : { [key]: value });
 
 /** An amount as `parseEuro` reads it; anything else is a bad argument. */
 function euro(text) {
@@ -873,6 +937,141 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'contratto') {
+    need(values, 'id', 'appartamento', 'tipo', 'inizio', 'fine', 'conguaglio');
+    const v = values;
+    if (
+      positionals.length > 0 ||
+      !/^[A-Za-z0-9_-]{1,64}$/.test(v.id) ||
+      !['1+1', '3+2', '4+4', 'altro'].includes(v.tipo) ||
+      !['annuale', 'intero-contratto'].includes(v.conguaglio) ||
+      (v.durata !== undefined && !/^[1-9][0-9]{0,3}$/.test(v.durata)) ||
+      v['codice-registrazione'] === '' ||
+      (v.regime !== undefined && !['cedolare', 'ordinario'].includes(v.regime)) ||
+      (v['aliquota-cedolare'] !== undefined && v.regime !== 'cedolare')
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const start = month(v.inizio);
+    const end = month(v.fine);
+    if (end < start) throw invalid('bad-arguments');
+    const code = v['codice-registrazione'];
+    const date = v.registrato === undefined ? undefined : day(v.registrato);
+    const input = {
+      id: v.id,
+      apartmentId: v.appartamento,
+      type: v.tipo,
+      start,
+      end,
+      settlement: v.conguaglio,
+      ...optional('agreedRent', v.concordato === true ? true : undefined),
+      ...optional('forStudents', v.studenti === true ? true : undefined),
+      ...optional('durationMonths', v.durata === undefined ? undefined : Number(v.durata)),
+      ...optional('signedOn', v.firmato === undefined ? undefined : day(v.firmato)),
+      ...(code === undefined && date === undefined
+        ? {}
+        : { registration: { ...optional('code', code), ...optional('date', date) } }),
+      ...optional('taxRegime', v.regime),
+      ...optional(
+        'cedolareRateBp',
+        v['aliquota-cedolare'] === undefined ? undefined : basisPoints(v['aliquota-cedolare']),
+      ),
+      ...optional('tenancyIds', idList(v.presenze)),
+      ...optional('depositPaymentIds', idList(v.caparre)),
+    };
+    let result;
+    try {
+      result = await saveContract(store, input, who, clock, newId);
+    } catch (error) {
+      // An id the store refuses (a name reserved on Windows, a bad segment) is a bad argument.
+      if (error instanceof RangeError) throw invalid('bad-arguments');
+      throw error;
+    }
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      contractId: result.contractId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  if (name === 'contratto-canone') {
+    need(values, 'contratto', 'dal', 'canone', 'acconto');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const from = month(values.dal);
+    const monthlyRent = euro(values.canone);
+    const monthlyAdvance = euro(values.acconto);
+    if (monthlyRent <= 0 || monthlyAdvance < 0) throw invalid('bad-arguments');
+    const result = await setContractRent(
+      store,
+      { contractId: values.contratto, from, monthlyRent, monthlyAdvance },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      contractId: result.contractId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  if (name === 'contratti') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await loadContractChecks(store, {
+      // The month of the clock: later months have no tenancies written yet.
+      asOf: month(clock().slice(0, 7)),
+      ...optional('apartmentId', values.appartamento),
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const details = values.dettagli === true;
+    // Codes, ids and months only; amounts, codes, dates and linked ids with --dettagli (R107).
+    return {
+      status: 'ok',
+      contracts: result.contracts.map((c) => ({
+        id: c.id,
+        apartmentId: c.apartmentId,
+        type: c.type,
+        start: c.start,
+        end: c.end,
+        settlement: c.settlement,
+        agreedRent: c.agreedRent,
+        forStudents: c.forStudents,
+        taxRegime: c.taxRegime,
+        tenancies: c.tenancyIds?.length ?? 0,
+        deposits: c.depositPaymentIds?.length ?? 0,
+        rentEntries: c.rent?.length ?? 0,
+        ...(details
+          ? {
+              durationMonths: c.durationMonths,
+              signedOn: c.signedOn,
+              registration: c.registration,
+              cedolareRateBp: c.cedolareRateBp,
+              rent: c.rent,
+              tenancyIds: c.tenancyIds,
+              depositPaymentIds: c.depositPaymentIds,
+            }
+          : {}),
+      })),
+      checks: result.checks.map((c) => ({
+        code: c.code,
+        contractId: c.contractId,
+        from: c.from,
+        to: c.to,
+        ...(c.code === 'rent-differs' ? { message: MESSAGES['rent-differs'] } : {}),
+        ...(details
+          ? {
+              tenancyId: c.tenancyId,
+              paymentId: c.paymentId,
+              expected: c.expected,
+              actual: c.actual,
+            }
+          : {}),
+      })),
+    };
+  }
+
   if (name === 'abbina') {
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
     const result = await confirmMatch(
@@ -1051,6 +1250,9 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'imu-atteso',
         'imu-f24',
         'imu',
+        'contratto',
+        'contratto-canone',
+        'contratti',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1065,7 +1267,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa', 'saldi', 'imu'],
+      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti'],
       parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto'],
       pagamento: ['annulla-pagamento'],
@@ -1073,14 +1275,14 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
-      appartamento: ['conto', 'uscita', 'imu-atteso'],
+      appartamento: ['conto', 'uscita', 'imu-atteso', 'contratto', 'contratti'],
       anno: ['imu-atteso', 'imu-f24', 'imu'],
       gruppo: ['imu-atteso', 'imu-f24'],
       totale: ['imu-atteso'],
       rata: ['imu-atteso', 'imu-f24'],
       categoria: ['uscita'],
       f24: ['uscita'],
-      tipo: ['uscita-inquilino'],
+      tipo: ['uscita-inquilino', 'contratto'],
       mese: ['uscita-inquilino'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],
@@ -1089,6 +1291,27 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       a: ['giroconto-manuale'],
       importo: ['giroconto-manuale'],
       data: ['giroconto-manuale'],
+      dal: ['importa', 'contratto-canone'],
+      ...Object.fromEntries(
+        [
+          'inizio',
+          'fine',
+          'conguaglio',
+          'concordato',
+          'studenti',
+          'durata',
+          'firmato',
+          'codice-registrazione',
+          'registrato',
+          'regime',
+          'aliquota-cedolare',
+          'presenze',
+          'caparre',
+        ].map((option) => [option, ['contratto']]),
+      ),
+      contratto: ['contratto-canone'],
+      canone: ['contratto-canone'],
+      acconto: ['contratto-canone'],
     };
     for (const [option, commands] of Object.entries(only)) {
       if (values[option] !== undefined && !commands.includes(name)) throw invalid('bad-arguments');

@@ -2284,3 +2284,333 @@ describe('pnpm estratti IMU (piano 3d)', () => {
     TIMEOUT,
   );
 });
+
+describe('pnpm estratti contratti (piano 7, task 5)', () => {
+  // Invented tenants, amounts and registration codes (fixtures/README.md); main() in process.
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: ids() });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+  let idCounter = 0;
+  const ids = () => () => `cli-${String((idCounter += 1))}`;
+  const tenancy = (id, tenantId, extra = {}) => ({
+    id,
+    v: 1,
+    rev: 1,
+    apartmentId: 'berchet',
+    tenantId,
+    from: '2025-10',
+    to: '2026-09',
+    monthlyRent: 35000,
+    monthlyForfait: 3000,
+    ...extra,
+  });
+
+  async function contractSetup() {
+    const dir = join(root, `c${String((counter += 1))}`);
+    mkdirSync(dir);
+    const store = new FsStore(dir);
+    const records = [
+      ['apartment', apartment({ id: 'berchet' })],
+      ['apartment', apartment({ id: 'lovarini' })],
+      ['tenancy', tenancy('tcy-a', 'ten-anna')],
+      ['tenancy', tenancy('tcy-b', 'ten-bruno')],
+      [
+        'payment',
+        {
+          id: 'pay-c1',
+          v: 1,
+          rev: 1,
+          apartmentId: 'berchet',
+          tenantId: 'ten-anna',
+          date: '2025-09-25',
+          amount: 50000,
+          confirmed: true,
+          kind: 'caparra',
+          source: 'manual',
+        },
+      ],
+    ];
+    let n = 0;
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      () => `seed-${String((n += 1))}`,
+    );
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+  const contratto = (s, ...extra) => [
+    'contratto',
+    ...s.common,
+    '--id',
+    'ctr-berchet',
+    '--appartamento',
+    'berchet',
+    '--tipo',
+    '1+1',
+    '--inizio',
+    '2025-10',
+    '--fine',
+    '2027-09',
+    '--conguaglio',
+    'annuale',
+    ...extra,
+  ];
+  const full = [
+    '--concordato',
+    '--studenti',
+    '--regime',
+    'cedolare',
+    '--aliquota-cedolare',
+    '10',
+    '--codice-registrazione',
+    'CODICE-PROVA-0001',
+    '--presenze',
+    'tcy-a,tcy-b',
+  ];
+  const canone = (s, ...extra) => [
+    'contratto-canone',
+    ...s.common,
+    '--contratto',
+    'ctr-berchet',
+    ...extra,
+  ];
+  const stored = (s) =>
+    JSON.parse(readFileSync(join(s.dir, '_app', 'dati', 'contract', 'ctr-berchet.json'), 'utf8'));
+
+  it('contratto: salva, la seconda volta non scrive, aliquota in punti base, argomenti 2', async () => {
+    const s = await contractSetup();
+    const saved = await run(contratto(s, ...full));
+    expect([saved.code, saved.json]).toEqual([
+      0,
+      { status: 'saved', contractId: 'ctr-berchet', operationId: saved.json.operationId },
+    ]);
+    expect(stored(s)).toMatchObject({
+      agreedRent: true,
+      forStudents: true,
+      taxRegime: 'cedolare',
+      cedolareRateBp: 1000,
+      registration: { code: 'CODICE-PROVA-0001' },
+      tenancyIds: ['tcy-a', 'tcy-b'],
+    });
+    const snap = snapshot(s.dir);
+    expect((await run(contratto(s, ...full))).json).toEqual({
+      status: 'unchanged',
+      contractId: 'ctr-berchet',
+    });
+    expect(snapshot(s.dir)).toEqual(snap);
+    const rate = (value) =>
+      contratto(s, '--regime', 'cedolare', '--aliquota-cedolare', value, '--durata', '12');
+    expect((await run(rate('10,5'))).code).toBe(0);
+    expect(stored(s)).toMatchObject({ cedolareRateBp: 1050, durationMonths: 12 });
+    expect(stored(s)).not.toHaveProperty('tenancyIds'); // an absent option removes the field
+    expect((await run(rate('10,05'))).code).toBe(0);
+    expect(stored(s).cedolareRateBp).toBe(1005);
+    const snap2 = snapshot(s.dir);
+    for (const bad of [
+      rate('10.5'),
+      rate('abc'),
+      rate('0'),
+      rate('100,001'),
+      rate('100,01'),
+      rate(''),
+      contratto(s, '--regime', 'ordinario', '--aliquota-cedolare', '10'),
+      contratto(s, '--aliquota-cedolare', '10'),
+      contratto(s, '--regime', 'misto'),
+      contratto(s, '--inizio', '2025-13'),
+      contratto(s, '--fine', '2025-09'),
+      contratto(s, '--presenze', 'tcy-a,tcy-a'),
+      contratto(s, '--presenze', 'tcy-a,'),
+      contratto(s, '--caparre', 'pay c1'),
+      contratto(s, '--durata', '0'),
+      contratto(s, '--firmato', '2025-02-30'),
+      contratto(s, '--registrato', '2025-10'),
+      contratto(s, '--codice-registrazione', ''),
+      contratto(s, 'x'),
+      contratto(s).map((a) => (a === '1+1' ? '2+2' : a)),
+      contratto(s).map((a) => (a === 'annuale' ? 'mensile' : a)),
+      contratto(s).map((a) => (a === 'ctr-berchet' ? 'ctr:berchet' : a)),
+      ['contratto', ...s.common, '--id', 'ctr-berchet'],
+      ['riconcilia', ...s.common, '--contratto', 'ctr-berchet'],
+      ['riconcilia', ...s.common, '--presenze', 'tcy-a'],
+      ['imu', ...s.common, '--aliquota-cedolare', '10'],
+      ['contratti', ...s.common, '--tipo', '1+1'],
+    ]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]);
+    }
+    expect(snapshot(s.dir)).toEqual(snap2);
+    const unknown = await run(contratto(s, '--presenze', 'tcy-nessuna'));
+    expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-tenancy']);
+    expect(unknown.json.message).toMatch(/^Rifiutato: /);
+    const deposit = await run(contratto(s, '--caparre', 'pay-nessuno'));
+    expect([deposit.code, deposit.json.reason]).toEqual([1, 'unknown-deposit']);
+    expect(snapshot(s.dir)).toEqual(snap2);
+  });
+
+  it('contratto-canone, contratti senza dati personali, annullamento', async () => {
+    const s = await contractSetup();
+    const outs = [];
+    const go = async (args) => {
+      const r = await run(args);
+      outs.push(r.out);
+      return r;
+    };
+    const created = await go(
+      contratto(s, ...full, '--caparre', 'pay-c1', '--firmato', '2025-09-20'),
+    );
+    expect(created.code).toBe(0);
+    const first = await go(
+      canone(s, '--dal', '2025-10', '--canone', '1600,00', '--acconto', '150,00'),
+    );
+    expect([first.code, first.json]).toEqual([
+      0,
+      { status: 'saved', contractId: 'ctr-berchet', operationId: first.json.operationId },
+    ]);
+    expect(stored(s).rent).toEqual([
+      { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 },
+    ]);
+    for (const bad of [
+      canone(s, '--dal', '2025-10', '--canone', '0', '--acconto', '150,00'),
+      canone(s, '--dal', '2025-10', '--canone', '-1,00', '--acconto', '150,00'),
+      canone(s, '--dal', '2025-10', '--canone', '1600,00', '--acconto', '-1,00'),
+      canone(s, '--dal', '2025-10', '--canone', 'abc', '--acconto', '150,00'),
+      canone(s, '--dal', '2025-13', '--canone', '1600,00', '--acconto', '150,00'),
+      canone(s, '--dal', '2025-10', '--canone', '1600,00'),
+    ]) {
+      expect([bad, (await go(bad)).code]).toEqual([bad, 2]);
+    }
+    const outside = await go(
+      canone(s, '--dal', '2030-01', '--canone', '1600,00', '--acconto', '0'),
+    );
+    expect([outside.code, outside.json.reason]).toEqual([1, 'month-outside-contract']);
+    const nobody = await go([
+      'contratto-canone',
+      ...s.common,
+      '--contratto',
+      'ctr-nessuno',
+      '--dal',
+      '2025-10',
+      '--canone',
+      '1,00',
+      '--acconto',
+      '0',
+    ]);
+    expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-contract']);
+    const renewal = await go(
+      canone(s, '--dal', '2026-10', '--canone', '1650,00', '--acconto', '150,00'),
+    );
+    expect(renewal.code).toBe(0);
+
+    const list = await go(['contratti', ...s.common]);
+    expect(list.code).toBe(0);
+    const message =
+      'Canone del contratto diverso dal totale delle presenze: controllare il contratto o le presenze.';
+    expect(list.json).toEqual({
+      status: 'ok',
+      contracts: [
+        {
+          id: 'ctr-berchet',
+          apartmentId: 'berchet',
+          type: '1+1',
+          start: '2025-10',
+          end: '2027-09',
+          settlement: 'annuale',
+          agreedRent: true,
+          forStudents: true,
+          taxRegime: 'cedolare',
+          tenancies: 2,
+          deposits: 1,
+          rentEntries: 2,
+        },
+      ],
+      checks: [
+        {
+          code: 'rent-differs',
+          contractId: 'ctr-berchet',
+          from: '2025-10',
+          to: '2026-09',
+          message,
+        },
+        {
+          code: 'rent-differs',
+          contractId: 'ctr-berchet',
+          from: '2026-10',
+          to: '2026-11',
+          message,
+        },
+      ],
+    });
+    const text = outs.join('');
+    expect(scanText(text)).toEqual([]);
+    expect(text).not.toMatch(
+      /CODICE-PROVA|tcy-|pay-|2025-09-20|1000|160000|165000|15000|76000|175000|180000/,
+    );
+    expect(text).not.toMatch(/[0-9],[0-9]{2}/);
+    expect((await go(['contratti', ...s.common, '--appartamento', 'lovarini'])).json).toEqual({
+      status: 'ok',
+      contracts: [],
+      checks: [],
+    });
+
+    const details = await run(['contratti', ...s.common, '--dettagli']);
+    expect(details.json.contracts[0]).toMatchObject({
+      registration: { code: 'CODICE-PROVA-0001' },
+      signedOn: '2025-09-20',
+      cedolareRateBp: 1000,
+      tenancyIds: ['tcy-a', 'tcy-b'],
+      depositPaymentIds: ['pay-c1'],
+      rent: [
+        { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 },
+        { from: '2026-10', monthlyRent: 165000, monthlyAdvance: 15000 },
+      ],
+    });
+    expect(details.json.checks[0]).toMatchObject({ expected: 175000, actual: 76000 });
+
+    const underRent = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      created.json.operationId,
+    ]);
+    expect([underRent.code, underRent.json.reason]).toEqual([1, 'has-dependents']);
+    const dependent = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      first.json.operationId,
+    ]);
+    expect([dependent.code, dependent.json.reason]).toEqual([1, 'has-dependents']);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      renewal.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    const after = await run(['contratti', ...s.common, '--dettagli']);
+    expect(after.json.contracts[0].rent).toEqual([
+      { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 },
+    ]);
+  });
+
+  it('un errore inatteso dà 3', async () => {
+    const s = await contractSetup();
+    const failed = await main(contratto(s), {
+      now: () => ORA,
+      newId: () => {
+        throw new Error('segreto-nel-messaggio');
+      },
+    });
+    expect(failed.code).toBe(3);
+    expect(failed.output).not.toMatch(/segreto/);
+  });
+});
