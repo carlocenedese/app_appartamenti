@@ -172,6 +172,84 @@ describe('savePayable (plan 9, task 3)', () => {
   });
 });
 
+describe('reference year of a payable (plan 13)', () => {
+  it('is written at creation, changed or removed only by a new save, never copied by a repeat', async () => {
+    const { store } = await setup();
+    await savePayable(
+      store,
+      { ...input, repeatYearly: true, taxYear: 2025 },
+      'user1',
+      clock,
+      ids('n'),
+    );
+    const year = async (id: string) => (await payables(store)).find((p) => p.id === id)?.taxYear;
+    expect(await year('scad-n-1')).toBe(2025);
+    expect(
+      await savePayable(
+        store,
+        { ...input, id: 'scad-n-1', repeatYearly: true, taxYear: 2025 },
+        'user1',
+        clock,
+        ids('u'),
+      ),
+    ).toEqual({ status: 'unchanged', payableId: 'scad-n-1' });
+    await savePayable(
+      store,
+      { ...input, id: 'scad-n-1', repeatYearly: true, taxYear: 2026 },
+      'user1',
+      clock,
+      ids('u'),
+    );
+    expect((await payables(store))[0]).toMatchObject({ rev: 2, taxYear: 2026 });
+    await repeatPayable(
+      store,
+      { payableId: 'scad-n-1', dueDate: isoDate('2027-11-16') },
+      'user1',
+      clock,
+      ids('r'),
+    );
+    expect(await year('scad-r-1')).toBeUndefined();
+    await repeatPayable(
+      store,
+      { payableId: 'scad-r-1', dueDate: isoDate('2028-11-16'), taxYear: 2027 },
+      'user1',
+      clock,
+      ids('r2'),
+    );
+    expect(await year('scad-r2-1')).toBe(2027);
+    await savePayable(
+      store,
+      { ...input, id: 'scad-n-1', repeatYearly: true },
+      'user1',
+      clock,
+      ids('u2'),
+    );
+    expect(await year('scad-n-1')).toBeUndefined();
+  });
+
+  it('refuses a year that is not a whole number from 1 to 9999, writing nothing', async () => {
+    const { store } = await setup();
+    const before = (await readJournal(store)).operations.length;
+    for (const taxYear of [0, 10000, 2026.5]) {
+      expect(await savePayable(store, { ...input, taxYear }, 'user1', clock, ids('n'))).toEqual({
+        status: 'refused',
+        reason: 'bad-year',
+      });
+    }
+    await savePayable(store, { ...input, repeatYearly: true }, 'user1', clock, ids('n'));
+    expect(
+      await repeatPayable(
+        store,
+        { payableId: 'scad-n-1', dueDate: isoDate('2027-11-16'), taxYear: 0 },
+        'user1',
+        clock,
+        ids('r'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'bad-year' });
+    expect((await readJournal(store)).operations).toHaveLength(before + 1);
+  });
+});
+
 describe('repeatPayable', () => {
   it('makes the next item with the due date given by the user, once', async () => {
     const { store } = await setup();

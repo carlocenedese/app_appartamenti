@@ -3619,6 +3619,49 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
     expect(undo.code).toBe(0);
     expect((await run(['scadenze', ...s.common])).json.items).toHaveLength(1);
   });
+  it('--anno-riferimento (piano 13): anno AAAA scritto da user1, solo in scadenza-nuova e scadenza-ripeti', async () => {
+    const s = await payableSetup();
+    const nuova = (year, ...extra) => [
+      'scadenza-nuova',
+      ...s.common,
+      '--appartamento',
+      'pulci',
+      '--tipo',
+      'cedolare',
+      '--scadenza',
+      '2026-11-30',
+      '--anno-riferimento',
+      year,
+      ...extra,
+    ];
+    const read = (id) =>
+      JSON.parse(readFileSync(join(s.dir, '_app', 'dati', 'payable', `${id}.json`), 'utf8'));
+    const cedolare = await run(nuova('2026', '--ogni-anno'));
+    expect(cedolare.code).toBe(0);
+    expect(read(cedolare.json.payableId).taxYear).toBe(2026);
+    const snap = snapshot(s.dir);
+    for (const bad of [
+      nuova('26'),
+      nuova('2026.5'),
+      nuova('0000'),
+      nuova('anno'),
+      ['scadenze', ...s.common, '--anno-riferimento', '2026'],
+    ]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]);
+    }
+    expect(snapshot(s.dir)).toEqual(snap);
+    const next = await run([
+      'scadenza-ripeti',
+      ...s.common,
+      '--id',
+      cedolare.json.payableId,
+      '--scadenza',
+      '2027-11-30',
+      '--anno-riferimento',
+      '2027',
+    ]);
+    expect([next.code, read(next.json.payableId).taxYear]).toEqual([0, 2027]);
+  });
 });
 
 describe('pnpm estratti tasse (piano 10)', () => {

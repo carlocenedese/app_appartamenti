@@ -27,6 +27,8 @@ export interface SavePayableInput {
   dueDate: ISODate;
   expected?: Cents;
   repeatYearly?: true;
+  /** The tax year chosen by user1 (R242); absent removes it, as `expected`. */
+  taxYear?: number;
 }
 
 type Refused<R extends string> = { status: 'refused'; reason: R };
@@ -35,12 +37,19 @@ type Saved = { status: 'saved'; operationId: string; payableId: string };
 export type SavePayableResult =
   | Saved
   | { status: 'unchanged'; payableId: string }
-  | Refused<'inconsistent-store' | 'unknown-apartment' | 'unknown-payable' | 'bad-amount'>;
+  | Refused<
+      'inconsistent-store' | 'unknown-apartment' | 'unknown-payable' | 'bad-amount' | 'bad-year'
+    >;
 
 export type RepeatPayableResult =
   | Saved
   | Refused<
-      'inconsistent-store' | 'unknown-payable' | 'not-repeating' | 'already-repeated' | 'bad-amount'
+      | 'inconsistent-store'
+      | 'unknown-payable'
+      | 'not-repeating'
+      | 'already-repeated'
+      | 'bad-amount'
+      | 'bad-year'
     >;
 
 export type SetPayablePaidResult =
@@ -58,6 +67,8 @@ export type SetPayablePaidResult =
 
 const badAmount = (expected: number | undefined): boolean =>
   expected !== undefined && !(Number.isSafeInteger(expected) && expected > 0);
+const badYear = (year: number | undefined): boolean =>
+  year !== undefined && !(Number.isSafeInteger(year) && year >= 1 && year <= 9999);
 
 async function livePayables(store: Store): Promise<Payable[]> {
   return (await loadAll(store, 'payable', PayableSchema)).records;
@@ -95,8 +106,8 @@ async function write(
 /**
  * Creates (`id` absent) or updates a live payable in one `payable.save` operation; an update keeps
  * `paid` and `previousId`. Refused without writing: `inconsistent-store`, `unknown-apartment` (not
- * live), `unknown-payable` (`id` not a live payable), `bad-amount` (not a positive integer). The
- * same content is `unchanged`.
+ * live), `unknown-payable` (`id` not a live payable), `bad-amount` (not a positive integer),
+ * `bad-year` (`taxYear` not a whole number 1-9999). The same content is `unchanged`.
  */
 export async function savePayable(
   store: Store,
@@ -115,6 +126,7 @@ export async function savePayable(
     input.id === undefined ? undefined : (await livePayables(store)).find((p) => p.id === input.id);
   if (input.id !== undefined && before === undefined) return refuse('unknown-payable');
   if (badAmount(input.expected)) return refuse('bad-amount');
+  if (badYear(input.taxYear)) return refuse('bad-year');
   const after = {
     id: input.id ?? `scad-${newId()}`,
     apartmentId: input.apartmentId,
@@ -122,6 +134,7 @@ export async function savePayable(
     dueDate: input.dueDate,
     ...(input.expected === undefined ? {} : { expected: input.expected }),
     ...(input.repeatYearly === true ? { repeatYearly: true as const } : {}),
+    ...(input.taxYear === undefined ? {} : { taxYear: input.taxYear }),
     ...(before?.previousId === undefined ? {} : { previousId: before.previousId }),
     ...(before?.paid === undefined ? {} : { paid: before.paid }),
   };
@@ -146,13 +159,13 @@ export async function savePayable(
 /**
  * The next item of a live payable marked `repeatYearly`, with the due date (and amount, if any)
  * given by the user: no date or amount is computed (question 2 of the design). Copies apartment,
- * kind and mark; `previousId` is the item. One `payable.repeat` operation. Refused without
- * writing: `inconsistent-store`, `unknown-payable`, `not-repeating`, `already-repeated` (a live
- * item already has that `previousId`), `bad-amount`.
+ * kind and mark; `previousId` is the item; `taxYear` only if given. One `payable.repeat`
+ * operation. Refused without writing: `inconsistent-store`, `unknown-payable`, `not-repeating`,
+ * `already-repeated` (a live item already has that `previousId`), `bad-amount`, `bad-year`.
  */
 export async function repeatPayable(
   store: Store,
-  input: { payableId: string; dueDate: ISODate; expected?: Cents },
+  input: { payableId: string; dueDate: ISODate; expected?: Cents; taxYear?: number },
   profileId: string,
   clock: () => string,
   newId: () => string,
@@ -167,6 +180,7 @@ export async function repeatPayable(
   if (previous.repeatYearly !== true) return refuse('not-repeating');
   if (payables.some((p) => p.previousId === previous.id)) return refuse('already-repeated');
   if (badAmount(input.expected)) return refuse('bad-amount');
+  if (badYear(input.taxYear)) return refuse('bad-year');
   const after = {
     id: `scad-${newId()}`,
     apartmentId: previous.apartmentId,
@@ -175,6 +189,8 @@ export async function repeatPayable(
     ...(input.expected === undefined ? {} : { expected: input.expected }),
     repeatYearly: true as const,
     previousId: previous.id,
+    // Never copied nor computed from the previous item (R242).
+    ...(input.taxYear === undefined ? {} : { taxYear: input.taxYear }),
   };
   return write(
     store,
