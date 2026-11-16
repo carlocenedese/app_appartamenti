@@ -7,6 +7,9 @@ import {
   SettlementInputError,
   buildConguaglioWorkbook,
   calcConguaglio,
+  excelFilePath,
+  settlementPeriodOf,
+  settlementStatus,
   cents,
   isoDate,
   writeXlsx,
@@ -20,6 +23,20 @@ type Plain = string | number | null;
 const plain = (cell: XlsxCell | null | undefined): Plain => cell?.value ?? null;
 const rowsOf = (sheet: XlsxSheet | undefined): Plain[][] =>
   (sheet?.rows ?? []).map((row) => row.map(plain));
+
+const creditMatch = (itemId: string, amount: number): ExcelInput['matches'][number] => ({
+  id: `m-${itemId}`,
+  v: 1,
+  rev: 1,
+  itemType: 'bill',
+  itemId,
+  transactionId: `tx-${itemId}`,
+  transactionDate: isoDate('2027-02-02'),
+  amount: cents(amount),
+  part: 'amount',
+  confirmed: true,
+  by: 'auto',
+});
 
 function sheets(input: ExcelInput = fixtureInput()) {
   const book = buildConguaglioWorkbook(input);
@@ -47,8 +64,8 @@ describe('buildConguaglioWorkbook on the fixture', () => {
 
   it('has the four sheets with the headers of EXCEL_HEADERS', () => {
     expect(book.sheets.map((s) => s.name)).toEqual([...EXCEL_SHEETS]);
-    expect(rowsOf(get('Bollette'))[0]).toEqual(EXCEL_HEADERS.Bollette);
-    expect(rowsOf(get('Conguagli'))[0]).toEqual(EXCEL_HEADERS.Conguagli);
+    expect(rowsOf(get('Bollette'))[1]).toEqual(EXCEL_HEADERS.Bollette);
+    expect(rowsOf(get('Conguagli'))[1]).toEqual(EXCEL_HEADERS.Conguagli);
     expect(rowsOf(get('Affitti versati'))[0]).toEqual([
       ...EXCEL_HEADERS['Affitti versati'],
       ...MONTHS,
@@ -75,12 +92,18 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     ]);
     const rows = rowsOf(sheet);
     expect(rows.map((r) => r[0])).toEqual([
+      'Conguaglio provvisorio: voci in attesa 1',
       'Tipo',
       'Elettricità',
       'Internet',
       'TARI',
       'Condominio',
       'Gas',
+      'Totale',
+      undefined,
+      'Voci in attesa di pagamento',
+      'Tipo',
+      'Acqua',
     ]);
     expect(rows.find((r) => r[0] === 'Gas')?.[6]).toBe('assunta, non verificata');
     expect(rows.find((r) => r[0] === 'Elettricità')?.[11]).toBe(
@@ -94,13 +117,14 @@ describe('buildConguaglioWorkbook on the fixture', () => {
 
   it('writes one row per tenant in the order of the beds, with the values of calcConguaglio', () => {
     const result = calcConguaglio(fixtureInput());
-    const rows = rowsOf(get('Conguagli')).slice(1);
+    const rows = rowsOf(get('Conguagli')).slice(2);
     expect(rows.map((r) => r.slice(0, 4))).toEqual([
       ['A', 'Anna Prova', 'ott – set', 12],
       ['B', 'Bruno Prova', 'ott – set', 12],
       ['C', 'Elena Prova', 'ott – feb', 5],
       ['C', 'Carla Prova', 'mar – set', 7],
       ['D', 'Dario Prova', 'gen – set', 9],
+      ['Posti vuoti (proprietà)', null, null, null],
       ['Totale', null, null, null],
     ]);
     const order = ['ten-a', 'ten-b', 'ten-e', 'ten-c', 'ten-d'];
@@ -114,9 +138,86 @@ describe('buildConguaglioWorkbook on the fixture', () => {
         t.due,
       ];
     });
-    expect(rows.slice(0, 5).map((r) => r.slice(4))).toEqual(expected);
+    expect(rows.slice(0, 5).map((r) => r.slice(4, 8))).toEqual(expected);
+    const empty = result.unassignedByBucket;
+    expect(rows[5]?.slice(4)).toEqual([
+      empty.spese + empty.commissione,
+      empty.rata + empty.conguaglioPrec,
+    ]);
     const sums = [0, 1, 2, 3].map((i) => expected.reduce((s, e) => s + (e[i] ?? 0), 0));
-    expect(rows[5]?.slice(4)).toEqual(sums);
+    expect(rows[6]?.slice(4, 8)).toEqual([
+      (sums[0] ?? 0) + empty.spese + empty.commissione,
+      (sums[1] ?? 0) + empty.rata + empty.conguaglioPrec,
+      sums[2],
+      sums[3],
+    ]);
+  });
+
+  const reconcile = (input: ExcelInput) => {
+    const { get: of } = sheets(input);
+    const billTotal = rowsOf(of('Bollette')).find((r) => r[0] === 'Totale');
+    const totale = rowsOf(of('Conguagli')).find((r) => r[0] === 'Totale');
+    return [Number(totale?.[4]) + Number(totale?.[5]), billTotal?.[9]];
+  };
+  const variants: [string, () => ExcelInput][] = [
+    [
+      'no empty bed',
+      () => {
+        const input = fixtureInput();
+        const d = input.tenancies.find((t) => t.id === 'tcy-d') as ExcelInput['tenancies'][number];
+        input.tenancies.push({
+          ...d,
+          id: 'tcy-f',
+          tenantId: 'ten-f',
+          from: yearMonth('2026-10'),
+          to: yearMonth('2026-12'),
+        });
+        input.tenants.push({
+          ...(input.tenants[0] as ExcelInput['tenants'][number]),
+          id: 'ten-f',
+          name: 'Fabio Prova',
+        });
+        expect(calcConguaglio(input).unassigned).toBe(0);
+        return input;
+      },
+    ],
+    [
+      'a credit note',
+      () => {
+        const input = fixtureInput();
+        input.bills.push(
+          bill('bill-nota', '2026-12-01', '2027-01-31', -2000, { apartmentId: 'apt-nord' }),
+        );
+        input.matches.push(creditMatch('bill-nota', -2000));
+        return input;
+      },
+    ],
+    [
+      'a bill of 14 months',
+      () => {
+        const input = fixtureInput();
+        input.bills.push(
+          bill('bill-lunga', '2026-09-01', '2027-10-31', 14003, { apartmentId: 'apt-nord' }),
+        );
+        input.matches.push(creditMatch('bill-lunga', 14003));
+        return input;
+      },
+    ],
+  ];
+  it.each(variants)('reconciles the two totals: %s', (_, build) => {
+    const [conguagli, bollette] = reconcile(build());
+    expect(conguagli).toBe(bollette);
+  });
+
+  it('makes Spese + Condominio of the total equal to the total of the bills (question 4)', () => {
+    const bills = rowsOf(get('Bollette'));
+    const billTotal = bills.find((r) => r[0] === 'Totale');
+    const items = bills.slice(2, bills.indexOf(billTotal as Plain[]));
+    const column = (i: number) => items.reduce((s, r) => s + Number(r[i] ?? 0), 0);
+    expect(billTotal?.slice(7, 10)).toEqual([column(7), column(8), column(9)]);
+    const totale = rowsOf(get('Conguagli')).find((r) => r[0] === 'Totale');
+    expect(Number(totale?.[4]) + Number(totale?.[5])).toBe(billTotal?.[9]);
+    expect(Number(totale?.[4]) + Number(totale?.[5])).not.toBe(0);
   });
 
   it('writes the dates of the rent payments of each month of presence', () => {
@@ -136,6 +237,33 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     expect(elena?.[8]).toBeNull();
   });
 
+  it('says on top that the settlement is provisional (question 5)', () => {
+    for (const name of ['Bollette', 'Conguagli']) {
+      expect(get(name)?.rows[0]).toEqual([
+        { kind: 'text', value: 'Conguaglio provvisorio: voci in attesa 1' },
+      ]);
+    }
+    expect(rowsOf(get('Affitti versati'))[0]?.[0]).toBe('Posto');
+  });
+
+  it('lists the pending items at the bottom of the bills, with no amount (question 6)', () => {
+    const rows = get('Bollette')?.rows ?? [];
+    const t = (value: string) => ({ kind: 'text', value });
+    expect(rows.slice(-4)).toEqual([
+      [],
+      [t('Voci in attesa di pagamento')],
+      [t('Tipo'), t('Fornitore'), null, t('Periodo dal'), t('Periodo al'), t('Motivo')],
+      [
+        t('Acqua'),
+        t('Acqua Esempio'),
+        null,
+        { kind: 'date', value: '2027-04-01' },
+        { kind: 'date', value: '2027-06-30' },
+        t('in attesa di pagamento'),
+      ],
+    ]);
+  });
+
   it('lists the settlement payments with their sign, never a deposit', () => {
     expect(rowsOf(get('Versamenti conguaglio')).slice(1)).toEqual([
       ['Anna Prova', '2026-11-20', 5000, 'nov 2026', 'estratto conto'],
@@ -143,20 +271,20 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     ]);
   });
 
-  it('writes only what is decided (questions 1, 3, 4, 6)', () => {
+  it('writes only what is decided (questions 1, 3: no deposit, 6: no amount)', () => {
     const cells = book.sheets.flatMap((s) => s.rows.flat());
     const texts = cells.flatMap((c) => (c?.kind === 'text' ? [c.value] : []));
     expect(texts.filter((t) => t.startsWith('='))).toEqual([]);
+    // Bollette and Conguagli have the provisional line on top, then the headers.
     const headers = book.sheets
-      .flatMap((s) => rowsOf(s)[0] ?? [])
+      .flatMap((s) => rowsOf(s)[s.name === 'Bollette' || s.name === 'Conguagli' ? 1 : 0] ?? [])
       .join(' | ')
       .toLowerCase();
-    for (const word of ['versato', 'residuo', 'stato', 'caparra', 'posti vuoti']) {
-      expect(headers).not.toContain(word);
-    }
-    expect(texts.some((t) => /posti vuoti|provvisorio/i.test(t))).toBe(false);
-    // The bill waiting for its debit is in no sheet.
-    expect(texts.some((t) => t.includes('Acqua') || t.includes('acqua-2027'))).toBe(false);
+    expect(headers).toContain('quota nel periodo');
+    expect(headers).not.toContain('caparra');
+    // The bill waiting for its debit is only listed, with no amount and no file.
+    expect(texts.filter((t) => t.includes('Acqua'))).toEqual(['Acqua', 'Acqua Esempio']);
+    expect(texts.some((t) => t.includes('acqua-2027'))).toBe(false);
     expect(cells.some((c) => c?.kind === 'euro' && c.value === -53840)).toBe(false);
   });
 });
@@ -180,10 +308,42 @@ describe('buildConguaglioWorkbook variants', () => {
       confirmed: true,
       by: 'auto',
     });
-    const anna = sheets(input).get('Conguagli')?.rows[1];
+    const anna = sheets(input).get('Conguagli')?.rows[2];
     const due = anna?.[7];
     expect(due?.kind).toBe('euro');
     expect(Number(due?.value)).toBeLessThan(0);
+  });
+
+  it('has no pending list with nothing pending, and says 0 on top', () => {
+    const input = fixtureInput();
+    input.bills = input.bills.filter((b) => b.id !== 'bill-acqua');
+    const rows = rowsOf(sheets(input).get('Bollette'));
+    expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 0']);
+    expect(rows.at(-1)?.[0]).toBe('Totale');
+  });
+
+  it('lists a pending instalment with its months and no supplier', () => {
+    const input = fixtureInput();
+    input.matches = input.matches.filter((m) => m.itemId !== 'inst-cond-1');
+    const rows = rowsOf(sheets(input).get('Bollette'));
+    expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 2']);
+    expect(rows.slice(-2)).toEqual([
+      ['Condominio', null, null, '2026-10-01', '2027-01-31', 'in attesa di pagamento'],
+      ['Acqua', 'Acqua Esempio', null, '2027-04-01', '2027-06-30', 'in attesa di pagamento'],
+    ]);
+  });
+
+  it('gives the reason of a pending item (D15)', () => {
+    const motivo = (change: (i: ExcelInput['instalments'][number]) => void) => {
+      const input = fixtureInput();
+      const cond = input.instalments.find((i) => i.id === 'inst-cond-1');
+      if (cond === undefined) throw new Error('no instalment');
+      change(cond);
+      const rows = rowsOf(sheets(input).get('Bollette'));
+      return rows.find((r) => r[0] === 'Condominio' && r.length === 6)?.[5];
+    };
+    expect(motivo((i) => (i.rata = cents(31000)))).toBe('importo diverso');
+    expect(motivo((i) => (i.quotaProprieta = cents(120000)))).toBe('quota maggiore della rata');
   });
 
   it('leaves out unconfirmed and deleted settlement payments', () => {
@@ -248,6 +408,212 @@ describe('buildConguaglioWorkbook variants', () => {
   });
 });
 
+describe('paid, residual and status of the settlement (question 3)', () => {
+  type Pay = ExcelInput['payments'][number];
+  const conguaglio = (id: string, tenantId: string, extra: Partial<Pay>): Pay => ({
+    id,
+    v: 1,
+    rev: 1,
+    apartmentId: 'apt-nord',
+    tenantId,
+    date: isoDate('2027-10-15'),
+    amount: cents(1000),
+    confirmed: true,
+    kind: 'conguaglio',
+    source: 'csv',
+    ...extra,
+  });
+  /** The fixture without its settlement payments, plus `payments`. */
+  function withPayments(payments: Pay[], periods: ExcelInput['periods'] = fixtureInput().periods) {
+    const input: ExcelInput = { ...fixtureInput(), periods };
+    input.payments = [...input.payments.filter((p) => p.kind !== 'conguaglio'), ...payments];
+    return input;
+  }
+  const dueOf = (tenantId: string) =>
+    calcConguaglio(fixtureInput()).tenants.find((t) => t.tenantId === tenantId)?.due ?? 0;
+  const anna = (input: ExcelInput) =>
+    rowsOf(sheets(input).get('Conguagli'))
+      .find((r) => r[1] === 'Anna Prova')
+      ?.slice(7);
+
+  it('has the three columns after Conguaglio', () => {
+    expect(EXCEL_HEADERS.Conguagli.slice(7)).toEqual(['Conguaglio', 'Versato', 'Residuo', 'Stato']);
+  });
+
+  it('is partial while a payment is not in the statement, even when the total is paid', () => {
+    const due = dueOf('ten-a');
+    expect(due).toBeGreaterThan(7000);
+    // Both dates are in the next period: the month given makes them count.
+    const forMonth = yearMonth('2027-09');
+    const input = withPayments([
+      conguaglio('c1', 'ten-a', {
+        date: isoDate('2027-11-02'),
+        forMonth,
+        amount: cents(due - 7000),
+      }),
+      conguaglio('c2', 'ten-a', {
+        date: isoDate('2027-11-03'),
+        forMonth,
+        amount: cents(7000),
+        source: 'manual',
+      }),
+    ]);
+    expect(anna(input)).toEqual([due, due, 0, 'parziale']);
+  });
+
+  it('is settled when every payment is in the statement', () => {
+    const due = dueOf('ten-a');
+    const input = withPayments([
+      conguaglio('c1', 'ten-a', { date: isoDate('2027-09-30'), amount: cents(due - 1000) }),
+      conguaglio('c2', 'ten-a', { date: isoDate('2027-08-01'), amount: cents(1000) }),
+    ]);
+    expect(anna(input)).toEqual([due, due, 0, 'saldato']);
+  });
+
+  it('is to pay with no payment, and partial with a part', () => {
+    const due = dueOf('ten-a');
+    expect(anna(withPayments([]))).toEqual([due, 0, due, 'da pagare']);
+    const part = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-01-10') })]);
+    expect(anna(part)).toEqual([due, 1000, due - 1000, 'parziale']);
+  });
+
+  it('counts a payment to the tenant with its sign (R130)', () => {
+    const due = dueOf('ten-b');
+    const input = withPayments([
+      conguaglio('c1', 'ten-b', { date: isoDate('2026-12-03'), amount: cents(-1200) }),
+    ]);
+    const bruno = rowsOf(sheets(input).get('Conguagli')).find((r) => r[1] === 'Bruno Prova');
+    expect(bruno?.slice(7)).toEqual([due, -1200, due + 1200, 'parziale']);
+  });
+
+  it('leaves out payments of other periods, deposits and other tenants', () => {
+    const due = dueOf('ten-a');
+    const input = withPayments([
+      conguaglio('c1', 'ten-a', { forMonth: yearMonth('2027-10'), date: isoDate('2027-05-01') }),
+      conguaglio('c2', 'ten-a', { date: isoDate('2026-09-30') }),
+      // After the end of the next period (D11).
+      conguaglio('c3', 'ten-a', { date: isoDate('2028-10-01') }),
+      conguaglio('c4', 'ten-a', { date: isoDate('2027-01-01'), kind: 'caparra' }),
+      conguaglio('c5', 'ten-a', { date: isoDate('2027-01-01'), confirmed: false }),
+      conguaglio('c6', 'ten-a', { date: isoDate('2027-01-01'), apartmentId: 'apt-sud' }),
+      conguaglio('c7', 'ten-b', { date: isoDate('2027-01-01') }),
+    ]);
+    expect(anna(input)).toEqual([due, 0, due, 'da pagare']);
+    // The sheet of the payments lists the ones that count, the same as the column.
+    expect(rowsOf(sheets(input).get('Versamenti conguaglio')).slice(1)).toEqual([
+      ['Bruno Prova', '2027-01-01', 1000, null, 'estratto conto'],
+    ]);
+  });
+
+  it('counts a payment without month up to the end of the next period, once (D11)', () => {
+    const due = dueOf('ten-a');
+    const late = withPayments([
+      conguaglio('c1', 'ten-a', { date: isoDate('2028-09-30'), amount: cents(due) }),
+    ]);
+    expect(anna(late)).toEqual([due, due, 0, 'saldato']);
+    // The same payment does not count in the next period.
+    const next = {
+      ...late,
+      period: { label: '2027-28', from: yearMonth('2027-10'), to: yearMonth('2028-09') },
+    };
+    const versamenti = rowsOf(sheets(next).get('Versamenti conguaglio')).slice(1);
+    expect(versamenti.map((r) => r[1])).toEqual([]);
+  });
+
+  it('gives a date inside a later open period to the earlier one (D11)', () => {
+    const due = dueOf('ten-a');
+    const input = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-12-01') })]);
+    expect(anna(input)).toEqual([due, 1000, due - 1000, 'parziale']);
+    const later = {
+      ...input,
+      period: { label: '2027-28', from: yearMonth('2027-10'), to: yearMonth('2028-09') },
+    };
+    const annaLater = rowsOf(sheets(later).get('Conguagli')).find((r) => r[1] === 'Anna Prova');
+    expect(annaLater?.[8]).toBe(0);
+    expect(annaLater?.[9]).toBe(annaLater?.[7]);
+    expect(rowsOf(sheets(later).get('Versamenti conguaglio'))).toHaveLength(1);
+  });
+
+  it('gives a date after two overlapping periods to the one that starts last', () => {
+    const a = { from: yearMonth('2026-10'), to: yearMonth('2027-09') };
+    const b = { from: yearMonth('2027-03'), to: yearMonth('2032-02') };
+    expect(settlementPeriodOf(yearMonth('2033-01'), [a, b])).toEqual(b);
+    expect(settlementPeriodOf(yearMonth('2040-06'), [b, a])).toEqual(b);
+    expect(settlementPeriodOf(yearMonth('2026-09'), [a, b])).toBeUndefined();
+  });
+
+  it('counts any later date when there is no next period', () => {
+    const due = dueOf('ten-a');
+    const input = withPayments(
+      [conguaglio('c1', 'ten-a', { date: isoDate('2031-01-01'), amount: cents(due) })],
+      [{ from: yearMonth('2026-10'), to: yearMonth('2027-09') }],
+    );
+    expect(anna(input)).toEqual([due, due, 0, 'saldato']);
+  });
+
+  it('gives a date in two periods to the one that starts last (D13)', () => {
+    const due = dueOf('ten-a');
+    const periods = [
+      { from: yearMonth('2026-10'), to: yearMonth('2027-09') },
+      { from: yearMonth('2027-03'), to: yearMonth('2032-02') },
+    ];
+    const may = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-05-10') })], periods);
+    expect(anna(may)).toEqual([due, 0, due, 'da pagare']);
+    // After the end of 2026-27 it goes back to the period that ended (D11).
+    const nov = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-11-10') })], periods);
+    expect(anna(nov)).toEqual([due, 1000, due - 1000, 'parziale']);
+  });
+
+  it('says what is left over or to give back (D12, D14)', () => {
+    const csv = (amount: number) => ({ amount: cents(amount), source: 'csv' as const });
+    expect(settlementStatus(cents(10000), [csv(12000)])).toBe('versato in più');
+    expect(settlementStatus(cents(-4000), [csv(-5000)])).toBe('versato in più');
+    expect(settlementStatus(cents(0), [csv(1000)])).toBe('versato in più');
+    expect(settlementStatus(cents(-4000), [])).toBe('da restituire');
+    expect(settlementStatus(cents(-4000), [csv(5000), csv(-5000)])).toBe('da restituire');
+    expect(settlementStatus(cents(-4000), [csv(-1000)])).toBe('parziale');
+    expect(settlementStatus(cents(-4000), [csv(-4000)])).toBe('saldato');
+    // The other words stay.
+    expect(settlementStatus(cents(0), [])).toBe('saldato');
+    expect(settlementStatus(cents(10000), [csv(5000), csv(-5000)])).toBe('da pagare');
+    expect(settlementStatus(cents(10000), [csv(4000)])).toBe('parziale');
+    expect(settlementStatus(cents(10000), [{ amount: cents(10000), source: 'manual' }])).toBe(
+      'parziale',
+    );
+  });
+
+  it('calls a payment in the wrong direction partial (question 16, open)', () => {
+    const csv = (amount: number) => ({ amount: cents(amount), source: 'csv' as const });
+    expect(settlementStatus(cents(-4000), [csv(1000)])).toBe('parziale');
+    expect(settlementStatus(cents(10000), [csv(-2000)])).toBe('parziale');
+  });
+
+  it('sums paid and residual in the total, and leaves the empty beds blank', () => {
+    const rows = rowsOf(sheets().get('Conguagli'));
+    const tenants = rows.slice(2, -2);
+    const totale = rows.at(-1);
+    const sum = (i: number) => tenants.reduce((s, r) => s + Number(r[i] ?? 0), 0);
+    expect(totale?.slice(8)).toEqual([sum(8), sum(9)]);
+    expect(rows.at(-2)?.length).toBe(6);
+  });
+});
+
+describe('excelFilePath (question 7)', () => {
+  const period = { label: '2026-27', from: yearMonth('2026-10'), to: yearMonth('2027-09') };
+
+  it('puts the file in <Appartamento>/<periodo>/Excel/ with a safe name', () => {
+    expect(excelFilePath({ name: 'Nord' }, period)).toBe(
+      'Nord/2026-27/Excel/Conguaglio_Nord_2026-27.xlsx',
+    );
+    expect(excelFilePath({ name: 'Città: è Nord' }, period)).toBe(
+      'Citta-e-Nord/2026-27/Excel/Conguaglio_Citta-e-Nord_2026-27.xlsx',
+    );
+    expect(excelFilePath({ name: 'con' }, period)).toBe(
+      'Appartamento_con/2026-27/Excel/Conguaglio_Appartamento_con_2026-27.xlsx',
+    );
+  });
+});
+
 describe('the bytes of the Excel', () => {
   const bytes = writeXlsx(buildConguaglioWorkbook(fixtureInput()));
 
@@ -269,7 +635,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      'f83322578d3d9e2e8d4c769b6f05ea0809a17d4ab8fe7288e8f6b1c31d7c5b09',
+      'f1c08035e4aedea488a253b1338e7f729d9cc012f96f88c94aff79939dfc429e',
     );
   });
 });

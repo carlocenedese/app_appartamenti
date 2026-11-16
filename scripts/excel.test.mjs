@@ -1,5 +1,15 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   buildConguaglioWorkbook,
+  buildOwnersWorkbook,
   loadExcelInput,
   recordPath,
   writeRecord,
@@ -160,6 +171,90 @@ describe('pnpm excel', () => {
       });
     }
     expect(readdirSync(out).sort()).toEqual(['Conguaglio.xlsx']);
+  });
+
+  it('writes to <Appartamento>/<periodo>/Excel/ under the data folder without --uscita', async () => {
+    const args = ['--cartella', data, '--appartamento', 'apt-nord', '--periodo', '2026-27'];
+    const first = await main(args);
+    outputs.push(first.output);
+    expect(first.code).toBe(0);
+    const folder = join(data, 'Nord', '2026-27', 'Excel');
+    expect(readdirSync(folder)).toEqual(['Conguaglio_Nord_2026-27.xlsx']);
+    const second = await main(args);
+    outputs.push(second.output);
+    expect(second.code).toBe(1);
+    expect(JSON.parse(second.output)).toMatchObject({ reason: 'file-exists' });
+    expect(readdirSync(folder)).toEqual(['Conguaglio_Nord_2026-27.xlsx']);
+  });
+
+  it('writes the owners file with --proprietari, to --uscita or the default path', async () => {
+    const args = ['--cartella', data, '--appartamento', 'apt-nord', '--periodo', '2026-27'];
+    const file = join(out, 'Proprietari.xlsx');
+    const first = await main([...args, '--proprietari', '--uscita', file]);
+    outputs.push(first.output);
+    expect(first.code).toBe(0);
+    expect(JSON.parse(first.output)).toEqual({
+      status: 'written',
+      apartmentId: 'apt-nord',
+      period: '2026-27',
+      sheets: 1,
+      items: 1,
+      pending: 0,
+    });
+    const loaded = await loadExcelInput(new FsStore(data), {
+      apartmentId: 'apt-nord',
+      periodLabel: '2026-27',
+    });
+    expect(new Uint8Array(readFileSync(file))).toEqual(
+      writeXlsx(buildOwnersWorkbook(loaded.input)),
+    );
+    const again = await main([...args, '--proprietari', '--uscita', file]);
+    outputs.push(again.output);
+    expect(again.code).toBe(1);
+    expect(JSON.parse(again.output)).toMatchObject({ reason: 'file-exists' });
+    rmSync(file);
+    // Without --uscita: the default path under the data folder (5b, D2).
+    const byDefault = await main([...args, '--proprietari']);
+    outputs.push(byDefault.output);
+    expect(byDefault.code).toBe(0);
+    const folder = join(data, 'Riservato_proprietari', 'Excel', 'Nord', '2026-27');
+    expect(readdirSync(folder)).toEqual(['Proprietari_Nord_2026-27.xlsx']);
+    const twice = await main([...args, '--proprietari']);
+    outputs.push(twice.output);
+    expect(JSON.parse(twice.output)).toMatchObject({ reason: 'file-exists' });
+    rmSync(join(data, 'Riservato_proprietari'), { recursive: true });
+  });
+
+  it('refuses a default folder that is a link or a file, writing nothing', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'excel-default-'));
+    try {
+      for (const kind of ['link', 'file']) {
+        const root = join(base, kind);
+        cpSync(data, root, { recursive: true });
+        rmSync(join(root, 'Nord'), { recursive: true, force: true });
+        if (kind === 'link') {
+          mkdirSync(join(base, 'altrove'), { recursive: true });
+          symlinkSync(join(base, 'altrove'), join(root, 'Nord'));
+        } else {
+          mkdirSync(join(root, 'Nord'));
+          writeFileSync(join(root, 'Nord', '2026-27'), '');
+        }
+        const run = await main([
+          '--cartella',
+          root,
+          '--appartamento',
+          'apt-nord',
+          '--periodo',
+          '2026-27',
+        ]);
+        outputs.push(run.output);
+        expect(run.code).toBe(1);
+        expect(JSON.parse(run.output)).toMatchObject({ reason: 'bad-default-folder' });
+      }
+      expect(readdirSync(join(base, 'altrove'))).toEqual([]);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   it('never prints names, amounts, IBANs or paths', () => {

@@ -21,6 +21,7 @@ import {
 import { settlementPeriods } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
+import { compareText } from './text';
 
 export type LoadExcelInputResult =
   | { status: 'ok'; input: ExcelInput }
@@ -52,20 +53,26 @@ export async function loadExcelInput(
     list.filter((r) => r.apartmentId === apartment.id);
 
   const contracts = own(await records('contract', ContractSchema));
-  const periods = contracts
-    .flatMap((contract) => settlementPeriods(contract, apartment.annualitaStart))
-    .filter((p) => p.label === query.periodLabel);
+  const all = contracts.flatMap((contract) =>
+    settlementPeriods(contract, apartment.annualitaStart),
+  );
+  const periods = all.filter((p) => p.label === query.periodLabel);
   const [period] = periods;
   if (period === undefined) return refuse('unknown-period');
   if (periods.some((p) => p.from !== period.from || p.to !== period.to)) {
     return refuse('ambiguous-period');
   }
 
+  // Every settlement period, once and in order (R177).
+  const spans = [
+    ...new Map(all.map((p) => [`${p.from}/${p.to}`, { from: p.from, to: p.to }])).values(),
+  ].sort((a, b) => compareText(a.from, b.from) || compareText(a.to, b.to));
   return {
     status: 'ok',
     input: {
       apartment,
       period: { label: period.label, from: period.from, to: period.to },
+      periods: spans,
       tenants: await records('tenant', TenantSchema),
       tenancies: own(await records('tenancy', TenancySchema)),
       bills: own(await records('bill', BillSchema)),

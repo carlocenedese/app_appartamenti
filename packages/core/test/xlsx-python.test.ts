@@ -7,8 +7,16 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { StatementTableSchema, cents, isoDate, writeXlsx } from '../src/index';
+import {
+  StatementTableSchema,
+  buildConguaglioWorkbook,
+  buildOwnersWorkbook,
+  cents,
+  isoDate,
+  writeXlsx,
+} from '../src/index';
 import type { XlsxCell, XlsxWorkbook } from '../src/index';
+import { fixtureInput } from './helpers/excel-fixture';
 import { pythonAvailability, runPython } from './helpers/python-extract';
 
 const TIMEOUT = 60_000;
@@ -96,6 +104,50 @@ describe.skipIf(!availability.available)('the xlsx writer and the Python reader'
         [{ t: 's', v: 'Inquilino' }],
         [{ t: 's', v: 'Anna Prova' }],
       ]);
+    },
+    TIMEOUT,
+  );
+
+  /** A cell as the reader gives it back, amounts in cents; trailing holes dropped. */
+  type Back = { t: string; v: string | number } | null;
+  const trim = (row: Back[]) => {
+    const copy = [...row];
+    while (copy.length > 0 && copy.at(-1) === null) copy.pop();
+    return copy;
+  };
+  const expected = (cell: XlsxCell | null): Back => {
+    if (cell === null) return null;
+    if (cell.kind === 'text') return { t: 's', v: cell.value };
+    if (cell.kind === 'date') return { t: 'd', v: cell.value };
+    return { t: 'n', v: cell.value };
+  };
+
+  it.each([
+    ['the Excel of the tenants', () => buildConguaglioWorkbook(fixtureInput())],
+    ['the Excel of the owners', () => buildOwnersWorkbook(fixtureInput())],
+  ])(
+    'reads back %s of the fixture cell by cell',
+    async (name, build) => {
+      const book = build();
+      const path = join(root, `${name.replaceAll(' ', '-')}.xlsx`);
+      writeFileSync(path, writeXlsx(book));
+      const output = await runPython(['-I', '-m', 'bollette_pdf', 'table', path], { cwd: root });
+      const table = StatementTableSchema.parse(JSON.parse(output));
+      expect(table.sheets.map((s) => s.name)).toEqual(book.sheets.map((s) => s.name));
+      book.sheets.forEach((sheet, i) => {
+        const kinds = sheet.rows.map((row) => row.map((c) => c?.kind));
+        const back = (table.sheets[i]?.rows ?? []).map((row, r) =>
+          trim(
+            row.map((cell, c): Back => {
+              if (cell === null) return null;
+              if (cell.t !== 'n') return { t: cell.t, v: cell.v };
+              const euro = kinds[r]?.[c] === 'euro';
+              return { t: 'n', v: euro ? Math.round(Number(cell.v) * 100) : Number(cell.v) };
+            }),
+          ),
+        );
+        expect(back).toEqual(sheet.rows.map((row) => trim(row.map(expected))));
+      });
     },
     TIMEOUT,
   );

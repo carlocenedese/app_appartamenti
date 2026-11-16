@@ -53,6 +53,19 @@ describe('loadExcelInput', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
+  it('gives every settlement period of the apartment (R177)', async () => {
+    const store = await fixtureStore();
+    const first = await loadExcelInput(store, QUERY);
+    const last = await loadExcelInput(store, { ...QUERY, periodLabel: '2027-28' });
+    if (first.status !== 'ok' || last.status !== 'ok') throw new Error('refused');
+    const both = [
+      { from: '2026-10', to: '2027-09' },
+      { from: '2027-10', to: '2028-09' },
+    ];
+    expect(first.input.periods).toEqual(both);
+    expect(last.input.periods).toEqual(both);
+  });
+
   it('leaves the gas bill pending once a statement covers its month', async () => {
     const store = await fixtureStore();
     await writeRecord(
@@ -64,7 +77,9 @@ describe('loadExcelInput', () => {
     const loaded = await loadExcelInput(store, QUERY);
     if (loaded.status !== 'ok') throw new Error(loaded.reason);
     const types = buildConguaglioWorkbook(loaded.input).sheets[0]?.rows.map((r) => r[0]?.value);
-    expect(types).not.toContain('Gas');
+    // Only in the list of the pending items, after the total.
+    expect(types?.slice(types.indexOf('Totale'))).toContain('Gas');
+    expect(types?.slice(0, types.indexOf('Totale'))).not.toContain('Gas');
   });
 
   it('keeps planMatch.run as it was', async () => {

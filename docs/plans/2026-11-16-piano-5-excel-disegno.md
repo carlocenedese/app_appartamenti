@@ -1,6 +1,8 @@
 # Piano 5: Excel dei conguagli per appartamento e annualità (disegno)
 
-Stato: **bozza da approvare da user1** (16 novembre 2026). Solo disegno, nessun codice. Il piano copre
+Stato: **approvato da user1 il 16 novembre 2026** con le risposte alle domande 1, 3-10 (sotto, «Domande
+per user1»; resta aperta la 2) e alle domande 11-15 (seconda risposta, task 12-14); i task 1-7 sono uniti, le risposte sono i task 8-11
+del piano. Il piano copre
 il core (`packages/core`) e una riga di comando (`pnpm excel`); **niente schermate e niente veste
 grafica**. Riferimenti: `docs/spec.md` sezioni 5, 6, 9 («Spese condominiali»), 12, 19, 20, 26, 27, 29
 e 42 (R1-R8, che prevalgono); `docs/rules/conguaglio-rules.md` (le colonne degli Excel di oggi, fogli
@@ -34,10 +36,8 @@ sezione 19.
 
 ## Non obiettivi
 
-- **File riservato ai proprietari** (R8, sezioni 12 e 20: rata, conguaglio dell'anno prima, quota
-  della proprietà, data dell'addebito, straordinarie, banca, saldo tra conti): piano 5b, dopo la
-  domanda 9.
-- Stato «saldato / parziale / da pagare» e residuo del conguaglio (R6, sezione 27): domanda 3.
+- **File riservato ai proprietari** (R8, sezioni 12 e 20): piano 5b
+  (`2026-11-16-piano-5b-proprietari-disegno.md`), domanda 9.
 - Chiusura dell'annualità, istantanee, Excel «definitivo», versioni in `_app/excel_versioni/`,
   differenza con la versione precedente e celle modificate a mano (sezioni 5, 6, 20, 29): con la
   chiusura (R5), in un piano a sé.
@@ -106,6 +106,15 @@ dati; gli importi sono celle numeriche in euro con il formato `"€ "#,##0.00;"-
 | File | nome del file di `bill.filePath` | vuoto (la rata non ha percorso) |
 | Nota | «Bolletta a cavallo: € 60,00 nei mesi agosto–settembre 2026, fuori da questo periodo.» (sezione 6) | vuota |
 
+Dopo le voci la riga «Totale» (Importo, Commissione e Quota nel periodo sommati su tutte le righe,
+sezione 19). Poi, se ci sono voci in attesa di pagamento (domanda 6), una riga vuota, la riga
+«Voci in attesa di pagamento» e una riga per voce con i soli Tipo, Fornitore, Periodo dal e Periodo al
+(nessun importo), nello stesso ordine delle voci.
+
+**Riga in cima** (domanda 5): «Conguaglio provvisorio: voci in attesa N» come prima riga dei fogli
+Bollette e Conguagli, sopra le intestazioni, finché il periodo non è chiuso (senza la chiusura di R5
+nessun periodo lo è) o ci sono voci in attesa.
+
 **Foglio «Conguagli»**: una riga per inquilino presente nel periodo, nell'ordine dei posti
 (`apartment.rooms`) e poi del primo mese, come nell'esempio; per ultima la riga «Totale» con le somme
 di tutte le righe (sezione 19).
@@ -120,9 +129,13 @@ di tutte le righe (sezione 19).
 | Condominio | `condominio.rata + condominio.conguaglioPrec` (R8) |
 | Forfait incassato | `forfaitIncassato` (R4: incassato, non dovuto) |
 | Conguaglio | `due`: positivo = l'inquilino deve, negativo = credito dell'inquilino |
+| Versato | somma dei versamenti di conguaglio del periodo dell'inquilino, col segno (domanda 3) |
+| Residuo | `Conguaglio − Versato` |
+| Stato | «saldato», «parziale» o «da pagare» (sezione 27, R6; regola alla domanda 3) |
 
-La colonna «Conguaglio versato» dell'esempio (C!I) e quindi il residuo non ci sono finché non arriva
-la risposta alla domanda 3.
+Prima del «Totale» la riga «Posti vuoti (proprietà)» (domanda 4): Spese =
+`unassignedByBucket.spese + commissione`, Condominio = `rata + conguaglioPrec`, le altre colonne
+vuote; così Spese + Condominio del «Totale» = «Quota nel periodo» del «Totale» del foglio Bollette.
 
 **Foglio «Affitti versati»**: una riga per presenza (inquilino e posto), stesso ordine; colonne
 Posto, Inquilino, Quota (`monthlyRent + monthlyForfait`, come AV!E), poi un mese per colonna del
@@ -218,6 +231,7 @@ fuori (o com'è indicato) e il resto procede.
    diverso dall'app. Esempio: la quota di un inquilino 150,09 € scritta come numero, non come
    `=D6/5-H6`. Il piano scrive valori; se rispondi «formule», un task in più le aggiunge solo nelle
    righe dei totali.
+   **Risposta di user1 (16 novembre 2026): valori.** Nessuna formula.
 2. **Il formato esatto dell'esempio.** Servono, senza valori: nomi e ordine dei fogli, intestazioni e
    ordine delle colonne, le righe sopra la tabella (titolo, appartamento, annualità), se è uguale per
    i tre appartamenti. Basta scriverli, oppure lanciare `python3 -I python/tools/xlsx_structure.py
@@ -234,28 +248,80 @@ fuori (o com'è indicato) e il resto procede.
    50,00 € (CSV) e 70,00 € (a mano) → con la raccomandazione: versato 120,00 €, stato «parziale» finché
    il secondo non compare nel CSV. Fino alla risposta: niente colonna versato/residuo/stato, solo il
    foglio «Versamenti conguaglio» con i fatti, senza caparre.
+   **Risposta di user1: sì, come la raccomandazione**, caparre fuori dal file condiviso. Task 9 del
+   piano; R172. Il confine «fino al periodo successivo» e il versato oltre il dovuto restano domande
+   (11 e 12).
 4. **Riga dei posti vuoti nel foglio Conguagli?** Con la riga «Posti vuoti (proprietà)» il totale
    del foglio Conguagli è uguale al totale del foglio Bollette; senza, differisce dell'importo dei
    posti vuoti. Raccomando sì. Esempio: Bollette 1.000,00 €, inquilini 940,00 €, posti vuoti 60,00 €.
    Fino alla risposta: nessuna riga.
+   **Risposta di user1: sì.** Task 8; R170.
 5. **«Provvisorio» sul file di un periodo non chiuso?** Finché non c'è la chiusura (R5) ogni Excel è
    provvisorio. Raccomando una riga in cima «Conguaglio provvisorio: voci in attesa N» quando ci sono
    voci `pending` o il periodo non è chiuso. Fino alla risposta: nulla (l'uscita della riga di comando
    dà il numero delle voci in attesa).
+   **Risposta di user1: sì.** Nel modello non c'è ancora la chiusura (R5), quindi nessun periodo è
+   chiuso e la riga c'è sempre, anche con N = 0 (R171). Task 10.
 6. **Voci in attesa di pagamento**: R2 le tiene fuori; vanno almeno **elencate** (senza importo) in
    fondo al foglio Bollette, perché gli inquilini sappiano che arriveranno? Raccomando sì, solo tipo,
    fornitore e periodo. Fino alla risposta: fuori del tutto, come dice R2.
+   **Risposta di user1: sì**, tipo, fornitore e periodo, nessun importo. Task 10; R171.
 7. **Nome e cartella del file.** La sezione 20 dice `<Appartamento>/<annualità>/Excel/`; il nome no.
    Raccomando `Conguaglio_<Appartamento>_<periodo>.xlsx` (con `safeWord`, niente accenti né `:`).
    Fino alla risposta `pnpm excel` chiede il percorso con `--uscita`.
+   **Risposta di user1: sì.** Senza `--uscita` il file va in
+   `<Appartamento>/<periodo>/Excel/Conguaglio_<Appartamento>_<periodo>.xlsx` sotto `--cartella`;
+   `--uscita` vale ancora. Task 11; R173.
 8. **Inquilino senza nome** (presenza senza record `tenant`): raccomando rifiutare la generazione con
    l'elenco degli `id` (`missing-tenant`), non scrivere l'`id` al posto del nome. Il piano fa così; se
    preferisci l'`id`, cambia un controllo.
+   **Risposta di user1: rifiutare** (`missing-tenant`), come già fatto.
 9. **File riservato ai proprietari (R8, sezioni 12 e 20)**: lo facciamo nel piano 5b subito dopo, con
    le colonne di R8 (rata, conguaglio dell'anno prima, quota della proprietà, data dell'addebito) più
    straordinarie e stato del pagamento? Raccomando sì, stesso scrittore.
+   **Risposta di user1: sì**, stesso scrittore: piano 5b.
 10. **Nessuna libreria xlsx** (zip e XML scritti da noi, sopra): approvi? Ripiego `fflate` (MIT) solo
     se Excel rifiutasse il file.
+    **Risposta di user1: nessuna libreria.**
+11. **(Nuova.) Fino a quando conta un versamento senza mese indicato?** La risposta 3 dice
+    «la data nel periodo o dopo la sua fine fino al periodo successivo». La leggo come «fino al
+    giorno prima dell'inizio del periodo successivo» (R172): così un bonifico non conta mai per due
+    periodi. Ma con annualità consecutive il conguaglio del 2026-27, pagato a novembre 2027 senza
+    mese indicato, conta nel 2027-28 e non nel 2026-27. Esempio: conguaglio 2026-27 di 120,00 €,
+    bonifico di 120,00 € il 15/11/2027 senza mese → oggi va nel 2027-28; per contarlo nel 2026-27
+    serve il mese indicato (`forMonth` `2027-09` o un altro mese del periodo). Va bene, o preferisci
+    una finestra dopo la fine (per esempio fino alla fine del periodo successivo, contando il
+    bonifico una volta sola)? Senza periodo successivo (ultimo contratto) la finestra non ha fine.
+    **Risposta di user1 (D11): senza mese indicato conta fino alla fine del periodo successivo, una
+    volta sola** (R177, task 12).
+12. **(Nuova.) Stato con versato oltre il dovuto.** Conguaglio 100,00 €, versati 120,00 €
+    dal CSV: residuo −20,00 €. La sezione 27 ha solo «saldato, parziale, da pagare»: oggi scrivo
+    «parziale» (R172). Vuoi un'altra parola (per esempio «versato in più») o un'altra regola?
+    **Risposta di user1 (D12): «versato in più».** R178, task 13.
+13. **(Nuova, dalla revisione.) Periodi che si sovrappongono.** Il periodo successivo è il primo
+    che inizia dopo la fine di questo; un contratto che inizia prima della fine (per esempio un
+    3+2 da 2027-03 accanto all'annualità 2026-27) non chiude la finestra, quindi un bonifico senza
+    mese del 10/05/2027 di 80,00 € conta nel 2026-27 e anche nel periodo del nuovo contratto. Come
+    vanno scelti i periodi in questo caso?
+    **Risposta di user1 (D13): conta nel periodo che inizia per ultimo tra quelli che lo contengono**
+    (R177, task 12).
+14. **(Nuova, dalla revisione.) Casi strani dello stato.** Oggi: conguaglio 0,00 € e nessun
+    versamento → «saldato»; conguaglio 100,00 €, bonifici +50,00 € e −50,00 € → versato 0 → «da
+    pagare»; credito dell'inquilino −40,00 € e nessuna restituzione → «da pagare» (ma siamo noi a
+    dover pagare). Vanno bene queste parole?
+    **Risposta di user1 (D14): il credito non ancora restituito è «da restituire»**; il resto resta
+    com'è (0 senza versamenti «saldato», +50/−50 «da pagare»). R178, task 13.
+15. **(Nuova, dalla revisione.) Voci pagate elencate come «in attesa».** L'elenco in fondo al foglio
+    Bollette riporta tutte le voci che `calcConguaglio` tiene fuori, anche quelle con l'addebito nel
+    CSV ma ferme per un altro motivo (importo diverso, quota della proprietà più grande della rata).
+    Esempio: rata di condominio 300,00 € addebitata, ma la quota della proprietà è 320,00 € → è
+    elencata come «in attesa di pagamento». Serve un'altra intestazione o un motivo?
+    **Risposta di user1 (D15): una colonna «Motivo»** con «in attesa di pagamento», «importo
+    diverso» o «quota maggiore della rata». R179, task 14.
+16. **(Nuova, aperta, dalla revisione.) Versamento nella direzione sbagliata.** Credito
+    dell'inquilino −40,00 € e un bonifico dell'inquilino di +10,00 €: oggi «parziale» (residuo
+    −50,00 €); conguaglio +100,00 € e una nostra restituzione di −20,00 €: oggi «parziale» (residuo
+    120,00 €). Vanno chiamati «versato in più» o in un altro modo?
 
 ## Mie scelte (da controllare)
 
