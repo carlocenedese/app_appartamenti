@@ -37,6 +37,7 @@ import { daysBetween } from './period';
 import type { ISODate, YearMonth } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
+import type { TaxExpectedItem } from './taxes';
 import { compareText } from './text';
 
 export type PayableState = 'da-pagare' | 'in-scadenza' | 'pagata' | 'in-ritardo';
@@ -62,6 +63,8 @@ export interface PayableItem {
     /** Unpaid, and no statement of the paying account covers the due date (question 7: open). */
     | 'periodo-senza-estratto';
   repeatYearly?: true;
+  /** The reference year chosen by user1 (plan 13, R242). */
+  taxYear?: number;
   /** A live item was repeated from this one. */
   repeated?: true;
 }
@@ -110,6 +113,56 @@ export function payableState(
 
 const live = <T extends { deleted?: boolean }>(records: T[]): T[] =>
   records.filter((r) => r.deleted !== true);
+
+/** Paid by hand, or by a movement while it and its class are live (un movimento, un uso). */
+function isPayablePaid(
+  p: Payable,
+  transactions: ReadonlyMap<string, BankTransaction>,
+  classOf: ReadonlyMap<string, MovementClass>,
+): boolean {
+  const txId = p.paid?.transactionId;
+  const kind = txId === undefined ? undefined : classOf.get(txId)?.kind;
+  return (
+    p.paid !== undefined &&
+    (txId === undefined || (transactions.has(txId) && kind !== undefined && kind !== 'escluso'))
+  );
+}
+
+/**
+ * The payables of cedolare and registro for the tax table (plan 13, R243, R246): each live one,
+ * with `year` = its `taxYear` as `AAAA`, `amount` = `expected` when present (the table never takes
+ * a missing one as zero) and `paid` (its movement, if any) when paid. By record id.
+ */
+export function payableExpectedItems(input: {
+  payables: Payable[];
+  transactions: BankTransaction[];
+  classes: MovementClass[];
+}): TaxExpectedItem[] {
+  const transactions = new Map(live(input.transactions).map((t) => [t.id, t]));
+  const classOf = new Map(live(input.classes).map((c) => [c.transactionId, c]));
+  return live(input.payables)
+    .sort((a, b) => compareText(a.id, b.id))
+    .flatMap((p) =>
+      p.kind === 'cedolare' || p.kind === 'registro'
+        ? [
+            {
+              apartmentId: p.apartmentId,
+              voce: p.kind,
+              ...(p.taxYear === undefined ? {} : { year: String(p.taxYear).padStart(4, '0') }),
+              ...(p.expected === undefined ? {} : { amount: p.expected }),
+              ...(p.paid !== undefined && isPayablePaid(p, transactions, classOf)
+                ? {
+                    paid:
+                      p.paid.transactionId === undefined
+                        ? {}
+                        : { transactionId: p.paid.transactionId },
+                  }
+                : {}),
+            },
+          ]
+        : [],
+    );
+}
 
 /** The items and the ends of the live contracts from the month of `today`; see the file comment. */
 export function scadenzario(input: ScadenzarioInput): {
@@ -192,11 +245,7 @@ export function scadenzario(input: ScadenzarioInput): {
   const repeated = new Set(payables.flatMap((p) => p.previousId ?? []));
   const manual = payables.map((p) => {
     const txId = p.paid?.transactionId;
-    // A movement proves the payment only while it and its class are live (un movimento, un uso).
-    const kind = txId === undefined ? undefined : classOf.get(txId)?.kind;
-    const paid =
-      p.paid !== undefined &&
-      (txId === undefined || (transactions.has(txId) && kind !== undefined && kind !== 'escluso'));
+    const paid = isPayablePaid(p, transactions, classOf);
     return item(
       {
         source: 'payable',
@@ -208,6 +257,7 @@ export function scadenzario(input: ScadenzarioInput): {
         ...(paid && p.paid !== undefined ? { paidOn: p.paid.date } : {}),
         ...(paid && txId !== undefined ? { transactionId: txId } : {}),
         ...(p.repeatYearly === true ? { repeatYearly: true as const } : {}),
+        ...(p.taxYear === undefined ? {} : { taxYear: p.taxYear }),
         ...(repeated.has(p.id) ? { repeated: true as const } : {}),
       },
       paid,

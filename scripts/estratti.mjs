@@ -19,7 +19,7 @@
 // and their read-only checks); affitti-anno saves the rents of an apartment and year typed by
 // user1, shown by contratti --dettagli with the cedolare estimate to be confirmed (R182); plan 9
 // adds scadenze (the owner's payables, derived), scadenza-nuova, scadenza-ripeti and
-// scadenza-pagata (the payables typed by hand).
+// scadenza-pagata (the payables typed by hand); plan 13 adds --anno-riferimento to the first two.
 // Plan 8 adds appartamento (creates an apartment, asking who bears the condominium difference,
 // or updates the fields given), condominio-documento (preventivo or consuntivo of a fiscal year),
 // condominio (the owners' check of the condominium expenses, the differences and the recoveries)
@@ -272,6 +272,8 @@ const MESSAGES = {
     'Stima copiata da un esercizio precedente: non è un documento del condominio e non si salva.',
   'tax-year-empty':
     'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
+  'tax-no-payable':
+    'Da verificare: nessuna scadenza con anno di riferimento per questa voce e quest’anno; una scadenza senza anno va riscritta con «scadenza-nuova --id <id> --anno-riferimento <AAAA>».',
   'tax-discrepancy':
     'Discrepanza tra la stima e il pagato più l’ancora previsto: solo un avviso, non blocca nulla.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -359,6 +361,7 @@ const OPTIONS = {
   oggi: { type: 'string' },
   scadenza: { type: 'string' },
   'ogni-anno': { type: 'boolean' },
+  'anno-riferimento': { type: 'string' },
   locatore: { type: 'string' },
   posti: { type: 'string' },
   annualita: { type: 'string' },
@@ -525,6 +528,12 @@ const yearStart = (text) => {
 const DIFFERENCE_TO = { inquilini: 'tenants', proprietario: 'owner' };
 
 const optional = (key, value) => (value === undefined ? {} : { [key]: value });
+/** The reference year of a payable (plan 13): `AAAA`, not `0000`, as an integer. */
+const taxYearOf = (text) => {
+  if (text === undefined) return undefined;
+  if (!/^\d{4}$/.test(text) || text === '0000') throw invalid('bad-arguments');
+  return Number(text);
+};
 /** An amount that must be positive (an expected amount of a payable). */
 const positive = (text) => {
   const amount = euro(text);
@@ -1608,12 +1617,18 @@ async function command(name, values, positionals, store, who, clock, newId) {
           state: r.state,
           reasons: r.reasons,
           ...(r.state === 'discrepanza' ? { message: MESSAGES['tax-discrepancy'] } : {}),
+          ...(r.reasons.includes('no-expected-source')
+            ? { message: MESSAGES['tax-no-payable'] }
+            : {}),
           ...(details
             ? {
                 estimate: r.estimate,
                 paid: r.paid,
                 expected: r.expected,
                 difference: r.difference,
+                ...(r.annualDifference === undefined
+                  ? {}
+                  : { annualDifference: r.annualDifference }),
                 ...(r.cedolareProposals === undefined
                   ? {}
                   : {
@@ -1900,6 +1915,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
           state: i.state,
           ...optional('check', i.check),
           ...optional('repeatYearly', i.repeatYearly),
+          ...optional('taxYear', i.taxYear),
           ...optional('repeated', i.repeated),
           ...(details
             ? {
@@ -1949,6 +1965,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
           values.importo === undefined ? undefined : positive(values.importo),
         ),
         ...optional('repeatYearly', values['ogni-anno'] === true ? true : undefined),
+        ...optional('taxYear', taxYearOf(values['anno-riferimento'])),
       },
       who,
       clock,
@@ -1970,6 +1987,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
           'expected',
           values.importo === undefined ? undefined : positive(values.importo),
         ),
+        ...optional('taxYear', taxYearOf(values['anno-riferimento'])),
       },
       who,
       clock,
@@ -2307,6 +2325,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       oggi: ['scadenze', 'tasse'],
       scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
       'ogni-anno': ['scadenza-nuova'],
+      'anno-riferimento': ['scadenza-nuova', 'scadenza-ripeti'],
       dal: ['importa', 'contratto-canone', 'presenza', 'caparra-restituzione'],
       al: ['importa', 'presenza', 'caparra-restituzione'],
       posto: ['presenza'],

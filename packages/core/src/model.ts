@@ -1198,12 +1198,14 @@ export const PayableSchema = RecordBaseSchema.extend({
   previousId: NonEmptyString.optional(),
   /** Marked paid: by hand, or by a movement whose class was confirmed by hand. */
   paid: z.object({ date: ISODateSchema, transactionId: NonEmptyString.optional() }).optional(),
+  /** The tax year chosen by user1 (plan 13, R242), never computed; absent: not chosen. */
+  taxYear: z.int().min(1).max(9999).optional(),
 })
   .refine((p) => p.id.startsWith('scad-'), {
     message: 'The id must start with scad-',
     path: ['id'],
   })
-  .meta({ description: 'id starts with scad-; expected is positive cents.' });
+  .meta({ description: 'id starts with scad-; expected is positive cents; taxYear 1-9999.' });
 export type Payable = z.infer<typeof PayableSchema>;
 
 // --- Condominium (plan 8) ----------------------------------------------------------------------

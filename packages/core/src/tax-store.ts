@@ -6,6 +6,7 @@
  * same request on the same state, no amount or name in a summary.
  */
 import { checkConsistency, commitChange } from './journal';
+import { payableExpectedItems } from './payables';
 import { TAX_DISCREPANCY_TOLERANCE, taxTable, taxYearWarnings } from './taxes';
 import type { TaxYearWarning, TaxpayerTable } from './taxes';
 import {
@@ -16,6 +17,7 @@ import {
   ImuYearSchema,
   InstalmentSchema,
   MovementClassSchema,
+  PayableSchema,
   RentYearSchema,
   TaxEstimateSchema,
   TaxPaymentSchema,
@@ -290,8 +292,8 @@ export type LoadTaxTableResult =
   | { status: 'refused'; reason: 'inconsistent-store' | 'bad-year' };
 
 /**
- * The tables of `year` (`taxTable` with `TAX_DISCREPANCY_TOLERANCE`, no `expectedItems` until
- * plan 9 is there) and the January warnings of `today` (R213). Read only.
+ * The tables of `year` (`taxTable` with `TAX_DISCREPANCY_TOLERANCE` and the payables as
+ * `expectedItems`, R243) and the January warnings of `today` (R213). Read only.
  */
 export async function loadTaxTable(
   store: Store,
@@ -303,19 +305,26 @@ export async function loadTaxTable(
   if (!YearSchema.safeParse(options.year).success) return { status: 'refused', reason: 'bad-year' };
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   const estimates = (await loadAll(store, 'taxEstimate', TaxEstimateSchema)).records;
+  const transactions = (await loadAll(store, 'transaction', BankTransactionSchema)).records;
+  const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
   const tables = taxTable({
     year: options.year,
     tolerance: TAX_DISCREPANCY_TOLERANCE,
     apartments,
     estimates,
     imuYears: (await loadAll(store, 'imuYear', ImuYearSchema)).records,
-    classes: (await loadAll(store, 'movementClass', MovementClassSchema)).records,
-    transactions: (await loadAll(store, 'transaction', BankTransactionSchema)).records,
+    classes,
+    transactions,
     instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
     matches: (await loadAll(store, 'match', BillMatchSchema)).records,
     taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
     contracts: (await loadAll(store, 'contract', ContractSchema)).records,
     rentYears: (await loadAll(store, 'rentYear', RentYearSchema)).records,
+    expectedItems: payableExpectedItems({
+      payables: (await loadAll(store, 'payable', PayableSchema)).records,
+      transactions,
+      classes,
+    }),
   });
   const warnings = taxYearWarnings({ today: options.today, apartments, estimates });
   return { status: 'computed', tables, warnings };

@@ -3756,6 +3756,53 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
     expect(undo.code).toBe(0);
     expect((await run(['scadenze', ...s.common])).json.items).toHaveLength(1);
   });
+  it('--anno-riferimento (piano 13): anno AAAA scritto da user1, solo in scadenza-nuova e scadenza-ripeti', async () => {
+    const s = await payableSetup();
+    const nuova = (year, ...extra) => [
+      'scadenza-nuova',
+      ...s.common,
+      '--appartamento',
+      'pulci',
+      '--tipo',
+      'cedolare',
+      '--scadenza',
+      '2026-11-30',
+      '--anno-riferimento',
+      year,
+      ...extra,
+    ];
+    const read = (id) =>
+      JSON.parse(readFileSync(join(s.dir, '_app', 'dati', 'payable', `${id}.json`), 'utf8'));
+    const cedolare = await run(nuova('2026', '--ogni-anno'));
+    expect(cedolare.code).toBe(0);
+    expect(read(cedolare.json.payableId).taxYear).toBe(2026);
+    const snap = snapshot(s.dir);
+    for (const bad of [
+      nuova('26'),
+      nuova('2026.5'),
+      nuova('0000'),
+      nuova('anno'),
+      ['scadenze', ...s.common, '--anno-riferimento', '2026'],
+    ]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]);
+    }
+    expect(snapshot(s.dir)).toEqual(snap);
+    const next = await run([
+      'scadenza-ripeti',
+      ...s.common,
+      '--id',
+      cedolare.json.payableId,
+      '--scadenza',
+      '2027-11-30',
+      '--anno-riferimento',
+      '2027',
+    ]);
+    expect([next.code, read(next.json.payableId).taxYear]).toEqual([0, 2027]);
+    // The year is shown by scadenze, also without --dettagli (not a personal datum).
+    expect((await run(['scadenze', ...s.common])).json.items.map((i) => i.taxYear)).toEqual([
+      2026, 2027,
+    ]);
+  });
 });
 
 describe('pnpm estratti tasse (piano 10)', () => {
@@ -3895,10 +3942,12 @@ describe('pnpm estratti tasse (piano 10)', () => {
     expect(list.json).toMatchObject({ status: 'ok', year: '2026', warnings: [] });
     expect(list.json.tables).toHaveLength(1);
     expect(list.json.tables[0].apartmentIds).toEqual(['nord']);
+    // No payable with a reference year: the expected is unknown (R243), with the hint.
     expect(list.json.tables[0].rows[0]).toEqual({
       voce: 'cedolare',
       state: 'da-verificare',
       reasons: ['no-expected-source'],
+      message: expect.stringContaining('--anno-riferimento'),
     });
     expect(list.out).not.toMatch(new RegExp(`${SECRET}|123457|100000|23457`));
     expect(scanText(list.out)).toEqual([]);
@@ -3918,6 +3967,91 @@ describe('pnpm estratti tasse (piano 10)', () => {
       'no-expected-source',
       'unassigned-tax-movement',
     ]);
+  });
+
+  it('tasse: la differenza sul totale annuo IMU solo con --dettagli (piano 13)', async () => {
+    const dir = join(root, `p13-${String((counter += 1))}`);
+    mkdirSync(dir);
+    const base = { v: 1, rev: 1 };
+    const records = [
+      ['apartment', { ...apartment(), id: 'nord', locatore: SECRET }],
+      [
+        'transaction',
+        {
+          ...base,
+          id: 'tx-imu',
+          apartmentId: 'nord',
+          date: '2026-06-16',
+          amount: -123457,
+          description: 'F24',
+          statementHash: 'h1',
+        },
+      ],
+      [
+        'movementClass',
+        {
+          ...base,
+          id: 'mc-tx-imu',
+          transactionId: 'tx-imu',
+          kind: 'tasse',
+          apartmentId: 'nord',
+          f24: true,
+          imu: { f24Group: 'g', year: '2026', rateIndex: 1 },
+        },
+      ],
+      [
+        'imuYear',
+        {
+          ...base,
+          id: 'imu-nord-2026',
+          apartmentId: 'nord',
+          year: '2026',
+          f24Group: 'g',
+          annualTotal: 123400,
+          rates: [{ index: 1 }],
+        },
+      ],
+    ];
+    let k = 0;
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      () => `seed-${String((k += 1))}`,
+    );
+    const s = { common: ['--cartella', dir, '--ora', ORA] };
+    const estimate = await run([
+      'tasse-stima',
+      ...s.common,
+      '--appartamento',
+      'nord',
+      '--anno',
+      '2026',
+      '--voce',
+      'imu',
+      '--importo',
+      '1234,57',
+    ]);
+    expect(estimate.code).toBe(0);
+    const plain = await run(['tasse', ...s.common, '--anno', '2026']);
+    const imu = (r) => r.json.tables[0].rows.find((row) => row.voce === 'imu');
+    expect(imu(plain)).toEqual({
+      voce: 'imu',
+      state: 'discrepanza',
+      reasons: [],
+      message: expect.any(String),
+    });
+    expect(plain.out).not.toMatch(/annualDifference|57/);
+    const details = await run(['tasse', ...s.common, '--anno', '2026', '--dettagli']);
+    expect(imu(details)).toMatchObject({ paid: 123457, difference: 0, annualDifference: 57 });
   });
 
   it('tasse a gennaio avvisa dell’anno vuoto; tasse-copia copia l’anno prima solo a comando', async () => {

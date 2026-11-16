@@ -1680,6 +1680,14 @@ describe('PayableSchema (plan 9, task 1)', () => {
     expect(ok({ paid: { transactionId: 't1' } })).toBe(false);
   });
 
+  it('takes the reference year chosen by user1 as a whole number of four digits (plan 13)', () => {
+    expect(ok({ taxYear: 2026 })).toBe(true);
+    expect(ok({ taxYear: 1 })).toBe(true);
+    for (const taxYear of [0, 10000, 2026.5, '2026', -2026]) {
+      expect([taxYear, ok({ taxYear })]).toEqual([taxYear, false]);
+    }
+  });
+
   it('has the kinds typed by hand only: IMU, condominium and TARI come from their records', () => {
     expect(PayableKindSchema.options).toEqual(['registro', 'bollo', 'cedolare', 'f24', 'altro']);
   });
