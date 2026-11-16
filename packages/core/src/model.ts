@@ -1177,6 +1177,30 @@ export const ImuRuleSchema = RecordBaseSchema.extend({
   .meta({ description: 'When both are present, validFrom must not be after validTo.' });
 export type ImuRule = z.infer<typeof ImuRuleSchema>;
 
+// --- Documents to review (plan 15) ----------------------------------------------------------
+
+/**
+ * A PDF (or part of one) read for an apartment that a person still has to confirm (section 22,
+ * step 5; R260). It holds no reading and no proposal: those are made again from the file. It is
+ * «da rivedere» while no live bill or instalment of the same file and pages exists.
+ */
+export const PendingDocumentSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  fileHash: NonEmptyString,
+  /** The part of the file, when it is not the whole file. */
+  pages: z.tuple([z.int().min(1), z.int().min(1)]).optional(),
+  documentKind: DocumentKindSchema,
+  /** The codes of the checks that sent it to a person, sorted, without repeats. */
+  codes: z.array(NonEmptyString),
+})
+  .refine((d) => d.id.startsWith('doc-'), { message: 'The id must start with doc-', path: ['id'] })
+  .refine((d) => d.pages === undefined || d.pages[0] <= d.pages[1], {
+    message: 'The page range ends before it starts',
+    path: ['pages'],
+  })
+  .meta({ description: 'id starts with doc-; pages[0] must not be after pages[1].' });
+export type PendingDocument = z.infer<typeof PendingDocumentSchema>;
+
 // --- Payables (plan 9) -----------------------------------------------------------------------
 
 /** The kinds typed by hand; IMU, condominium and TARI items come from their own records. */
@@ -1367,6 +1391,7 @@ export const recordSchemas = {
   rentYear: RentYearSchema,
   imuRule: ImuRuleSchema,
   payable: PayableSchema,
+  pendingDocument: PendingDocumentSchema,
   condoDocument: CondoDocumentSchema,
   tenantRecovery: TenantRecoverySchema,
   taxEstimate: TaxEstimateSchema,

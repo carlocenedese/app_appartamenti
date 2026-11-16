@@ -38,6 +38,7 @@ describe('writeJsonSchemas', () => {
       'payable',
       'payer',
       'payment',
+      'pendingDocument',
       'rentYear',
       'statement',
       'supplierProfile',
