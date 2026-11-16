@@ -48,3 +48,4 @@ export * from './outgoing-store';
 export * from './balances';
 export * from './zip';
 export * from './xlsx-write';
+export * from './excel';
