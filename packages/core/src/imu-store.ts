@@ -14,6 +14,7 @@ import {
   MovementClassSchema,
 } from './model';
 import type { Cents } from './money';
+import { payablesUsing } from './payable-store';
 import { payerKeyOf } from './payers';
 import { planOutgoing } from './outgoing-store';
 import { addDays } from './period';
@@ -154,7 +155,8 @@ export type AssignImuF24Result =
         | 'unknown-rate'
         | 'payer-not-in-group'
         | 'rate-already-paid'
-        | 'rule-conflict-dates';
+        | 'rule-conflict-dates'
+        | 'payable-linked';
     };
 
 /**
@@ -167,6 +169,7 @@ export type AssignImuF24Result =
  * already assigned movement). `unknown-rate`: no live year of the group and year has that rate;
  * `payer-not-in-group`: the apartment of the account has no live year in it;
  * `rate-already-paid`: another live class has the same rate (question 9: one F24 per rate).
+ * `payable-linked` (plan 9, first): a live payable is paid by the movement.
  * The same assignment already stored is `unchanged`, nothing written. With `rememberRule`, unless
  * a valid rule of the account and counterparty key already suggests that group, the rule
  * `imur-<transactionId>` (question 8) is written last in the same operation; the valid rules
@@ -194,6 +197,10 @@ export async function assignImuF24(
   const classes = (await loadAll(store, 'movementClass', MovementClassSchema, all)).records;
   const id = `mc-${input.transactionId}`;
   const before = classes.find((c) => c.id === id);
+  // Plan 9: the movement already pays a payable typed by hand (one use per movement).
+  if ((await payablesUsing(store, [input.transactionId])).length > 0) {
+    return refuse('payable-linked');
+  }
   if (tx === undefined || payer === undefined) return refuse('not-imu-candidate');
   const ownF24 =
     before !== undefined &&

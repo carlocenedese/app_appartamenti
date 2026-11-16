@@ -68,38 +68,43 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 
 ## Banca e pagamenti
 
-| Italiano              | Inglese                          | Note                                                                                                  |
-| --------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| addebito              | debit                            | movimento in uscita sul conto                                                                         |
-| accredito             | credit                           | movimento in entrata sul conto                                                                        |
-| movimento             | transaction                      | riga dell'estratto conto                                                                              |
-| estratto conto        | bank statement                   | file CSV della banca                                                                                  |
-| bonifico              | bank transfer                    |                                                                                                       |
-| pagamento, versamento | payment                          | versamento di un inquilino                                                                            |
-| pagante               | payer                            | chi versa su un conto (IBAN o nome), legato a un inquilino                                            |
-| riconciliazione       | reconciliation                   | abbinamento ai movimenti di bollette, rate e versamenti                                               |
-| abbinamento           | match                            |                                                                                                       |
-| da rivedere           | to review                        | ogni valore incerto passa da qui                                                                      |
-| conto                 | account                          | conto bancario di un appartamento                                                                     |
-| profilo della banca   | bank profile                     | come si legge l'estratto di una banca                                                                 |
-| estratto              | statement                        | file importato su un conto, con il periodo                                                            |
-| movimento in attesa   | held transaction                 | riga non contabilizzata, da decidere                                                                  |
-| possibile doppione    | possible duplicate               | riga forse già presente: da decidere                                                                  |
-| periodo coperto       | covered period                   | giorni di un conto coperti da un estratto                                                             |
-| codice disposizione   | instruction code                 | lega la commissione all'addebito                                                                      |
-| uscita                | outgoing                         | movimento in uscita senza bolletta né rata (classificato in `utenze`, `tasse`, `condominio`, `altro`) |
-| classificazione       | movement class (`MovementClass`) | che cosa è un movimento: esclusione o categoria con l'appartamento, `mc-<movimento>`                  |
-| esclusione            | exclusion                        | classificazione `escluso`: il movimento non entra in nessun calcolo                                   |
-| regola appresa        | movement rule (`MovementRule`)   | da una conferma con «ricorda»: conto, verso e controparte danno categoria e appartamento              |
-| giroconto             | transfer (`Transfer`)            | spostamento di denaro tra due conti propri                                                            |
-| gamba                 | leg                              | uno dei due movimenti di un giroconto (uscita o entrata)                                              |
-| saldo tra conti       | account balance                  | chi deve a chi tra gli appartamenti, con le voci                                                      |
-| F24                   | F24                              | modello di pagamento delle imposte: sempre da confermare, mai automatico                              |
-| rata IMU              | IMU instalment (`rates`)         | una rata di un anno IMU di un gruppo F24: `(f24Group, year, rateIndex)`                               |
-| gruppo F24            | F24 group (`f24Group`)           | gli appartamenti pagati dallo stesso F24 in un anno (testo negli `imuYear`)                           |
-| importo atteso        | expected amount (`expected`)     | quanto si prevede di pagare per una rata, dal prospetto: un dato, mai calcolato                       |
-| quota IMU             | IMU share (`imuShares`)          | la parte di un appartamento nell'addebito di un F24 IMU, in proporzione agli importi attesi           |
-| regola IMU            | IMU rule (`ImuRule`)             | da un'assegnazione con «ricorda»: conto e controparte suggeriscono il gruppo F24, mai assegnato da sé |
+| Italiano                           | Inglese                          | Note                                                                                                   |
+| ---------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| addebito                           | debit                            | movimento in uscita sul conto                                                                          |
+| accredito                          | credit                           | movimento in entrata sul conto                                                                         |
+| movimento                          | transaction                      | riga dell'estratto conto                                                                               |
+| estratto conto                     | bank statement                   | file CSV della banca                                                                                   |
+| bonifico                           | bank transfer                    |                                                                                                        |
+| pagamento, versamento              | payment                          | versamento di un inquilino                                                                             |
+| pagante                            | payer                            | chi versa su un conto (IBAN o nome), legato a un inquilino                                             |
+| riconciliazione                    | reconciliation                   | abbinamento ai movimenti di bollette, rate e versamenti                                                |
+| abbinamento                        | match                            |                                                                                                        |
+| da rivedere                        | to review                        | ogni valore incerto passa da qui                                                                       |
+| conto                              | account                          | conto bancario di un appartamento                                                                      |
+| profilo della banca                | bank profile                     | come si legge l'estratto di una banca                                                                  |
+| estratto                           | statement                        | file importato su un conto, con il periodo                                                             |
+| movimento in attesa                | held transaction                 | riga non contabilizzata, da decidere                                                                   |
+| possibile doppione                 | possible duplicate               | riga forse già presente: da decidere                                                                   |
+| periodo coperto                    | covered period                   | giorni di un conto coperti da un estratto                                                              |
+| codice disposizione                | instruction code                 | lega la commissione all'addebito                                                                       |
+| uscita                             | outgoing                         | movimento in uscita senza bolletta né rata (classificato in `utenze`, `tasse`, `condominio`, `altro`)  |
+| classificazione                    | movement class (`MovementClass`) | che cosa è un movimento: esclusione o categoria con l'appartamento, `mc-<movimento>`                   |
+| esclusione                         | exclusion                        | classificazione `escluso`: il movimento non entra in nessun calcolo                                    |
+| regola appresa                     | movement rule (`MovementRule`)   | da una conferma con «ricorda»: conto, verso e controparte danno categoria e appartamento               |
+| giroconto                          | transfer (`Transfer`)            | spostamento di denaro tra due conti propri                                                             |
+| gamba                              | leg                              | uno dei due movimenti di un giroconto (uscita o entrata)                                               |
+| saldo tra conti                    | account balance                  | chi deve a chi tra gli appartamenti, con le voci                                                       |
+| F24                                | F24                              | modello di pagamento delle imposte: sempre da confermare, mai automatico                               |
+| rata IMU                           | IMU instalment (`rates`)         | una rata di un anno IMU di un gruppo F24: `(f24Group, year, rateIndex)`                                |
+| gruppo F24                         | F24 group (`f24Group`)           | gli appartamenti pagati dallo stesso F24 in un anno (testo negli `imuYear`)                            |
+| importo atteso                     | expected amount (`expected`)     | quanto si prevede di pagare per una rata, dal prospetto: un dato, mai calcolato                        |
+| quota IMU                          | IMU share (`imuShares`)          | la parte di un appartamento nell'addebito di un F24 IMU, in proporzione agli importi attesi            |
+| regola IMU                         | IMU rule (`ImuRule`)             | da un'assegnazione con «ricorda»: conto e controparte suggeriscono il gruppo F24, mai assegnato da sé  |
+| scadenziario, Scadenze e pagamenti | payables list (`scadenzario`)    | voci del proprietario da IMU, rate e voci a mano, con stato; `today` è un argomento                    |
+| scadenza (voce a mano)             | payable (`Payable`, `scad-<id>`) | registro, bollo, cedolare, F24, altro: data e importo inseriti da user1                                |
+| stato della scadenza               | payable state (`PayableState`)   | `da-pagare`, `in-scadenza` (solo con una finestra esplicita), `pagata`, `in-ritardo` (dal giorno dopo) |
+| intestatario                       | taxpayer (`taxpayers`)           | il `locatore` degli appartamenti della voce: dato personale                                            |
+| ogni anno                          | yearly mark (`repeatYearly`)     | solo un segno: la voce successiva la crea `scadenza-ripeti`                                            |
 
 ## Dati e registro
 

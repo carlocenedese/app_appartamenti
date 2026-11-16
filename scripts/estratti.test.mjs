@@ -3358,6 +3358,269 @@ describe('pnpm estratti condominio (piano 8)', () => {
   });
 });
 
+describe('pnpm estratti scadenze (piano 9, task 4)', () => {
+  // Invented apartments, landlords, amounts and dates (fixtures/README.md); main() in process.
+  let n = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `p9-${String((n += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+
+  async function payableSetup() {
+    const dir = join(root, `p9-${String((counter += 1))}`);
+    mkdirSync(dir);
+    const tx = (id, amount) => ({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'pulci',
+      date: '2026-11-10',
+      amount,
+      description: 'Causale-inventata-F24',
+      statementHash: 'h',
+    });
+    const records = [
+      ['apartment', apartment({ id: 'pulci', locatore: 'Locatore-Inventato-Due' })],
+      ['transaction', tx('t-f24', -6700)],
+      ['transaction', tx('t-free', -1600)],
+      [
+        'movementClass',
+        {
+          id: 'mc-t-f24',
+          v: 1,
+          rev: 1,
+          transactionId: 't-f24',
+          kind: 'tasse',
+          apartmentId: 'pulci',
+          f24: true,
+        },
+      ],
+    ];
+    let k = 0;
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      () => `seed-${String((k += 1))}`,
+    );
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+
+  it('scadenza-nuova, scadenze con filtri e --dettagli, pagata con un movimento e annullata', async () => {
+    const s = await payableSetup();
+    const nuova = (...extra) => [
+      'scadenza-nuova',
+      ...s.common,
+      '--appartamento',
+      'pulci',
+      ...extra,
+    ];
+    const registro = await run(
+      nuova('--tipo', 'registro', '--scadenza', '2026-11-13', '--importo', '67,00'),
+    );
+    expect([registro.code, registro.json]).toEqual([
+      0,
+      {
+        status: 'saved',
+        payableId: registro.json.payableId,
+        operationId: registro.json.operationId,
+      },
+    ]);
+    const bollo = await run(nuova('--tipo', 'bollo', '--scadenza', '2026-11-20', '--ogni-anno'));
+    expect(bollo.code).toBe(0);
+    const same = await run(
+      nuova(
+        '--tipo',
+        'bollo',
+        '--scadenza',
+        '2026-11-20',
+        '--ogni-anno',
+        '--id',
+        bollo.json.payableId,
+      ),
+    );
+    expect(same.json).toEqual({ status: 'unchanged', payableId: bollo.json.payableId });
+
+    const snap = snapshot(s.dir);
+    for (const bad of [
+      nuova('--tipo', 'imu', '--scadenza', '2026-11-20'),
+      nuova('--tipo', 'bollo', '--scadenza', '2026-02-30'),
+      nuova('--tipo', 'bollo'),
+      nuova('--tipo', 'bollo', '--scadenza', '2026-11-20', '--importo', 'abc'),
+      ['scadenze', ...s.common, '--stato', 'in-scadenza'],
+      ['scadenze', ...s.common, '--stato', 'tutte'],
+      ['scadenze', ...s.common, '--entro', '-1'],
+      ['scadenze', ...s.common, '--oggi', '2026-13-01'],
+      ['scadenze', ...s.common, '--tipo', 'nessuno'],
+      ['scadenza-pagata', ...s.common, '--id', registro.json.payableId],
+      ['scadenza-ripeti', ...s.common, '--id', bollo.json.payableId],
+      ['imu', ...s.common, '--entro', '3'],
+      ['contratti', ...s.common, '--ogni-anno'],
+    ]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]);
+    }
+    const nobody = await run([
+      'scadenza-nuova',
+      ...s.common,
+      '--appartamento',
+      'nessuno',
+      '--tipo',
+      'bollo',
+      '--scadenza',
+      '2026-11-20',
+    ]);
+    expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-apartment']);
+    expect(snapshot(s.dir)).toEqual(snap);
+
+    // Today is the UTC date of --ora (2026-11-14): the registro is late from 2026-11-14.
+    const list = await run(['scadenze', ...s.common]);
+    expect(list.json).toEqual({
+      status: 'ok',
+      items: [
+        {
+          source: 'payable',
+          id: registro.json.payableId,
+          kind: 'registro',
+          apartmentIds: ['pulci'],
+          state: 'in-ritardo',
+        },
+        {
+          source: 'payable',
+          id: bollo.json.payableId,
+          kind: 'bollo',
+          apartmentIds: ['pulci'],
+          state: 'da-pagare',
+          repeatYearly: true,
+        },
+      ],
+      contractEnds: [],
+    });
+    expect(list.out).not.toMatch(/Locatore|6700|2026-11-1|67,00/);
+    expect(scanText(list.out)).toEqual([]);
+    const soon = await run(['scadenze', ...s.common, '--entro', '6', '--stato', 'in-scadenza']);
+    expect(soon.json.items.map((i) => i.kind)).toEqual(['bollo']);
+    expect((await run(['scadenze', ...s.common, '--tipo', 'registro'])).json.items).toHaveLength(1);
+    const earlier = await run([
+      'scadenze',
+      ...s.common,
+      '--oggi',
+      '2026-11-13',
+      '--stato',
+      'in-ritardo',
+    ]);
+    expect(earlier.json.items).toEqual([]);
+
+    const paid = await run([
+      'scadenza-pagata',
+      ...s.common,
+      '--id',
+      registro.json.payableId,
+      '--movimento',
+      't-f24',
+    ]);
+    expect([paid.code, paid.json.status]).toEqual([0, 'saved']);
+    const taken = await run([
+      'scadenza-pagata',
+      ...s.common,
+      '--id',
+      bollo.json.payableId,
+      '--movimento',
+      't-free',
+    ]);
+    expect([taken.code, taken.json.reason]).toEqual([1, 'transaction-not-classified']);
+    const details = await run(['scadenze', ...s.common, '--dettagli', '--stato', 'pagata']);
+    expect(details.json.items).toEqual([
+      {
+        source: 'payable',
+        id: registro.json.payableId,
+        kind: 'registro',
+        apartmentIds: ['pulci'],
+        state: 'pagata',
+        taxpayers: ['Locatore-Inventato-Due'],
+        dueDate: '2026-11-13',
+        expected: 6700,
+        paidOn: '2026-11-10',
+        transactionId: 't-f24',
+      },
+    ]);
+    expect(details.json.estimates).toEqual([]);
+
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      paid.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect((await run(['scadenze', ...s.common, '--stato', 'pagata'])).json.items).toEqual([]);
+    const byHand = await run([
+      'scadenza-pagata',
+      ...s.common,
+      '--id',
+      registro.json.payableId,
+      '--data',
+      '2026-11-12',
+    ]);
+    expect(byHand.code).toBe(0);
+    const again = await run([
+      'scadenza-pagata',
+      ...s.common,
+      '--id',
+      registro.json.payableId,
+      '--data',
+      '2026-11-12',
+    ]);
+    expect([again.code, again.json.reason]).toEqual([1, 'already-paid']);
+  });
+
+  it('scadenza-ripeti crea la voce successiva con la data data a mano, una volta', async () => {
+    const s = await payableSetup();
+    const bollo = await run([
+      'scadenza-nuova',
+      ...s.common,
+      '--appartamento',
+      'pulci',
+      '--tipo',
+      'bollo',
+      '--scadenza',
+      '2026-11-20',
+      '--ogni-anno',
+    ]);
+    const ripeti = [
+      'scadenza-ripeti',
+      ...s.common,
+      '--id',
+      bollo.json.payableId,
+      '--scadenza',
+      '2027-11-19',
+    ];
+    const next = await run(ripeti);
+    expect([next.code, next.json.status]).toEqual([0, 'saved']);
+    expect((await run(ripeti)).json.reason).toBe('already-repeated');
+    const list = await run(['scadenze', ...s.common]);
+    expect(list.json.items).toEqual([
+      expect.objectContaining({ id: bollo.json.payableId, repeatYearly: true, repeated: true }),
+      expect.objectContaining({ id: next.json.payableId, repeatYearly: true }),
+    ]);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      next.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect((await run(['scadenze', ...s.common])).json.items).toHaveLength(1);
+  });
+});
+
 describe('pnpm estratti tasse (piano 10)', () => {
   // Invented apartments, taxpayers and amounts; main() in process.
   let n10 = 0;

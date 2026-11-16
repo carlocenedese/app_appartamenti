@@ -1149,6 +1149,35 @@ export const ImuRuleSchema = RecordBaseSchema.extend({
   .meta({ description: 'When both are present, validFrom must not be after validTo.' });
 export type ImuRule = z.infer<typeof ImuRuleSchema>;
 
+// --- Payables (plan 9) -----------------------------------------------------------------------
+
+/** The kinds typed by hand; IMU, condominium and TARI items come from their own records. */
+export const PayableKindSchema = z.enum(['registro', 'bollo', 'cedolare', 'f24', 'altro']);
+export type PayableKind = z.infer<typeof PayableKindSchema>;
+
+/**
+ * An owner's payable typed by user1 (`scad-<id>`, plan 9): a due date and an amount as data, never
+ * computed. `repeatYearly` is only a mark: the next item is made by an explicit command.
+ */
+export const PayableSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  kind: PayableKindSchema,
+  dueDate: ISODateSchema,
+  /** Absent: amount still to be typed. */
+  expected: PositiveCentsSchema.optional(),
+  repeatYearly: z.literal(true).optional(),
+  /** The item this one was repeated from. */
+  previousId: NonEmptyString.optional(),
+  /** Marked paid: by hand, or by a movement whose class was confirmed by hand. */
+  paid: z.object({ date: ISODateSchema, transactionId: NonEmptyString.optional() }).optional(),
+})
+  .refine((p) => p.id.startsWith('scad-'), {
+    message: 'The id must start with scad-',
+    path: ['id'],
+  })
+  .meta({ description: 'id starts with scad-; expected is positive cents.' });
+export type Payable = z.infer<typeof PayableSchema>;
+
 // --- Condominium (plan 8) ----------------------------------------------------------------------
 
 /**
@@ -1307,6 +1336,7 @@ export const recordSchemas = {
   imuYear: ImuYearSchema,
   rentYear: RentYearSchema,
   imuRule: ImuRuleSchema,
+  payable: PayableSchema,
   condoDocument: CondoDocumentSchema,
   tenantRecovery: TenantRecoverySchema,
   taxEstimate: TaxEstimateSchema,
