@@ -151,6 +151,8 @@ const MESSAGES = {
   'unknown-rate': 'Rifiutato: nessun appartamento del gruppo ha questa rata in questo anno.',
   'payer-not-in-group': 'Rifiutato: l’appartamento del conto non è nel gruppo in questo anno.',
   'rate-already-paid': 'Rifiutato: un altro F24 è già assegnato a questa rata.',
+  'imu-has-assignments':
+    'Rifiutato: un F24 è assegnato a una rata IMU che cambierebbe: annullare prima l’assegnazione.',
   'imu-to-reconcile': 'Rata IMU da riconciliare: controllare gli importi attesi (imu-atteso).',
   'unknown-tenancy': 'Rifiutato: una presenza indicata non esiste o è di un altro appartamento.',
   'unknown-deposit':
@@ -684,6 +686,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
           step: p.step,
           reason: p.reason,
           ...(p.suggestedKind === undefined ? {} : { suggestedKind: p.suggestedKind }),
+          // Group, year and index only (plan 3d, task 5): always to confirm with imu-f24.
+          ...(p.imuSuggestion === undefined ? {} : { imuSuggestion: p.imuSuggestion }),
           ...txExtra(p),
         })),
         missingDocument: outgoing.missingDocument.length,
@@ -872,6 +876,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
       clock,
       newId,
     );
+    if (result.status === 'refused' && result.reason === 'has-dependents') {
+      throw new Stop('rejected', result.reason, {
+        message: MESSAGES['imu-has-assignments'],
+        recordIds: result.recordIds,
+      });
+    }
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     return {
       status: result.status,
@@ -898,6 +908,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         f24Group: values.gruppo,
         year: values.anno,
         rateIndex: Number(rata),
+        rememberRule: values['solo-questa-volta'] !== true,
       },
       who,
       clock,
@@ -905,7 +916,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     if (result.status === 'unchanged') return { status: 'unchanged', classId: result.classId };
-    return { status: 'assigned', operationId: result.operationId, classId: result.classId };
+    return {
+      status: 'assigned',
+      operationId: result.operationId,
+      classId: result.classId,
+      ...(result.ruleId === undefined ? {} : { ruleId: result.ruleId }),
+    };
   }
 
   if (name === 'imu') {
@@ -936,6 +952,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
               r.paid === undefined || r.expected === undefined ? undefined : r.paid - r.expected,
             dueDate: r.dueDate,
             transactionId: r.transactionId,
+            annual: r.annual,
           }
         : {}),
     }));
@@ -1178,11 +1195,15 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (!RECONCILE_KINDS.includes(target.kind)) {
       throw new Stop('rejected', 'not-reconcile-operation');
     }
-    // A cancellation whose movement has had another use since: undoing it would give a second one.
+    // A cancellation whose movement has had another use since: undoing it would give a second one;
+    // an imu.expected under an assigned F24 would change its rate (plan 3d).
     const recordIds = await undoBlockedBy(store, target.id);
     if (recordIds.length > 0) {
       throw new Stop('rejected', 'has-dependents', {
-        message: MESSAGES['movement-has-dependents'],
+        message:
+          MESSAGES[
+            target.kind === 'imu.expected' ? 'imu-has-assignments' : 'movement-has-dependents'
+          ],
         recordIds,
       });
     }
@@ -1323,7 +1344,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       prova: ['riconcilia'],
       dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti'],
       parte: ['conferma', 'abbina'],
-      'solo-questa-volta': ['conferma', 'uscita', 'giroconto'],
+      'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
       pagamento: ['annulla-pagamento'],
       movimento: ['escludi', 'annulla-uscita', 'imu-f24'],
       motivo: ['escludi'],

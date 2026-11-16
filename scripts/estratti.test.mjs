@@ -2187,6 +2187,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
         status: 'assigned',
         operationId: assigned.json.operationId,
         classId: `mc-${s.first}`,
+        ruleId: `imur-${s.first}`,
       });
       const snapAssigned = snapshot(s.dir);
       const same = s.run(f24(s, s.first, '1'));
@@ -2219,7 +2220,81 @@ describe('pnpm estratti IMU (piano 3d)', () => {
   );
 
   it(
-    'imu: una rata pagata e una da riconciliare, importi solo con --dettagli; saldi con toSplitImu',
+    'imu-atteso e annulla-riconciliazione rifiutano di cambiare il gruppo sotto un F24 assegnato',
+    async () => {
+      const outs = [];
+      const s = await imuSetup(outs);
+      const lovarini = (group) =>
+        atteso(s, 'lovarini', '--rata', '1:400,00', '--rata', '2:400,00').map((a) =>
+          a === '2026' ? '2027' : a === 'berchet-lovarini' ? group : a,
+        );
+      expect(s.run(lovarini('solo-lovarini')).code).toBe(0);
+      const back = s.run(lovarini('berchet-lovarini'));
+      expect(back.code).toBe(0);
+      expect(s.run(f24(s, s.first, '1')).code).toBe(0);
+      const snap = snapshot(s.dir);
+      const message =
+        'Rifiutato: un F24 è assegnato a una rata IMU che cambierebbe: annullare prima l’assegnazione.';
+      const changed = s.run(lovarini('altro'));
+      expect([
+        changed.code,
+        changed.json.reason,
+        changed.json.message,
+        changed.json.recordIds,
+      ]).toEqual([1, 'has-dependents', message, [`mc-${s.first}`]]);
+      const undo = s.run([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        back.json.operationId,
+      ]);
+      expect([undo.code, undo.json.reason, undo.json.message, undo.json.recordIds]).toEqual([
+        1,
+        'has-dependents',
+        message,
+        [`mc-${s.first}`],
+      ]);
+      expect(snapshot(s.dir)).toEqual(snap);
+      noAmounts(outs.join(''));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'imu-f24: la regola appresa suggerisce gruppo, anno e rata in riconcilia; --solo-questa-volta nessuna',
+    async () => {
+      const outs = [];
+      const s = await imuSetup(outs);
+      const once = s.run(f24(s, s.first, '1', '--solo-questa-volta'));
+      expect(once.json).toEqual({
+        status: 'assigned',
+        operationId: once.json.operationId,
+        classId: `mc-${s.first}`,
+      });
+      const proposal = () =>
+        s.run(['riconcilia', ...s.common]).json.outgoing.proposals.find((p) => p.step === 'f24');
+      expect(proposal()).not.toHaveProperty('imuSuggestion');
+      expect(
+        s.run(['annulla-riconciliazione', ...s.common, '--operazione', once.json.operationId]).code,
+      ).toBe(0);
+      const learnt = s.run(f24(s, s.first, '1'));
+      expect(learnt.json).toMatchObject({ status: 'assigned', ruleId: `imur-${s.first}` });
+      expect(proposal()).toEqual({
+        id: `p-f24-${s.second}`,
+        step: 'f24',
+        reason: 'f24',
+        suggestedKind: 'tasse',
+        imuSuggestion: { f24Group: 'berchet-lovarini', year: '2027', rateIndex: 2 },
+      });
+      // Only a suggestion: the second F24 is still to assign.
+      expect(s.run(['imu', ...s.common]).json.rates[1]).toMatchObject({ status: 'attesa', f24: 0 });
+      noAmounts(outs.join(''));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'imu: una rata pagata e una da riconciliare, importi solo con --dettagli; saldi con la voce imu',
     async () => {
       const outs = [];
       const s = await imuSetup(outs);
@@ -2254,7 +2329,13 @@ describe('pnpm estratti IMU (piano 3d)', () => {
         expect([bad, s.run(bad).code]).toEqual([bad, 2]);
       }
       const saldi = s.run(['saldi', ...s.common]);
-      expect(saldi.json).toMatchObject({ status: 'ok', toSplit: 2, toSplitImu: 2 });
+      // The paid rate is split (task 4): one imu item; the other stays in toSplit.
+      expect(saldi.json).toMatchObject({
+        status: 'ok',
+        pairs: [{ creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', items: 1 }],
+        toSplit: 1,
+        toSplitImu: 1,
+      });
       noAmounts(outs.join(''));
 
       const details = cli(['imu', ...s.common, '--dettagli']);
@@ -2274,21 +2355,28 @@ describe('pnpm estratti IMU (piano 3d)', () => {
           transactionId: s.second,
         },
       ]);
-      const reasons = cli(['saldi', ...s.common, '--dettagli']).json.toSplit.map((t) => [
+      const saldiDetails = cli(['saldi', ...s.common, '--dettagli']).json;
+      const reasons = saldiDetails.toSplit.map((t) => [
         t.transactionId,
         t.imu.rateIndex,
         t.imu.reason,
       ]);
-      expect(reasons).toEqual([
-        [s.first, 1, 'imu-da-ripartire'],
-        [s.second, 2, 'imu-da-riconciliare'],
-      ]);
+      expect(reasons).toEqual([[s.second, 2, 'imu-da-riconciliare']]);
+      expect(saldiDetails.pairs[0]).toMatchObject({
+        amount: 40000,
+        items: [{ kind: 'imu', forApartmentId: 'lovarini', amount: 40000, refId: s.first }],
+      });
       // The expected corrected: both paid.
       const fixed = atteso(s, 'lovarini', '--rata', '1:400,00', '--rata', '2:410,01').map((a) =>
         a === '2026' ? '2027' : a,
       );
       expect(cli(fixed).code).toBe(0);
       expect(cli(['imu', ...s.common]).json.toReconcile).toBe(0);
+      // 1.010,01 € on 600,00 € and 410,01 €: Lovarini owes 400,00 € + 410,01 €.
+      expect(cli(['saldi', ...s.common, '--dettagli']).json).toMatchObject({
+        pairs: [{ amount: 81001 }],
+        toSplit: [],
+      });
       // The whole path again: nothing written.
       const settled = snapshot(s.dir);
       expect(cli(fixed).json.status).toBe('unchanged');

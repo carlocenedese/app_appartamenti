@@ -14,13 +14,20 @@ import {
   MovementClassSchema,
   assignImuF24,
   imuRates,
+  imuShares,
   loadImuRates,
   readJournal,
   recordPath,
   recordSchemas,
   setImuYear,
 } from '../src/index';
-import type { BankTransaction, ConguaglioInput, ImuYear, MovementClass } from '../src/index';
+import type {
+  BankTransaction,
+  ConguaglioInput,
+  ImuRate,
+  ImuYear,
+  MovementClass,
+} from '../src/index';
 import { cents } from '../src/money';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
@@ -343,5 +350,129 @@ describe('the settlement of the tenants with and without the IMU (plan 3d, Revie
     expect((await loadImuRates(s)).status).toBe('computed');
     expect(await settle()).toEqual(before);
     expect(await settlementFiles()).toEqual(files);
+  });
+});
+
+describe('imuShares and the annual check (plan 3d, task 4; answers of user1, 16 Nov 2026)', () => {
+  const rate = (ys: ImuYear[], f24s: [string, number, number][]) =>
+    imuRates({
+      years: ys,
+      classes: f24s.map(([id, , index]) => assigned(id, index)),
+      transactions: f24s.map(([id, paid]) => tx(id, -paid)),
+    });
+  const sharesOf = (ys: ImuYear[], paid: number) => {
+    const [r] = rate(ys, [['f', paid, 1]]);
+    return r === undefined ? undefined : imuShares(r, ys, cents(-paid));
+  };
+
+  it('splits the actual debit in proportion to the expected of the same rate', () => {
+    expect(sharesOf(years, 100500)).toEqual([
+      { apartmentId: 'berchet', amount: 60300 },
+      { apartmentId: 'lovarini', amount: 40200 },
+    ]);
+    const half = [
+      year('lovarini', [{ index: 1, expected: 50000 }]),
+      year('berchet', [{ index: 1, expected: 50000 }]),
+    ];
+    // Largest remainders, a tie to the first apartment; the sum is the debit.
+    expect(sharesOf(half, 100001)).toEqual([
+      { apartmentId: 'berchet', amount: 50001 },
+      { apartmentId: 'lovarini', amount: 50000 },
+    ]);
+  });
+
+  it('the shares always sum to the debit, whatever the weights', () => {
+    for (const [b, l, paid] of [
+      [1, 2, 3],
+      [33333, 66667, 100001],
+      [1, 1, 2],
+      [1, 99999, 100000],
+      [70001, 29999, 100100],
+      [12345, 67891, 80236],
+    ] as const) {
+      const ys = [
+        year('berchet', [{ index: 1, expected: b }]),
+        year('lovarini', [{ index: 1, expected: l }]),
+      ];
+      const shares = sharesOf(ys, paid) ?? [];
+      expect([b, l, shares.reduce((sum, x) => sum + x.amount, 0)]).toEqual([b, l, paid]);
+    }
+    // A rate said paid without its years (no such input from imuRates): no split, no throw.
+    const [r] = rate(years, [['f', 100000, 1]]);
+    expect(imuShares(r as ImuRate, [], cents(-100000))).toBeUndefined();
+  });
+
+  it('no split out of the 1% or with the expected of one apartment only', () => {
+    expect(sharesOf(years, 101001)).toBeUndefined();
+    const one = [
+      year('lovarini', [{ index: 1 }]),
+      year('berchet', [{ index: 1, expected: 60000 }]),
+    ];
+    expect(sharesOf(one, 60000)).toBeUndefined();
+  });
+
+  const annual = (b: number | undefined, l: number | undefined) =>
+    ['berchet', 'lovarini'].map((apartmentId, i) =>
+      ImuYearSchema.parse({
+        ...base,
+        id: `imu-${apartmentId}-2026`,
+        apartmentId,
+        year: '2026',
+        f24Group: 'berchet-lovarini',
+        ...([b, l][i] === undefined ? {} : { annualTotal: [b, l][i] }),
+        rates: [{ index: 1 }, { index: 2 }],
+      }),
+    );
+
+  it('only annual totals: the 1% on the sum of the F24s of the year, split on the totals', () => {
+    const ys = annual(130000, 70000);
+    const both = rate(ys, [
+      ['f', 100000, 1],
+      ['g', 101000, 2],
+    ]);
+    expect(both.map((r) => r.status)).toEqual(['pagata', 'pagata']);
+    expect(both[0]).toMatchObject({ annual: { expected: 200000, paid: 201000 } });
+    expect(both[0]).not.toHaveProperty('expected');
+    expect(imuShares(both[0] as ImuRate, ys, cents(-100000))).toEqual([
+      { apartmentId: 'berchet', amount: 65000 },
+      { apartmentId: 'lovarini', amount: 35000 },
+    ]);
+    // 2.000,00 € expected: 2.020,00 € is in line, 2.020,01 € is not.
+    expect(
+      rate(ys, [
+        ['f', 100000, 1],
+        ['g', 102000, 2],
+      ]).map((r) => r.status),
+    ).toEqual(['pagata', 'pagata']);
+    expect(
+      rate(ys, [
+        ['f', 100000, 1],
+        ['g', 102001, 2],
+      ]).map((r) => r.status),
+    ).toEqual(['da-riconciliare', 'da-riconciliare']);
+    // One F24 of two: the annual check waits, nothing split.
+    const first = rate(ys, [['f', 100000, 1]]);
+    expect(first.map((r) => r.status)).toEqual(['importo-mancante', 'attesa']);
+    expect(first[0]).toMatchObject({ annual: { expected: 200000 } });
+    expect(first[0]?.annual).not.toHaveProperty('paid');
+    expect(imuShares(first[0] as ImuRate, ys, cents(-100000))).toBeUndefined();
+    // The total of one apartment only: no check.
+    expect(
+      rate(annual(130000, undefined), [
+        ['f', 100000, 1],
+        ['g', 100000, 2],
+      ])[0],
+    ).toMatchObject({ status: 'importo-mancante' });
+    // An amount of a rate known: the rates count, not the totals.
+    const mixed = [
+      ImuYearSchema.parse({ ...ys[0], rates: [{ index: 1, expected: 60000 }, { index: 2 }] }),
+      ys[1] as ImuYear,
+    ];
+    const [r1] = rate(mixed, [
+      ['f', 100000, 1],
+      ['g', 100000, 2],
+    ]);
+    expect(r1).toMatchObject({ status: 'importo-mancante' });
+    expect(r1).not.toHaveProperty('annual');
   });
 });

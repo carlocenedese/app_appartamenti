@@ -1126,6 +1126,25 @@ export const RentYearSchema = RecordBaseSchema.extend({
 export type RentYear = z.infer<typeof RentYearSchema>;
 
 /**
+ * A rule learnt from an IMU assignment (`imur-<transactionId>`, plan 3d, task 5, question 8):
+ * the F24s of `accountId` with the counterparty `key` (none: those without a key) get the
+ * suggestion of `f24Group`, from `validFrom` up to `validTo`. It only suggests, never assigns.
+ */
+export const ImuRuleSchema = RecordBaseSchema.extend({
+  accountId: NonEmptyString,
+  key: PayerKeySchema.optional(),
+  f24Group: NonEmptyString,
+  validFrom: ISODateSchema.optional(),
+  validTo: ISODateSchema.optional(),
+})
+  .refine(
+    (r) => r.validFrom === undefined || r.validTo === undefined || notAfter(r.validFrom, r.validTo),
+    { message: 'The rule ends before it starts', path: ['validTo'] },
+  )
+  .meta({ description: 'When both are present, validFrom must not be after validTo.' });
+export type ImuRule = z.infer<typeof ImuRuleSchema>;
+
+/**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
  */
@@ -1152,6 +1171,7 @@ export const recordSchemas = {
   transfer: TransferSchema,
   imuYear: ImuYearSchema,
   rentYear: RentYearSchema,
+  imuRule: ImuRuleSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

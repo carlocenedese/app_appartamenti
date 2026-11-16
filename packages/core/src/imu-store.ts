@@ -3,16 +3,20 @@
  * assignment of an F24 to a rate by hand (`assignImuF24`), each write one operation of the journal, nothing written while `checkConsistency` reports a problem
  * (R113), and nothing for the same request on the same state. No amount or name in a summary.
  */
+import { imuDependents } from './imu';
 import { checkConsistency, commitChange } from './journal';
 import {
   AccountSchema,
   ApartmentSchema,
   BankTransactionSchema,
+  ImuRuleSchema,
   ImuYearSchema,
   MovementClassSchema,
 } from './model';
 import type { Cents } from './money';
+import { payerKeyOf } from './payers';
 import { planOutgoing } from './outgoing-store';
+import { addDays } from './period';
 import { parseOrThrow } from './parse';
 import type { ISODate } from './period';
 import { loadAll } from './store/load';
@@ -34,7 +38,8 @@ export type SetImuYearResult =
   | {
       status: 'refused';
       reason: 'inconsistent-store' | 'unknown-apartment' | 'bad-rates' | 'rates-mismatch';
-    };
+    }
+  | { status: 'refused'; reason: 'has-dependents'; recordIds: string[] };
 
 /**
  * Creates or updates `imu-<apartmentId>-<year>` (a new `rev`; a deleted one comes back) in one
@@ -42,7 +47,8 @@ export type SetImuYearResult =
  * (`unknown-apartment`); the indices are not 1 to n or an amount is not positive (`bad-rates`);
  * another live year of the same `f24Group` and `year` has another number of rates
  * (`rates-mismatch`: one F24 pays the same rate of all of them). The same content already
- * stored is `unchanged`.
+ * stored is `unchanged`. A live record whose group and year have an assigned F24 changes group or
+ * number of rates only after that assignment is undone (`has-dependents`, `imuDependents`).
  */
 export async function setImuYear(
   store: Store,
@@ -51,8 +57,9 @@ export async function setImuYear(
   clock: () => string,
   newId: () => string,
 ): Promise<SetImuYearResult> {
-  const refuse = (reason: Extract<SetImuYearResult, { status: 'refused' }>['reason']) =>
-    ({ status: 'refused', reason }) as const;
+  const refuse = (
+    reason: Exclude<Extract<SetImuYearResult, { status: 'refused' }>['reason'], 'has-dependents'>,
+  ) => ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
@@ -73,6 +80,11 @@ export async function setImuYear(
   if (others.some((y) => y.rates.length !== rates.length)) return refuse('rates-mismatch');
 
   const before = years.find((y) => y.id === id);
+  const classes = (
+    await loadAll(store, 'movementClass', MovementClassSchema, { includeDeleted: true })
+  ).records;
+  const recordIds = imuDependents(classes, before, input);
+  if (recordIds.length > 0) return { status: 'refused', reason: 'has-dependents', recordIds };
   const record = (rev: number) =>
     parseOrThrow(
       ImuYearSchema,
@@ -127,10 +139,12 @@ export interface AssignImuF24Input {
   /** `AAAA`. */
   year: string;
   rateIndex: number;
+  /** Learn the group for the next F24s of the account (task 5); false: «solo questa volta». */
+  rememberRule?: boolean;
 }
 
 export type AssignImuF24Result =
-  | { status: 'assigned'; operationId: string; classId: string }
+  | { status: 'assigned'; operationId: string; classId: string; ruleId?: string }
   | { status: 'unchanged'; classId: string }
   | {
       status: 'refused';
@@ -139,7 +153,8 @@ export type AssignImuF24Result =
         | 'not-imu-candidate'
         | 'unknown-rate'
         | 'payer-not-in-group'
-        | 'rate-already-paid';
+        | 'rate-already-paid'
+        | 'rule-conflict-dates';
     };
 
 /**
@@ -152,7 +167,11 @@ export type AssignImuF24Result =
  * already assigned movement). `unknown-rate`: no live year of the group and year has that rate;
  * `payer-not-in-group`: the apartment of the account has no live year in it;
  * `rate-already-paid`: another live class has the same rate (question 9: one F24 per rate).
- * The same assignment already stored is `unchanged`, nothing written.
+ * The same assignment already stored is `unchanged`, nothing written. With `rememberRule`, unless
+ * a valid rule of the account and counterparty key already suggests that group, the rule
+ * `imur-<transactionId>` (question 8) is written last in the same operation; the valid rules
+ * with another group end the day before the movement and the new one starts on it, as the
+ * rules of plan 3c (R128). `rule-conflict-dates`: such a rule starts on or after the movement.
  */
 export async function assignImuF24(
   store: Store,
@@ -233,6 +252,55 @@ export async function assignImuF24(
         },
     'movementClass',
   );
+  const changes: { path: string; before: unknown; after: unknown }[] = [
+    { path: recordPath('movementClass', id), before, after },
+  ];
+  let ruleId: string | undefined;
+  if (input.rememberRule === true) {
+    const key = payerKeyOf(tx.counterparty);
+    const rules = (await loadAll(store, 'imuRule', ImuRuleSchema, all)).records;
+    const valid = rules.filter(
+      (r) =>
+        r.deleted !== true &&
+        r.accountId === tx.accountId &&
+        r.key === key &&
+        (r.validFrom === undefined || r.validFrom <= tx.date) &&
+        (r.validTo === undefined || r.validTo >= tx.date),
+    );
+    const closed = valid.filter((r) => r.f24Group !== input.f24Group);
+    const dayBefore = addDays(tx.date as ISODate, -1);
+    if (closed.some((r) => r.validFrom !== undefined && r.validFrom > dayBefore)) {
+      return refuse('rule-conflict-dates');
+    }
+    if (closed.length > 0 || valid.length === 0) {
+      for (const r of closed) {
+        changes.push({
+          path: recordPath('imuRule', r.id),
+          before: r,
+          after: parseOrThrow(ImuRuleSchema, { ...r, validTo: dayBefore }, 'imuRule'),
+        });
+      }
+      ruleId = `imur-${tx.id}`;
+      // The rule last: an interrupted assignment never leaves a rule without its class.
+      changes.push({
+        path: recordPath('imuRule', ruleId),
+        before: rules.find((r) => r.id === ruleId),
+        after: parseOrThrow(
+          ImuRuleSchema,
+          {
+            id: ruleId,
+            v: 1,
+            rev: 1,
+            accountId: tx.accountId,
+            ...(key === undefined ? {} : { key }),
+            f24Group: input.f24Group,
+            ...(closed.length > 0 ? { validFrom: tx.date } : {}),
+          },
+          'imuRule',
+        ),
+      });
+    }
+  }
   const operation = await commitChange(
     store,
     {
@@ -240,10 +308,15 @@ export async function assignImuF24(
       kind: 'imu.assign',
       apartmentId: payer,
       summary: 'Assegnato un F24 a una rata IMU.',
-      changes: [{ path: recordPath('movementClass', id), before, after }],
+      changes,
     },
     clock,
     newId,
   );
-  return { status: 'assigned', operationId: operation.id, classId: id };
+  return {
+    status: 'assigned',
+    operationId: operation.id,
+    classId: id,
+    ...(ruleId === undefined ? {} : { ruleId }),
+  };
 }
