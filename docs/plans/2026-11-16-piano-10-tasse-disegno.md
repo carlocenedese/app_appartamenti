@@ -42,8 +42,8 @@ stima e nessun modo di dire a quale tassa e a quale anno va un F24 che non è IM
 - Colori del cruscotto, interfaccia, elenco delle discrepanze con link (lo darà l'interfaccia: la
   tabella ha già lo stato per voce).
 - Calcolo di qualunque imposta: nessuna aliquota nel codice (CLAUDE.md, sezione 34).
-- Adattatore dalle scadenze del piano 9 (`payable`, ora su `main`) a `expectedItems`: attende la
-  risposta alla domanda 3 sull'anno d'imposta; vedi «Ancora previsto».
+- Adattatore dalle scadenze del piano 9 a `expectedItems`: fatto nel piano 13 (R243) con l'anno
+  di riferimento scelto da user1 (`Payable.taxYear`, R242).
 
 ## Decisioni già prese da user1
 
@@ -100,13 +100,12 @@ appartamenti e cinque righe (una per voce). Per ogni riga:
     contribuente. Un'assegnazione su un movimento che non lo è più: fuori, `stale-assignment`.
   - **Condominio:** non deciso (domanda 1): nessun pagato, motivo `rule-undecided`.
 - **Ancora previsto:**
-  - **IMU:** l'atteso delle rate senza F24 (`attesa`); senza atteso (`expected` mancante, anche con
-    il solo totale annuo) motivo `imu-expected-missing`.
+  - **IMU:** l'atteso delle rate senza F24 (`attesa`); senza atteso motivo `imu-expected-missing`
+    (con il solo totale annuo: piano 13, R244).
   - **TARI:** `expectedDebit` delle rate senza abbinamenti veri e senza `assumed`.
-  - **Cedolare e registro:** dalle scadenze del piano 9 (su `main`): un ingresso `expectedItems`
-    (`apartmentId`, `voce`, `year`, `amount`) che un adattatore riempirà dalle voci `payable` dopo
-    la risposta alla domanda 3 (anno d'imposta di una scadenza). Senza l'ingresso (oggi, riga di
-    comando) motivo `no-expected-source`.
+  - **Cedolare e registro:** dalle scadenze del piano 9 con l'anno di riferimento
+    (`expectedItems`, adattatore del piano 13, R243); senza l'ingresso motivo
+    `no-expected-source`.
   - **Condominio:** come il pagato, `rule-undecided`.
 - **Movimenti «tasse» non assegnati:** un movimento vivo, contabilizzato, in uscita, classificato
   «tasse» per un appartamento del contribuente, con la data nell'anno, senza rata IMU e senza
@@ -155,17 +154,15 @@ collegamento seguito); l'uscita stampa solo stato, anno e numeri di fogli, appar
 
 ## Mie scelte (Ruling, da confermare)
 
-1. Il contribuente come `Apartment.locatore` **non è deciso** (domanda 10): il codice raggruppa per
-   `locatore` (senza spazi ai bordi, in NFC), come il piano 9, solo per poter mostrare la tabella.
+1. Il contribuente è `Apartment.locatore` (senza spazi ai bordi, in NFC), anche in comproprietà:
+   **confermato** da user1 il 16 novembre 2026 (piano 13, R240).
 2. La tabella è per contribuente, quindi un F24 IMU di un gruppo fatto solo di appartamenti dello
    stesso contribuente non si ripartisce (la ripartizione di R164 serve al saldo tra conti).
 3. Stima zero ammessa e diversa da «mancante».
-4. TARI (anno = `esercizio` della rata, commissione fuori, pagato senza controllo d'importo) **non
-   è deciso** (domanda 11): la riga mostra gli importi così letti ma resta sempre `da-verificare`
-   con `rule-undecided`.
-5. IMU con il solo totale annuo: le rate non hanno atteso, quindi la riga è `imu-expected-missing`
-   (da verificare) finché manca un F24, e non è mai in linea prima del saldo (domanda 12, non
-   decisa). Un F24 IMU non contabilizzato non conta come pagato e dà `imu-to-check`.
+4. TARI: anno = `esercizio` della rata, **deciso** da user1 (piano 13, R241); la riga si calcola
+   come le altre. Commissione fuori e pagato senza controllo d'importo restano come prima.
+5. IMU con il solo totale annuo: pagato così com'è e controllo sull'anno, **deciso** da user1
+   (piano 13, R244). Un F24 IMU non contabilizzato non conta come pagato e dà `imu-to-check`.
 6. Movimenti in entrata classificati «tasse» (rimborsi) ignorati e non assegnabili (domanda 6).
 7. La copia prende solo l'anno prima; rilanciata quando le stime dell'anno sono esattamente le
    copie dà `unchanged`, altrimenti rifiuta se l'anno ha già una stima per un appartamento indicato.
@@ -179,9 +176,8 @@ collegamento seguito); l'uscita stampa solo stato, anno e numeri di fogli, appar
 2. **Soglia:** la decisione «conferma per discrepanze maggiori di 0,10 €» vale per questa tabella
    (letta così)? «Chiedere conferma» vuol dire che una discrepanza si può confermare (accettare) e
    smette di comparire? Oggi è solo uno stato.
-3. **Ancora previsto di cedolare e registro:** ora che il piano 9 è su `main`, una scadenza
-   `payable` di tipo `cedolare` o `registro` ha una data ma non l'anno d'imposta: si usa l'anno della
-   scadenza, o serve un campo? E `bollo`/`f24` in quale voce?
+3. **Voce di `bollo` e `f24`:** in quale voce della tabella vanno queste scadenze? (L'anno
+   d'imposta di una scadenza è stato risolto: campo `taxYear` scelto da user1, piano 13.)
 4. **Pagato dalle scadenze segnate pagate a mano** (piano 9, `paid` senza movimento): contano nel
    pagato (che oggi viene solo dal CSV)?
 5. **Esportazione:** tutti i contratti o solo quelli con un mese nell'anno? Servono anche gli
@@ -194,9 +190,7 @@ collegamento seguito); l'uscita stampa solo stato, anno e numeri di fogli, appar
    assegnare a cedolare o registro (`imu-assigned`).
 9. La TARI in tabella è quella dell'appartamento (gli inquilini la rimborsano col forfait): va
    bene così o la voce TARI della sezione 34 è un'altra cosa?
-10. **Contribuente:** è il `locatore` dell'appartamento? Come si tratta un appartamento in
-    comproprietà (più contribuenti, con quali quote)? Oggi si raggruppa per `locatore` (non deciso).
-11. **TARI:** l'anno d'imposta è l'`esercizio` della rata? La commissione bancaria (R7) resta fuori?
-    Il pagato si controlla contro l'importo della rata? Oggi la riga resta `rule-undecided`.
-12. **IMU con il solo totale annuo** (come il 2025): prima del saldo la riga non può essere in linea
-    (manca l'atteso per rata). Va bene così, o l'ancora previsto è il totale meno il pagato?
+
+Le domande 10 (contribuente), 11 (anno della TARI) e 12 (IMU con il solo totale annuo) e la prima
+parte della 3 hanno avuto risposta il 16 novembre 2026: piano 13, R240-R244. Il resto della 11
+(commissione, controllo d'importo) è nella domanda 3 del piano 13.

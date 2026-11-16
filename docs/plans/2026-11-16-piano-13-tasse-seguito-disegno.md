@@ -1,6 +1,6 @@
 # Piano 13: seguito di Tasse e stime (disegno)
 
-Stato: **bozza** (16 novembre 2026). Piano: `docs/plans/2026-11-16-piano-13-tasse-seguito.md`.
+Stato: **implementato** (16 novembre 2026), regole R240-R245. Piano: `docs/plans/2026-11-16-piano-13-tasse-seguito.md`.
 Applica quattro risposte di user1 alle domande del piano 10 (disegno
 `docs/plans/2026-11-16-piano-10-tasse-disegno.md`, R210-R217) e nient'altro. Solo core e riga di
 comando, niente schermate; nessun dato reale (`user1`/`user2`, importi inventati).
