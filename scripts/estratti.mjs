@@ -17,7 +17,9 @@
 // lease contract; it replaces every field, so an option left out, --presenze and --caparre
 // included, removes it), contratto-canone (an entry of its rent history) and contratti (the contracts
 // and their read-only checks); affitti-anno saves the rents of an apartment and year typed by
-// user1, shown by contratti --dettagli with the cedolare estimate to be confirmed (R182).
+// user1, shown by contratti --dettagli with the cedolare estimate to be confirmed (R182); plan 9
+// adds scadenze (the owner's payables, derived), scadenza-nuova, scadenza-ripeti and
+// scadenza-pagata (the payables typed by hand).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -72,6 +74,11 @@ import {
   setImuYear,
   setRentYear,
   assignImuF24,
+  PayableKindSchema,
+  loadScadenzario,
+  repeatPayable,
+  savePayable,
+  setPayablePaid,
   undoBlockedBy,
   undoImport,
   undoOperation,
@@ -121,7 +128,7 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti).',
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti, scadenze).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -168,6 +175,14 @@ const MESSAGES = {
   'cedolare-estimate': 'Cedolare stimata: da confermare, non è un pagamento.',
   'contract-overlap':
     'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
+  'unknown-payable': 'Rifiutato: scadenza sconosciuta o annullata.',
+  'not-repeating': 'Rifiutato: la scadenza non è segnata «ogni anno».',
+  'already-repeated': 'Rifiutato: la scadenza ha già la voce successiva.',
+  'already-paid': 'Rifiutato: la scadenza è già segnata pagata: annullare prima.',
+  'transaction-not-classified':
+    'Rifiutato: il movimento non ha una classificazione confermata a mano (esclusioni escluse).',
+  'payable-linked': 'Rifiutato: il movimento paga già una scadenza: annullare prima.',
+  'bad-date': 'Rifiutato: serve la data del pagamento o il movimento.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -243,6 +258,11 @@ const OPTIONS = {
   contratto: { type: 'string' },
   canone: { type: 'string' },
   acconto: { type: 'string' },
+  stato: { type: 'string' },
+  entro: { type: 'string' },
+  oggi: { type: 'string' },
+  scadenza: { type: 'string' },
+  'ogni-anno': { type: 'boolean' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -267,7 +287,13 @@ const RECONCILE_KINDS = [
   'contract.save',
   'contract.rent',
   'rent.year',
+  'payable.save',
+  'payable.repeat',
+  'payable.paid',
 ];
+
+const PAYABLE_STATES = ['da-pagare', 'in-scadenza', 'pagata', 'in-ritardo'];
+const PAYABLE_ITEM_KINDS = ['imu', 'condominio', 'tari', ...PayableKindSchema.options];
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
 
@@ -349,6 +375,12 @@ const day = (text) => {
   return parsed.data;
 };
 const optional = (key, value) => (value === undefined ? {} : { [key]: value });
+/** An amount that must be positive (an expected amount of a payable). */
+const positive = (text) => {
+  const amount = euro(text);
+  if (amount <= 0) throw invalid('bad-arguments');
+  return amount;
+};
 
 /** An amount as `parseEuro` reads it; anything else is a bad argument. */
 function euro(text) {
@@ -1142,6 +1174,143 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'scadenze') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const { stato, tipo, entro } = values;
+    if (stato !== undefined && !PAYABLE_STATES.includes(stato)) throw invalid('bad-arguments');
+    if (tipo !== undefined && !PAYABLE_ITEM_KINDS.includes(tipo)) throw invalid('bad-arguments');
+    if (entro !== undefined && !/^[0-9]{1,3}$/.test(entro)) throw invalid('bad-arguments');
+    // The window is not decided by user1 (plan 9, question 1): only an explicit --entro.
+    if (stato === 'in-scadenza' && entro === undefined) throw invalid('bad-arguments');
+    // Today: --oggi, or the UTC date of the clock (plan 9, «Mie scelte» 3).
+    const today = day(values.oggi ?? clock().slice(0, 10));
+    const result = await loadScadenzario(store, {
+      today,
+      ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const details = values.dettagli === true;
+    const years = details ? await loadRentYears(store, {}) : undefined;
+    if (years?.status === 'refused') throw new Stop('rejected', years.reason);
+    return {
+      status: 'ok',
+      // Dates, amounts, movements and names only with --dettagli (R107).
+      items: result.items
+        .filter(
+          (i) =>
+            (stato === undefined || i.state === stato) && (tipo === undefined || i.kind === tipo),
+        )
+        .map((i) => ({
+          source: i.source,
+          id: i.id,
+          kind: i.kind,
+          apartmentIds: i.apartmentIds,
+          state: i.state,
+          ...optional('check', i.check),
+          ...optional('repeatYearly', i.repeatYearly),
+          ...optional('repeated', i.repeated),
+          ...(details
+            ? {
+                taxpayers: i.taxpayers,
+                ...optional('dueDate', i.dueDate),
+                ...optional('expected', i.expected),
+                ...optional('paidOn', i.paidOn),
+                ...optional('transactionId', i.transactionId),
+              }
+            : {}),
+        })),
+      contractEnds: result.contractEnds.map((c) => ({
+        contractId: c.contractId,
+        apartmentId: c.apartmentId,
+        ...(details ? { end: c.end } : {}),
+      })),
+      // The cedolare estimate is shown beside the list, never an item (plan 9, question 4).
+      ...(years === undefined
+        ? {}
+        : {
+            estimates: years.rentYears
+              .filter((y) => y.cedolareExpected !== undefined)
+              .map((y) => ({
+                apartmentId: y.apartmentId,
+                year: y.year,
+                cedolareExpected: y.cedolareExpected,
+                message: MESSAGES['cedolare-estimate'],
+              })),
+          }),
+    };
+  }
+
+  if (name === 'scadenza-nuova') {
+    need(values, 'appartamento', 'tipo', 'scadenza');
+    if (positionals.length > 0 || !PayableKindSchema.safeParse(values.tipo).success) {
+      throw invalid('bad-arguments');
+    }
+    const result = await savePayable(
+      store,
+      {
+        ...optional('id', values.id),
+        apartmentId: values.appartamento,
+        kind: values.tipo,
+        dueDate: day(values.scadenza),
+        ...optional(
+          'expected',
+          values.importo === undefined ? undefined : positive(values.importo),
+        ),
+        ...optional('repeatYearly', values['ogni-anno'] === true ? true : undefined),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return result;
+  }
+
+  if (name === 'scadenza-ripeti') {
+    need(values, 'id', 'scadenza');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await repeatPayable(
+      store,
+      {
+        payableId: values.id,
+        dueDate: day(values.scadenza),
+        ...optional(
+          'expected',
+          values.importo === undefined ? undefined : positive(values.importo),
+        ),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return result;
+  }
+
+  if (name === 'scadenza-pagata') {
+    need(values, 'id');
+    // Exactly one of --movimento and --data.
+    if (
+      positionals.length > 0 ||
+      (values.movimento === undefined) === (values.data === undefined)
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await setPayablePaid(
+      store,
+      {
+        payableId: values.id,
+        ...optional('transactionId', values.movimento),
+        ...optional('date', values.data === undefined ? undefined : day(values.data)),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return result;
+  }
+
   if (name === 'abbina') {
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
     const result = await confirmMatch(
@@ -1328,6 +1497,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contratto-canone',
         'contratti',
         'affitti-anno',
+        'scadenze',
+        'scadenza-nuova',
+        'scadenza-ripeti',
+        'scadenza-pagata',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1342,30 +1515,43 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti'],
+      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti', 'scadenze'],
       parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
       pagamento: ['annulla-pagamento'],
-      movimento: ['escludi', 'annulla-uscita', 'imu-f24'],
+      movimento: ['escludi', 'annulla-uscita', 'imu-f24', 'scadenza-pagata'],
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
-      appartamento: ['conto', 'uscita', 'imu-atteso', 'contratto', 'contratti', 'affitti-anno'],
+      appartamento: [
+        'conto',
+        'uscita',
+        'imu-atteso',
+        'contratto',
+        'contratti',
+        'affitti-anno',
+        'scadenza-nuova',
+      ],
       anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno'],
       gruppo: ['imu-atteso', 'imu-f24'],
       totale: ['imu-atteso', 'affitti-anno'],
       rata: ['imu-atteso', 'imu-f24'],
       categoria: ['uscita'],
       f24: ['uscita'],
-      tipo: ['uscita-inquilino', 'contratto'],
+      tipo: ['uscita-inquilino', 'contratto', 'scadenze', 'scadenza-nuova'],
       mese: ['uscita-inquilino'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],
       gambe: ['giroconto'],
       da: ['giroconto-manuale'],
       a: ['giroconto-manuale'],
-      importo: ['giroconto-manuale'],
-      data: ['giroconto-manuale'],
+      importo: ['giroconto-manuale', 'scadenza-nuova', 'scadenza-ripeti'],
+      data: ['giroconto-manuale', 'scadenza-pagata'],
+      stato: ['scadenze'],
+      entro: ['scadenze'],
+      oggi: ['scadenze'],
+      scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
+      'ogni-anno': ['scadenza-nuova'],
       dal: ['importa', 'contratto-canone'],
       al: ['importa'],
       ...Object.fromEntries(
