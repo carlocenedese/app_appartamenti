@@ -67,6 +67,7 @@ import {
   saveAccount,
   saveBankProfile,
   saveApartment,
+  saveCondoDocument,
   saveContract,
   setContractRent,
   saveTenant,
@@ -171,6 +172,7 @@ const MESSAGES = {
     'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
   'missing-fields':
     'Rifiutato: per un appartamento nuovo servono nome, locatore, posti, annualità e differenza del condominio.',
+  'invalid-document': 'Rifiutato: i dati del documento del condominio non sono validi.',
   'invalid-apartment': 'Rifiutato: i dati dell’appartamento non sono validi.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
@@ -252,6 +254,8 @@ const OPTIONS = {
   annualita: { type: 'string' },
   'esercizio-condominio': { type: 'string' },
   'differenza-condominio': { type: 'string' },
+  esercizio: { type: 'string' },
+  'quota-conduttore': { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -276,6 +280,7 @@ const RECONCILE_KINDS = [
   'contract.save',
   'contract.rent',
   'apartment.save',
+  'condo.document',
   'rent.year',
 ];
 
@@ -987,6 +992,33 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'condominio-documento') {
+    need(values, 'appartamento', 'esercizio', 'tipo', 'totale');
+    if (positionals.length > 0 || !['preventivo', 'consuntivo'].includes(values.tipo)) {
+      throw invalid('bad-arguments');
+    }
+    const quota = values['quota-conduttore'];
+    const result = await saveCondoDocument(
+      store,
+      {
+        apartmentId: values.appartamento,
+        esercizio: values.esercizio,
+        kind: values.tipo,
+        total: euro(values.totale),
+        ...optional('quotaConduttore', quota === undefined ? undefined : euro(quota)),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      documentId: result.documentId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
   if (name === 'imu') {
     if (
       positionals.length > 0 ||
@@ -1392,6 +1424,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contratti',
         'affitti-anno',
         'appartamento',
+        'condominio-documento',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1414,14 +1447,24 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
-      appartamento: ['conto', 'uscita', 'imu-atteso', 'contratto', 'contratti', 'affitti-anno'],
+      appartamento: [
+        'conto',
+        'uscita',
+        'imu-atteso',
+        'contratto',
+        'contratti',
+        'affitti-anno',
+        'condominio-documento',
+      ],
+      esercizio: ['condominio-documento'],
+      'quota-conduttore': ['condominio-documento'],
       anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno'],
       gruppo: ['imu-atteso', 'imu-f24'],
-      totale: ['imu-atteso', 'affitti-anno'],
+      totale: ['imu-atteso', 'affitti-anno', 'condominio-documento'],
       rata: ['imu-atteso', 'imu-f24'],
       categoria: ['uscita'],
       f24: ['uscita'],
-      tipo: ['uscita-inquilino', 'contratto'],
+      tipo: ['uscita-inquilino', 'contratto', 'condominio-documento'],
       mese: ['uscita-inquilino'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],

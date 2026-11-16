@@ -3110,4 +3110,46 @@ describe('pnpm estratti condominio (piano 8)', () => {
     expect(undo.code).toBe(0);
     expect(stored(s, 'apartment', 'apt-a').condoDifferenceTo).toBe('owner');
   });
+
+  it('condominio-documento: salva, non riscrive, rifiuta, annulla', async () => {
+    const s = await setup([['apartment', apartment({ id: 'apt-a' })]]);
+    const doc = [
+      'condominio-documento',
+      ...s.common,
+      '--appartamento',
+      'apt-a',
+      '--esercizio',
+      '2026-27',
+      '--tipo',
+      'consuntivo',
+      '--totale',
+      '1.250,00',
+      '--quota-conduttore',
+      '900,00',
+    ];
+    const saved = await run(doc);
+    expect([saved.code, saved.json.status, saved.json.documentId]).toEqual([
+      0,
+      'saved',
+      'condoc-apt-a-2026-27-consuntivo',
+    ]);
+    expect(saved.out).not.toContain('1250');
+    expect(stored(s, 'condoDocument', 'condoc-apt-a-2026-27-consuntivo')).toMatchObject({
+      total: 125000,
+      quotaConduttore: 90000,
+    });
+    expect((await run(doc)).json.status).toBe('unchanged');
+    expect(
+      (await run([...doc.slice(0, -2)].map((a) => (a === 'consuntivo' ? 'bilancio' : a)))).code,
+    ).toBe(2);
+    const wrong = await run(doc.map((a) => (a === 'apt-a' ? 'apt-x' : a)));
+    expect([wrong.code, wrong.json.reason]).toEqual([1, 'unknown-apartment']);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      saved.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+  });
 });
