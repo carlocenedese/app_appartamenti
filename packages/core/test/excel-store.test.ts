@@ -37,6 +37,8 @@ describe('loadExcelInput', () => {
     const loaded = await loadExcelInput(store, QUERY);
     if (loaded.status !== 'ok') throw new Error(loaded.reason);
     expect(loaded.input.period).toEqual({ label: '2026-27', from: '2026-10', to: '2027-09' });
+    // The apartment's contracts reach the R34 check of calcConguaglio (R180).
+    expect(loaded.input.contracts?.map((c) => c.apartmentId)).toEqual([loaded.input.apartment.id]);
     expect(loaded.input.matches.filter((m) => m.by === 'assumed').map((m) => m.itemId)).toEqual([
       'bill-gas',
     ]);
