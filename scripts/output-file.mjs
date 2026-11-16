@@ -2,9 +2,19 @@
 // the default path and a write that never overwrites an existing file (section 6, R156, R176).
 // Shared by `pnpm excel` and `pnpm moduli`.
 
-import { existsSync, lstatSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { lstatSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { assertSafeRelPath } from '../packages/core/src/index.ts';
+
+/** Whether something is at `path`, a dangling link included (`existsSync` follows links). */
+export function pathExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** A refusal (`rejected`, exit 1) or arguments not valid (`invalid`, exit 2). */
 export class Stop extends Error {
@@ -64,7 +74,7 @@ export function writeNew(file, folder, bytes, { newId, link }) {
     writeFileSync(temporary, bytes, { flag: 'wx' });
     link(temporary, file);
   } catch (error) {
-    if (error?.code === 'EEXIST' && existsSync(file)) throw rejected('file-exists');
+    if (error?.code === 'EEXIST' && pathExists(file)) throw rejected('file-exists');
     if (NO_LINK.includes(error?.code)) throw rejected('link-unsupported');
     throw error;
   } finally {

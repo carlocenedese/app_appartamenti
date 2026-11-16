@@ -8,13 +8,32 @@ import { escapeXml, NOT_XML } from './xlsx-write';
 import { crc32, zipStored } from './zip';
 import type { ZipEntry } from './zip';
 
-/** Raw deflate (RFC 1951) → bytes; the command line passes `zlib.inflateRawSync`. */
-export type InflateRaw = (data: Uint8Array) => Uint8Array;
+/**
+ * Raw deflate (RFC 1951) → bytes, never more than `maxOutputLength`; the command line passes
+ * `zlib.inflateRawSync` with that option.
+ */
+export type InflateRaw = (data: Uint8Array, maxOutputLength: number) => Uint8Array;
+
+/** Limits against a zip bomb or a file that is not a form, checked before inflating. */
+export const DOCX_LIMITS = {
+  /** Bytes of the template file. */
+  templateBytes: 32 * 1024 * 1024,
+  /** Bytes of one entry once inflated. */
+  entryBytes: 64 * 1024 * 1024,
+  /** Bytes of all entries once inflated. */
+  totalBytes: 128 * 1024 * 1024,
+  entries: 10_000,
+} as const;
 
 export type DocxRefusal = {
   status: 'refused';
   reason:
-    'bad-template' | 'bad-placeholder' | 'unclosed-placeholder' | 'missing-fields' | 'bad-value';
+    | 'bad-template'
+    | 'bad-placeholder'
+    | 'unclosed-placeholder'
+    | 'missing-fields'
+    | 'bad-value'
+    | 'unfilled-elsewhere';
   /** Field names only (never a value), sorted. */
   fields: string[];
 };
@@ -23,8 +42,12 @@ const LOCAL_HEADER = 0x04034b50;
 const CENTRAL_HEADER = 0x02014b50;
 const END_OF_CENTRAL = 0x06054b50;
 const BODY_PART = /^word\/(document|header[0-9]*|footer[0-9]*|footnotes|endnotes)\.xml$/;
-// An empty w:t, a w:t with its text, or the end of a paragraph (placeholders never cross it).
-const TOKEN = /<w:t(?:\s[^>]*)?\/>|<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<\/w:p>/g;
+// An empty w:t, a w:t with its text, or a separator a placeholder never crosses: the end of a
+// paragraph, a tab, a line or carriage break.
+const TOKEN =
+  /<w:t(?:\s[^>]*)?\/>|<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<\/w:p>|<w:(?:tab|br|cr)\b[^>]*\/>/g;
+const W_T = /<w:t(?:\s[^>]*)?>[^<]*<\/w:t>/g;
+const XML_ENTRY = /\.(xml|rels)$/;
 const PLACEHOLDER = /\{\{([^{}\n]*)\}\}/g;
 const FIELD_NAME = /^[a-z0-9_]+$/;
 
@@ -49,10 +72,12 @@ export function readZip(bytes: Uint8Array, inflateRaw: InflateRaw): ZipEntry[] {
       break;
     }
   }
-  if (end < 0) invalid();
+  if (end < 0 || bytes.length > DOCX_LIMITS.templateBytes) invalid();
   const count = u16(end + 10);
   let at = u32(end + 16);
   if (count === 0xffff || at === 0xffffffff) invalid(); // zip64
+  if (count > DOCX_LIMITS.entries) invalid();
+  let total = 0;
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const entries: ZipEntry[] = [];
   for (let i = 0; i < count; i += 1) {
@@ -65,6 +90,9 @@ export function readZip(bytes: Uint8Array, inflateRaw: InflateRaw): ZipEntry[] {
     const nameLength = u16(at + 28);
     const offset = u32(at + 42);
     if ((flags & 1) !== 0 || (method !== 0 && method !== 8)) invalid();
+    // The declared size, checked before inflating; the inflate is capped at it.
+    total += size;
+    if (size > DOCX_LIMITS.entryBytes || total > DOCX_LIMITS.totalBytes) invalid();
     if (at + 46 + nameLength > bytes.length) invalid();
     let path = '';
     try {
@@ -79,7 +107,7 @@ export function readZip(bytes: Uint8Array, inflateRaw: InflateRaw): ZipEntry[] {
     let data = packed;
     if (method === 8) {
       try {
-        data = inflateRaw(packed);
+        data = inflateRaw(packed, Math.max(1, size));
       } catch {
         invalid();
       }
@@ -121,7 +149,7 @@ function scan(xml: string): Scanned {
   const owner: number[] = [];
   const offset: number[] = [];
   for (const match of xml.matchAll(TOKEN)) {
-    if (match[0] === '</w:p>') {
+    if (!/^<w:t[\s/>]/.test(match[0])) {
       joined += '\n';
       owner.push(-1);
       offset.push(0);
@@ -155,19 +183,28 @@ function parse(template: Uint8Array, inflateRaw: InflateRaw): Parsed {
   } catch {
     return refuse('bad-template');
   }
+  // shortcut: the main part is taken at its usual path, not from `_rels/.rels`; a template whose
+  // main part lives elsewhere is `bad-template`.
   if (!entries.some((e) => e.path === 'word/document.xml')) return refuse('bad-template');
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const parts = new Map<string, Scanned>();
   const fields = new Set<string>();
   for (const { path, data } of entries) {
-    if (!BODY_PART.test(path)) continue;
+    if (!XML_ENTRY.test(path)) continue;
     let xml: string;
     try {
       xml = decoder.decode(data);
     } catch {
       return refuse('bad-template');
     }
+    const body = BODY_PART.test(path);
+    // A `{{` the app does not fill (comments, properties, charts, field codes): never left behind.
+    if ((body ? xml.replace(W_T, '') : xml).includes('{{')) return refuse('unfilled-elsewhere');
+    if (!body) continue;
     const scanned = scan(xml);
+    if (scanned.joined.includes('{{{') || scanned.joined.includes('}}}')) {
+      return refuse('bad-placeholder');
+    }
     for (const [, name] of scanned.joined.matchAll(PLACEHOLDER)) {
       if (!FIELD_NAME.test(name ?? '')) return refuse('bad-placeholder');
       fields.add(name as string);
@@ -225,7 +262,9 @@ function fillPart({ xml, pieces, joined, owner, offset }: Scanned, values: Recor
  * template that is not a readable `.docx` or has an entry path `zipStored` refuses
  * (`bad-template`), a placeholder name not `[a-z0-9_]+` (`bad-placeholder`), a `{{` left open
  * (`unclosed-placeholder`), placeholders with no value (`missing-fields`), a value with a character
- * XML does not allow or a `{{` (`bad-value`). Values with no placeholder are ignored; a line break
+ * XML does not allow or a `{{` (`bad-value`), a `{{` outside the text the app fills
+ * (`unfilled-elsewhere`), a `{{` in the filled text (`unclosed-placeholder`); `{{{` and `}}}` are
+ * `bad-placeholder`. Values with no placeholder are ignored; a line break
  * in a value becomes a Word line break.
  */
 export function fillDocx(
@@ -235,8 +274,7 @@ export function fillDocx(
 ): { status: 'ok'; bytes: Uint8Array } | DocxRefusal {
   const parsed = parse(template, inflateRaw);
   if (parsed.status !== 'ok') return parsed;
-  const has = (name: string) => Object.prototype.hasOwnProperty.call(values, name);
-  const missing = parsed.fields.filter((name) => !has(name));
+  const missing = parsed.fields.filter((name) => !Object.hasOwn(values, name));
   if (missing.length > 0) return refuse('missing-fields', missing);
   const normalised: Record<string, string> = {};
   for (const name of parsed.fields) {
@@ -248,12 +286,16 @@ export function fillDocx(
   );
   if (bad.length > 0) return refuse('bad-value', bad);
   const encoder = new TextEncoder();
+  let left = false;
   const entries = parsed.entries.map(({ path, data }) => {
     const part = parsed.parts.get(path);
-    return part === undefined
-      ? { path, data }
-      : { path, data: encoder.encode(fillPart(part, normalised)) };
+    if (part === undefined) return { path, data };
+    const xml = fillPart(part, normalised);
+    // A value next to a brace of the template could make a new `{{`: refused, not written.
+    if (scan(xml).joined.includes('{{')) left = true;
+    return { path, data: encoder.encode(xml) };
   });
+  if (left) return refuse('unclosed-placeholder');
   try {
     return { status: 'ok', bytes: zipStored(entries) };
   } catch {

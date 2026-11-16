@@ -39,6 +39,7 @@ const tenancy = TenancySchema.parse({
   to: '2027-09',
   monthlyRent: 30000,
   monthlyForfait: 8000,
+  expectedDeposit: 50000,
 });
 const contract = ContractSchema.parse({
   id: 'ctr-1',
@@ -87,10 +88,26 @@ describe('moduleValues', () => {
       codice_registrazione: 'COD-INVENTATO',
       registrato_il: '25/09/2023',
       regime_fiscale: 'cedolare',
-      acconto_spese_mensile: '€ 250,00',
-      // Section 26: from 08/2026 to the end of the contract, 09/2027, is 14 months.
-      durata_residua_mesi: '14',
+      importo_caparra: '€ 500,00',
     });
+  });
+
+  it('gives the remaining duration only for a document prepared before the entry', () => {
+    // Section 26: from 08/2026 to the end of the contract, 09/2027, is 14 months.
+    expect(moduleValues(data, isoDate('2026-07-20')).durata_residua_mesi).toBe('14');
+    expect(moduleValues(data, isoDate('2026-08-01')).durata_residua_mesi).toBe('14');
+    // After the entry, from the entry or from today? Question 9: typed by hand.
+    expect(moduleValues(data, today).durata_residua_mesi).toBeUndefined();
+    // A tenancy before the start of the contract: not counted either.
+    const early = TenancySchema.parse({ ...tenancy, from: '2023-09' });
+    expect(
+      moduleValues({ ...data, tenancy: early }, isoDate('2023-01-01')).durata_residua_mesi,
+    ).toBeUndefined();
+  });
+
+  it('never fills the expense advance: it is typed by hand (question 10)', () => {
+    expect(moduleValues(data, today)).not.toHaveProperty('acconto_spese_mensile');
+    expect(ASKED_FIELDS.contratto).toContain('acconto_spese_mensile');
   });
 
   it('leaves out what the records do not have', () => {
@@ -98,7 +115,12 @@ describe('moduleValues', () => {
       {
         apartment: ApartmentSchema.parse({ ...apartment, address: undefined, cadastre: undefined }),
         tenant,
-        tenancy: TenancySchema.parse({ ...tenancy, room: undefined, to: undefined }),
+        tenancy: TenancySchema.parse({
+          ...tenancy,
+          room: undefined,
+          to: undefined,
+          expectedDeposit: undefined,
+        }),
         ibans: ['IT01', 'IT02'],
       },
       today,
@@ -118,7 +140,9 @@ describe('moduleValues', () => {
 
   it('has no remaining duration when the tenancy starts after the contract end', () => {
     const late = TenancySchema.parse({ ...tenancy, from: '2027-10', to: undefined });
-    expect(moduleValues({ ...data, tenancy: late }, today).durata_residua_mesi).toBeUndefined();
+    expect(
+      moduleValues({ ...data, tenancy: late }, isoDate('2027-01-01')).durata_residua_mesi,
+    ).toBeUndefined();
   });
 
   it('only names app fields it knows', () => {
@@ -147,12 +171,14 @@ describe('generateModule', () => {
     });
   });
 
-  it('refuses supplied values the module does not know', () => {
-    expect(run(docx([['{{inquilino}}']]), { codice_fiscal: 'x' })).toEqual({
-      status: 'refused',
-      reason: 'unknown-fields',
-      fields: ['codice_fiscal'],
+  it('refuses supplied keys the module does not know with their count only', () => {
+    // A tax code and a phone number written as keys by mistake: never echoed back.
+    const result = run(docx([['{{inquilino}}']]), {
+      rssmra80a01h501u: 'codice_fiscale',
+      '3331234567': 'telefono',
     });
+    expect(result).toEqual({ status: 'refused', reason: 'unknown-values', count: 2 });
+    expect(JSON.stringify(result)).not.toMatch(/rssmra|333123/);
   });
 
   it('refuses a supplied value for a field the app already fills', () => {
@@ -204,7 +230,9 @@ describe('starterDocx', () => {
   });
 
   it('fills with generateModule once every asked field is given', () => {
-    const supplied = Object.fromEntries(ASKED_FIELDS.promessa.map((f) => [f, 'x']));
+    const supplied = Object.fromEntries(
+      [...ASKED_FIELDS.promessa, 'durata_residua_mesi'].map((f) => [f, 'x']),
+    );
     const full = {
       ...supplied,
     };
@@ -228,5 +256,10 @@ describe('moduleFilePath', () => {
     expect(moduleFilePath({ name: 'CON' }, { name: 'Zoë: è/ok?' }, 'promessa', today)).toBe(
       'Appartamento_CON/Contratti/Zoe-e-ok/2026-11-16_promessa.docx',
     );
+  });
+
+  it('gives no path for a tenant name with no ASCII letter or digit', () => {
+    expect(moduleFilePath(apartment, { name: '李 明' }, 'promessa', today)).toBeUndefined();
+    expect(moduleFilePath(apartment, { name: '___' }, 'promessa', today)).toBeUndefined();
   });
 });

@@ -7,6 +7,7 @@ import { apartmentFolder } from './accounts';
 import { docxPlaceholders, fillDocx } from './docx';
 import type { DocxRefusal, InflateRaw } from './docx';
 import { formatEuro, cents } from './money';
+import { safeWord } from './proposal';
 import type { Apartment, Contract, Tenancy, Tenant } from './model';
 import type { ISODate } from './period';
 import { escapeXml } from './xlsx-write';
@@ -60,8 +61,8 @@ export const APP_FIELDS = {
   codice_registrazione: 'Codice di registrazione',
   registrato_il: 'Registrato il',
   regime_fiscale: 'Regime fiscale',
-  acconto_spese_mensile: 'Acconto spese mensile del contratto',
   durata_residua_mesi: 'Durata residua (mesi)',
+  importo_caparra: 'Importo della caparra',
 } as const;
 export type AppField = keyof typeof APP_FIELDS;
 
@@ -75,7 +76,6 @@ const PROMISE_FIELDS = [
   'decorrenza',
   'tipo_promessa',
   'inquilino_uscente',
-  'importo_caparra',
   'scadenza_versamento',
 ] as const;
 
@@ -104,6 +104,8 @@ export const ASKED_FIELDS: Record<ModuleKind, readonly string[]> = {
     'residenza',
     'corso_studi',
     'deposito',
+    // Question 10: which advance (contract, room, month) is not decided, so it is typed by hand.
+    'acconto_spese_mensile',
     'classe_energetica',
     'superficie',
     'caratteristiche_alloggio',
@@ -147,10 +149,17 @@ export function moduleValues(data: ModuleData, today: ISODate): Partial<Record<A
     forfait_mensile: formatEuro(tenancy.monthlyForfait),
     // Section 26: the price of the room includes the flat charge.
     canone_camera: formatEuro(cents(tenancy.monthlyRent + tenancy.monthlyForfait)),
+    // The deposit user1 typed for this tenancy (plan 11, R220): data only, never computed.
+    importo_caparra:
+      tenancy.expectedDeposit === undefined ? undefined : formatEuro(tenancy.expectedDeposit),
   };
   if (contract !== undefined) {
-    const current = today.slice(0, 7);
-    const rent = (contract.rent ?? []).filter((r) => r.from <= current).at(-1);
+    // Provisional (question 9): counted from the entry only when nothing else could be meant, a
+    // document prepared before the entry for a tenancy inside the contract; otherwise typed by hand.
+    const plain =
+      contract.start <= tenancy.from &&
+      tenancy.from <= contract.end &&
+      today.slice(0, 7) <= tenancy.from;
     const remaining = monthIndex(contract.end) - monthIndex(tenancy.from) + 1;
     Object.assign(values, {
       tipo_contratto: contract.type,
@@ -162,8 +171,7 @@ export function moduleValues(data: ModuleData, today: ISODate): Partial<Record<A
       registrato_il:
         contract.registration?.date === undefined ? undefined : day(contract.registration.date),
       regime_fiscale: contract.taxRegime,
-      acconto_spese_mensile: rent === undefined ? undefined : formatEuro(rent.monthlyAdvance),
-      durata_residua_mesi: remaining > 0 ? String(remaining) : undefined,
+      durata_residua_mesi: plain ? String(remaining) : undefined,
     });
   }
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
@@ -179,12 +187,15 @@ export type GenerateModuleResult =
       askedFields: number;
     }
   | DocxRefusal
-  | { status: 'refused'; reason: 'unknown-fields' | 'field-from-app'; fields: string[] };
+  | { status: 'refused'; reason: 'unknown-fields' | 'field-from-app'; fields: string[] }
+  /** Keys of the values file the form does not know: only their count, a key could be a value. */
+  | { status: 'refused'; reason: 'unknown-values'; count: number };
 
 /**
  * The document of `kind` from the owners' `template`: app fields from `data`, the others from
- * `supplied`. Refused (field names only, sorted): a placeholder or a supplied name the form does
- * not know (`unknown-fields`), a supplied value for a field the records already fill
+ * `supplied`. Refused: supplied keys the form does not know (`unknown-values`, their count only),
+ * placeholders the form does not know (`unknown-fields`, names sorted), a supplied value for a
+ * field the records already fill
  * (`field-from-app`: the data come from the records), and every refusal of `fillDocx`.
  */
 export function generateModule(input: {
@@ -198,20 +209,18 @@ export function generateModule(input: {
   const known = new Set<string>([...Object.keys(APP_FIELDS), ...ASKED_FIELDS[input.kind]]);
   const placeholders = docxPlaceholders(input.template, input.inflateRaw);
   if (placeholders.status !== 'ok') return placeholders;
-  const unknown = [
-    ...new Set(
-      [...placeholders.fields, ...Object.keys(input.supplied)].filter((f) => !known.has(f)),
-    ),
-  ].sort();
+  const strangers = Object.keys(input.supplied).filter((f) => !known.has(f)).length;
+  if (strangers > 0) return { status: 'refused', reason: 'unknown-values', count: strangers };
+  const unknown = placeholders.fields.filter((f) => !known.has(f));
   if (unknown.length > 0) return { status: 'refused', reason: 'unknown-fields', fields: unknown };
   const app: Record<string, string> = moduleValues(input.data, input.today);
   const clash = Object.keys(input.supplied)
-    .filter((f) => f in app)
+    .filter((f) => Object.hasOwn(app, f))
     .sort();
   if (clash.length > 0) return { status: 'refused', reason: 'field-from-app', fields: clash };
   const filled = fillDocx(input.template, { ...input.supplied, ...app }, input.inflateRaw);
   if (filled.status !== 'ok') return filled;
-  const fromApp = placeholders.fields.filter((f) => f in app).length;
+  const fromApp = placeholders.fields.filter((f) => Object.hasOwn(app, f)).length;
   return {
     status: 'ok',
     bytes: filled.bytes,
@@ -268,13 +277,16 @@ export function starterDocx(kind: ModuleKind): Uint8Array {
 /**
  * Where a generated document goes (sections 20 and 26):
  * `<Appartamento>/Contratti/<Inquilino>/<AAAA-MM-GG>_<modulo>.docx`, with the safe folder names of
- * `apartmentFolder`. The path holds the tenant's name: never in a log or an output.
+ * `apartmentFolder`. `undefined` when the tenant's name has no ASCII letter or digit: no folder
+ * name is made up for them (the caller asks for an explicit output). The path holds the tenant's
+ * name: never in a log or an output.
  */
 export function moduleFilePath(
   apartment: Pick<Apartment, 'name'>,
   tenant: Pick<Tenant, 'name'>,
   kind: ModuleKind,
   today: ISODate,
-): string {
+): string | undefined {
+  if (safeWord(tenant.name, '', 60) === '') return undefined;
   return `${apartmentFolder(apartment.name)}/Contratti/${apartmentFolder(tenant.name)}/${today}_${kind}.docx`;
 }

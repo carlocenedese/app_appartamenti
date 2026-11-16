@@ -10,13 +10,14 @@
 // 2 arguments not valid, 3 an unexpected failure.
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { linkSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { inflateRawSync } from 'node:zlib';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
+  DOCX_LIMITS,
   ISODateSchema,
   MODULE_KINDS,
   generateModule,
@@ -29,6 +30,7 @@ import {
   checkDefaultFolders,
   invalid,
   outputPath,
+  pathExists,
   rejected,
   writeNew,
 } from './output-file.mjs';
@@ -56,7 +58,14 @@ const MESSAGES = {
   'bad-placeholder':
     'Rifiutato: nel modello c’è un segnaposto con un nome non valido (solo minuscole, cifre e _).',
   'unclosed-placeholder': 'Rifiutato: nel modello c’è un «{{» senza «}}» nello stesso paragrafo.',
-  'unknown-fields': 'Rifiutato: campi che questo modulo non conosce.',
+  'unknown-fields': 'Rifiutato: nel modello ci sono segnaposto che questo modulo non conosce.',
+  'unknown-values':
+    'Rifiutato: nel file dei valori ci sono chiavi che questo modulo non conosce (se ne indica solo il numero).',
+  'template-too-large': 'Il modello è troppo grande per un modulo.',
+  'no-tenant-folder':
+    'Rifiutato: dal nome dell’inquilino non si ricava una cartella: usare --uscita.',
+  'unfilled-elsewhere':
+    'Rifiutato: nel modello c’è un «{{» fuori dal testo che l’app riempie (commenti, proprietà, grafici o codici di campo).',
   'field-from-app':
     'Rifiutato: questi campi vengono dalla scheda e non si danno nel file dei valori.',
   'missing-fields': 'Rifiutato: mancano i valori di questi campi: aggiungerli al file dei valori.',
@@ -64,7 +73,7 @@ const MESSAGES = {
   failed: 'Operazione non riuscita: ripetere il comando.',
 };
 
-const inflateRaw = (data) => inflateRawSync(data);
+const inflateRaw = (data, maxOutputLength) => inflateRawSync(data, { maxOutputLength });
 
 function readValues(path) {
   if (path === undefined) return {};
@@ -85,8 +94,15 @@ function readValues(path) {
 }
 
 function readTemplate(path) {
+  let size;
   try {
     if (!path.toLowerCase().endsWith('.docx')) throw new Error('not a docx');
+    size = statSync(path).size;
+  } catch {
+    throw invalid('bad-template-file');
+  }
+  if (size > DOCX_LIMITS.templateBytes) throw invalid('template-too-large');
+  try {
     return new Uint8Array(readFileSync(path));
   } catch {
     throw invalid('bad-template-file');
@@ -132,7 +148,7 @@ export async function main(
         throw invalid('bad-arguments');
       }
       const target = outputPath(values.uscita, '.docx');
-      if (existsSync(target.file)) throw rejected('file-exists');
+      if (pathExists(target.file)) throw rejected('file-exists');
       const bytes = starterDocx(kind);
       writeNew(target.file, target.folder, bytes, io);
       return done(0, { status: 'written', kind });
@@ -149,7 +165,7 @@ export async function main(
       throw invalid('bad-folder');
     }
     let target = values.uscita === undefined ? undefined : outputPath(values.uscita, '.docx');
-    if (target !== undefined && existsSync(target.file)) throw rejected('file-exists');
+    if (target !== undefined && pathExists(target.file)) throw rejected('file-exists');
     const template = readTemplate(values.modello);
     const supplied = readValues(values.valori);
 
@@ -165,16 +181,20 @@ export async function main(
       today,
       inflateRaw,
     });
-    if (result.status !== 'ok') throw rejected(result.reason, { fields: result.fields });
+    if (result.status !== 'ok') {
+      throw rejected(
+        result.reason,
+        result.reason === 'unknown-values' ? { count: result.count } : { fields: result.fields },
+      );
+    }
 
     if (target === undefined) {
-      const file = join(
-        values.cartella,
-        ...moduleFilePath(loaded.data.apartment, loaded.data.tenant, kind, today).split('/'),
-      );
+      const path = moduleFilePath(loaded.data.apartment, loaded.data.tenant, kind, today);
+      if (path === undefined) throw rejected('no-tenant-folder');
+      const file = join(values.cartella, ...path.split('/'));
       target = { file, folder: dirname(file) };
       checkDefaultFolders(values.cartella, file);
-      if (existsSync(file)) throw rejected('file-exists');
+      if (pathExists(file)) throw rejected('file-exists');
       mkdirSync(target.folder, { recursive: true });
     }
     writeNew(target.file, target.folder, result.bytes, io);

@@ -6,7 +6,7 @@ comando (`pnpm moduli`); **niente schermate**. Riferimenti: `docs/spec.md` sezio
 42 (che prevale), `docs/progress.md` R107, R150-R156, R173, R176, R203. Codice letto: `zip.ts`,
 `xlsx-write.ts`, `excel.ts` (`excelFilePath`), `accounts.ts` (`apartmentFolder`), `excel-store.ts`,
 `caparra.ts`, `interest.ts`, `model.ts` (`Apartment`, `Contract`, `Tenancy`, `Tenant`, `Account`),
-`scripts/excel.mjs`; del piano 11 (ramo `feat/piano-11-subentro`, non ancora su `main`) R220-R225.
+`scripts/excel.mjs`; del piano 11 (ora su `main`, PR #49) R220-R225.
 Nessun modulo reale aperto: la cartella «99.Modulistica aggiornata» non è nel repository e non si
 legge. Nomi e importi inventati.
 
@@ -45,8 +45,10 @@ cartella `Contratti` dell'appartamento, sottocartella dell'inquilino (sezione 20
 - Testi dei moduli, clausole, scelte fiscali: li fornisce user1 nei modelli.
 - Importi suggeriti dalla sezione 26 (caparra di 500 euro, scadenza del versamento a 2 giorni,
   imposta di 67 euro, 15 giorni per i danni): **mai nel codice**; sono campi richiesti.
-- Tabella di restituzione calcolata: è del piano 11 (`deposit.ts`, `caparra-restituzione`), non ancora
-  su `main`; qui i suoi importi sono campi richiesti (domanda 6).
+- Tabella di restituzione calcolata: è del piano 11 (`deposit.ts`, `caparra-restituzione`, ora su
+  `main`); se il modulo la prende dal prospetto è la domanda 6, quindi qui i suoi importi restano
+  campi richiesti. La caparra attesa della presenza (`Tenancy.expectedDeposit`, R220) è invece un
+  dato scritto da user1 e riempie `importo_caparra`.
 - Scheda dell'inquilino con codice fiscale e documento d'identità (sezione 26): dove conservarla è la
   domanda 3; oggi questi dati arrivano solo dal file di valori e non si salvano.
 - Stato «da firmare», riconoscimento del documento firmato in `Da_smistare`, registro delle
@@ -59,16 +61,25 @@ cartella `Contratti` dell'appartamento, sottocartella dell'inquilino (sezione 20
 
 - **Lettura dello zip** (`readZip`): directory centrale, dimensioni dalla directory centrale, metodi
   0 (stored) e 8 (deflate). Il deflate si decomprime con `inflateRaw`, **argomento** (nel core niente
-  `node:zlib`; la riga di comando passa `inflateRawSync`). CRC-32 controllato. Rifiuto `bad-template`
-  per: non uno zip, zip cifrato o zip64, metodo diverso, CRC o dimensione sbagliati, un percorso che
-  `zipStored` non accetta, nessun `word/document.xml`.
+  `node:zlib`; la riga di comando passa `inflateRawSync` con `maxOutputLength`). CRC-32 controllato.
+  **Limiti** (`DOCX_LIMITS`), controllati sulle dimensioni dichiarate **prima** di decomprimere: 32 MiB
+  di modello, 64 MiB per voce, 128 MiB in tutto, 10 000 voci; la decompressione non supera la
+  dimensione dichiarata. Rifiuto `bad-template` per: non uno zip, zip cifrato o zip64, metodo
+  diverso, CRC o dimensione sbagliati, un limite superato, un percorso che `zipStored` non accetta,
+  nessun `word/document.xml` (**limite:** la parte principale si cerca in quel percorso, non da
+  `_rels/.rels`).
 - **Parti lette:** `word/document.xml`, `word/header*.xml`, `word/footer*.xml`,
   `word/footnotes.xml`, `word/endnotes.xml`. Tutte le altre voci passano intatte.
-- **Segnaposto:** testo dei `<w:t>` unito per parte, con un separatore a ogni fine paragrafo, così un
-  segnaposto non attraversa due paragrafi. `{{…}}` con un nome non `[a-z0-9_]+` → `bad-placeholder`;
-  un `{{` senza `}}` nello stesso paragrafo → `unclosed-placeholder`; un valore che contiene `{{` →
-  `bad-value`. **Limite:** il testo di forme, caselle di testo disegnate, SmartArt e commenti non si
-  legge: un segnaposto lì resta com'è, senza rifiuto.
+- **Segnaposto:** testo dei `<w:t>` unito per parte, con un separatore a ogni fine paragrafo, a ogni
+  tabulazione e a ogni interruzione (`<w:tab/>`, `<w:br/>`, `<w:cr/>`), così un segnaposto non
+  attraversa né due paragrafi né una tabulazione. Le caselle di testo di Word stanno nel testo della
+  parte e si riempiono come il resto. `{{…}}` con un nome non `[a-z0-9_]+`, `{{{` o `}}}` →
+  `bad-placeholder`; un `{{` senza `}}` nello stesso tratto → `unclosed-placeholder`; un valore che
+  contiene `{{` → `bad-value`; un `{{` che dopo il riempimento compare ancora nel testo (un valore
+  accanto a una graffa del modello) → `unclosed-placeholder`.
+- **Fuori dal testo riempito:** un `{{` in qualunque altra voce XML (commenti, proprietà del
+  documento, glossario, grafici, SmartArt) o in una parte letta ma fuori dai `<w:t>` (codici di
+  campo) → `unfilled-elsewhere`: mai un segnaposto lasciato com'è.
 - **Valori:** testo; entità XML codificate; un a capo diventa `<w:br/>`; un carattere non ammesso da
   XML → `bad-value` con il nome del campo. Un segnaposto senza valore → `missing-fields`.
 - **Scrittura:** `zipStored` (stesso ordine delle voci, date fisse): stessi byte per gli stessi
@@ -95,21 +106,21 @@ regola 4 della sezione 26).
 | `canone_camera` | affitto + forfait della presenza (sezione 26: il prezzo della camera comprende il forfait) |
 | `tipo_contratto`, `inizio_contratto`, `fine_contratto`, `durata_contratto_mesi` | il contratto vivo che collega la presenza (`tenancyIds`) |
 | `firmato_il`, `codice_registrazione`, `registrato_il`, `regime_fiscale` | stesso contratto |
-| `acconto_spese_mensile` | voce di `Contract.rent` in vigore nel mese di `today`: l'acconto del **contratto**, non della camera |
-| `durata_residua_mesi` | mesi interi dall'ingresso alla fine del contratto, compresi (sezione 26: 08/2026-09/2027 = 14) |
+| `durata_residua_mesi` | **provvisorio** (domanda 9): mesi interi dall'ingresso alla fine del contratto, compresi (sezione 26: 08/2026-09/2027 = 14), solo se il contratto comincia entro l'ingresso e il documento si prepara entro il mese d'ingresso; altrimenti si scrive a mano |
+| `importo_caparra` | `Tenancy.expectedDeposit` (piano 11, R220), la caparra attesa scritta da user1; assente: a mano |
 
 Campi richiesti (`source: 'asked'`), dalla colonna «Dati richiesti» della sezione 26:
 
 | Modulo (`kind`) | Campi richiesti |
 | --- | --- |
-| `promessa` | `codice_fiscale`, `documento_numero`, `documento_ente`, `documento_rilascio`, `documento_scadenza`, `firma_entro`, `decorrenza`, `tipo_promessa`, `inquilino_uscente`, `importo_caparra`, `scadenza_versamento` |
+| `promessa` | `codice_fiscale`, `documento_numero`, `documento_ente`, `documento_rilascio`, `documento_scadenza`, `firma_entro`, `decorrenza`, `tipo_promessa`, `inquilino_uscente`, `scadenza_versamento` (e `importo_caparra` se la presenza non ha la caparra attesa) |
 | `subentro` | come `promessa`, più `codice_contratto_cessione` |
 | `conferma-cauzione` | `nuovo_canone`, `durata_mesi`, `decorrenza`, `caparra_versata` |
 | `impegno-canone` | `canone_massimo`, `periodo` |
 | `aumento-prezzi` | `nuovo_canone` |
 | `conferma-disdetta` | `data_recesso`, `mezzo_disdetta`, `data_disdetta`, `fine_anticipata` |
 | `restituzione` | `data_consegna_chiavi`, `stato_locali`, `caparra`, `interessi_legali`, `quota_bollette`, `quota_adempimento`, `quota_pulizia`, `saldo` |
-| `contratto` | `codice_fiscale`, `luogo_nascita`, `data_nascita`, `residenza`, `corso_studi`, `deposito`, `classe_energetica`, `superficie`, `caratteristiche_alloggio`, `accordo_territoriale` |
+| `contratto` | `codice_fiscale`, `luogo_nascita`, `data_nascita`, `residenza`, `corso_studi`, `deposito`, `acconto_spese_mensile` (domanda 10), `classe_energetica`, `superficie`, `caratteristiche_alloggio`, `accordo_territoriale` |
 
 Ogni campo richiesto è testo libero: l'app non lo interpreta e non lo controlla (nessuna regola).
 Un campo dell'elenco che il modello non usa non serve.
@@ -119,15 +130,20 @@ Un campo dell'elenco che il modello non usa non serve.
 `moduleFilePath(apartment, tenant, kind, today)` =
 `<Appartamento>/Contratti/<Inquilino>/<AAAA-MM-GG>_<Modulo>.docx` con `apartmentFolder` per le due
 cartelle (lettere ASCII, cifre, `_`, `-`, mai un nome riservato di Windows) e il `kind` come nome
-del modulo. Il percorso contiene il nome dell'inquilino: **mai** nell'uscita della riga di comando.
+del modulo. Un nome senza lettere o cifre ASCII non dà una cartella: nessun nome inventato,
+`moduleFilePath` dà `undefined` e la riga di comando chiede `--uscita` (`no-tenant-folder`). Il
+percorso contiene il nome dell'inquilino: **mai** nell'uscita della riga di comando.
 
 ## Riga di comando
 
 `pnpm moduli --cartella <dir> --tipo <kind> --presenza <tenancyId> --modello <file.docx>
 [--valori <file.json>] [--oggi <AAAA-MM-GG>] [--uscita <file.docx>]`:
 
-- `--valori`: un oggetto JSON di testi (`{ "codice_fiscale": "…" }`); i dati personali restano nel
-  file di user1 e non passano dalla riga di comando.
+- `--valori`: un oggetto JSON di testi (`{ "codice_fiscale": "…" }`), chiavi `[a-z0-9_]+`; i dati
+  personali restano nel file di user1 e non passano dalla riga di comando. Chiavi che il modulo non
+  conosce → `unknown-values` con il **solo numero** (una chiave potrebbe essere un dato scritto al
+  posto sbagliato); segnaposto del modello che il modulo non conosce → `unknown-fields` con i nomi.
+- `--modello` oltre 32 MiB → `template-too-large` (2), senza leggerlo.
 - Uscita, una riga JSON: `{ status: 'written', kind, tenancyId, fields, appFields, askedFields }`
   (conteggi); un rifiuto ha `reason`, `message` costante e, dove serve, `fields` (**nomi** dei
   campi, mai valori). Codici: 0 scritto, 1 rifiuto, 2 argomenti, 3 errore inatteso (R107).
@@ -159,15 +175,20 @@ tenancy, contract?, ibans }`. Sola lettura: nessuna operazione nel registro (dom
    come si riconosce il firmato rimesso in `Da_smistare`?
 5. **Registro:** la generazione di un documento va nel registro delle modifiche?
 6. **Restituzione:** la tabella (caparra, interessi, bollette, quota adempimento, pulizia, saldo)
-   va presa dal prospetto del piano 11 quando sarà su `main`, o resta un dato inserito?
+   va presa dal prospetto del piano 11 (`loadDepositReturn`, ora su `main`, con le sue domande
+   aperte R224 1-4), o resta un dato inserito come ora?
 7. **Contratto con più inquilini:** il contratto per studenti elenca l'anagrafica di ciascun
    inquilino: servono righe ripetute nel modello?
 8. **Versioni più recenti:** quali sono le versioni dei moduli da usare come base (sezione 26, «Da
    chiarire»), per controllare che l'elenco dei campi sia completo.
-9. **Durata residua e date:** `durata_residua_mesi` conta i mesi interi dall'ingresso alla fine del
-   contratto (esempio della sezione 26); `fine_contratto` è scritto come mese (`09/2027`) e non come
-   ultimo giorno (`30/09/2027`): va bene?
-10. **Acconto e cartella dell'inquilino:** l'acconto spese è quello del contratto nel mese del
-   documento (va bene, o serve quello della camera o del mese di decorrenza?); la cartella
-   dell'inquilino è il nome con lettere ASCII e trattini (`Anna-Prova`): può non coincidere con una
-   cartella che esiste già, e due inquilini con lo stesso nome la condividono.
+9. **Durata residua e date:** `durata_residua_mesi` (provvisoria) conta i mesi interi
+   dall'ingresso alla fine del contratto (esempio della sezione 26). Da dove si parte in generale:
+   da max(ingresso, inizio del contratto), dal mese di oggi o dalla decorrenza scritta? Finché non è
+   deciso l'app la dà solo per un documento preparato entro il mese d'ingresso di una presenza dentro
+   il contratto; negli altri casi si scrive a mano. `fine_contratto` è scritto come mese (`09/2027`)
+   e non come ultimo giorno (`30/09/2027`): va bene?
+10. **Acconto e cartella dell'inquilino:** quale acconto spese va nel modulo (quello del contratto
+   nel mese del documento, della camera, del mese di decorrenza)? Non deciso: oggi è un campo
+   richiesto, scritto a mano. La cartella dell'inquilino è il nome con lettere ASCII e trattini
+   (`Anna-Prova`): può non coincidere con una cartella che esiste già, e due inquilini con lo stesso
+   nome la condividono; va bene, o serve un nome di cartella scritto nella scheda?

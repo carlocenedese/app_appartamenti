@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { docxPlaceholders, fillDocx, readZip } from '../src/docx';
+import { DOCX_LIMITS, docxPlaceholders, fillDocx, readZip } from '../src/docx';
 import { zipStored } from '../src/zip';
 import { docx, inflateRaw, wordPart, zipDeflated } from './helpers/docx';
 
@@ -176,5 +176,106 @@ describe('fillDocx', () => {
     const out = entry(filled(fillDocx(template, { a: 'ok' }, inflateRaw)), 'word/document.xml');
     expect(out).toContain('>ok</w:t>');
     expect(out).not.toContain('{{');
+  });
+});
+
+describe('review checks', () => {
+  it('refuses a value that makes a new {{ with the template text', () => {
+    expect(fillDocx(docx([['{{a}}{']]), { a: 'x{' }, inflateRaw)).toMatchObject({
+      reason: 'unclosed-placeholder',
+    });
+  });
+
+  it('refuses {{{ and }}} as bad placeholders', () => {
+    expect(docxPlaceholders(docx([['{{{a}}}']]), inflateRaw)).toMatchObject({
+      reason: 'bad-placeholder',
+    });
+    expect(docxPlaceholders(docx([['{{a}}}']]), inflateRaw)).toMatchObject({
+      reason: 'bad-placeholder',
+    });
+  });
+
+  it('takes a tab or a break inside a split placeholder as a separator', () => {
+    for (const mark of ['<w:tab/>', '<w:br/>', '<w:br w:type="page"/>', '<w:cr/>']) {
+      const xml = wordPart([]).replace(
+        '<w:body></w:body>',
+        `<w:body><w:p><w:r><w:t>{{a</w:t>${mark}<w:t>b}}</w:t></w:r></w:p></w:body>`,
+      );
+      const template = zipDeflated([{ path: 'word/document.xml', data: xml }]);
+      expect(docxPlaceholders(template, inflateRaw)).toMatchObject({
+        reason: 'unclosed-placeholder',
+      });
+    }
+  });
+
+  it('refuses a {{ the app would not fill: comments, properties, field codes', () => {
+    const body = { path: 'word/document.xml', data: wordPart([['{{a}}']]) };
+    const elsewhere = [
+      { path: 'word/comments.xml', data: '<w:comments><w:t>{{a}}</w:t></w:comments>' },
+      { path: 'docProps/core.xml', data: '<cp:coreProperties>{{a}}</cp:coreProperties>' },
+      {
+        path: 'word/document.xml',
+        data: wordPart([['x']]).replace('<w:p>', '<w:p><w:instrText>{{a}}</w:instrText>'),
+      },
+    ];
+    for (const other of elsewhere) {
+      const entries = other.path === body.path ? [other] : [body, other];
+      expect(fillDocx(zipDeflated(entries), { a: '1' }, inflateRaw)).toMatchObject({
+        reason: 'unfilled-elsewhere',
+      });
+    }
+    // Images and other binary entries are not looked at.
+    const image = zipDeflated([body, { path: 'word/media/a.png', data: '{{' }]);
+    expect(fillDocx(image, { a: '1' }, inflateRaw).status).toBe('ok');
+  });
+
+  /** The offset of the first central directory header. */
+  const centralStart = (zip: Uint8Array) =>
+    new DataView(zip.buffer).getUint32(zip.length - 22 + 16, true);
+
+  it('refuses an entry declared larger than the limit before inflating it', () => {
+    let called = false;
+    const spy = (data: Uint8Array, max: number) => {
+      called = true;
+      return inflateRaw(data, max);
+    };
+    const zip = zipDeflated([{ path: 'a', data: 'x' }]).slice();
+    new DataView(zip.buffer).setUint32(centralStart(zip) + 24, DOCX_LIMITS.entryBytes + 1, true);
+    expect(() => readZip(zip, spy)).toThrow(RangeError);
+    expect(called).toBe(false);
+  });
+
+  it('refuses a total larger than the limit and too many entries', () => {
+    const many = zipDeflated(
+      Array.from({ length: 3 }, (_, i) => ({ path: `e${String(i)}`, data: 'x' })),
+    ).slice();
+    const v = new DataView(many.buffer);
+    for (let i = 0, at = centralStart(many); i < 3; i += 1, at += 46 + 2) {
+      v.setUint32(at + 24, DOCX_LIMITS.totalBytes / 2, true);
+    }
+    expect(() => readZip(many, inflateRaw)).toThrow(RangeError);
+    const lots = zipDeflated([{ path: 'a', data: 'x' }]).slice();
+    new DataView(lots.buffer).setUint16(lots.length - 22 + 10, DOCX_LIMITS.entries + 1, true);
+    expect(() => readZip(lots, inflateRaw)).toThrow(RangeError);
+  });
+
+  it('caps the inflate at the declared size', () => {
+    const zip = zipDeflated([{ path: 'a', data: 'x'.repeat(1000) }]).slice();
+    new DataView(zip.buffer).setUint32(centralStart(zip) + 24, 10, true);
+    let max = 0;
+    expect(() =>
+      readZip(zip, (data, limit) => {
+        max = limit;
+        return inflateRaw(data, limit);
+      }),
+    ).toThrow(RangeError);
+    expect(max).toBe(10);
+  });
+
+  it('refuses bytes larger than the template limit', () => {
+    const zip = zipDeflated([{ path: 'a', data: 'x' }]);
+    const big = new Uint8Array(DOCX_LIMITS.templateBytes + 1);
+    big.set(zip, big.length - zip.length);
+    expect(() => readZip(big, inflateRaw)).toThrow(RangeError);
   });
 });

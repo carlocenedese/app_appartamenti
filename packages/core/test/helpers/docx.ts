@@ -2,7 +2,8 @@ import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { crc32 } from '../../src/zip';
 
 /** The inflate the command line passes to the core. */
-export const inflateRaw = (data: Uint8Array): Uint8Array => inflateRawSync(data);
+export const inflateRaw = (data: Uint8Array, maxOutputLength: number): Uint8Array =>
+  inflateRawSync(data, { maxOutputLength });
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const text = (s: string) => new TextEncoder().encode(s);

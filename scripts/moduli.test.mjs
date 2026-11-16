@@ -6,6 +6,8 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
+  truncateSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -37,6 +39,20 @@ const RECORDS = [
     },
   ],
   ['tenant', { ...base, id: 'ten-1', name: 'Anna Prova' }],
+  ['tenant', { ...base, id: 'ten-2', name: '李 明' }],
+  [
+    'tenancy',
+    {
+      ...base,
+      id: 'pres-2',
+      apartmentId: 'apt-nord',
+      tenantId: 'ten-2',
+      room: 'B',
+      from: '2026-08',
+      monthlyRent: 30000,
+      monthlyForfait: 8000,
+    },
+  ],
   [
     'tenancy',
     {
@@ -239,9 +255,72 @@ describe('pnpm moduli', () => {
     expect(fields.status === 'ok' && fields.fields).toContain('saldo');
   }, 120_000);
 
+  it('gives only the count of unknown keys of the values file', async () => {
+    const keys = join(root, 'chiavi.json');
+    writeFileSync(keys, JSON.stringify({ rssmra80a01h501u: 'x', 3331234567: 'y' }));
+    expect(await generate(['--valori', keys])).toMatchObject({
+      code: 1,
+      json: { reason: 'unknown-values', count: 2 },
+    });
+  });
+
+  it('refuses a template larger than the limit before reading it', async () => {
+    const big = join(root, 'grande.docx');
+    writeFileSync(big, '');
+    truncateSync(big, 32 * 1024 * 1024 + 1);
+    expect(
+      await run([
+        '--cartella',
+        data,
+        '--tipo',
+        'promessa',
+        '--presenza',
+        'pres-1',
+        '--modello',
+        big,
+      ]),
+    ).toMatchObject({ code: 2, json: { reason: 'template-too-large' } });
+  });
+
+  it('asks for --uscita when the tenant name gives no folder', async () => {
+    const only = join(root, 'solo-app.docx');
+    writeFileSync(only, docx([['{{inquilino}}']]));
+    expect(
+      await run([
+        '--cartella',
+        data,
+        '--tipo',
+        'promessa',
+        '--presenza',
+        'pres-2',
+        '--modello',
+        only,
+      ]),
+    ).toMatchObject({ code: 1, json: { reason: 'no-tenant-folder' } });
+  });
+
+  it('takes a dangling link at the output as an existing file', async () => {
+    const link = join(out, 'collegamento.docx');
+    symlinkSync(join(root, 'non-esiste.docx'), link);
+    expect(await generate(['--valori', values, '--uscita', link])).toMatchObject({
+      code: 1,
+      json: { reason: 'file-exists' },
+    });
+  });
+
   it('never prints a name, a value or a path', () => {
     const all = outputs.join('');
-    for (const secret of ['Anna', 'Prova', 'XXXINVENTATO', '380', root, 'Casa']) {
+    for (const secret of [
+      'Anna',
+      'Prova',
+      'XXXINVENTATO',
+      '380',
+      root,
+      'Casa',
+      'rssmra',
+      '333123',
+      '李',
+    ]) {
       expect(all).not.toContain(secret);
     }
     expect(scanText(all)).toEqual([]);
