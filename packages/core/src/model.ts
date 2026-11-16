@@ -1110,6 +1110,22 @@ export const ImuYearSchema = RecordBaseSchema.extend({
 export type ImuYear = z.infer<typeof ImuYearSchema>;
 
 /**
+ * The rents of one apartment and year as typed by user1 (`rent-<apartmentId>-<year>`, R182):
+ * the base of the cedolare estimate, never derived from the contracts or the payments.
+ */
+export const RentYearSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  year: YearSchema,
+  totalRent: PositiveCentsSchema,
+})
+  .refine((y) => y.id === `rent-${y.apartmentId}-${y.year}`, {
+    message: 'The id must be rent-<apartmentId>-<year>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is rent-<apartmentId>-<year>; totalRent is positive cents.' });
+export type RentYear = z.infer<typeof RentYearSchema>;
+
+/**
  * A rule learnt from an IMU assignment (`imur-<transactionId>`, plan 3d, task 5, question 8):
  * the F24s of `accountId` with the counterparty `key` (none: those without a key) get the
  * suggestion of `f24Group`, from `validFrom` up to `validTo`. It only suggests, never assigns.
@@ -1154,6 +1170,7 @@ export const recordSchemas = {
   movementRule: MovementRuleSchema,
   transfer: TransferSchema,
   imuYear: ImuYearSchema,
+  rentYear: RentYearSchema,
   imuRule: ImuRuleSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;

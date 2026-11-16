@@ -36,6 +36,7 @@ describe('writeJsonSchemas', () => {
       'operation',
       'payer',
       'payment',
+      'rentYear',
       'statement',
       'supplierProfile',
       'supply',

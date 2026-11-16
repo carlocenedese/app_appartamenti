@@ -3,6 +3,9 @@ import {
   ContractSchema,
   PaymentSchema,
   TenancySchema,
+  cedolareExpected,
+  cedolareRateForYear,
+  cents,
   contractChecks,
   rentForMonth,
   yearMonth,
@@ -139,6 +142,14 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
         [tenancy],
       ),
     ).toEqual([
+      // Two live contracts on the same months also overlap (R181).
+      {
+        code: 'contract-overlap',
+        contractId: 'ctr-1',
+        otherContractId: 'ctr-2',
+        from: '2025-10',
+        to: '2026-09',
+      },
       { code: 'tenancy-linked-twice', contractId: 'ctr-1', tenancyId: 'tcy-a' },
       { code: 'tenancy-linked-twice', contractId: 'ctr-2', tenancyId: 'tcy-a' },
     ]);
@@ -169,7 +180,16 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
         ],
         [makeTenancy('tcy-a')],
       ),
-    ).toEqual([{ code: 'unlinked-tenancy', contractId: 'ctr-a', tenancyId: 'tcy-a' }]);
+    ).toEqual([
+      {
+        code: 'contract-overlap',
+        contractId: 'ctr-a',
+        otherContractId: 'ctr-b',
+        from: '2025-10',
+        to: '2026-09',
+      },
+      { code: 'unlinked-tenancy', contractId: 'ctr-a', tenancyId: 'tcy-a' },
+    ]);
   });
 
   it.each([
@@ -243,6 +263,7 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
     );
     expect(backward).toEqual(forward);
     expect(forward.map((c) => [c.contractId, c.code])).toEqual([
+      ['ctr-2', 'contract-overlap'],
       ['ctr-2', 'tenancy-linked-twice'],
       ['ctr-2', 'unlinked-tenancy'], // the first contract by id
       ['ctr-berchet', 'deposit-other-tenant'],
@@ -338,5 +359,108 @@ describe('contractChecks: rent-differs (plan 7, task 4)', () => {
     });
     const gone = makeTenancy('tcy-gone', { deleted: true });
     expect(rentChecks(exact, [...year, gone])).toEqual([]);
+  });
+});
+
+describe('contractChecks: contract-overlap (user1, question 9 of plan 7, R181)', () => {
+  it('the example: a renewal saved as a new contract, months in common 2026-10 – 2027-09', () => {
+    const renewal = makeContract('ctr-berchet-2', { start: '2026-10', end: '2028-09' });
+    expect(checks([renewal, makeContract('ctr-berchet')])).toEqual([
+      {
+        code: 'contract-overlap',
+        contractId: 'ctr-berchet',
+        otherContractId: 'ctr-berchet-2',
+        from: '2026-10',
+        to: '2027-09',
+      },
+    ]);
+  });
+
+  it('one entry per pair; none for contracts that touch, other apartments or deleted ones', () => {
+    const contracts = [
+      makeContract('ctr-a', { start: '2025-10', end: '2026-09' }),
+      makeContract('ctr-b', { start: '2026-10', end: '2027-09' }),
+      makeContract('ctr-c', { start: '2026-09', end: '2026-10' }),
+      makeContract('ctr-l', { apartmentId: 'lovarini' }),
+      makeContract('ctr-gone', { deleted: true }),
+    ];
+    expect(checks(contracts).map((c) => [c.contractId, c.otherContractId, c.from, c.to])).toEqual([
+      ['ctr-a', 'ctr-c', '2026-09', '2026-09'],
+      ['ctr-b', 'ctr-c', '2026-10', '2026-10'],
+    ]);
+  });
+});
+
+describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
+  it.each([
+    [1935000, 1000, 193500], // the rents of the year 19.350,00 at 10%
+    [12345, 1000, 1235], // 1234,5 cents: half up
+    [12344, 1000, 1234],
+    [100001, 2100, 21000], // 21000,21 cents
+    [100001, 10000, 100001],
+    [Number.MAX_SAFE_INTEGER, 10000, Number.MAX_SAFE_INTEGER], // BigInt: no precision lost
+    [Number.MAX_SAFE_INTEGER, 1, 900719925474], // 900719925474,0991 cents
+  ])('%i cents at %i bp is %i cents, one rounding', (total, rate, expected) => {
+    expect(cedolareExpected(cents(total), rate)).toBe(expected);
+  });
+
+  it('the rate of the year: the one rate of the live cedolare contracts touching the year', () => {
+    const cedolare = (id: string, extra: Record<string, unknown> = {}) =>
+      makeContract(id, { taxRegime: 'cedolare', cedolareRateBp: 1000, ...extra });
+    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2026')).toBe(1000);
+    // 2025-10 to 2027-09 touches 2025, 2026 and 2027, not 2024 or 2028.
+    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2024')).toBeUndefined();
+    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2028')).toBeUndefined();
+    expect(cedolareRateForYear([cedolare('a')], 'lovarini', '2026')).toBeUndefined();
+    expect(
+      cedolareRateForYear(
+        [
+          cedolare('a'),
+          cedolare('b', { start: '2026-10', end: '2028-09' }),
+          cedolare('gone', { cedolareRateBp: 2100, deleted: true }),
+          makeContract('ord', { taxRegime: 'ordinario', deleted: true }),
+          makeContract('old', { taxRegime: 'ordinario', start: '2024-01', end: '2025-12' }),
+        ],
+        'berchet',
+        '2026',
+      ),
+    ).toBe(1000);
+    // Two different rates in the year: no estimate (R182).
+    expect(
+      cedolareRateForYear(
+        [cedolare('a'), cedolare('b', { cedolareRateBp: 2100 })],
+        'berchet',
+        '2026',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('a mixed year gives no estimate: ordinario or no rate on any live contract (R182)', () => {
+    const cedolare = makeContract('ced', {
+      start: '2026-10',
+      end: '2027-09',
+      taxRegime: 'cedolare',
+      cedolareRateBp: 1000,
+    });
+    const before = { start: '2025-10', end: '2026-09' };
+    // Ordinario January to September, cedolare October to December.
+    expect(
+      cedolareRateForYear(
+        [makeContract('ord', { ...before, taxRegime: 'ordinario' }), cedolare],
+        'berchet',
+        '2026',
+      ),
+    ).toBeUndefined();
+    // A contract with no regime or a cedolare one with no rate.
+    for (const extra of [{}, { taxRegime: 'cedolare' }]) {
+      expect(
+        cedolareRateForYear(
+          [makeContract('x', { ...before, ...extra }), cedolare],
+          'berchet',
+          '2026',
+        ),
+      ).toBeUndefined();
+    }
+    expect(cedolareRateForYear([cedolare], 'berchet', '2026')).toBe(1000);
   });
 });

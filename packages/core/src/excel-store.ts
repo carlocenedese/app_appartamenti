@@ -51,7 +51,8 @@ export async function loadExcelInput(
   const own = <T extends { apartmentId: string }>(list: T[]) =>
     list.filter((r) => r.apartmentId === apartment.id);
 
-  const periods = own(await records('contract', ContractSchema))
+  const contracts = own(await records('contract', ContractSchema));
+  const periods = contracts
     .flatMap((contract) => settlementPeriods(contract, apartment.annualitaStart))
     .filter((p) => p.label === query.periodLabel);
   const [period] = periods;
@@ -70,6 +71,7 @@ export async function loadExcelInput(
       bills: own(await records('bill', BillSchema)),
       instalments: own(await records('instalment', InstalmentSchema)),
       payments: own(await records('payment', PaymentSchema)),
+      contracts,
       matches: [
         ...(await records('match', BillMatchSchema)),
         ...(await planMatch(store)).assumedMatches,

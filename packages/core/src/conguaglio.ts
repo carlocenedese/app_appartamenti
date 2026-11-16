@@ -29,8 +29,9 @@
  *
  * The result never depends on the order of the input.
  */
+import { rentForMonth } from './contract';
 import { expectedDebit } from './match';
-import type { Apartment, Bill, BillMatch, Instalment, Payment, Tenancy } from './model';
+import type { Apartment, Bill, BillMatch, Contract, Instalment, Payment, Tenancy } from './model';
 import { cents, splitCents } from './money';
 import type { Cents } from './money';
 import { annualitaRange, isoDate, monthsInPeriod } from './period';
@@ -73,6 +74,8 @@ export interface ConguaglioInput {
   matches: BillMatch[];
   tenancies: Tenancy[];
   payments: Payment[];
+  /** Only for the R34 check: the rent of the month from the contract covering it, if any. */
+  contracts?: Contract[];
 }
 
 export interface TenantSettlement {
@@ -95,7 +98,11 @@ export interface PendingItem {
 }
 
 export interface ConguaglioWarning {
-  /** The rents and flat charges of a month do not add up to the contract (R4): a check only. */
+  /**
+   * The rents and flat charges of a month do not add up to the contract (R4, R34): a check only.
+   * `expected` is the rent plus advance of the live contract with the latest start covering the
+   * month and with a rent entry for it, else `apartment.contrattoMensile`.
+   */
   code: 'contratto-mensile';
   expected: Cents;
   actual: Cents;
@@ -598,28 +605,41 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     pending: pending.sort(
       (a, b) => compareText(a.itemType, b.itemType) || compareText(a.itemId, b.itemId),
     ),
-    warnings: contractWarnings(apartment, tenancies, periodMonths),
+    warnings: contractWarnings(apartment, own(input.contracts ?? []), tenancies, periodMonths),
   };
 }
 
-/** One warning for each monthly total of rents and flat charges that differs from the contract. */
+/** One warning for each pair of contract rent and monthly total of rents and flat charges. */
 function contractWarnings(
   apartment: Apartment,
+  contracts: Contract[],
   tenancies: Tenancy[],
   months: YearMonth[],
 ): ConguaglioWarning[] {
-  const expected = apartment.contrattoMensile;
-  if (expected === undefined) return [];
-  const seen = new Set<number>();
+  // Latest start first, then id: two live contracts on one month are a `contract-overlap`.
+  const byStart = [...contracts].sort(
+    (a, b) => compareText(b.start, a.start) || compareText(a.id, b.id),
+  );
+  const seen = new Set<string>();
   const warnings: ConguaglioWarning[] = [];
   for (const month of months) {
+    const rent = byStart
+      .filter((c) => c.start <= month && month <= c.end)
+      .map((c) => rentForMonth(c, month))
+      .find((r) => r !== undefined);
+    const expected =
+      rent === undefined
+        ? apartment.contrattoMensile
+        : cents(rent.monthlyRent + rent.monthlyAdvance);
+    if (expected === undefined) continue;
     const actual = total(
       tenancies
         .filter((tenancy) => isPresent(tenancy, month))
         .map((tenancy) => tenancy.monthlyRent + tenancy.monthlyForfait),
     );
-    if (actual === expected || seen.has(actual)) continue;
-    seen.add(actual);
+    const key = `${expected}/${actual}`;
+    if (actual === expected || seen.has(key)) continue;
+    seen.add(key);
     warnings.push({ code: 'contratto-mensile', expected, actual });
   }
   return warnings;

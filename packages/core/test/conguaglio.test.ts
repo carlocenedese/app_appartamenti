@@ -696,6 +696,93 @@ describe('Step 3c: flat charge (R4)', () => {
     expect(row(result, 'a').spese).toBe(10000);
   });
 
+  // R34 on the contract's rent history (user1's answer to question 2 of plan 7, R180).
+  const lease = (overrides: Record<string, unknown> = {}) =>
+    ContractSchema.parse({
+      id: 'c1',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt',
+      type: '1+1',
+      start: '2026-10',
+      end: '2027-09',
+      settlement: 'annuale',
+      rent: [
+        { from: '2026-10', monthlyRent: 180000, monthlyAdvance: 10000 },
+        { from: '2027-01', monthlyRent: 190000, monthlyAdvance: 10000 },
+      ],
+      ...overrides,
+    });
+  const entry = (from: string, monthlyRent: number) => [
+    { from, monthlyRent, monthlyAdvance: 10000 },
+  ];
+
+  it('checks each month against the rent of the live contract covering it (R34)', () => {
+    // The renewal in 2027-01 adds up to the tenancies: one warning, for the months before it.
+    const result = calc({
+      apartment: apartment({ posti: 5, contrattoMensile: cents(150000) }),
+      tenancies: berchet,
+      contracts: [lease()],
+    });
+    expect(result.warnings).toEqual([
+      { code: 'contratto-mensile', expected: 190000, actual: 200000 },
+    ]);
+  });
+
+  it('falls back to contrattoMensile outside the contracts and their rent (R34)', () => {
+    const result = calc({
+      apartment: apartment({ posti: 5, contrattoMensile: cents(150000) }),
+      tenancies: berchet,
+      contracts: [
+        lease({ start: '2026-11', rent: entry('2026-12', 190000) }),
+        lease({ id: 'gone', deleted: true, rent: entry('2026-10', 1) }),
+        lease({ id: 'other', apartmentId: 'lovarini' }),
+      ],
+    });
+    // 2026-10 outside c1 and 2026-11 before its first entry: both contrattoMensile, one warning.
+    expect(result.warnings).toEqual([
+      { code: 'contratto-mensile', expected: 150000, actual: 200000 },
+    ]);
+  });
+
+  it('on the same start the first id wins; an older contract when the latest has no entry', () => {
+    const tie = calc({
+      apartment: apartment({ posti: 5 }),
+      tenancies: berchet,
+      contracts: [
+        lease({ id: 'c2', rent: entry('2026-10', 1) }),
+        lease({ id: 'c1', rent: entry('2026-10', 170000) }),
+      ],
+    });
+    expect(tie.warnings).toEqual([{ code: 'contratto-mensile', expected: 180000, actual: 200000 }]);
+    const older = calc({
+      apartment: apartment({ posti: 5, contrattoMensile: cents(150000) }),
+      tenancies: berchet,
+      contracts: [
+        lease({ id: 'new', start: '2026-10', rent: entry('2027-01', 190000) }),
+        lease({ id: 'old', start: '2026-09', rent: entry('2026-09', 170000) }),
+      ],
+    });
+    // 2026-10..12: `new` has no entry yet, so `old` (180000); from 2027-01 `new` (200000).
+    expect(older.warnings).toEqual([
+      { code: 'contratto-mensile', expected: 180000, actual: 200000 },
+    ]);
+  });
+
+  it('takes the contract with the latest start when two live ones cover a month (R34)', () => {
+    const result = calc({
+      apartment: apartment({ posti: 5 }),
+      tenancies: berchet,
+      contracts: [
+        lease({ rent: entry('2026-10', 170000) }),
+        lease({ id: 'c0', start: '2026-09', rent: entry('2026-09', 1) }),
+      ],
+    });
+    expect(result.warnings).toEqual([
+      { code: 'contratto-mensile', expected: 180000, actual: 200000 },
+    ]);
+  });
+
   it('Lovarini: one period for the whole contract with two takeovers', () => {
     const lovarini = apartment({
       posti: 4,
