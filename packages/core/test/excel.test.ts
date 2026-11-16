@@ -101,6 +101,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       'Totale',
       undefined,
       'Voci in attesa di pagamento',
+      'Tipo',
       'Acqua',
     ]);
     expect(rows.find((r) => r[0] === 'Gas')?.[6]).toBe('assunta, non verificata');
@@ -246,15 +247,18 @@ describe('buildConguaglioWorkbook on the fixture', () => {
 
   it('lists the pending items at the bottom of the bills, with no amount (question 6)', () => {
     const rows = get('Bollette')?.rows ?? [];
-    expect(rows.slice(-3)).toEqual([
+    const t = (value: string) => ({ kind: 'text', value });
+    expect(rows.slice(-4)).toEqual([
       [],
-      [{ kind: 'text', value: 'Voci in attesa di pagamento' }],
+      [t('Voci in attesa di pagamento')],
+      [t('Tipo'), t('Fornitore'), null, t('Periodo dal'), t('Periodo al'), t('Motivo')],
       [
-        { kind: 'text', value: 'Acqua' },
-        { kind: 'text', value: 'Acqua Esempio' },
+        t('Acqua'),
+        t('Acqua Esempio'),
         null,
         { kind: 'date', value: '2027-04-01' },
         { kind: 'date', value: '2027-06-30' },
+        t('in attesa di pagamento'),
       ],
     ]);
   });
@@ -323,9 +327,22 @@ describe('buildConguaglioWorkbook variants', () => {
     const rows = rowsOf(sheets(input).get('Bollette'));
     expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 2']);
     expect(rows.slice(-2)).toEqual([
-      ['Condominio', null, null, '2026-10-01', '2027-01-31'],
-      ['Acqua', 'Acqua Esempio', null, '2027-04-01', '2027-06-30'],
+      ['Condominio', null, null, '2026-10-01', '2027-01-31', 'in attesa di pagamento'],
+      ['Acqua', 'Acqua Esempio', null, '2027-04-01', '2027-06-30', 'in attesa di pagamento'],
     ]);
+  });
+
+  it('gives the reason of a pending item (D15)', () => {
+    const motivo = (change: (i: ExcelInput['instalments'][number]) => void) => {
+      const input = fixtureInput();
+      const cond = input.instalments.find((i) => i.id === 'inst-cond-1');
+      if (cond === undefined) throw new Error('no instalment');
+      change(cond);
+      const rows = rowsOf(sheets(input).get('Bollette'));
+      return rows.find((r) => r[0] === 'Condominio' && r.length === 6)?.[5];
+    };
+    expect(motivo((i) => (i.rata = cents(31000)))).toBe('importo diverso');
+    expect(motivo((i) => (i.quotaProprieta = cents(120000)))).toBe('quota maggiore della rata');
   });
 
   it('leaves out unconfirmed and deleted settlement payments', () => {
@@ -589,7 +606,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      'bc626294435dd883ea42ab56777eef136974be1e98d2d845505012aabc237db0',
+      'f1c08035e4aedea488a253b1338e7f729d9cc012f96f88c94aff79939dfc429e',
     );
   });
 });

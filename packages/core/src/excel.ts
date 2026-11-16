@@ -294,6 +294,12 @@ const CATEGORY_LABELS: Record<CostCategory, string> = {
   condominio: 'Condominio',
 };
 
+const PENDING_REASONS: Record<string, string> = {
+  '': 'in attesa di pagamento',
+  'importo diverso': 'importo diverso',
+  'parte della proprietà maggiore della rata': 'quota maggiore della rata',
+};
+
 const SOURCE_LABELS: Record<Payment['source'], string> = {
   csv: 'estratto conto',
   manual: 'a mano',
@@ -409,6 +415,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     supplier?: string;
     from: ISODate;
     to: ISODate;
+    reason?: string;
   }
   const pending = result.pending.flatMap((p): PendingRow[] => {
     if (p.itemType === 'bill') {
@@ -422,6 +429,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
               supplier: b.supplier,
               from: b.periodStart,
               to: b.periodEnd,
+              ...(p.reason === undefined ? {} : { reason: p.reason }),
             },
           ];
     }
@@ -434,6 +442,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
             category: i.kind,
             from: isoDate(`${i.coversFrom}-01`),
             to: lastDayOfMonth(i.coversTo),
+            ...(p.reason === undefined ? {} : { reason: p.reason }),
           },
         ];
   });
@@ -445,7 +454,11 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
         rank(a.category) - rank(b.category) ||
         compareText(a.id, b.id),
     );
-    bollette.push([], [text('Voci in attesa di pagamento')]);
+    bollette.push(
+      [],
+      [text('Voci in attesa di pagamento')],
+      ['Tipo', 'Fornitore', undefined, 'Periodo dal', 'Periodo al', 'Motivo'].map(text),
+    );
     for (const p of pending) {
       bollette.push([
         text(CATEGORY_LABELS[p.category]),
@@ -453,6 +466,8 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
         null,
         date(p.from),
         date(p.to),
+        // D15, R179: the reason of `calcConguaglio`, in the words of user1.
+        text(PENDING_REASONS[p.reason ?? ''] ?? p.reason),
       ]);
     }
   }
