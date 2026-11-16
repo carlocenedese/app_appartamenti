@@ -1643,6 +1643,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         status: 'ok',
         pairs: [{ creditorApartmentId: 'lovarini', debtorApartmentId: 'berchet', items: 2 }],
         toSplit: 0,
+        toSplitImu: 0,
         unverified: 0,
       });
 
@@ -1772,6 +1773,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         status: 'ok',
         pairs: [{ creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', items: 4 }],
         toSplit: 0,
+        toSplitImu: 0,
         unverified: 0,
       });
       noData(plain.out);
@@ -1987,6 +1989,297 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       expect([changed.code, changed.json.reason]).toEqual([1, 'unknown-proposal']);
       expect(snapshot(s.dir)).toEqual(snap3);
       noData(outs.join(''));
+    },
+    TIMEOUT,
+  );
+});
+
+describe('pnpm estratti IMU (piano 3d)', () => {
+  /** No invented amount of the IMU fixture in `text` (R107). */
+  const noAmounts = (text) => {
+    expect(text).not.toMatch(/(?<![0-9a-f-])(60000|40000|100000|101001|1001)(?![0-9a-f-])/);
+    expect(text).not.toMatch(/[0-9],[0-9]{2}/);
+    expect(scanText(text)).toEqual([]);
+  };
+  const atteso = (s, apartmentId, ...extra) => [
+    'imu-atteso',
+    ...s.common,
+    '--appartamento',
+    apartmentId,
+    '--anno',
+    '2026',
+    '--gruppo',
+    'berchet-lovarini',
+    ...extra,
+  ];
+
+  it(
+    'imu-atteso: salva, la seconda volta non scrive, rifiuti 1, argomenti 2, annullabile',
+    async () => {
+      const s = await treConti();
+      const outs = [];
+      const run = (args) => {
+        const r = cli(args);
+        outs.push(r.out);
+        return r;
+      };
+      const snap = snapshot(s.dir);
+      for (const bad of [
+        atteso(s, 'berchet'),
+        atteso(s, 'berchet', '--rata', '1:abc'),
+        atteso(s, 'berchet', '--rata', 'x'),
+        atteso(s, 'berchet', '--rata', '1:600,00:2026-13-01'),
+        atteso(s, 'berchet', '--rata', '1:600,00:2026-06-16:x'),
+        atteso(s, 'berchet', '--rata', '1', '--totale', 'abc'),
+        atteso(s, 'berchet', '--rata', '1', 'x'),
+        atteso(s, 'berchet', '--rata', '1', '--dettagli'),
+        [...atteso(s, 'berchet', '--rata', '1'), '--anno', '26'],
+        ['imu-atteso', ...s.common, '--appartamento', 'berchet', '--anno', '2026', '--rata', '1'],
+        ['riconcilia', ...s.common, '--gruppo', 'x'],
+        ['riconcilia', ...s.common, '--rata', '1'],
+      ]) {
+        expect([bad, run(bad).code]).toEqual([bad, 2]);
+      }
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const saved = run(atteso(s, 'berchet', '--rata', '1:600,00', '--rata', '2::2026-12-16'));
+      expect(saved.code).toBe(0);
+      expect(saved.json).toEqual({
+        status: 'saved',
+        imuYearId: 'imu-berchet-2026',
+        operationId: saved.json.operationId,
+      });
+      const file = join(s.dir, '_app', 'dati', 'imuYear', 'imu-berchet-2026.json');
+      expect(JSON.parse(readFileSync(file, 'utf8')).rates).toEqual([
+        { index: 1, expected: 60000 },
+        { index: 2, dueDate: '2026-12-16' },
+      ]);
+      const snap2 = snapshot(s.dir);
+      const again = run(atteso(s, 'berchet', '--rata', '1:600,00', '--rata', '2::2026-12-16'));
+      expect([again.code, again.json]).toEqual([
+        0,
+        { status: 'unchanged', imuYearId: 'imu-berchet-2026' },
+      ]);
+      expect(snapshot(s.dir)).toEqual(snap2);
+
+      const three = run(atteso(s, 'lovarini', '--rata', '1', '--rata', '2', '--rata', '3'));
+      expect([three.code, three.json.reason]).toEqual([1, 'rates-mismatch']);
+      const nobody = run(atteso(s, 'nessuno', '--rata', '1', '--rata', '2'));
+      expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-apartment']);
+      const zero = run(atteso(s, 'lovarini', '--rata', '1:0,00', '--rata', '2'));
+      expect([zero.code, zero.json.reason]).toEqual([1, 'bad-rates']);
+      const total = run(atteso(s, 'lovarini', '--totale', '700,00', '--rata', '1', '--rata', '2'));
+      expect(total.code).toBe(0);
+      expect(snapshot(s.dir)).not.toEqual(snap2);
+
+      const undo = run([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        total.json.operationId,
+      ]);
+      expect(undo.code).toBe(0);
+      expect(
+        JSON.parse(
+          readFileSync(join(s.dir, '_app', 'dati', 'imuYear', 'imu-lovarini-2026.json'), 'utf8'),
+        ).deleted,
+      ).toBe(true);
+      noAmounts(outs.join(''));
+    },
+    TIMEOUT,
+  );
+
+  /** treConti with the F24 pattern, the IMU of 2027 for Berchet and Lovarini, two F24 in June. */
+  async function imuSetup(outs) {
+    const s = await treConti({ f24Pattern: '^PAGAMENTO F24\\b' });
+    const run = (args) => {
+      const r = cli(args);
+      outs.push(r.out);
+      return r;
+    };
+    const rates = ['--rata', '1:600,00', '--rata', '2:600,00'];
+    for (const [apartmentId, amounts] of [
+      ['berchet', rates],
+      ['lovarini', ['--rata', '1:400,00', '--rata', '2:400,00']],
+    ]) {
+      const args = atteso(s, apartmentId, ...amounts).map((a) => (a === '2026' ? '2027' : a));
+      expect(run(args).code).toBe(0);
+    }
+    const csv = [
+      incomeHeader,
+      '14/06/2027;PAGAMENTO F24 DELEGA 0001;;1.000,00;D;;',
+      '20/06/2027;PAGAMENTO F24 DELEGA 0002;;1.010,01;D;;',
+    ].join('\n');
+    const imported = run([
+      'importa',
+      ...s.common,
+      '--conto',
+      'acc-berchet',
+      '--dal',
+      '2027-06-01',
+      '--al',
+      '2027-06-30',
+      write('giugno.csv', `${csv}\n`),
+    ]);
+    expect(imported.code).toBe(0);
+    const proposals = run(['riconcilia', ...s.common]).json.outgoing.proposals.filter(
+      (p) => p.step === 'f24',
+    );
+    expect(proposals.map((p) => p.reason)).toEqual(['f24', 'f24']);
+    const [first, second] = proposals.map((p) => p.id.replace(/^p-f24-/, ''));
+    return { ...s, run, first, second, statementId: imported.json.statementId };
+  }
+  const f24 = (s, movement, rata, ...extra) => [
+    'imu-f24',
+    ...s.common,
+    '--movimento',
+    movement,
+    '--gruppo',
+    'berchet-lovarini',
+    '--anno',
+    '2027',
+    '--rata',
+    rata,
+    ...extra,
+  ];
+
+  it(
+    'imu-f24: assegna, rifiuti 1, argomenti 2, annulla dell’estratto rifiutato, annullabile',
+    async () => {
+      const outs = [];
+      const s = await imuSetup(outs);
+      const snap = snapshot(s.dir);
+      for (const bad of [
+        f24(s, s.first, 'x'),
+        f24(s, s.first, '0'),
+        f24(s, s.first, '1', '--rata', '2'),
+        f24(s, s.first, '1', 'x'),
+        f24(s, s.first, '1', '--totale', '1,00'),
+        f24(s, s.first, '1').filter((a) => a !== '--gruppo' && a !== 'berchet-lovarini'),
+        f24(s, s.first, '1').map((a) => (a === '2027' ? '27' : a)),
+      ]) {
+        expect([bad, s.run(bad).code]).toEqual([bad, 2]);
+      }
+      const unknown = s.run(f24(s, s.first, '3'));
+      expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-rate']);
+      const none = s.run(f24(s, 'tx-nessuno', '1'));
+      expect([none.code, none.json.reason]).toEqual([1, 'not-imu-candidate']);
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const assigned = s.run(f24(s, s.first, '1'));
+      expect(assigned.code).toBe(0);
+      expect(assigned.json).toEqual({
+        status: 'assigned',
+        operationId: assigned.json.operationId,
+        classId: `mc-${s.first}`,
+      });
+      const snapAssigned = snapshot(s.dir);
+      const same = s.run(f24(s, s.first, '1'));
+      expect([same.code, same.json]).toEqual([
+        0,
+        { status: 'unchanged', classId: `mc-${s.first}` },
+      ]);
+      expect(snapshot(s.dir)).toEqual(snapAssigned);
+      const otherRate = s.run(f24(s, s.first, '2'));
+      expect([otherRate.code, otherRate.json.reason]).toEqual([1, 'not-imu-candidate']);
+      const twice = s.run(f24(s, s.second, '1'));
+      expect([twice.code, twice.json.reason]).toEqual([1, 'rate-already-paid']);
+      const undoImport = s.run(['annulla', ...s.common, '--estratto', s.statementId]);
+      expect([undoImport.code, undoImport.json.reason, undoImport.json.recordIds]).toEqual([
+        1,
+        'dependent-records',
+        [`mc-${s.first}`],
+      ]);
+      const undo = s.run([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        assigned.json.operationId,
+      ]);
+      expect(undo.code).toBe(0);
+      expect(s.run(f24(s, s.second, '1')).code).toBe(0);
+      noAmounts(outs.join(''));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'imu: una rata pagata e una da riconciliare, importi solo con --dettagli; saldi con toSplitImu',
+    async () => {
+      const outs = [];
+      const s = await imuSetup(outs);
+      expect(s.run(f24(s, s.first, '1')).code).toBe(0);
+      expect(s.run(f24(s, s.second, '2')).code).toBe(0);
+      const message = 'Rata IMU da riconciliare: controllare gli importi attesi (imu-atteso).';
+      const rate = (rateIndex, status, f24Count = 1) => ({
+        f24Group: 'berchet-lovarini',
+        year: '2027',
+        rateIndex,
+        status,
+        f24: f24Count,
+        ...(status === 'da-riconciliare' ? { message } : {}),
+      });
+      const plain = s.run(['imu', ...s.common]);
+      expect(plain.code).toBe(0);
+      expect(plain.json).toEqual({
+        status: 'ok',
+        rates: [rate(1, 'pagata'), rate(2, 'da-riconciliare')],
+        toReconcile: 1,
+      });
+      expect(s.run(['imu', ...s.common, '--anno', '2026']).json).toEqual({
+        status: 'ok',
+        rates: [],
+        toReconcile: 0,
+      });
+      for (const bad of [
+        ['imu', ...s.common, '--anno', '26'],
+        ['imu', ...s.common, 'x'],
+        ['imu', ...s.common, '--rata', '1'],
+      ]) {
+        expect([bad, s.run(bad).code]).toEqual([bad, 2]);
+      }
+      const saldi = s.run(['saldi', ...s.common]);
+      expect(saldi.json).toMatchObject({ status: 'ok', toSplit: 2, toSplitImu: 2 });
+      noAmounts(outs.join(''));
+
+      const details = cli(['imu', ...s.common, '--dettagli']);
+      expect(details.json.rates).toEqual([
+        {
+          ...rate(1, 'pagata'),
+          expected: 100000,
+          paid: 100000,
+          difference: 0,
+          transactionId: s.first,
+        },
+        {
+          ...rate(2, 'da-riconciliare'),
+          expected: 100000,
+          paid: 101001,
+          difference: 1001,
+          transactionId: s.second,
+        },
+      ]);
+      const reasons = cli(['saldi', ...s.common, '--dettagli']).json.toSplit.map((t) => [
+        t.transactionId,
+        t.imu.rateIndex,
+        t.imu.reason,
+      ]);
+      expect(reasons).toEqual([
+        [s.first, 1, 'imu-da-ripartire'],
+        [s.second, 2, 'imu-da-riconciliare'],
+      ]);
+      // The expected corrected: both paid.
+      const fixed = atteso(s, 'lovarini', '--rata', '1:400,00', '--rata', '2:410,01').map((a) =>
+        a === '2026' ? '2027' : a,
+      );
+      expect(cli(fixed).code).toBe(0);
+      expect(cli(['imu', ...s.common]).json.toReconcile).toBe(0);
+      // The whole path again: nothing written.
+      const settled = snapshot(s.dir);
+      expect(cli(fixed).json.status).toBe('unchanged');
+      expect(cli(f24(s, s.first, '1')).json.status).toBe('unchanged');
+      expect(cli(f24(s, s.second, '2')).json.status).toBe('unchanged');
+      expect(snapshot(s.dir)).toEqual(settled);
     },
     TIMEOUT,
   );

@@ -94,6 +94,9 @@ export const TimestampSchema = checkedString(
 
 const NonEmptyString = z.string().min(1);
 
+/** A year as four digits, `AAAA` (text, as in the ids). */
+export const YearSchema = z.string().regex(/^[0-9]{4}$/);
+
 /** A day and month that exist every year, so February 29 is not allowed. */
 const AnnualitaStartSchema = z
   .object({
@@ -470,6 +473,14 @@ export const MovementClassSchema = RecordBaseSchema.extend({
   f24: z.literal(true).optional(),
   /** The rule that produced it, for an automatic one. */
   ruleId: NonEmptyString.optional(),
+  /** The IMU rate this F24 pays, assigned by hand (plan 3d, task 2). */
+  imu: z
+    .object({
+      f24Group: NonEmptyString,
+      year: YearSchema,
+      rateIndex: z.int().min(1),
+    })
+    .optional(),
 })
   .refine((c) => c.id === `mc-${c.transactionId}`, {
     message: 'The id must be mc-<transactionId>',
@@ -491,10 +502,15 @@ export const MovementClassSchema = RecordBaseSchema.extend({
     message: 'An exclusion never comes from a rule',
     path: ['ruleId'],
   })
+  .refine((c) => c.imu === undefined || c.f24 === true, {
+    message: 'imu only with f24',
+    path: ['imu'],
+  })
   .meta({
     description:
       'id is mc-<transactionId>. excludeReason is present if and only if kind is escluso; ' +
-      'apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with escluso.',
+      'apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with ' +
+      'escluso; imu only with f24.',
   });
 export type MovementClass = z.infer<typeof MovementClassSchema>;
 
@@ -984,6 +1000,49 @@ export const TransferSchema = RecordBaseSchema.extend({
   });
 export type Transfer = z.infer<typeof TransferSchema>;
 
+// --- IMU (plan 3d) ---------------------------------------------------------------------------
+
+const PositiveCentsSchema = z
+  .int()
+  .min(1)
+  .transform((n): Cents => cents(n));
+
+/**
+ * The IMU expected for one apartment and year (`imu-<apartmentId>-<year>`, plan 3d): one entry
+ * per rate, indices 1 to n, amounts and due dates when known (data, never computed: no fiscal
+ * rule in the code). The apartments with the same `f24Group` and `year` are paid by one F24.
+ */
+export const ImuYearSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  year: YearSchema,
+  f24Group: NonEmptyString,
+  /** The annual total, when it is the only figure known (question 10: data only). */
+  annualTotal: PositiveCentsSchema.optional(),
+  rates: z
+    .array(
+      z.object({
+        index: z.int().min(1),
+        expected: PositiveCentsSchema.optional(),
+        /** Only shown, never used for a state (question 6). */
+        dueDate: ISODateSchema.optional(),
+      }),
+    )
+    .min(1),
+})
+  .refine((y) => y.id === `imu-${y.apartmentId}-${y.year}`, {
+    message: 'The id must be imu-<apartmentId>-<year>',
+    path: ['id'],
+  })
+  .refine((y) => y.rates.every((r, i) => r.index === i + 1), {
+    message: 'The rate indices go from 1 to n, in order',
+    path: ['rates'],
+  })
+  .meta({
+    description:
+      'id is imu-<apartmentId>-<year>; rates[i].index is i + 1; amounts are positive cents.',
+  });
+export type ImuYear = z.infer<typeof ImuYearSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -1009,6 +1068,7 @@ export const recordSchemas = {
   movementClass: MovementClassSchema,
   movementRule: MovementRuleSchema,
   transfer: TransferSchema,
+  imuYear: ImuYearSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

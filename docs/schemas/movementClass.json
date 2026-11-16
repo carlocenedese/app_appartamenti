@@ -51,6 +51,29 @@
     "ruleId": {
       "type": "string",
       "minLength": 1
+    },
+    "imu": {
+      "type": "object",
+      "properties": {
+        "f24Group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "year": {
+          "type": "string",
+          "pattern": "^[0-9]{4}$"
+        },
+        "rateIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "f24Group",
+        "year",
+        "rateIndex"
+      ]
     }
   },
   "required": [
@@ -60,5 +83,5 @@
     "transactionId",
     "kind"
   ],
-  "description": "id is mc-<transactionId>. excludeReason is present if and only if kind is escluso; apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with escluso."
+  "description": "id is mc-<transactionId>. excludeReason is present if and only if kind is escluso; apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with escluso; imu only with f24."
 }

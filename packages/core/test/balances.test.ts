@@ -4,6 +4,7 @@ import {
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
+  ImuYearSchema,
   InstalmentSchema,
   MovementClassSchema,
   TransferSchema,
@@ -21,6 +22,7 @@ import type {
   BankTransaction,
   Bill,
   BillMatch,
+  ImuYear,
   Instalment,
   MatchItemRef,
   MovementClass,
@@ -146,6 +148,7 @@ const example = {
   ],
   classes: [cls('t-forn', { kind: 'altro', apartmentId: 'berchet' })],
   transfers: [transfer('tr-1')],
+  imuYears: [] as ImuYear[],
 };
 type Input = Parameters<typeof accountBalances>[0];
 const withExtra = (extra: Partial<{ [K in keyof Input]: Input[K] }>): Input => ({
@@ -278,6 +281,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
         cls('t-rimb', { kind: 'utenze', apartmentId: 'lovarini' }),
       ],
       transfers: [],
+      imuYears: [],
     });
     expect(result.pairs).toEqual([
       {
@@ -381,6 +385,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
       transactions: [tx('t-l', 'acc-lovarini', '2027-01-05', -1000)],
       classes: [cls('t-l', { kind: 'altro', apartmentId: 'berchet' })],
       transfers: [back],
+      imuYears: [],
     });
     expect(result.pairs).toEqual([
       {
@@ -529,6 +534,62 @@ describe('accountBalances (plan 3c, task 9)', () => {
       Object.entries(input).map(([k, v]) => [k, [...(v as unknown[])].reverse()]),
     ) as unknown as Input;
     expect(accountBalances(shuffled)).toEqual(accountBalances(input));
+  });
+});
+
+describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () => {
+  const imuYear = (apartmentId: string, expected: number) =>
+    ImuYearSchema.parse({
+      ...base,
+      id: `imu-${apartmentId}-2027`,
+      apartmentId,
+      year: '2027',
+      f24Group: 'berchet-lovarini',
+      rates: [{ index: 1, expected }, { index: 2 }],
+    });
+  const imu = (rateIndex: number) => ({
+    kind: 'tasse',
+    f24: true,
+    apartmentId: 'berchet',
+    imu: { f24Group: 'berchet-lovarini', year: '2027', rateIndex },
+  });
+  const run = (
+    paid: number,
+    rateIndex = 1,
+    imuYears = [imuYear('berchet', 60000), imuYear('lovarini', 40000)],
+  ) =>
+    accountBalances(
+      withExtra({
+        transactions: [
+          tx('t-imu', 'acc-berchet', '2027-06-14', -paid),
+          tx('t-f24', 'acc-berchet', '2027-06-16', -12000),
+        ],
+        classes: [
+          cls('t-imu', imu(rateIndex)),
+          cls('t-f24', { kind: 'tasse', f24: true, apartmentId: 'berchet' }),
+        ],
+        imuYears,
+      }),
+    );
+  const split = (reason: string, rateIndex = 1) => [
+    {
+      transactionId: 't-imu',
+      apartmentId: 'berchet',
+      date: '2027-06-14',
+      imu: { f24Group: 'berchet-lovarini', year: '2027', rateIndex, reason },
+    },
+    { transactionId: 't-f24', apartmentId: 'berchet', date: '2027-06-16' },
+  ];
+
+  it('an assigned F24 stays in toSplit with the reason of its rate, never in the net', () => {
+    const paid = run(100000);
+    expect(paid.toSplit).toEqual(split('imu-da-ripartire'));
+    expect(paid.pairs).toEqual(accountBalances(example).pairs);
+    expect(run(101001).toSplit).toEqual(split('imu-da-riconciliare'));
+    expect(run(100000, 2).toSplit).toEqual(split('imu-importo-mancante', 2));
+    // Its rate gone (the expected undone): no expected known.
+    expect(run(100000, 1, []).toSplit).toEqual(split('imu-importo-mancante'));
+    expect(run(100000, 1, []).pairs).toEqual(accountBalances(example).pairs);
   });
 });
 

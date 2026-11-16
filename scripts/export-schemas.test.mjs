@@ -26,6 +26,7 @@ describe('writeJsonSchemas', () => {
       'bill',
       'contract',
       'extractionResult',
+      'imuYear',
       'instalment',
       'match',
       'movementClass',

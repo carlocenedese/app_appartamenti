@@ -72,6 +72,9 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | gamba                 | leg                              | uno dei due movimenti di un giroconto (uscita o entrata)                                              |
 | saldo tra conti       | account balance                  | chi deve a chi tra gli appartamenti, con le voci                                                      |
 | F24                   | F24                              | modello di pagamento delle imposte: sempre da confermare, mai automatico                              |
+| rata IMU              | IMU instalment (`rates`)         | una rata di un anno IMU di un gruppo F24: `(f24Group, year, rateIndex)`                               |
+| gruppo F24            | F24 group (`f24Group`)           | gli appartamenti pagati dallo stesso F24 in un anno (testo negli `imuYear`)                           |
+| importo atteso        | expected amount (`expected`)     | quanto si prevede di pagare per una rata, dal prospetto: un dato, mai calcolato                       |
 
 ## Dati e registro
 
