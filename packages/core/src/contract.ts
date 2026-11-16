@@ -61,7 +61,10 @@ export type ContractCheckCode =
   | 'unknown-deposit'
   | 'deposit-other-tenant'
   | 'rent-differs'
-  | 'contract-overlap';
+  | 'contract-overlap'
+  | 'takeover-unlinked'
+  | 'takeover-dates'
+  | 'payment-after-end';
 
 export interface ContractCheck {
   code: ContractCheckCode;
@@ -138,6 +141,55 @@ export function contractChecks(input: {
         out.push({ code: 'unknown-deposit', contractId, paymentId });
       } else if (!tenants.has(payment.tenantId)) {
         out.push({ code: 'deposit-other-tenant', contractId, paymentId });
+      }
+    }
+    // Plan 11: takeovers written by hand or left by a later `contratto` without them.
+    for (const t of contract.takeovers ?? []) {
+      const at = { contractId, tenancyId: t.inTenancyId, from: t.month };
+      const ids = contract.tenancyIds ?? [];
+      if (!ids.includes(t.outTenancyId) || !ids.includes(t.inTenancyId)) {
+        out.push({ code: 'takeover-unlinked', ...at });
+        continue;
+      }
+      const leaving = tenancies.get(t.outTenancyId);
+      const entering = tenancies.get(t.inTenancyId);
+      if (
+        leaving === undefined ||
+        entering === undefined ||
+        entering.from !== t.month ||
+        leaving.to !== addMonths(t.month, -1)
+      ) {
+        out.push({ code: 'takeover-dates', ...at });
+      }
+    }
+    // Plan 11: a confirmed rent for a month after the end of a linked stay, with no other stay of
+    // the tenant in the apartment that month: a warning only (question 13 of the design).
+    for (const tenancy of linked) {
+      if (tenancy.to === undefined) continue;
+      const end = tenancy.to;
+      for (const payment of payments.values()) {
+        const month = payment.forMonth ?? (payment.date.slice(0, 7) as YearMonth);
+        if (
+          payment.kind === 'canone' &&
+          payment.confirmed &&
+          payment.tenantId === tenancy.tenantId &&
+          payment.apartmentId === tenancy.apartmentId &&
+          month > end &&
+          ![...tenancies.values()].some(
+            (o) =>
+              o.tenantId === tenancy.tenantId &&
+              o.apartmentId === tenancy.apartmentId &&
+              isPresent(o, month),
+          )
+        ) {
+          out.push({
+            code: 'payment-after-end',
+            contractId,
+            tenancyId: tenancy.id,
+            paymentId: payment.id,
+            from: month,
+          });
+        }
       }
     }
   }

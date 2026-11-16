@@ -4084,6 +4084,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       ['fine-presenza', ...s.common, '--presenza', 'tcy-anna'],
       ['subentro', ...s.common, '--presenza', 'tcy-anna', '--mese', '2026-02'],
       restituzione(s, '--tasso', '2025'),
+      restituzione(s, '--tasso', '2025:3'),
       restituzione(s, '--addebito', 'senza-importo'),
       ['caparra-restituzione', ...s.common, '--appartamento', 'pulci'],
       ['stato-contratti', ...s.common, '--posto', 'A'],
@@ -4099,5 +4100,31 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       '2026-06',
     ]);
     expect([end.code, end.json.status]).toEqual([0, 'saved']);
+    // After a takeover, `contratto` without the tenancies of the takeover is refused.
+    expect((await run(subentro(s))).json.status).toBe('saved');
+    const contratto = (...extra) => [
+      'contratto',
+      ...s.common,
+      '--id',
+      'ctr-pulci',
+      '--appartamento',
+      'pulci',
+      '--tipo',
+      '1+1',
+      '--inizio',
+      '2025-10',
+      '--fine',
+      '2026-09',
+      '--conguaglio',
+      'annuale',
+      ...extra,
+    ];
+    const dropped = await run(contratto());
+    expect([dropped.code, dropped.json.reason, dropped.json.message]).toEqual([
+      1,
+      'takeover-unlinked',
+      'Rifiutato: il contratto ha un subentro: ripetere --presenze con le presenze del subentro.',
+    ]);
+    expect((await run(contratto('--presenze', 'tcy-anna,tcy-bruno'))).code).toBe(0);
   });
 });

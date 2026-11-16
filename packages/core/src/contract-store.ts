@@ -40,7 +40,8 @@ export type SaveContractResult =
         | 'unknown-apartment'
         | 'unknown-tenancy'
         | 'unknown-deposit'
-        | 'rent-outside-contract';
+        | 'rent-outside-contract'
+        | 'takeover-unlinked';
     };
 
 export interface SetContractRentInput {
@@ -105,7 +106,8 @@ async function write(
  * without `taxRegime: 'cedolare'`, a repeated id, ...); `unknown-apartment`
  * (absent or deleted); `unknown-tenancy` (a `tenancyIds` entry is not a live tenancy of the same
  * apartment); `unknown-deposit` (a `depositPaymentIds` entry is not a live `caparra` payment of
- * the same apartment); `rent-outside-contract` (the new dates leave a rent entry out). The dates
+ * the same apartment); `rent-outside-contract` (the new dates leave a rent entry out);
+ * `takeover-unlinked` (plan 11: a tenancy of a stored takeover is not in the new `tenancyIds`). The dates
  * of the tenancies are not checked here: a tenancy outside them is saved and shows in the checks.
  */
 export async function saveContract(
@@ -143,6 +145,14 @@ export async function saveContract(
   const rent = before?.rent;
   if (!rentHistoryValid({ ...input, rent })) return refuse('rent-outside-contract');
   const takeovers = before?.takeovers;
+  // Plan 11: a takeover keeps both its tenancies linked; repeat them in `tenancyIds`.
+  const ids = new Set(input.tenancyIds ?? []);
+  if (
+    before?.deleted !== true &&
+    (takeovers ?? []).some((t) => !ids.has(t.outTenancyId) || !ids.has(t.inTenancyId))
+  ) {
+    return refuse('takeover-unlinked');
+  }
   const after = parseOrThrow(
     ContractSchema,
     {

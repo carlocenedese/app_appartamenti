@@ -11,6 +11,7 @@ import {
   recordTakeover,
   saveTenancy,
   undoBlockedBy,
+  settlementPeriods,
   undoOperation,
   yearMonth,
 } from '../src/index';
@@ -304,7 +305,117 @@ describe('endTenancy (plan 11, task 2)', () => {
   });
 });
 
+describe('a shorter stay and the recoveries (plan 11, review)', () => {
+  async function twoYears() {
+    const store = new MemoryStore();
+    const apt = {
+      ...base,
+      id: 'berchet',
+      name: 'berchet',
+      locatore: 'user1',
+      posti: 1,
+      annualitaStart: { month: 10, day: 1 },
+    };
+    const ctr = {
+      ...base,
+      id: 'ctr-b',
+      apartmentId: 'berchet',
+      type: '1+1',
+      start: '2025-10',
+      end: '2027-09',
+      settlement: 'annuale',
+      tenancyIds: ['tcy-a'],
+    };
+    await seed(store, 'apartment', [apt], 's1');
+    await seed(
+      store,
+      'tenant',
+      [
+        { ...base, id: 'ten-anna', name: 'ten-anna' },
+        { ...base, id: 'ten-bruno', name: 'ten-bruno' },
+      ],
+      's2',
+    );
+    await seed(
+      store,
+      'tenancy',
+      [tenancy('tcy-a', { apartmentId: 'berchet', room: undefined, to: '2027-09' })],
+      's3',
+    );
+    await seed(store, 'contract', [ctr], 's4');
+    const second = settlementPeriods(ContractSchema.parse(ctr), apt.annualitaStart)[1]?.label;
+    return { store, second };
+  }
+  const recovery = (periodLabel: string | undefined, status = 'da-recuperare') => ({
+    ...base,
+    id: 'rec-1',
+    apartmentId: 'berchet',
+    instalmentId: 'str-1',
+    amount: 2000,
+    shares: [{ tenantId: 'ten-anna', amount: 2000 }],
+    status,
+    periodLabel,
+  });
+
+  it('refuses has-recoveries when the tenant would be absent from the recovery period', async () => {
+    const { store, second } = await twoYears();
+    await seed(store, 'tenantRecovery', [recovery(second)], 'r');
+    const before = await snapshot(store);
+    const end = (prefix: string) =>
+      endTenancy(
+        store,
+        { tenancyId: 'tcy-a', lastMonth: yearMonth('2026-05') },
+        'p1',
+        clock,
+        ids(prefix),
+      );
+    expect(await end('e')).toEqual({ status: 'refused', reason: 'has-recoveries' });
+    const take = takeover({ outTenancyId: 'tcy-a', lastMonth: yearMonth('2026-05') });
+    expect(await recordTakeover(store, take, 'p1', clock, ids('t'))).toEqual({
+      status: 'refused',
+      reason: 'has-recoveries',
+    });
+    expect(await snapshot(store)).toEqual(before);
+    // Still present in the period (ends in it): allowed.
+    expect(
+      await endTenancy(
+        store,
+        { tenancyId: 'tcy-a', lastMonth: yearMonth('2026-12') },
+        'p1',
+        clock,
+        ids('f'),
+      ),
+    ).toMatchObject({ status: 'saved' });
+  });
+
+  it('a non-recuperabile recovery or one without a period does not block', async () => {
+    for (const r of [recovery(undefined), recovery('2026-27', 'non-recuperabile')]) {
+      const { store } = await twoYears();
+      await seed(store, 'tenantRecovery', [r], 'r');
+      expect(
+        await endTenancy(
+          store,
+          { tenancyId: 'tcy-a', lastMonth: yearMonth('2026-05') },
+          'p1',
+          clock,
+          ids('e'),
+        ),
+      ).toMatchObject({ status: 'saved' });
+    }
+  });
+});
+
 describe('recordTakeover (plan 11, task 2)', () => {
+  it('an incoming tenancy after the end of the contract is invalid-tenancy', async () => {
+    const store = await fixtureStore();
+    await saveTenancy(store, arrival({ to: undefined }), 'p1', clock, ids('a'));
+    const take = takeover({ outTenancyId: 'tcy-carla', lastMonth: yearMonth('2026-09') });
+    expect(await recordTakeover(store, take, 'p1', clock, ids('t'))).toEqual({
+      status: 'refused',
+      reason: 'invalid-tenancy',
+    });
+  });
+
   it('ends the outgoing tenancy, starts the incoming one, records it in the contract', async () => {
     const store = await fixtureStore();
     expect(await recordTakeover(store, takeover(), 'p1', clock, ids('t'))).toEqual({
@@ -407,6 +518,44 @@ describe('undoing the tenancy operations (plan 11, task 2)', () => {
     // Undoing the arrival first frees the room.
     await undoOperation(store, 'a-1', 'p1', clock, ids('u'));
     expect(await undoBlockedBy(store, 'e-1')).toEqual([]);
+  });
+
+  it('an undo that would put a tenancy in a room that no longer exists is blocked by it', async () => {
+    const store = await fixtureStore();
+    const [anna] = await tenancies(store);
+    await saveTenancy(
+      store,
+      {
+        ...arrival({ id: 'tcy-anna', tenantId: 'ten-anna', room: 'B', from: yearMonth('2025-10') }),
+        to: yearMonth('2026-09'),
+        contractId: undefined,
+      },
+      'p1',
+      clock,
+      ids('r'),
+    );
+    expect(anna?.room).toBe('A');
+    const apt = (await loadAll(store, 'apartment', recordSchemas.apartment)).records.find(
+      (a) => a.id === 'pulci',
+    );
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'Dati di prova.',
+        changes: [
+          {
+            path: recordPath('apartment', 'pulci'),
+            before: apt,
+            after: recordSchemas.apartment.parse({ ...apt, rev: 2, rooms: ['B', 'C'] }),
+          },
+        ],
+      },
+      clock,
+      ids('z'),
+    );
+    expect(await undoBlockedBy(store, 'r-1')).toEqual(['tcy-anna']);
   });
 
   it('a payment or a recovery of the only stay blocks the undo of its creation', async () => {

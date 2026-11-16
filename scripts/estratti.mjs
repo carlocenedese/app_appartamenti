@@ -237,6 +237,10 @@ const MESSAGES = {
     'Rifiutato: con questa presenza il conguaglio non si può calcolare (posto occupato, posto sconosciuto, troppi inquilini o inquilino presente due volte).',
   'tenancy-has-dependents':
     'Rifiutato: versamenti, recuperi o presenze nello stesso posto dipendono da questa operazione: annullarli prima.',
+  'takeover-unlinked':
+    'Rifiutato: il contratto ha un subentro: ripetere --presenze con le presenze del subentro.',
+  'has-recoveries':
+    'Rifiutato: l’inquilino ha un recupero in un periodo in cui non sarebbe più presente: correggere prima il recupero.',
   'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
   'no-deposit': 'Rifiutato: nessuna caparra versata da questo inquilino in questo appartamento.',
   'already-returned': 'Rifiutato: la caparra risulta già restituita.',
@@ -1723,6 +1727,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (found === null) throw invalid('bad-arguments');
       return { year: Number(found[1]), rateBp: basisPoints(found[2]) };
     });
+    if (new Set(rates.map((r) => r.year)).size !== rates.length) throw invalid('bad-arguments');
     const extraCharges = (values.addebito ?? []).map((text) => {
       const at = text.lastIndexOf(':');
       if (at < 1) throw invalid('bad-arguments');

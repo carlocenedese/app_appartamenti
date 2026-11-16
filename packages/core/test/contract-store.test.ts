@@ -200,7 +200,15 @@ describe('saveContract (plan 7, task 2)', () => {
     expect(await save(store, contract({ tenancyIds: ['tcy-a', 'tcy-b'] }))).toMatchObject({
       status: 'saved',
     });
-    expect((await contracts(store))[0]?.takeovers).toEqual(takeovers);
+    expect((await contracts(store))[0]?.takeovers).toEqual(takeovers); // Leaving a tenancy of the takeover out of tenancyIds is refused, nothing written.
+    const before = await snapshot(store);
+    expect(await save(store, contract({ tenancyIds: ['tcy-a'] }), 'd')).toEqual(
+      refused('takeover-unlinked'),
+    );
+    expect(await save(store, contract({ tenancyIds: undefined }), 'e')).toEqual(
+      refused('takeover-unlinked'),
+    );
+    expect(await snapshot(store)).toEqual(before);
   });
 
   it('saves a tenancy outside the dates and leaves it unchanged (Review Focus 1)', async () => {

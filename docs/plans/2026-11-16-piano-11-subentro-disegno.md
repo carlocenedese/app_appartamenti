@@ -1,6 +1,6 @@
 # Piano 11: arrivo, subentro e uscita di un inquilino (disegno)
 
-Stato: **bozza da approvare da user1** (16 novembre 2026). Piano di implementazione:
+Stato: **scelte da confermare da user1** (16 novembre 2026; correzioni della revisione incluse). Piano di implementazione:
 `docs/plans/2026-11-16-piano-11-subentro.md`. Solo core (`packages/core`) e riga di comando
 (`pnpm estratti`); **niente schermate**. Riferimenti: `docs/spec.md` sezioni 6, 17, 26, 31 e 42 (R1, R4,
 R5, R7, che prevalgono); disegno del piano 7 (domande 7 e 8, rinviate a questo piano); R112, R113,
@@ -53,14 +53,20 @@ scrive presenze né subentri, quindi nessuna riscrittura li perde).
 | `contract` | `takeovers?` | `{ month, outTenancyId, inTenancyId }[]` | i subentri: `month` è il primo mese del subentrante; `month` non decrescente; ogni presenza esce al più una volta ed entra al più una volta, mai uguali |
 
 - `takeovers` è come `rent`: lo scrive solo il subentro, `saveContract` lo conserva e rifiuta un
-  ingresso che lo contiene (`invalid-contract`).
+  ingresso che lo contiene (`invalid-contract`). `saveContract` rifiuta anche (`takeover-unlinked`)
+  nuove `tenancyIds` senza le presenze di un subentro scritto: si ripete `--presenze` con quelle.
+- Dati scritti a mano: `contractChecks` dà `takeover-unlinked` (una presenza del subentro non è in
+  `tenancyIds`) e `takeover-dates` (il subentrante non comincia nel `month` o l'uscente non finisce il
+  mese prima, o una delle due presenze non c'è più). Solo avvisi.
 - Il subentrante è collegato al contratto (`tenancyIds`) come ogni altra presenza.
 
 ## 1. Arrivo: `saveTenancy`
 
 `saveTenancy(store, { id, apartmentId, tenantId, room?, from, to?, monthlyRent, monthlyForfait,
 expectedDeposit?, contractId? }, …)`: crea o sostituisce la presenza `id` (nuova `rev`; una cancellata
-torna viva), operazione `tenancy.save`, `summary` `Presenza salvata.`. Con `contractId` aggiunge `id` a
+torna viva), operazione `tenancy.save`, `summary` `Presenza salvata.`. Come `contratto`, sostituisce
+**tutti** i campi: uno non indicato (`room`, `to`, `expectedDeposit`) si toglie, quindi una presenza
+finita salvata di nuovo senza `--al` torna aperta (domanda 12). Con `contractId` aggiunge `id` a
 `tenancyIds` del contratto nella stessa operazione (se c'è già, il contratto non cambia).
 
 Rifiuti senza scrivere, in quest'ordine:
@@ -81,8 +87,11 @@ Stesso contenuto già scritto (e già collegato): `unchanged`, nulla scritto.
 
 `endTenancy(store, { tenancyId, lastMonth }, …)`: `to = lastMonth`, operazione `tenancy.end`,
 `Uscita registrata.`. Rifiuti: `inconsistent-store`, `unknown-tenancy`, `invalid-tenancy` (`lastMonth`
-prima di `from`). Stesso `to`: `unchanged`. Allungare una presenza passa dai controlli dei posti
-(`beds-conflict`).
+prima di `from`), `beds-conflict` (allungare una presenza passa dai controlli dei posti),
+`has-recoveries` (l'inquilino resterebbe fuori da un periodo in cui un recupero vivo, non
+`non-recuperabile` e con `periodLabel`, gli dà una quota: il conguaglio darebbe
+`recovery-tenant-absent`, R197). Stesso `to`: `unchanged`. Canoni confermati per mesi dopo il nuovo
+`to` non si rifiutano: `contractChecks` li segnala con `payment-after-end` (solo avviso, domanda 13).
 
 ## 3. Subentro: `recordTakeover`
 
@@ -98,8 +107,9 @@ monthlyForfait, expectedDeposit? } }, …)`, operazione `tenancy.takeover`, `Reg
 Rifiuti: `inconsistent-store`; `unknown-tenancy` (uscente assente o cancellata); `invalid-tenancy`
 (`lastMonth` prima di `from` o non prima del vecchio `to`, `id` non valido, importi); `unknown-tenant`;
 `same-tenant` (un cambio di posto non è un subentro); `no-contract` (l'uscente non è in esattamente un
-contratto vivo); `tenancy-exists` (`incoming.id` è già una presenza viva diversa da quella che
-scriverebbe il subentro); `beds-conflict`. La stessa richiesta già registrata: `unchanged`.
+contratto vivo); `invalid-tenancy` anche se il subentrante comincerebbe dopo la fine del contratto;
+`tenancy-exists` (`incoming.id` è già una presenza viva diversa da quella che scriverebbe il
+subentro); `beds-conflict`; `has-recoveries` (come l'uscita). La stessa richiesta già registrata: `unchanged`.
 
 **Esempio (nomi e importi inventati):** contratto `ctr-pulci` 2025-10 – 2026-09, posto «A» di Anna
 Prova (350,00 + 30,00 €) fino a 2026-09. Subentro con ultimo mese 2026-02: Anna Prova esce a 2026-02,
@@ -123,8 +133,11 @@ presenza non chiede una seconda caparra, sezione 31):
 
 `loadDepositReturn(store, { apartmentId, tenantId, from, to, rates, conguaglio, extraCharges })`:
 
-- capitale = `paid` del punto 4; rifiuti `no-deposit` (nessun versamento), `already-returned` (c'è già
-  una restituzione), `missing-rate` (manca il tasso di un anno: `legalInterest` lo dice);
+- capitale = `paid` del punto 4, cioè tutti i versamenti dell'inquilino in quell'appartamento da
+  sempre; rifiuti `no-deposit` (nessun versamento), `already-returned` (c'è già una restituzione, in
+  qualsiasi momento: una sola restituzione per inquilino e appartamento), `missing-rate` (manca il
+  tasso di un anno: `legalInterest` lo dice). Somma da sempre e restituzione unica non sono decise:
+  la lettura è prudente (rifiuto), domanda 14;
 - `interest = legalInterest(capitale, rates, from, to)`, poi `caparraReturn({ caparra, interest,
   conguaglio, extraCharges })`: righe e totale come oggi.
 - **Tutti gli ingressi sono dati di user1** (domande 1-3): le date degli interessi, i tassi legali per
@@ -151,8 +164,10 @@ inquilini collegati e i codici di `contractChecks` del contratto.
   <anno:percentuale>… --conguaglio <euro> [--addebito <etichetta:euro>]…` → di default solo `{ status:
   'ok', lines: n }`; righe e totale con `--dettagli` (importi, R107).
 - `annulla-riconciliazione` accetta `tenancy.save`, `tenancy.end`, `tenancy.takeover`.
-- Codici 0/1/2/3; messaggi costanti; nessun nome, importo o `id` di presenza o pagamento senza
-  `--dettagli`.
+- Codici 0/1/2/3; messaggi costanti; nessun nome, importo o `id` di inquilino o pagamento senza
+  `--dettagli`. **Ruling (R223):** le tre scritture riportano l'`id` della presenza scritto da user1
+  (come `contratto` riporta quello del contratto); `stato-contratti` senza `--dettagli` dà solo
+  conteggi e codici. `--tasso` con un anno ripetuto è un argomento non valido (2).
 
 ## Annullamento
 
@@ -160,7 +175,8 @@ inquilini collegati e i codici di `contractChecks` del contratto.
   l'uscente, cancella il subentrante e toglie il subentro dal contratto, in un passo.
 - `undoBlockedBy`: un annullamento che rimetterebbe una presenza in conflitto con i posti (per
   esempio un'uscita annullata quando il posto è già di un altro) è bloccato dalle presenze in
-  conflitto; un'operazione che ha creato una presenza non si annulla se l'inquilino ha versamenti
+  conflitto, o dalla presenza rimessa stessa se il conflitto è solo suo (`unknown-room`: il posto non
+  esiste più); un'operazione che ha creato una presenza non si annulla se l'inquilino ha versamenti
   o recuperi vivi in quell'appartamento e nessun'altra presenza viva lì (il conguaglio o gli incassi
   resterebbero senza presenza): annullare prima quelli. Nessun movimento è toccato da queste
   operazioni.
@@ -193,13 +209,26 @@ Regole di calcolo o di fiducia non decise: restano fuori o sono dati espliciti.
    tratta ogni inquilino per sé.
 9. **Uscita e ingresso nello stesso mese** nello stesso posto: oggi rifiutati (`room-overlap`, mesi
    interi R1). Va bene?
+10. **Posto del subentrante:** oggi prende sempre il posto dell'uscente (non c'è `--posto` in
+    `subentro`). Serve poter indicare un altro posto?
+11. **Fine del subentrante:** oggi eredita il vecchio `to` dell'uscente (nessuno se non c'era). Va
+    bene, o la fine va sempre indicata?
+12. **Presenza salvata di nuovo senza `--al`:** `presenza` sostituisce tutti i campi, quindi riapre una
+    presenza finita. Va rifiutata la riapertura o basta documentarla? Oggi solo documentata.
+13. **Canoni dopo l'uscita:** un canone confermato per un mese dopo la nuova fine resta com'è e compare
+    come `payment-after-end` in `contratti` e `stato-contratti`. Va bloccata l'uscita, o spostato il
+    pagamento al subentrante, o basta l'avviso?
+14. **Caparra da sempre e restituzione unica:** il capitale è la somma dei versamenti di caparra
+    dell'inquilino nell'appartamento da sempre e una restituzione già registrata blocca ogni nuovo
+    prospetto. Con due contratti successivi dello stesso inquilino (caparra restituita e poi versata
+    di nuovo) serve limitare al contratto o alla presenza?
 
 ## Mie scelte (da controllare)
 
 1. Caparra attesa nella **presenza** (sezione 17, punto 7: «per il nuovo inquilino si impostano …
    caparra attesa»), non nell'appartamento (domanda 8 del piano 7); assente = non controllata.
 2. Controllo della caparra **per inquilino e appartamento**, con l'attesa della presenza più recente.
-3. Il subentrante eredita il vecchio `to` dell'uscente.
+3. Il subentrante eredita il posto e il vecchio `to` dell'uscente (domande 10 e 11).
 4. Subentro solo dentro un contratto (è una cessione del contratto); senza contratto si usano
    `fine-presenza` e `presenza`.
 5. I controlli dei posti in scrittura sono quelli già in `calcConguaglio`, esportati, non copiati.

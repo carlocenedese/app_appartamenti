@@ -20,7 +20,7 @@ import {
 import type { Apartment, Contract, Tenancy } from './model';
 import type { Cents } from './money';
 import { parseOrThrow } from './parse';
-import { addMonths } from './period';
+import { addMonths, monthsInPeriod, isoDate, settlementPeriods } from './period';
 import type { YearMonth } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -37,7 +37,8 @@ export type TenancyRefusal =
   | 'same-tenant'
   | 'no-contract'
   | 'tenancy-exists'
-  | 'beds-conflict';
+  | 'beds-conflict'
+  | 'has-recoveries';
 
 export type TenancyWriteResult =
   | { status: 'saved'; operationId: string; tenancyId: string }
@@ -84,6 +85,7 @@ const refuse = (reason: TenancyRefusal): TenancyWriteResult => ({ status: 'refus
 async function loadState(store: Store) {
   const all = { includeDeleted: true };
   return {
+    recoveries: (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records,
     apartments: (await loadAll(store, 'apartment', ApartmentSchema)).records,
     tenants: (await loadAll(store, 'tenant', TenantSchema)).records,
     tenancies: (await loadAll(store, 'tenancy', TenancySchema, all)).records,
@@ -141,6 +143,50 @@ const refuseBeds = (conflict: { code: SettlementInputErrorCode; month?: YearMont
     ...(conflict.month === undefined ? {} : { month: conflict.month }),
   }) as const;
 
+/**
+ * Whether a shorter stay leaves a tenant out of a period where a live recovery (not
+ * `non-recuperabile`, with `periodLabel`) gives them a share: `calcConguaglio` would throw
+ * `recovery-tenant-absent` (R197). Periods from the live contracts of the apartment.
+ */
+function leavesRecovery(
+  state: Awaited<ReturnType<typeof loadState>>,
+  apartment: Apartment,
+  written: readonly Tenancy[],
+): boolean {
+  const ids = new Set(written.map((t) => t.id));
+  const after = [...state.tenancies.filter((t) => isLive(t) && !ids.has(t.id)), ...written];
+  const periods = state.contracts
+    .filter((c) => isLive(c) && c.apartmentId === apartment.id)
+    .flatMap((c) => {
+      try {
+        return settlementPeriods(c, apartment.annualitaStart);
+      } catch {
+        return []; // not a period calcConguaglio can compute either
+      }
+    });
+  return state.recoveries.some(
+    (r) =>
+      r.apartmentId === apartment.id &&
+      r.status !== 'non-recuperabile' &&
+      r.periodLabel !== undefined &&
+      r.shares.some(
+        (share) =>
+          written.some((w) => w.tenantId === share.tenantId) &&
+          periods
+            .filter((p) => p.label === r.periodLabel)
+            .some((p) => {
+              const months = monthsInPeriod(isoDate(`${p.from}-01`), isoDate(`${p.to}-01`));
+              return !after.some(
+                (t) =>
+                  t.tenantId === share.tenantId &&
+                  t.apartmentId === apartment.id &&
+                  months.some((m) => isPresent(t, m)),
+              );
+            }),
+      ),
+  );
+}
+
 /** `after` with the `rev` that follows `before` (1 for a new record). */
 const nextRev = <T extends { rev: number }>(before: { rev: number } | undefined, after: T): T => ({
   ...after,
@@ -191,7 +237,9 @@ const linked = (c: Contract, tenancyId: string): Contract =>
 
 /**
  * Creates or replaces the tenancy `input.id` (a deleted one comes back) in one `tenancy.save`
- * operation; with `contractId` the tenancy joins that contract's `tenancyIds` in the same
+ * operation. Like `saveContract`, it replaces every field: one left out (`room`, `to`,
+ * `expectedDeposit`) is removed, so a finished stay saved again without `to` is open again
+ * (question 12 of the design, not decided); with `contractId` the tenancy joins that contract's `tenancyIds` in the same
  * operation. Refused without writing, in this order: `inconsistent-store`; `invalid-tenancy` (an
  * id that is not `[A-Za-z0-9_-]{1,64}`, `to` before `from`, a negative rent or flat charge, an
  * expected deposit that is not positive); `unknown-apartment`; `unknown-tenant`; `unknown-contract`
@@ -247,7 +295,9 @@ export async function saveTenancy(
  * Writes `lastMonth` as the last month of the live tenancy `tenancyId` in one `tenancy.end`
  * operation. Refused without writing: `inconsistent-store`; `unknown-tenancy` (absent or
  * deleted); `invalid-tenancy` (`lastMonth` before `from`); `beds-conflict` (a longer stay that no
- * longer fits the beds).
+ * longer fits the beds); `has-recoveries` (the tenant would be absent from a period where a live
+ * recovery gives them a share). Confirmed rents paid for months after `lastMonth` are not
+ * refused: `contractChecks` shows them (`payment-after-end`).
  */
 export async function endTenancy(
   store: Store,
@@ -266,6 +316,9 @@ export async function endTenancy(
   const conflict =
     apartment === undefined ? undefined : bedsConflict(apartment, state.tenancies, [after]);
   if (conflict !== undefined) return refuseBeds(conflict);
+  if (apartment !== undefined && leavesRecovery(state, apartment, [after])) {
+    return refuse('has-recoveries');
+  }
   return write(
     store,
     before.id,
@@ -291,7 +344,10 @@ export async function endTenancy(
  * this order: `inconsistent-store`; `unknown-tenancy`; `invalid-tenancy` (`lastMonth` before the
  * start or not before the end of the outgoing tenancy, an incoming id or amount not valid);
  * `unknown-tenant`; `same-tenant`; `no-contract` (the outgoing tenancy is not in exactly one live
- * contract); `tenancy-exists` (the incoming id is a live tenancy); `beds-conflict`.
+ * contract; or the incoming tenancy would start after the contract's end: `invalid-tenancy`);
+ * `tenancy-exists` (the incoming id is a live tenancy); `beds-conflict`; `has-recoveries` (as
+ * `endTenancy`). The incoming tenancy gets the room and the old end of the outgoing one (questions
+ * 10 and 11 of the design).
  */
 export async function recordTakeover(
   store: Store,
@@ -348,12 +404,17 @@ export async function recordTakeover(
   if (!state.tenants.some((t) => t.id === incoming.tenantId)) return refuse('unknown-tenant');
   if (incoming.tenantId === out.tenantId) return refuse('same-tenant');
   if (contract === undefined || contracts.length > 1) return refuse('no-contract');
+  // The incoming tenancy must start inside the contract it joins.
+  if (month > contract.end) return refuse('invalid-tenancy');
   if (isLive(stored)) return refuse('tenancy-exists');
   const ended = parseOrThrow(TenancySchema, { ...out, to: input.lastMonth }, 'tenancy');
   const apartment = state.apartments.find((a) => a.id === out.apartmentId);
   const conflict =
     apartment === undefined ? undefined : bedsConflict(apartment, state.tenancies, [ended, record]);
   if (conflict !== undefined) return refuseBeds(conflict);
+  if (apartment !== undefined && leavesRecovery(state, apartment, [ended, record])) {
+    return refuse('has-recoveries');
+  }
   const takeovers = [
     ...(contract.takeovers ?? []),
     { month, outTenancyId: out.id, inTenancyId: record.id },
@@ -414,7 +475,9 @@ export async function tenancyUndoBlockers(
   const clashes = apartments.flatMap((apartment) => {
     const back = restored.filter((t) => t.apartmentId === apartment.id);
     const conflict = back.length === 0 ? undefined : bedsConflict(apartment, remaining, back);
-    return (conflict?.tenancyIds ?? []).filter((id) => !own.has(id));
+    const others = (conflict?.tenancyIds ?? []).filter((id) => !own.has(id));
+    // A conflict of the restored tenancy alone (`unknown-room`): it is the one that blocks.
+    return others.length > 0 ? others : (conflict?.tenancyIds ?? []);
   });
   if (clashes.length > 0) return [...new Set(clashes)].sort(compareText);
   const payments = (await loadAll(store, 'payment', PaymentSchema)).records;
