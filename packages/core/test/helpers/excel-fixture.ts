@@ -13,8 +13,9 @@ import {
   TenancySchema,
   TenantSchema,
   YearMonthSchema,
+  yearMonth,
 } from '../../src/index';
-import type { ConguaglioInput, RecordKind, Tenant } from '../../src/index';
+import type { ExcelInput, RecordKind } from '../../src/index';
 
 export const ExcelFixtureSchema = z.object({
   description: z.string(),
@@ -41,9 +42,7 @@ export const FIXTURE: ExcelFixture = ExcelFixtureSchema.parse(
 );
 
 /** The input of the Excel of the fixture's apartment and period (a fresh copy each time). */
-export function fixtureInput(
-  fixture: ExcelFixture = FIXTURE,
-): ConguaglioInput & { tenants: Tenant[] } {
+export function fixtureInput(fixture: ExcelFixture = FIXTURE): ExcelInput {
   const copy = structuredClone(fixture);
   const apartment = copy.apartments.find((a) => a.id === copy.apartmentId);
   if (apartment === undefined) throw new Error('The fixture has no apartment of its own');
@@ -56,6 +55,8 @@ export function fixtureInput(
     tenancies: copy.tenancies,
     payments: copy.payments,
     tenants: copy.tenants,
+    // The contract goes on for one more lease year (what `loadExcelInput` finds).
+    nextPeriodFrom: yearMonth('2027-10'),
   };
 }
 

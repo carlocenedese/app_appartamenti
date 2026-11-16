@@ -51,6 +51,15 @@ describe('loadExcelInput', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
+  it('gives the first month of the next period, none after the last one (R172)', async () => {
+    const store = await fixtureStore();
+    const first = await loadExcelInput(store, QUERY);
+    const last = await loadExcelInput(store, { ...QUERY, periodLabel: '2027-28' });
+    if (first.status !== 'ok' || last.status !== 'ok') throw new Error('refused');
+    expect(first.input.nextPeriodFrom).toBe('2027-10');
+    expect('nextPeriodFrom' in last.input).toBe(false);
+  });
+
   it('leaves the gas bill pending once a statement covers its month', async () => {
     const store = await fixtureStore();
     await writeRecord(

@@ -192,6 +192,26 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
 
 export interface ExcelInput extends ConguaglioInput {
   tenants: Tenant[];
+  /**
+   * First month of the next settlement period of the apartment, if any: a settlement payment
+   * without `forMonth` counts for this period up to the month before (R172).
+   */
+  nextPeriodFrom?: YearMonth;
+}
+
+export type SettlementStatus = 'saldato' | 'parziale' | 'da pagare';
+
+/**
+ * The status of a settlement (section 27, R6, question 3): `saldato` once nothing is left and
+ * every payment counted is in a statement; `da pagare` while nothing is paid; else `parziale`.
+ */
+export function settlementStatus(
+  due: Cents,
+  paid: readonly Pick<Payment, 'amount' | 'source'>[],
+): SettlementStatus {
+  const versato = total(paid.map((p) => p.amount));
+  if (versato === due && paid.every((p) => p.source === 'csv')) return 'saldato';
+  return versato === 0 ? 'da pagare' : 'parziale';
 }
 
 export const EXCEL_SHEETS = [
@@ -230,6 +250,9 @@ export const EXCEL_HEADERS: Record<ExcelSheetName, readonly string[]> = {
     'Condominio',
     'Forfait incassato',
     'Conguaglio',
+    'Versato',
+    'Residuo',
+    'Stato',
   ],
   'Affitti versati': ['Posto', 'Inquilino', 'Quota'],
   'Versamenti conguaglio': ['Inquilino', 'Data', 'Importo', 'Mese indicato', 'Origine'],
@@ -281,8 +304,8 @@ const dayMonthYear = (day: ISODate): string =>
 /**
  * The Excel of the settlement of `input.period` for `input.apartment` (plan 5): the sheets of
  * `EXCEL_SHEETS`, values only. A `SettlementInputError` of `calcConguaglio` goes through as it
- * is; a tenant of the period without a live `Tenant` throws `ExcelInputError`. No paid, residual
- * or status column, no deposit, no pending item (questions 1, 3, 6).
+ * is; a tenant of the period without a live `Tenant` throws `ExcelInputError`. No formula, no
+ * deposit, no pending item (questions 1, 3, 6).
  */
 export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const result = calcConguaglio(input);
@@ -340,16 +363,35 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     ),
   ]);
 
+  const payments = live(input.payments).filter(
+    (p) => p.confirmed && p.apartmentId === apartment.id,
+  );
+  // Question 3, R172: the month given, else the date from the start up to the next period.
+  const inSettlement = (p: Payment) =>
+    p.forMonth !== undefined
+      ? p.forMonth >= period.from && p.forMonth <= period.to
+      : p.date.slice(0, 7) >= period.from &&
+        (input.nextPeriodFrom === undefined || p.date.slice(0, 7) < input.nextPeriodFrom);
+  const settlementPayments = payments
+    .filter((p) => p.kind === 'conguaglio' && settled.has(p.tenantId) && inSettlement(p))
+    .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
+  const paidBy = (tenantId: string) => settlementPayments.filter((p) => p.tenantId === tenantId);
+
   const label = (m: YearMonth) => (longPeriod ? monthWithYear(m) : shortMonth(m));
   const settlements = [...result.tenants].sort((a, b) =>
     byBed(firstPresence(a.tenantId), firstPresence(b.tenantId)),
   );
-  const columns = settlements.map((t) => [
-    t.spese + t.commissione,
-    t.condominio.rata + t.condominio.conguaglioPrec,
-    t.forfaitIncassato,
-    t.due,
-  ]);
+  const columns = settlements.map((t) => {
+    const versato = total(paidBy(t.tenantId).map((p) => p.amount));
+    return [
+      t.spese + t.commissione,
+      t.condominio.rata + t.condominio.conguaglioPrec,
+      t.forfaitIncassato,
+      t.due,
+      versato,
+      t.due - versato,
+    ];
+  });
   const conguagli: (XlsxCell | null)[][] = settlements.map((t, i) => {
     const own = presences(t.tenantId);
     const rooms = [...new Set(own.flatMap((p) => (p.room === undefined ? [] : [p.room])))];
@@ -365,6 +407,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
       text(spans.join('; ')),
       { kind: 'int', value: new Set(own.flatMap(monthsOf)).size },
       ...(columns[i] ?? []).map((v) => euro(cents(v))),
+      text(settlementStatus(t.due, paidBy(t.tenantId))),
     ];
   });
   // The empty beds (question 4): with them Spese + Condominio of the total is the bills' total.
@@ -382,14 +425,11 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     null,
     null,
     null,
-    ...[0, 1, 2, 3].map((c) =>
+    ...[0, 1, 2, 3, 4, 5].map((c) =>
       euro(total([...columns.map((col) => col[c] ?? 0), emptyBeds[c] ?? 0])),
     ),
   ]);
 
-  const payments = live(input.payments).filter(
-    (p) => p.confirmed && p.apartmentId === apartment.id,
-  );
   const rentDates = new Map<string, ISODate[]>();
   for (const p of payments) {
     if (p.kind !== 'canone') continue;
@@ -412,16 +452,13 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     ),
   ]);
 
-  const versamenti: (XlsxCell | null)[][] = payments
-    .filter((p) => p.kind === 'conguaglio' && settled.has(p.tenantId))
-    .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id))
-    .map((p) => [
-      text(nameOf(p.tenantId)),
-      date(p.date),
-      euro(p.amount),
-      text(p.forMonth === undefined ? undefined : monthWithYear(p.forMonth)),
-      text(SOURCE_LABELS[p.source]),
-    ]);
+  const versamenti: (XlsxCell | null)[][] = settlementPayments.map((p) => [
+    text(nameOf(p.tenantId)),
+    date(p.date),
+    euro(p.amount),
+    text(p.forMonth === undefined ? undefined : monthWithYear(p.forMonth)),
+    text(SOURCE_LABELS[p.source]),
+  ]);
 
   const header = (name: ExcelSheetName, extra: string[] = []): XlsxCell[] =>
     [...EXCEL_HEADERS[name], ...extra].map((value) => ({ kind: 'text', value }));

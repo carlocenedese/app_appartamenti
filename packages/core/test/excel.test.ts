@@ -116,7 +116,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
         t.due,
       ];
     });
-    expect(rows.slice(0, 5).map((r) => r.slice(4))).toEqual(expected);
+    expect(rows.slice(0, 5).map((r) => r.slice(4, 8))).toEqual(expected);
     const empty = result.unassignedByBucket;
     expect(rows[5]?.slice(4)).toEqual([
       empty.spese + empty.commissione,
@@ -166,7 +166,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     ]);
   });
 
-  it('writes only what is decided (questions 1, 3, 6)', () => {
+  it('writes only what is decided (questions 1, 3: no deposit, 6)', () => {
     const cells = book.sheets.flatMap((s) => s.rows.flat());
     const texts = cells.flatMap((c) => (c?.kind === 'text' ? [c.value] : []));
     expect(texts.filter((t) => t.startsWith('='))).toEqual([]);
@@ -174,7 +174,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       .flatMap((s) => rowsOf(s)[0] ?? [])
       .join(' | ')
       .toLowerCase();
-    for (const word of ['versato', 'residuo', 'stato', 'caparra', 'posti vuoti']) {
+    for (const word of ['caparra']) {
       expect(headers).not.toContain(word);
     }
     expect(texts.some((t) => /provvisorio/i.test(t))).toBe(false);
@@ -271,6 +271,126 @@ describe('buildConguaglioWorkbook variants', () => {
   });
 });
 
+describe('paid, residual and status of the settlement (question 3)', () => {
+  type Pay = ExcelInput['payments'][number];
+  const conguaglio = (id: string, tenantId: string, extra: Partial<Pay>): Pay => ({
+    id,
+    v: 1,
+    rev: 1,
+    apartmentId: 'apt-nord',
+    tenantId,
+    date: isoDate('2027-10-15'),
+    amount: cents(1000),
+    confirmed: true,
+    kind: 'conguaglio',
+    source: 'csv',
+    ...extra,
+  });
+  /** The fixture without its settlement payments, plus `payments`. */
+  function withPayments(
+    payments: Pay[],
+    next: Pick<ExcelInput, 'nextPeriodFrom'> = { nextPeriodFrom: yearMonth('2027-10') },
+  ) {
+    const input: ExcelInput = fixtureInput();
+    delete input.nextPeriodFrom;
+    Object.assign(input, next);
+    input.payments = [...input.payments.filter((p) => p.kind !== 'conguaglio'), ...payments];
+    return input;
+  }
+  const dueOf = (tenantId: string) =>
+    calcConguaglio(fixtureInput()).tenants.find((t) => t.tenantId === tenantId)?.due ?? 0;
+  const anna = (input: ExcelInput) =>
+    rowsOf(sheets(input).get('Conguagli'))
+      .find((r) => r[1] === 'Anna Prova')
+      ?.slice(7);
+
+  it('has the three columns after Conguaglio', () => {
+    expect(EXCEL_HEADERS.Conguagli.slice(7)).toEqual(['Conguaglio', 'Versato', 'Residuo', 'Stato']);
+  });
+
+  it('is partial while a payment is not in the statement, even when the total is paid', () => {
+    const due = dueOf('ten-a');
+    expect(due).toBeGreaterThan(7000);
+    // Both dates are in the next period: the month given makes them count.
+    const forMonth = yearMonth('2027-09');
+    const input = withPayments([
+      conguaglio('c1', 'ten-a', {
+        date: isoDate('2027-11-02'),
+        forMonth,
+        amount: cents(due - 7000),
+      }),
+      conguaglio('c2', 'ten-a', {
+        date: isoDate('2027-11-03'),
+        forMonth,
+        amount: cents(7000),
+        source: 'manual',
+      }),
+    ]);
+    expect(anna(input)).toEqual([due, due, 0, 'parziale']);
+  });
+
+  it('is settled when every payment is in the statement', () => {
+    const due = dueOf('ten-a');
+    const input = withPayments([
+      conguaglio('c1', 'ten-a', { date: isoDate('2027-09-30'), amount: cents(due - 1000) }),
+      conguaglio('c2', 'ten-a', { date: isoDate('2027-08-01'), amount: cents(1000) }),
+    ]);
+    expect(anna(input)).toEqual([due, due, 0, 'saldato']);
+  });
+
+  it('is to pay with no payment, and partial with a part', () => {
+    const due = dueOf('ten-a');
+    expect(anna(withPayments([]))).toEqual([due, 0, due, 'da pagare']);
+    const part = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-01-10') })]);
+    expect(anna(part)).toEqual([due, 1000, due - 1000, 'parziale']);
+  });
+
+  it('counts a payment to the tenant with its sign (R130)', () => {
+    const due = dueOf('ten-b');
+    const input = withPayments([
+      conguaglio('c1', 'ten-b', { date: isoDate('2026-12-03'), amount: cents(-1200) }),
+    ]);
+    const bruno = rowsOf(sheets(input).get('Conguagli')).find((r) => r[1] === 'Bruno Prova');
+    expect(bruno?.slice(7)).toEqual([due, -1200, due + 1200, 'parziale']);
+  });
+
+  it('leaves out payments of other periods, deposits and other tenants', () => {
+    const due = dueOf('ten-a');
+    const input = withPayments([
+      conguaglio('c1', 'ten-a', { forMonth: yearMonth('2027-10'), date: isoDate('2027-05-01') }),
+      conguaglio('c2', 'ten-a', { date: isoDate('2026-09-30') }),
+      conguaglio('c3', 'ten-a', { date: isoDate('2027-10-01') }),
+      conguaglio('c4', 'ten-a', { date: isoDate('2027-01-01'), kind: 'caparra' }),
+      conguaglio('c5', 'ten-a', { date: isoDate('2027-01-01'), confirmed: false }),
+      conguaglio('c6', 'ten-a', { date: isoDate('2027-01-01'), apartmentId: 'apt-sud' }),
+      conguaglio('c7', 'ten-b', { date: isoDate('2027-01-01') }),
+    ]);
+    expect(anna(input)).toEqual([due, 0, due, 'da pagare']);
+    // The sheet of the payments lists the ones that count, the same as the column.
+    expect(rowsOf(sheets(input).get('Versamenti conguaglio')).slice(1)).toEqual([
+      ['Bruno Prova', '2027-01-01', 1000, null, 'estratto conto'],
+    ]);
+  });
+
+  it('counts any later date when there is no next period', () => {
+    const due = dueOf('ten-a');
+    const input = withPayments(
+      [conguaglio('c1', 'ten-a', { date: isoDate('2031-01-01'), amount: cents(due) })],
+      {},
+    );
+    expect(anna(input)).toEqual([due, due, 0, 'saldato']);
+  });
+
+  it('sums paid and residual in the total, and leaves the empty beds blank', () => {
+    const rows = rowsOf(sheets().get('Conguagli'));
+    const tenants = rows.slice(1, -2);
+    const totale = rows.at(-1);
+    const sum = (i: number) => tenants.reduce((s, r) => s + Number(r[i] ?? 0), 0);
+    expect(totale?.slice(8)).toEqual([sum(8), sum(9)]);
+    expect(rows.at(-2)?.length).toBe(6);
+  });
+});
+
 describe('the bytes of the Excel', () => {
   const bytes = writeXlsx(buildConguaglioWorkbook(fixtureInput()));
 
@@ -292,7 +412,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '0975bc1cfb7a070061c81b5023cd6c6f4df2cb7592a8e320e5f74fb93e177532',
+      '30a9f7b8c6027edd999c390f3632f01561da274ff2b96a6999cf206f08f2bec0',
     );
   });
 });
