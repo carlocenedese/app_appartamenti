@@ -696,3 +696,38 @@ describe('loadAccountBalances (plan 3c, task 9)', () => {
     expect(await snapshot(store)).toEqual(diverged);
   });
 });
+
+describe('extraordinary instalments in the balance (plan 8, task 5, decision 5)', () => {
+  it('an extraordinary instalment of Lovarini paid from the account of Berchet enters as rata', () => {
+    const result = accountBalances({
+      accounts,
+      bills: [],
+      instalments: [
+        instalment('str-l', { apartmentId: 'lovarini', straordinaria: true, rateCount: 1 }),
+      ],
+      matches: [match('str-l', 't-str', '2027-04-05', 30000)],
+      assumed: [],
+      transactions: [tx('t-str', 'acc-berchet', '2027-04-05', -30000)],
+      classes: [],
+      transfers: [],
+      imuYears: [],
+    });
+    expect(result.pairs).toEqual([
+      {
+        creditorApartmentId: 'berchet',
+        debtorApartmentId: 'lovarini',
+        amount: 30000,
+        items: [
+          {
+            date: '2027-04-05',
+            kind: 'rata',
+            payerApartmentId: 'berchet',
+            forApartmentId: 'lovarini',
+            amount: 30000,
+            refId: 'str-l',
+          },
+        ],
+      },
+    ]);
+  });
+});

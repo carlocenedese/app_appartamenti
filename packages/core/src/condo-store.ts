@@ -1,12 +1,16 @@
 /**
  * Writing and reading the condominium records (plan 8): the documents of an apartment and fiscal
- * year (`saveCondoDocument`). Each write one operation of the journal, nothing written while
+ * year (`saveCondoDocument`) and the owners' check (`loadCondo`). Each write one operation of the journal, nothing written while
  * `checkConsistency` reports a problem, nothing for the same request on the same state. No amount
  * or name in a summary.
  */
+import { condoCheck, condoDifferences } from './condominio';
+import type { CondoCheckRow, CondoDifference } from './condominio';
 import { checkConsistency, commitChange } from './journal';
-import { ApartmentSchema, CondoDocumentSchema } from './model';
+import { planMatch } from './match-store';
+import { ApartmentSchema, BillMatchSchema, CondoDocumentSchema, InstalmentSchema } from './model';
 import type { CondoDocument } from './model';
+import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -65,4 +69,39 @@ export async function saveCondoDocument(
     newId,
   );
   return { status: 'saved', operationId: operation.id, documentId: id };
+}
+
+export type LoadCondoResult =
+  | { status: 'computed'; rates: CondoCheckRow[]; differences: CondoDifference[] }
+  | { status: 'refused'; reason: 'inconsistent-store' };
+
+/**
+ * The owners' check on `query.asOf` and the differences of the documents, for one apartment and
+ * fiscal year when given; the matches are the saved ones plus the assumed ones of `planMatch`
+ * (R2, as the Excel). Writes nothing; refused while `checkConsistency` reports a problem.
+ */
+export async function loadCondo(
+  store: Store,
+  query: { asOf: ISODate; apartmentId?: string; esercizio?: string },
+): Promise<LoadCondoResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  const wanted = (r: { apartmentId: string; esercizio: string }) =>
+    (query.apartmentId === undefined || r.apartmentId === query.apartmentId) &&
+    (query.esercizio === undefined || r.esercizio === query.esercizio);
+  const instalments = (await loadAll(store, 'instalment', InstalmentSchema)).records.filter(wanted);
+  const matches = [
+    ...(await loadAll(store, 'match', BillMatchSchema)).records,
+    ...(await planMatch(store)).assumedMatches,
+  ];
+  const documents = (await loadAll(store, 'condoDocument', CondoDocumentSchema)).records.filter(
+    wanted,
+  );
+  const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+  return {
+    status: 'computed',
+    rates: condoCheck({ instalments, matches, asOf: query.asOf }),
+    differences: condoDifferences(apartments, documents),
+  };
 }

@@ -56,6 +56,7 @@ import {
   loadRentYears,
   loadAccountBalances,
   loadImuRates,
+  loadCondo,
   loadAll,
   parseCsv,
   parseEuro,
@@ -1019,6 +1020,52 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  // The owners' check of the condominium expenses (section 12) and the differences consuntivo −
+  // preventivo; amounts and dates only with --dettagli (R107, R194).
+  if (name === 'condominio') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await loadCondo(store, {
+      asOf: day(clock().slice(0, 10)),
+      ...optional('apartmentId', values.appartamento),
+      ...optional('esercizio', values.esercizio),
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const details = values.dettagli === true;
+    const rates = result.rates.map((r) => ({
+      instalmentId: r.instalmentId,
+      apartmentId: r.apartmentId,
+      esercizio: r.esercizio,
+      rateIndex: r.rateIndex,
+      rateCount: r.rateCount,
+      straordinaria: r.straordinaria,
+      status: r.status,
+      ...(details
+        ? { expected: r.expected, debited: r.debited, dueDate: r.dueDate, debitDates: r.debitDates }
+        : {}),
+    }));
+    return {
+      status: 'ok',
+      rates,
+      anomalies: rates.filter((r) =>
+        ['senza-addebito', 'importo-diverso', 'duplicato'].includes(r.status),
+      ).length,
+      differences: result.differences.map((d) => ({
+        apartmentId: d.apartmentId,
+        esercizio: d.esercizio,
+        to: d.to,
+        conduttore: d.conduttore === undefined ? 0 : 1,
+        ...(details
+          ? {
+              preventivo: d.preventivo,
+              consuntivo: d.consuntivo,
+              difference: d.difference,
+              ...optional('conduttoreDetails', d.conduttore),
+            }
+          : {}),
+      })),
+    };
+  }
+
   if (name === 'imu') {
     if (
       positionals.length > 0 ||
@@ -1425,6 +1472,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'affitti-anno',
         'appartamento',
         'condominio-documento',
+        'condominio',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1439,7 +1487,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti'],
+      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti', 'condominio'],
       parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
       pagamento: ['annulla-pagamento'],
@@ -1455,8 +1503,9 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contratti',
         'affitti-anno',
         'condominio-documento',
+        'condominio',
       ],
-      esercizio: ['condominio-documento'],
+      esercizio: ['condominio-documento', 'condominio'],
       'quota-conduttore': ['condominio-documento'],
       anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno'],
       gruppo: ['imu-atteso', 'imu-f24'],
