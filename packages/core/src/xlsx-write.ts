@@ -75,6 +75,15 @@ function escapeXml(text: string): string {
     .replaceAll('"', '&quot;');
 }
 
+/**
+ * Cell text as SpreadsheetML reads it back (ST_Xstring): an `_` that starts `_xHHHH_` becomes
+ * `_x005F_`, or Excel would decode it; a carriage return becomes `_x000D_`, which XML would
+ * otherwise turn into a line feed.
+ */
+function escapeCellText(text: string): string {
+  return escapeXml(text.replace(/_(?=x[0-9A-Fa-f]{4}_)/g, '_x005F_').replaceAll('\r', '_x000D_'));
+}
+
 function assertSheetNames(sheets: readonly XlsxSheet[]): void {
   const seen = new Set<string>();
   for (const { name } of sheets) {
@@ -100,7 +109,7 @@ function cellXml(cell: XlsxCell, ref: string): string {
       if (cell.value.length > MAX_TEXT || NOT_XML.test(cell.value)) {
         throw new RangeError('Invalid cell text');
       }
-      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(cell.value)}</t></is></c>`;
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escapeCellText(cell.value)}</t></is></c>`;
     case 'euro':
       return `<c r="${ref}" s="1"><v>${centsToDecimal(cell.value)}</v></c>`;
     case 'int':

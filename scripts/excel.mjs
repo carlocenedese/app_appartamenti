@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { existsSync, linkSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
@@ -31,6 +31,8 @@ const MESSAGES = {
   'bad-output':
     'Il file di uscita non è valido: serve un nome .xlsx ammesso, in una cartella che esiste.',
   'file-exists': 'Rifiutato: il file di uscita esiste già e non si sovrascrive.',
+  'link-unsupported':
+    'Rifiutato: la cartella di uscita non permette di scrivere il file senza rischiare di sovrascriverlo.',
   'inconsistent-store':
     'Rifiutato: i dati non sono come li lascia il registro: eseguire «pnpm estratti ripara».',
   'unknown-apartment': 'Rifiutato: appartamento sconosciuto.',
@@ -57,7 +59,10 @@ function outputPath(raw) {
   const name = basename(raw).normalize('NFC');
   const folder = dirname(raw);
   try {
-    if (!name.toLowerCase().endsWith('.xlsx')) throw new Error('not xlsx');
+    if (raw.endsWith('/') || raw.endsWith(sep)) throw new Error('a folder');
+    if (!name.toLowerCase().endsWith('.xlsx') || name.length === '.xlsx'.length) {
+      throw new Error('not a name');
+    }
     assertSafeRelPath(name);
     if (!statSync(folder).isDirectory()) throw new Error('not a folder');
   } catch {
@@ -66,14 +71,18 @@ function outputPath(raw) {
   return { file: join(folder, name), folder };
 }
 
+/** Errors of a folder (or disk) that has no hard links: refused, never a plain overwrite. */
+const NO_LINK = ['EPERM', 'ENOTSUP', 'EXDEV', 'EOPNOTSUPP'];
+
 /** Writes `bytes` to `file` only if it does not exist: a temporary file, then a hard link. */
-function writeNew(file, folder, bytes, newId) {
+function writeNew(file, folder, bytes, { newId, link }) {
   const temporary = join(folder, `.tmp-${newId()}.xlsx`);
   try {
     writeFileSync(temporary, bytes, { flag: 'wx' });
-    linkSync(temporary, file);
+    link(temporary, file);
   } catch (error) {
     if (error?.code === 'EEXIST' && existsSync(file)) throw rejected('file-exists');
+    if (NO_LINK.includes(error?.code)) throw rejected('link-unsupported');
     throw error;
   } finally {
     try {
@@ -84,8 +93,11 @@ function writeNew(file, folder, bytes, newId) {
   }
 }
 
-/** Runs one command line; returns the exit code and the JSON line. */
-export async function main(argv, io = { newId: randomUUID }) {
+/**
+ * Runs one command line; returns the exit code and the JSON line. `io.newId` names the temporary
+ * file, `io.link` is `linkSync` (replaced only by the tests).
+ */
+export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
   const done = (code, body) => ({ code, output: `${JSON.stringify(body)}\n` });
   try {
     let values;
@@ -134,7 +146,7 @@ export async function main(argv, io = { newId: randomUUID }) {
       }
       throw error;
     }
-    writeNew(file, folder, writeXlsx(workbook), io.newId);
+    writeNew(file, folder, writeXlsx(workbook), io);
     return done(0, {
       status: 'written',
       apartmentId: loaded.input.apartment.id,

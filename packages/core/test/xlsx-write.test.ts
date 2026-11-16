@@ -147,6 +147,13 @@ describe('writeXlsx', () => {
     );
   });
 
+  it('keeps an _xHHHH_ sequence and a carriage return as they are (ST_Xstring)', () => {
+    const sheet = unzip(writeXlsx(one('a', t('_x0041_ e a\rb\r\nc_x00'))));
+    expect(sheet.get('xl/worksheets/sheet1.xml')).toContain(
+      '<t xml:space="preserve">_x005F_x0041_ e a_x000D_b_x000D_\nc_x00</t>',
+    );
+  });
+
   it('gives the same bytes for the same workbook', () => {
     expect(writeXlsx(workbook)).toEqual(writeXlsx(structuredClone(workbook)));
   });

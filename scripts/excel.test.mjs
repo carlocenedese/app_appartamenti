@@ -14,6 +14,7 @@ import {
 } from '../packages/core/src/index.ts';
 import { fixtureRecords } from '../packages/core/test/helpers/excel-fixture.ts';
 import { scanText } from './check-personal-data.mjs';
+import { main } from './excel.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TSX = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
@@ -100,6 +101,8 @@ describe('pnpm excel', () => {
         join(out, 'CON.xlsx'),
         join(out, 'a:b.xlsx'),
         join(out, 'manca', 'x.xlsx'),
+        join(out, '.xlsx'),
+        join(out, 'D.xlsx') + '/',
       ]) {
         const run = excel(['--periodo', '2026-27', '--uscita', target]);
         expect(run.code).toBe(2);
@@ -138,6 +141,26 @@ describe('pnpm excel', () => {
     },
     TIMEOUT,
   );
+
+  it('refuses a folder without hard links, leaving no file', async () => {
+    const target = join(out, 'Senza-link.xlsx');
+    const args = ['--cartella', data, '--appartamento', 'apt-nord', '--periodo', '2026-27'];
+    for (const code of ['EPERM', 'ENOTSUP', 'EXDEV']) {
+      const run = await main([...args, '--uscita', target], {
+        newId: () => `prova-${code}`,
+        link: () => {
+          throw Object.assign(new Error('no link'), { code });
+        },
+      });
+      outputs.push(run.output);
+      expect(run.code).toBe(1);
+      expect(JSON.parse(run.output)).toMatchObject({
+        status: 'rejected',
+        reason: 'link-unsupported',
+      });
+    }
+    expect(readdirSync(out).sort()).toEqual(['Conguaglio.xlsx']);
+  });
 
   it('never prints names, amounts, IBANs or paths', () => {
     const all = outputs.join('');
