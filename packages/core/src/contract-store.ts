@@ -17,7 +17,9 @@ import {
   YearSchema,
   rentHistoryValid,
 } from './model';
-import type { Contract } from './model';
+import type { Contract, Tenancy } from './model';
+import { depositChecks } from './deposit';
+import type { DepositCheck } from './deposit';
 import type { Cents } from './money';
 import { parseOrThrow } from './parse';
 import type { YearMonth } from './period';
@@ -343,4 +345,60 @@ export async function loadRentYears(
       };
     });
   return { status: 'computed', rentYears };
+}
+
+export type TenancyState = 'futura' | 'in-corso' | 'uscita';
+
+export interface ContractStatus {
+  contract: Contract;
+  /** The live linked tenancies, in the order of `tenancyIds`, with their state at `asOf`. */
+  tenancies: { tenancy: Tenancy; state: TenancyState }[];
+  /** `depositChecks` of the tenants of the linked tenancies in the contract's apartment. */
+  deposits: DepositCheck[];
+  checks: ContractCheck[];
+}
+
+export type LoadContractStatusResult =
+  | { status: 'computed'; contracts: ContractStatus[] }
+  | { status: 'refused'; reason: 'inconsistent-store' };
+
+/**
+ * The summary of each live contract (plan 11), by `id`, of `apartmentId` when given: linked
+ * tenancies with their state in the month `asOf` (`futura` before `from`, `uscita` after `to`,
+ * `in-corso` otherwise), the takeovers (in `contract`), the deposits and the checks. Read only.
+ */
+export async function loadContractStatus(
+  store: Store,
+  options: { asOf: YearMonth; apartmentId?: string },
+): Promise<LoadContractStatusResult> {
+  const loaded = await loadContractChecks(store, options);
+  if (loaded.status === 'refused') return loaded;
+  const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records;
+  const deposits = depositChecks({
+    tenancies,
+    payments: (await loadAll(store, 'payment', PaymentSchema)).records,
+  });
+  const contracts = loaded.contracts.map((contract): ContractStatus => {
+    const linked = (contract.tenancyIds ?? []).flatMap((id) =>
+      tenancies.filter((t) => t.id === id),
+    );
+    const tenants = new Set(linked.map((t) => t.tenantId));
+    return {
+      contract,
+      tenancies: linked.map((tenancy) => ({
+        tenancy,
+        state:
+          options.asOf < tenancy.from
+            ? 'futura'
+            : tenancy.to !== undefined && tenancy.to < options.asOf
+              ? 'uscita'
+              : 'in-corso',
+      })),
+      deposits: deposits.filter(
+        (d) => d.apartmentId === contract.apartmentId && tenants.has(d.tenantId),
+      ),
+      checks: loaded.checks.filter((c) => c.contractId === contract.id),
+    };
+  });
+  return { status: 'computed', contracts };
 }
