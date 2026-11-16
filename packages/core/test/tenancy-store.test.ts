@@ -228,6 +228,21 @@ describe('saveTenancy (plan 11, task 2)', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
+  it('more tenants than beds is beds-conflict too-many-tenants', async () => {
+    const store = await fixtureStore();
+    const lov = (id: string, tenantId: string) =>
+      arrival({ id, tenantId, apartmentId: 'lovarini', room: undefined, contractId: undefined });
+    expect(await saveTenancy(store, lov('t-1', 'ten-anna'), 'p1', clock, ids('l'))).toMatchObject({
+      status: 'saved',
+    });
+    expect(await saveTenancy(store, lov('t-2', 'ten-bruno'), 'p1', clock, ids('m'))).toEqual({
+      status: 'refused',
+      reason: 'beds-conflict',
+      code: 'too-many-tenants',
+      month: '2025-11',
+    });
+  });
+
   it('an old conflict outside the months written does not block a correction', async () => {
     const store = await fixtureStore();
     await seed(store, 'tenancy', [tenancy('tcy-old', { tenantId: 'ten-bruno' })], 'o');
@@ -370,6 +385,28 @@ describe('undoing the tenancy operations (plan 11, task 2)', () => {
     expect({ ...anna, rev: 1 }).toEqual(annaBefore);
     expect(bruno).toMatchObject({ deleted: true });
     expect({ ...(await contract(store)), rev: 1 }).toEqual(contractBefore);
+  });
+
+  it('an undone exit whose room is taken since is blocked by the new tenancy', async () => {
+    const store = await fixtureStore();
+    await endTenancy(
+      store,
+      { tenancyId: 'tcy-anna', lastMonth: yearMonth('2026-02') },
+      'p1',
+      clock,
+      ids('e'),
+    );
+    await saveTenancy(
+      store,
+      arrival({ id: 'tcy-bruno', tenantId: 'ten-bruno', room: 'A', from: yearMonth('2026-03') }),
+      'p1',
+      clock,
+      ids('a'),
+    );
+    expect(await undoBlockedBy(store, 'e-1')).toEqual(['tcy-bruno']);
+    // Undoing the arrival first frees the room.
+    await undoOperation(store, 'a-1', 'p1', clock, ids('u'));
+    expect(await undoBlockedBy(store, 'e-1')).toEqual([]);
   });
 
   it('a payment or a recovery of the only stay blocks the undo of its creation', async () => {

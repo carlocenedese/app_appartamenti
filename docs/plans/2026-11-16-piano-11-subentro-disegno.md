@@ -50,7 +50,7 @@ scrive presenze né subentri, quindi nessuna riscrittura li perde).
 | Record | Campo | Tipo | Significato |
 | --- | --- | --- | --- |
 | `tenancy` | `expectedDeposit?` | `Cents` > 0 | caparra attesa per questa presenza, inserita da user1 (500 € negli esempi, mai nel codice) |
-| `contract` | `takeovers?` | `{ month, outTenancyId, inTenancyId }[]` | i subentri: `month` è il primo mese del subentrante; `month` crescente (stesso mese ammesso), nessuna presenza ripetuta |
+| `contract` | `takeovers?` | `{ month, outTenancyId, inTenancyId }[]` | i subentri: `month` è il primo mese del subentrante; `month` non decrescente; ogni presenza esce al più una volta ed entra al più una volta, mai uguali |
 
 - `takeovers` è come `rent`: lo scrive solo il subentro, `saveContract` lo conserva e rifiuta un
   ingresso che lo contiene (`invalid-contract`).
@@ -96,7 +96,7 @@ monthlyForfait, expectedDeposit? } }, …)`, operazione `tenancy.takeover`, `Reg
   outTenancyId, inTenancyId }`.
 
 Rifiuti: `inconsistent-store`; `unknown-tenancy` (uscente assente o cancellata); `invalid-tenancy`
-(`lastMonth` prima di `from` o dopo il vecchio `to`, `id` non valido, importi); `unknown-tenant`;
+(`lastMonth` prima di `from` o non prima del vecchio `to`, `id` non valido, importi); `unknown-tenant`;
 `same-tenant` (un cambio di posto non è un subentro); `no-contract` (l'uscente non è in esattamente un
 contratto vivo); `tenancy-exists` (`incoming.id` è già una presenza viva diversa da quella che
 scriverebbe il subentro); `beds-conflict`. La stessa richiesta già registrata: `unchanged`.
@@ -147,8 +147,8 @@ inquilini collegati e i codici di `contractChecks` del contratto.
 - `stato-contratti [--appartamento] [--dettagli]`: di default per contratto `contractId`,
   `apartmentId`, conteggi delle presenze per stato, numero di subentri, conteggi delle caparre per
   stato, codici dei controlli; con `--dettagli` anche presenze, inquilini, mesi, posti, importi.
-- `caparra-restituzione --appartamento --inquilino --dal <AAAA-MM-GG> --al <AAAA-MM-GG> --tassi
-  <anno:punti,…> --conguaglio <euro> [--addebito <etichetta:euro>]…` → di default solo `{ status:
+- `caparra-restituzione --appartamento --inquilino --dal <AAAA-MM-GG> --al <AAAA-MM-GG> --tasso
+  <anno:percentuale>… --conguaglio <euro> [--addebito <etichetta:euro>]…` → di default solo `{ status:
   'ok', lines: n }`; righe e totale con `--dettagli` (importi, R107).
 - `annulla-riconciliazione` accetta `tenancy.save`, `tenancy.end`, `tenancy.takeover`.
 - Codici 0/1/2/3; messaggi costanti; nessun nome, importo o `id` di presenza o pagamento senza
@@ -158,7 +158,9 @@ inquilini collegati e i codici di `contractChecks` del contratto.
 
 - Annullare `tenancy.save` di una presenza nuova la cancella (`deleted`); `tenancy.takeover` rimette
   l'uscente, cancella il subentrante e toglie il subentro dal contratto, in un passo.
-- `undoBlockedBy`: un'operazione che ha creato una presenza non si annulla se l'inquilino ha versamenti
+- `undoBlockedBy`: un annullamento che rimetterebbe una presenza in conflitto con i posti (per
+  esempio un'uscita annullata quando il posto è già di un altro) è bloccato dalle presenze in
+  conflitto; un'operazione che ha creato una presenza non si annulla se l'inquilino ha versamenti
   o recuperi vivi in quell'appartamento e nessun'altra presenza viva lì (il conguaglio o gli incassi
   resterebbero senza presenza): annullare prima quelli. Nessun movimento è toccato da queste
   operazioni.
@@ -176,7 +178,7 @@ Regole di calcolo o di fiducia non decise: restano fuori o sono dati espliciti.
    escluse, R2), e come si tratta una bolletta che arriva dopo (R5: si trattiene se la caparra è ancora
    in mano)? Oggi è un importo dato da user1.
 3. **Tassi legali.** Dove si conservano (record di configurazione per anno, come IMU) e chi li
-   aggiorna? Oggi `--tassi` a ogni prospetto.
+   aggiorna? Oggi `--tasso` a ogni prospetto.
 4. **Più versamenti di caparra.** Con due versamenti (per esempio 300 + 200 €), gli interessi corrono
    da ciascuna data? Oggi un solo calcolo dal `--dal` dato.
 5. **Alias dei paganti** del nuovo inquilino (sezione 17, punto 7): un pagante scritto a mano rende

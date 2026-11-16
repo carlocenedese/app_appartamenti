@@ -3822,7 +3822,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       'has-dependents',
       ['pay-c1'],
     ]);
-    expect(blocked.json.message).toMatch(/versamenti o recuperi/);
+    expect(blocked.json.message).toMatch(/versamenti, recuperi o presenze/);
   });
 
   it('rifiuti 1 con messaggi costanti, argomenti 2', async () => {

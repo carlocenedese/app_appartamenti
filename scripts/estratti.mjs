@@ -227,7 +227,7 @@ const MESSAGES = {
   'beds-conflict':
     'Rifiutato: con questa presenza il conguaglio non si può calcolare (posto occupato, posto sconosciuto, troppi inquilini o inquilino presente due volte).',
   'tenancy-has-dependents':
-    'Rifiutato: l’inquilino ha versamenti o recuperi in questo appartamento: annullarli prima.',
+    'Rifiutato: versamenti, recuperi o presenze nello stesso posto dipendono da questa operazione: annullarli prima.',
   'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
   'no-deposit': 'Rifiutato: nessuna caparra versata da questo inquilino in questo appartamento.',
   'already-returned': 'Rifiutato: la caparra risulta già restituita.',

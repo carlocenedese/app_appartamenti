@@ -112,7 +112,7 @@ function bedsConflict(
   apartment: Apartment,
   stored: readonly Tenancy[],
   written: readonly Tenancy[],
-): { code: SettlementInputErrorCode; month?: YearMonth } | undefined {
+): { code: SettlementInputErrorCode; month?: YearMonth; tenancyIds: string[] } | undefined {
   const ids = new Set(written.map((t) => t.id));
   const after = [...stored.filter((t) => !ids.has(t.id)), ...written];
   const months = [
@@ -125,9 +125,21 @@ function bedsConflict(
     return undefined;
   } catch (error) {
     if (!(error instanceof SettlementInputError)) throw error;
-    return { code: error.code, ...(error.month === undefined ? {} : { month: error.month }) };
+    return {
+      code: error.code,
+      ...(error.month === undefined ? {} : { month: error.month }),
+      tenancyIds: error.tenancyIds ?? [],
+    };
   }
 }
+
+const refuseBeds = (conflict: { code: SettlementInputErrorCode; month?: YearMonth }) =>
+  ({
+    status: 'refused',
+    reason: 'beds-conflict',
+    code: conflict.code,
+    ...(conflict.month === undefined ? {} : { month: conflict.month }),
+  }) as const;
 
 /** `after` with the `rev` that follows `before` (1 for a new record). */
 const nextRev = <T extends { rev: number }>(before: { rev: number } | undefined, after: T): T => ({
@@ -208,7 +220,7 @@ export async function saveTenancy(
     return refuse('unknown-contract');
   }
   const conflict = bedsConflict(apartment, state.tenancies, [record]);
-  if (conflict !== undefined) return { status: 'refused', reason: 'beds-conflict', ...conflict };
+  if (conflict !== undefined) return refuseBeds(conflict);
   const before = state.tenancies.find((t) => t.id === record.id);
   return write(
     store,
@@ -253,7 +265,7 @@ export async function endTenancy(
   const apartment = state.apartments.find((a) => a.id === before.apartmentId);
   const conflict =
     apartment === undefined ? undefined : bedsConflict(apartment, state.tenancies, [after]);
-  if (conflict !== undefined) return { status: 'refused', reason: 'beds-conflict', ...conflict };
+  if (conflict !== undefined) return refuseBeds(conflict);
   return write(
     store,
     before.id,
@@ -341,7 +353,7 @@ export async function recordTakeover(
   const apartment = state.apartments.find((a) => a.id === out.apartmentId);
   const conflict =
     apartment === undefined ? undefined : bedsConflict(apartment, state.tenancies, [ended, record]);
-  if (conflict !== undefined) return { status: 'refused', reason: 'beds-conflict', ...conflict };
+  if (conflict !== undefined) return refuseBeds(conflict);
   const takeovers = [
     ...(contract.takeovers ?? []),
     { month, outTenancyId: out.id, inTenancyId: record.id },
@@ -371,10 +383,11 @@ export async function recordTakeover(
 }
 
 /**
- * What stops the undo of an operation that created a tenancy (plan 11): the live payments and the
- * live recoveries of its tenant in its apartment, when no other live tenancy of that tenant is
- * there (the income and the conguaglio would be left without a stay). Sorted ids; empty when
- * nothing blocks.
+ * What stops the undo of an operation on tenancies (plan 11), sorted ids, empty when nothing
+ * blocks: the live tenancies the restored ones would conflict with (`checkBeds`: for example an
+ * undone exit whose room is taken since; undo or correct those first); then, for a tenancy the
+ * operation created, the live payments and recoveries of its tenant in its apartment when no other
+ * live tenancy of that tenant is there (the income and the conguaglio would have no stay).
  */
 export async function tenancyUndoBlockers(
   store: Store,
@@ -388,8 +401,22 @@ export async function tenancyUndoBlockers(
       ? [is.data]
       : [];
   });
-  if (created.length === 0) return [];
+  const restored = changes.flatMap(({ path, before }) => {
+    const was = path.includes('/tenancy/') ? TenancySchema.safeParse(before) : undefined;
+    return was?.success === true && was.data.deleted !== true ? [was.data] : [];
+  });
+  if (created.length === 0 && restored.length === 0) return [];
   const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records;
+  const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+  const gone = new Set(created.map((t) => t.id));
+  const remaining = tenancies.filter((t) => !gone.has(t.id));
+  const own = new Set(restored.map((t) => t.id));
+  const clashes = apartments.flatMap((apartment) => {
+    const back = restored.filter((t) => t.apartmentId === apartment.id);
+    const conflict = back.length === 0 ? undefined : bedsConflict(apartment, remaining, back);
+    return (conflict?.tenancyIds ?? []).filter((id) => !own.has(id));
+  });
+  if (clashes.length > 0) return [...new Set(clashes)].sort(compareText);
   const payments = (await loadAll(store, 'payment', PaymentSchema)).records;
   const recoveries = (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records;
   const out = created.flatMap((t) => {
