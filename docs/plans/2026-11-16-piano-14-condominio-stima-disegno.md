@@ -40,14 +40,15 @@ importi solo con `--dettagli` (R107).
 Record nuovo **`contact`** (`_app/dati/contact/<id>.json`): `role` (`amministratore` | `fornitore`),
 `name`, `phone?`, `email?`, `notes?` (testo libero, nessun controllo di formato), `apartmentIds`
 (appartamenti collegati, anche nessuno per un fornitore comune), `supplyIds?` (utenze, record
-`supply`). `saveContact` crea o sostituisce tutto il record (come `contratto`: un campo omesso si
+`supply`, oggi solo gli avvisi comuni come la TARI), `categories?` (tipi di bolletta, `BillCategory`:
+le bollette non hanno un `id` di utenza). `saveContact` crea o sostituisce tutto il record (come `contratto`: un campo omesso si
 toglie) in un'operazione `contact.save` con riassunto costante senza nomi; rifiuti
 `inconsistent-store`, `invalid-contact`, `unknown-apartment`, `unknown-supply`; stessa richiesta
 `unchanged`. `loadContacts(store, { apartmentId?, role? })` in ordine di `id`. Non tocca movimenti:
 si annulla con `annulla-riconciliazione` come `apartment.save`.
 
-Riga di comando: `contatto --id --ruolo --nome [--telefono] [--email] [--note] [--appartamenti a;b]
-[--utenze s1;s2]` → `{ status, contactId, operationId? }`; `contatti [--appartamento] [--ruolo]
+Riga di comando: `contatto --id --ruolo --nome [--telefono] [--email] [--note] [--appartamenti a,b]
+[--utenze s1,s2] [--categorie gas,acqua]` → `{ status, contactId, operationId? }`; `contatti [--appartamento] [--ruolo]
 [--dettagli]`: senza `--dettagli` solo `id`, ruolo, collegamenti e `phone`/`email`/`notes` come 0/1;
 nome e contatti solo con `--dettagli`.
 
@@ -62,6 +63,6 @@ nome e contatti solo con `--dettagli`.
 4. **Stima e tabella delle tasse**: la stima deve alimentare la riga «condominio quota proprietario»
    (oggi `rule-undecided`, R216 domanda 1)? E con quale quota (totale meno quota conduttore)?
 5. **Un solo amministratore per appartamento**? Oggi non si controlla.
-6. **«Spese» collegate** a un fornitore: oltre alle utenze, servono profili dei fornitori o tipi di
-   spesa (rate, scadenze)? Oggi solo appartamenti e utenze.
+6. **«Spese» collegate** a un fornitore: oggi appartamenti, utenze (`supply`, solo avvisi comuni) e
+   categorie di bolletta. Servono anche i profili dei fornitori, le rate o le scadenze?
 7. **Cancellare un contatto**: oggi non c'è un comando (solo annullare la creazione).

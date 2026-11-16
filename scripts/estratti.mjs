@@ -265,7 +265,8 @@ const MESSAGES = {
   'imu-assigned': 'Rifiutato: il movimento paga una rata IMU: annullare prima l’assegnazione.',
   'tax-assigned':
     'Rifiutato: il movimento è assegnato a cedolare o registro: annullare prima l’assegnazione.',
-  'invalid-contact': 'Rifiutato: contatto non valido (id o campi vuoti, collegamento ripetuto).',
+  'invalid-contact':
+    'Rifiutato: contatto non valido (id o campi vuoti, categoria sconosciuta, collegamento ripetuto).',
   'unknown-supply': 'Rifiutato: utenza sconosciuta.',
   'condo-estimate-copied':
     'Stima copiata da un esercizio precedente: non è un documento del condominio e non si salva.',
@@ -353,6 +354,7 @@ const OPTIONS = {
   note: { type: 'string' },
   appartamenti: { type: 'string' },
   utenze: { type: 'string' },
+  categorie: { type: 'string' },
   entro: { type: 'string' },
   oggi: { type: 'string' },
   scadenza: { type: 'string' },
@@ -1326,6 +1328,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...optional('notes', values.note),
         apartmentIds: idList(values.appartamenti) ?? [],
         ...optional('supplyIds', idList(values.utenze)),
+        ...optional('categories', idList(values.categorie)),
       },
       who,
       clock,
@@ -1359,6 +1362,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         role: c.role,
         apartmentIds: c.apartmentIds,
         supplyIds: c.supplyIds ?? [],
+        categories: c.categories ?? [],
         ...(values.dettagli === true
           ? { name: c.name, phone: c.phone, email: c.email, notes: c.notes }
           : {
@@ -2268,7 +2272,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       nome: ['inquilino', 'appartamento', 'contatto'],
       ruolo: ['contatto', 'contatti'],
       ...Object.fromEntries(
-        ['telefono', 'email', 'note', 'appartamenti', 'utenze'].map((option) => [
+        ['telefono', 'email', 'note', 'appartamenti', 'utenze', 'categorie'].map((option) => [
           option,
           ['contatto'],
         ]),

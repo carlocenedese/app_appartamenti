@@ -3436,6 +3436,7 @@ describe('pnpm estratti condominio (piano 8)', () => {
           role: 'amministratore',
           apartmentIds: ['apt-a', 'apt-b'],
           supplyIds: [],
+          categories: [],
           phone: 1,
           email: 1,
           notes: 0,
@@ -3456,6 +3457,27 @@ describe('pnpm estratti condominio (piano 8)', () => {
     const unknown = await run(create.map((a) => (a === 'apt-a,apt-b' ? 'apt-x' : a)));
     expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-apartment']);
     expect(unknown.out).not.toMatch(/Prova/);
+    const supply = await run([...create, '--utenze', 'sup-x']);
+    expect([supply.code, supply.json.reason]).toEqual([1, 'unknown-supply']);
+    const fornitore = await run([
+      'contatto',
+      ...s.common,
+      '--id',
+      'ctc-2',
+      '--ruolo',
+      'fornitore',
+      '--nome',
+      'Fornitore Prova',
+      '--categorie',
+      'gas,acqua',
+    ]);
+    expect(fornitore.json.status).toBe('saved');
+    expect(stored(s, 'contact', 'ctc-2')).toMatchObject({
+      apartmentIds: [],
+      categories: ['gas', 'acqua'],
+    });
+    const badCategory = await run([...create, '--categorie', 'tari']);
+    expect([badCategory.code, badCategory.json.reason]).toEqual([1, 'invalid-contact']);
     const undo = await run([
       'annulla-riconciliazione',
       ...s.common,
@@ -3463,7 +3485,9 @@ describe('pnpm estratti condominio (piano 8)', () => {
       saved.json.operationId,
     ]);
     expect(undo.code).toBe(0);
-    expect((await run(['contatti', ...s.common])).json.contacts).toEqual([]);
+    expect((await run(['contatti', ...s.common])).json.contacts.map((c) => c.contactId)).toEqual([
+      'ctc-2',
+    ]);
   });
 });
 

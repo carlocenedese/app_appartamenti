@@ -1759,6 +1759,7 @@ describe('ContactSchema (plan 14, R251)', () => {
         notes: 'Solo al mattino',
         apartmentIds: [],
         supplyIds: ['sup-1'],
+        categories: ['gas', 'acqua'],
       }),
     ).toBe(true);
   });
@@ -1769,6 +1770,8 @@ describe('ContactSchema (plan 14, R251)', () => {
     expect(ok({ phone: '' })).toBe(false);
     expect(ok({ apartmentIds: ['apt-1', 'apt-1'] })).toBe(false);
     expect(ok({ supplyIds: ['sup-1', 'sup-1'] })).toBe(false);
+    expect(ok({ categories: ['gas', 'gas'] })).toBe(false);
+    expect(ok({ categories: ['tari'] })).toBe(false);
   });
 });
 
