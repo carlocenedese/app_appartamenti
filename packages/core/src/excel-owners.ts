@@ -4,6 +4,7 @@
  * settlement, owner share, expected and debited amount, debit dates and payment status in separate
  * columns. Never shared with the tenants: nothing about them goes in. Values only. Pure.
  */
+import { instalmentStatus } from './condominio';
 import { instalmentOwnerShare, previousToTenants } from './conguaglio';
 import type { ConguaglioInput } from './conguaglio';
 import { expectedDebit } from './match';
@@ -17,7 +18,8 @@ import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
 import type { XlsxCell, XlsxWorkbook } from './xlsx-write';
 
-export type OwnersStatus = 'pagata' | 'importo-diverso' | 'assunta' | 'in-attesa';
+/** `instalmentStatus` without a date (plan 8, R195): the file has no clock. */
+export type OwnersStatus = 'pagata' | 'importo-diverso' | 'duplicato' | 'assunta' | 'in-attesa';
 
 export interface OwnersItem {
   instalmentId: string;
@@ -65,6 +67,7 @@ export const OWNERS_HEADERS = [
 const STATUS_LABELS: Record<OwnersStatus, string> = {
   pagata: 'pagata',
   'importo-diverso': 'importo diverso',
+  duplicato: 'duplicato',
   assunta: 'assunta, non verificata',
   'in-attesa': 'in attesa di pagamento',
 };
@@ -110,11 +113,6 @@ export function ownersItems(input: ConguaglioInput): OwnersItem[] {
       const expected = expectedDebit(i);
       const straordinaria = i.straordinaria === true;
       const debited = total(real.map((m) => m.amount));
-      // 5b D1, R184: a real debit other than the expected one; no «duplicato».
-      const status = (): OwnersStatus => {
-        if (real.length > 0) return debited === expected ? 'pagata' : 'importo-diverso';
-        return amounts.length > 0 ? 'assunta' : 'in-attesa';
-      };
       return {
         instalmentId: i.id,
         esercizio: i.esercizio,
@@ -134,7 +132,8 @@ export function ownersItems(input: ConguaglioInput): OwnersItem[] {
         ...(real.length === 0 ? {} : { debited }),
         commission: total(own.filter((m) => m.part === 'commission').map((m) => m.amount)),
         debitDates: [...new Set(real.map((m) => m.transactionDate))].sort(compareText),
-        status: status(),
+        // 5b D1 (R184) and plan 8 (R195): the check of section 12, without a date.
+        status: instalmentStatus(i, own) as OwnersStatus,
       };
     });
 }
@@ -184,7 +183,9 @@ export function buildOwnersWorkbook(input: ConguaglioInput): XlsxWorkbook {
   ]);
   const header = OWNERS_HEADERS.map((value): XlsxCell => ({ kind: 'text', value }));
   // 5b D5, R184: as the tenants' file (R171), every period is open; N = instalments not paid.
-  const waiting = items.filter((i) => i.status === 'in-attesa' || i.status === 'importo-diverso');
+  const waiting = items.filter((i) =>
+    ['in-attesa', 'importo-diverso', 'duplicato'].includes(i.status),
+  );
   const provisional: XlsxCell[] = [
     { kind: 'text', value: `Conguaglio provvisorio: voci in attesa ${String(waiting.length)}` },
   ];

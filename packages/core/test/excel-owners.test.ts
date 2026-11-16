@@ -158,6 +158,14 @@ describe('buildOwnersWorkbook', () => {
     expect(top(input)?.[0]?.value).toBe('Conguaglio provvisorio: voci in attesa 1');
   });
 
+  it('says «duplicato» for two debits on the same instalment, among the waiting (R195)', () => {
+    const input = fixtureInput();
+    const m = input.matches.find((x) => x.itemId === 'inst-cond-1') as Match;
+    input.matches.push({ ...m, id: `${m.id}-bis`, transactionId: `${m.transactionId}-bis` });
+    expect(rowsOf(input)[1]?.at(-1)).toBe('duplicato');
+    expect(top(input)?.[0]?.value).toBe('Conguaglio provvisorio: voci in attesa 1');
+  });
+
   it('says «importo diverso» when the debit is not the expected one (5b, D1)', () => {
     const input = fixtureInput();
     const m = input.matches.find((x) => x.itemId === 'inst-cond-1') as Match;
