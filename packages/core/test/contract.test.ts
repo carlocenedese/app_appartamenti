@@ -464,3 +464,47 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
     expect(cedolareRateForYear([cedolare], 'berchet', '2026')).toBe(1000);
   });
 });
+
+describe('contractChecks: takeovers and rents after the end (plan 11, review)', () => {
+  const anna = makeTenancy('t-a', { to: '2026-02' });
+  const bruno = makeTenancy('t-b', { tenantId: 'ten-bruno', from: '2026-03', to: '2026-09' });
+  const codes = (contract: Contract, tenancies: Tenancy[], payments: Payment[] = []) =>
+    checks([contract], tenancies, payments)
+      .filter((c) => c.code.startsWith('takeover') || c.code === 'payment-after-end')
+      .map((c) => [c.code, c.tenancyId, c.from]);
+  const withTakeover = (extra: Record<string, unknown> = {}) =>
+    makeContract('ctr', {
+      end: '2026-09',
+      tenancyIds: ['t-a', 't-b'],
+      takeovers: [{ month: '2026-03', outTenancyId: 't-a', inTenancyId: 't-b' }],
+      ...extra,
+    });
+
+  it('a coherent takeover gives nothing', () => {
+    expect(codes(withTakeover(), [anna, bruno])).toEqual([]);
+  });
+
+  it('takeover-unlinked and takeover-dates for data written by hand', () => {
+    expect(codes(withTakeover({ tenancyIds: ['t-a'] }), [anna, bruno])).toEqual([
+      ['takeover-unlinked', 't-b', '2026-03'],
+    ]);
+    const late = makeTenancy('t-b', { tenantId: 'ten-bruno', from: '2026-04', to: '2026-09' });
+    expect(codes(withTakeover(), [anna, late])).toEqual([['takeover-dates', 't-b', '2026-03']]);
+    expect(codes(withTakeover(), [anna])).toEqual([['takeover-dates', 't-b', '2026-03']]);
+  });
+
+  it('a confirmed rent for a month after the end of the stay is payment-after-end', () => {
+    const rent = (id: string, extra: Record<string, unknown>) =>
+      makePayment(id, { kind: 'canone', amount: 38000, ...extra });
+    const payments = [
+      rent('p-late', { date: '2026-03-05' }),
+      rent('p-for', { date: '2026-02-27', forMonth: '2026-04' }),
+      rent('p-ok', { date: '2026-02-05' }),
+      rent('p-unconfirmed', { date: '2026-03-05', confirmed: false }),
+    ];
+    expect(codes(withTakeover(), [anna, bruno], payments)).toEqual([
+      ['payment-after-end', 't-a', '2026-04'], // sorted by paymentId: p-for, then p-late
+      ['payment-after-end', 't-a', '2026-03'],
+    ]);
+  });
+});

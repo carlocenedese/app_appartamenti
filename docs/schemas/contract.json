@@ -135,6 +135,32 @@
           "monthlyAdvance"
         ]
       }
+    },
+    "takeovers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "description": "Calendar month, YYYY-MM (01 to 12). Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+            "type": "string",
+            "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])$"
+          },
+          "outTenancyId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inTenancyId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "month",
+          "outTenancyId",
+          "inTenancyId"
+        ]
+      }
     }
   },
   "required": [
@@ -147,5 +173,5 @@
     "end",
     "settlement"
   ],
-  "description": "start must not be after end. cedolareRateBp only with taxRegime cedolare. tenancyIds and depositPaymentIds without repetitions. rent: from strictly increasing, each between start and end, monthlyRent > 0, monthlyAdvance >= 0."
+  "description": "start must not be after end. cedolareRateBp only with taxRegime cedolare. tenancyIds and depositPaymentIds without repetitions. rent: from strictly increasing, each between start and end, monthlyRent > 0, monthlyAdvance >= 0. takeovers: month not decreasing, outTenancyId unique, inTenancyId unique, outTenancyId different from inTenancyId."
 }

@@ -55,6 +55,8 @@ export * from './imu-store';
 export * from './imu';
 export * from './contract';
 export * from './contract-store';
+export * from './tenancy-store';
+export * from './deposit';
 export * from './payables';
 export * from './payable-store';
 export * from './apartment-store';

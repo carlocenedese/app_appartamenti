@@ -426,6 +426,27 @@ function bedsIn(
   ];
 }
 
+/**
+ * The checks `calcConguaglio` makes on the tenancies, for the live tenancies of `apartment` in
+ * `months` (plan 11: a write refuses what would make the conguaglio throw). Throws the same
+ * `SettlementInputError` (`tenant-overlap`, `unknown-room`, `room-overlap`, `too-many-tenants`).
+ */
+export function checkBeds(
+  apartment: Apartment,
+  tenancies: readonly Tenancy[],
+  months: readonly YearMonth[],
+): void {
+  const own = live(tenancies).filter((t) => t.apartmentId === apartment.id);
+  checkTenantOverlaps(own, months);
+  for (const month of months) {
+    bedsIn(
+      apartment,
+      own.filter((t) => isPresent(t, month)),
+      month,
+    );
+  }
+}
+
 type Bucket = 'spese' | 'rata' | 'conguaglioPrec' | 'commissione';
 
 interface Tally {
