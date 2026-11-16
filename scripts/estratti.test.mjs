@@ -3029,3 +3029,85 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
     expect((await excelOf(s.dir)).equals(await excelOf(plain.dir))).toBe(true);
   });
 });
+
+describe('pnpm estratti condominio (piano 8)', () => {
+  // Invented apartments, tenants and amounts; main() in process.
+  let n8 = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `p8-${String((n8 += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+  async function setup(records = []) {
+    const dir = join(root, `p8-${String((counter += 1))}`);
+    mkdirSync(dir);
+    if (records.length > 0) {
+      let n = 0;
+      await commitChange(
+        new FsStore(dir),
+        {
+          profileId: 'p1',
+          kind: 'test.seed',
+          summary: 'x',
+          changes: records.map(([kind, r]) => ({
+            path: recordPath(kind, r.id),
+            after: recordSchemas[kind].parse(r),
+          })),
+        },
+        () => ORA,
+        () => `seed-${String((n += 1))}`,
+      );
+    }
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+  const stored = (s, kind, id) =>
+    JSON.parse(readFileSync(join(s.dir, '_app', 'dati', kind, `${id}.json`), 'utf8'));
+
+  it('appartamento: crea con la differenza, aggiorna, rifiuta senza, annulla', async () => {
+    const s = await setup();
+    const base = ['appartamento', ...s.common, '--id', 'apt-a'];
+    const create = [
+      '--nome',
+      'Appartamento A',
+      '--locatore',
+      'user1',
+      '--posti',
+      '4',
+      '--annualita',
+      '10-01',
+      '--esercizio-condominio',
+      '05-01',
+    ];
+    expect((await run([...base, ...create])).json).toMatchObject({
+      status: 'rejected',
+      reason: 'missing-fields',
+    });
+    const saved = await run([...base, ...create, '--differenza-condominio', 'proprietario']);
+    expect([saved.code, saved.json.status]).toEqual([0, 'saved']);
+    expect(stored(s, 'apartment', 'apt-a')).toMatchObject({
+      posti: 4,
+      annualitaStart: { month: 10, day: 1 },
+      condominioStart: { month: 5, day: 1 },
+      condoDifferenceTo: 'owner',
+    });
+    const update = await run([...base, '--differenza-condominio', 'inquilini']);
+    expect(update.json.status).toBe('saved');
+    expect(stored(s, 'apartment', 'apt-a')).toMatchObject({
+      posti: 4,
+      condoDifferenceTo: 'tenants',
+    });
+    expect((await run([...base, '--differenza-condominio', 'inquilini'])).json.status).toBe(
+      'unchanged',
+    );
+    expect((await run([...base, '--differenza-condominio', 'altro'])).code).toBe(2);
+    expect((await run([...base, '--annualita', '13-01'])).code).toBe(2);
+    expect((await run([...base, '--posti', '0'])).code).toBe(2);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      update.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect(stored(s, 'apartment', 'apt-a').condoDifferenceTo).toBe('owner');
+  });
+});

@@ -66,6 +66,7 @@ import {
   runReconciliation,
   saveAccount,
   saveBankProfile,
+  saveApartment,
   saveContract,
   setContractRent,
   saveTenant,
@@ -168,6 +169,9 @@ const MESSAGES = {
   'cedolare-estimate': 'Cedolare stimata: da confermare, non è un pagamento.',
   'contract-overlap':
     'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
+  'missing-fields':
+    'Rifiutato: per un appartamento nuovo servono nome, locatore, posti, annualità e differenza del condominio.',
+  'invalid-apartment': 'Rifiutato: i dati dell’appartamento non sono validi.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -243,6 +247,11 @@ const OPTIONS = {
   contratto: { type: 'string' },
   canone: { type: 'string' },
   acconto: { type: 'string' },
+  locatore: { type: 'string' },
+  posti: { type: 'string' },
+  annualita: { type: 'string' },
+  'esercizio-condominio': { type: 'string' },
+  'differenza-condominio': { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -266,6 +275,7 @@ const RECONCILE_KINDS = [
   'imu.assign',
   'contract.save',
   'contract.rent',
+  'apartment.save',
   'rent.year',
 ];
 
@@ -348,6 +358,14 @@ const day = (text) => {
   if (!parsed.success) throw invalid('bad-arguments');
   return parsed.data;
 };
+/** `MM-GG` as the start of a year (`annualitaStart`, `condominioStart`); the schema checks the day. */
+const yearStart = (text) => {
+  const found = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.exec(text);
+  if (found === null) throw invalid('bad-arguments');
+  return { month: Number(found[1]), day: Number(found[2]) };
+};
+const DIFFERENCE_TO = { inquilini: 'tenants', proprietario: 'owner' };
+
 const optional = (key, value) => (value === undefined ? {} : { [key]: value });
 
 /** An amount as `parseEuro` reads it; anything else is a bad argument. */
@@ -924,6 +942,51 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  // appartamento creates (every field and --differenza-condominio, the question at creation) or
+  // updates the fields given (plan 8, task 2).
+  if (name === 'appartamento') {
+    need(values, 'id');
+    const v = values;
+    const to = v['differenza-condominio'];
+    if (
+      positionals.length > 0 ||
+      !/^[A-Za-z0-9_-]{1,64}$/.test(v.id) ||
+      (v.posti !== undefined && !/^[1-9][0-9]{0,1}$/.test(v.posti)) ||
+      (to !== undefined && !Object.hasOwn(DIFFERENCE_TO, to))
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await saveApartment(
+      store,
+      {
+        id: v.id,
+        ...optional('name', v.nome),
+        ...optional('locatore', v.locatore),
+        ...optional('posti', v.posti === undefined ? undefined : Number(v.posti)),
+        ...optional(
+          'annualitaStart',
+          v.annualita === undefined ? undefined : yearStart(v.annualita),
+        ),
+        ...optional(
+          'condominioStart',
+          v['esercizio-condominio'] === undefined
+            ? undefined
+            : yearStart(v['esercizio-condominio']),
+        ),
+        ...optional('condoDifferenceTo', to === undefined ? undefined : DIFFERENCE_TO[to]),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      apartmentId: result.apartmentId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
   if (name === 'imu') {
     if (
       positionals.length > 0 ||
@@ -1328,6 +1391,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contratto-canone',
         'contratti',
         'affitti-anno',
+        'appartamento',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1384,6 +1448,11 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
           'presenze',
           'caparre',
         ].map((option) => [option, ['contratto']]),
+      ),
+      ...Object.fromEntries(
+        ['locatore', 'posti', 'annualita', 'esercizio-condominio', 'differenza-condominio'].map(
+          (option) => [option, ['appartamento']],
+        ),
       ),
       contratto: ['contratto-canone'],
       canone: ['contratto-canone'],
