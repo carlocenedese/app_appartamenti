@@ -988,8 +988,10 @@ describe('Step 3e: closing the period and commission', () => {
   });
 });
 
-describe('the contract data of plan 7 leaves the settlement unchanged (Review Focus 4)', () => {
-  it('same periods and same result with and without the new contract fields', () => {
+describe('the contract data of plan 7 leaves the settlement periods unchanged (Review Focus 4)', () => {
+  // A regression guard of settlementPeriods only: calcConguaglio takes no contract, so the new
+  // fields can reach the settlement only through the periods (question 2 of plan 7 is open).
+  it('same periods, hence the same result, with and without the new contract fields', () => {
     const plain = ContractSchema.parse({
       id: 'ctr',
       v: 1,

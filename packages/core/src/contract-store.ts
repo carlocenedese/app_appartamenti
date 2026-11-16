@@ -32,6 +32,7 @@ export type SaveContractResult =
       status: 'refused';
       reason:
         | 'inconsistent-store'
+        | 'invalid-contract'
         | 'unknown-apartment'
         | 'unknown-tenancy'
         | 'unknown-deposit'
@@ -95,7 +96,9 @@ async function write(
 /**
  * Creates or updates `input.id` (a new `rev`; a deleted one comes back) in one `contract.save`
  * operation. Every data field is replaced except `rent`, which stays as stored (absent for a new
- * contract). Refused without writing, in this order: `inconsistent-store`; `unknown-apartment`
+ * contract). Refused without writing, in this order: `inconsistent-store`; `invalid-contract`
+ * (the input with `rent` or `deleted`, or one the schema refuses: `start` after `end`, a rate
+ * without `taxRegime: 'cedolare'`, a repeated id, ...); `unknown-apartment`
  * (absent or deleted); `unknown-tenancy` (a `tenancyIds` entry is not a live tenancy of the same
  * apartment); `unknown-deposit` (a `depositPaymentIds` entry is not a live `caparra` payment of
  * the same apartment); `rent-outside-contract` (the new dates leave a rent entry out). The dates
@@ -111,6 +114,14 @@ export async function saveContract(
   const refuse = (reason: Extract<SaveContractResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  // A constant refusal, never a ZodError: the rent history is written only by setContractRent.
+  if (
+    'rent' in input ||
+    'deleted' in input ||
+    !ContractSchema.safeParse({ ...input, v: 1, rev: 1 }).success
+  ) {
+    return refuse('invalid-contract');
+  }
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
   const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records;

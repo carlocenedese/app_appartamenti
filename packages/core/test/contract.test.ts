@@ -196,6 +196,22 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
     ).toEqual([{ code: 'deposit-other-tenant', contractId: 'ctr-berchet', paymentId: 'pay-b' }]);
   });
 
+  it('a tenancy linked to the contract of another apartment (actual behaviour)', () => {
+    // Only tenancy-other-apartment: no tenancy-outside-contract, and no unlinked-tenancy in its
+    // own apartment, since it is linked to a live contract; its tenant still counts for the
+    // deposits of that contract, so the deposit of Anna Prova gives no deposit-other-tenant.
+    expect(
+      checks(
+        [
+          linked(['tcy-l'], { end: '2026-09', depositPaymentIds: ['pay-c1'] }),
+          makeContract('ctr-lov', { apartmentId: 'lovarini', tenancyIds: [], end: '2026-09' }),
+        ],
+        [makeTenancy('tcy-l', { apartmentId: 'lovarini', from: '2025-09' })],
+        [makePayment('pay-c1')],
+      ),
+    ).toEqual([{ code: 'tenancy-other-apartment', contractId: 'ctr-berchet', tenancyId: 'tcy-l' }]);
+  });
+
   it('a deleted contract gives nothing and does not count for links', () => {
     const tenancies = [makeTenancy('tcy-a'), makeTenancy('tcy-b', { tenantId: 'ten-bruno' })];
     const gone = makeContract('ctr-gone', {

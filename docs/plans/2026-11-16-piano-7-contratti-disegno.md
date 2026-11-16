@@ -240,6 +240,11 @@ dietro un rifiuto, indicato per ognuna. Per ognuna la mia raccomandazione e un e
 8. **Caparra attesa.** Controllare l'importo del `Payment` `caparra` contro la caparra del modulo
    (500 €, sezione 26) è una regola di controllo nuova. Raccomando: con la procedura del nuovo
    inquilino, dove l'importo è un parametro dell'appartamento. *Aperta: nessun controllo sull'importo.*
+9. **Contratti vivi sovrapposti.** Due contratti vivi dello stesso appartamento con mesi in comune
+   (per esempio un rinnovo salvato come contratto nuovo senza accorciare il primo) danno due canoni
+   per lo stesso mese e due confronti di R4. Serve un controllo `contract-overlap` in `contratti`?
+   Raccomando: sì, solo come avviso. Esempio: Berchet 2025-10 – 2027-09 e 2026-10 – 2028-09 →
+   avviso per 2026-10 – 2027-09. *Aperta (revisione del piano 7): nessun controllo.*
 
 ## Mie scelte (da controllare)
 

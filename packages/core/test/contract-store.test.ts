@@ -218,6 +218,26 @@ describe('saveContract (plan 7, task 2)', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
+  it('an input the schema refuses is invalid-contract, never an exception', async () => {
+    const store = await fixtureStore();
+    const before = await snapshot(store);
+    const withExtra = (extra: Record<string, unknown>) =>
+      ({ ...contract(), ...extra }) as unknown as ContractInput;
+    for (const input of [
+      contract({ start: yearMonth('2027-10') }),
+      contract({ taxRegime: 'ordinario' }),
+      contract({ taxRegime: undefined }),
+      contract({ tenancyIds: ['tcy-a', 'tcy-a'] }),
+      contract({ depositPaymentIds: ['pay-c1', 'pay-c1'] }),
+      withExtra({ rent: [{ from: '2025-10', monthlyRent: 1, monthlyAdvance: 0 }] }),
+      withExtra({ deleted: true }),
+      withExtra({ type: '2+2' }),
+    ]) {
+      expect(await save(store, input)).toEqual(refused('invalid-contract'));
+    }
+    expect(await snapshot(store)).toEqual(before);
+  });
+
   it('a diverged store is inconsistent-store, nothing written', async () => {
     const store = await fixtureStore();
     const path = recordPath('tenancy', 'tcy-a');

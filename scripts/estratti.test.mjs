@@ -2459,6 +2459,9 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
       ['riconcilia', ...s.common, '--presenze', 'tcy-a'],
       ['imu', ...s.common, '--aliquota-cedolare', '10'],
       ['contratti', ...s.common, '--tipo', '1+1'],
+      ['saldi', ...s.common, '--dal', '2026-10-01'],
+      ['saldi', ...s.common, '--al', '2026-10-31'],
+      ['contratti', ...s.common, '--al', '2026-10'],
     ]) {
       expect([bad, (await run(bad)).code]).toEqual([bad, 2]);
     }

@@ -14,7 +14,8 @@
 // uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132);
 // plan 3d adds imu-atteso (the expected IMU of an apartment and year), imu-f24 (an F24
 // assigned to an IMU rate by hand) and imu (the check of the rates); plan 7 adds contratto (a
-// lease contract), contratto-canone (an entry of its rent history) and contratti (the contracts
+// lease contract; it replaces every field, so an option left out, --presenze and --caparre
+// included, removes it), contratto-canone (an entry of its rent history) and contratti (the contracts
 // and their read-only checks).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
@@ -154,6 +155,7 @@ const MESSAGES = {
   'rent-outside-contract':
     'Rifiutato: le nuove date lasciano fuori una voce del canone già scritta.',
   'unknown-contract': 'Rifiutato: contratto sconosciuto o cancellato.',
+  'invalid-contract': 'Rifiutato: i dati del contratto non sono validi.',
   'month-outside-contract': 'Rifiutato: il mese è fuori dalle date del contratto.',
   'bad-amount': 'Rifiutato: il canone deve essere positivo e l’acconto non negativo.',
   'rent-differs':
@@ -937,6 +939,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  // contratto replaces every field of the contract (rent history aside): an option left out,
+  // --presenze and --caparre included, removes that field; the user repeats the ones to keep.
   if (name === 'contratto') {
     need(values, 'id', 'appartamento', 'tipo', 'inizio', 'fine', 'conguaglio');
     const v = values;
@@ -1292,6 +1296,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       importo: ['giroconto-manuale'],
       data: ['giroconto-manuale'],
       dal: ['importa', 'contratto-canone'],
+      al: ['importa'],
       ...Object.fromEntries(
         [
           'inizio',
