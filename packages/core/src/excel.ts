@@ -207,7 +207,8 @@ type Span = { from: YearMonth; to: YearMonth };
  * The settlement period a payment of `month` without `forMonth` belongs to (R177, user1's D11 and
  * D13): a period takes the months from its start to the end of the next one (the first that starts
  * after it; none: no end). Among the periods that take `month`, one already ended gets it (the
- * latest starting); otherwise the one that starts last.
+ * latest starting); otherwise the one that starts last. So a date inside a later period still open
+ * goes to the earlier one, and the later one shows nothing paid until it ends (D11).
  */
 export function settlementPeriodOf(month: YearMonth, periods: readonly Span[]): Span | undefined {
   const sorted = [...periods].sort(

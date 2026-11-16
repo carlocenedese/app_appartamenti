@@ -8,6 +8,7 @@ import {
   buildConguaglioWorkbook,
   calcConguaglio,
   excelFilePath,
+  settlementPeriodOf,
   settlementStatus,
   cents,
   isoDate,
@@ -519,6 +520,28 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     expect(versamenti.map((r) => r[1])).toEqual([]);
   });
 
+  it('gives a date inside a later open period to the earlier one (D11)', () => {
+    const due = dueOf('ten-a');
+    const input = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-12-01') })]);
+    expect(anna(input)).toEqual([due, 1000, due - 1000, 'parziale']);
+    const later = {
+      ...input,
+      period: { label: '2027-28', from: yearMonth('2027-10'), to: yearMonth('2028-09') },
+    };
+    const annaLater = rowsOf(sheets(later).get('Conguagli')).find((r) => r[1] === 'Anna Prova');
+    expect(annaLater?.[8]).toBe(0);
+    expect(annaLater?.[9]).toBe(annaLater?.[7]);
+    expect(rowsOf(sheets(later).get('Versamenti conguaglio'))).toHaveLength(1);
+  });
+
+  it('gives a date after two overlapping periods to the one that starts last', () => {
+    const a = { from: yearMonth('2026-10'), to: yearMonth('2027-09') };
+    const b = { from: yearMonth('2027-03'), to: yearMonth('2032-02') };
+    expect(settlementPeriodOf(yearMonth('2033-01'), [a, b])).toEqual(b);
+    expect(settlementPeriodOf(yearMonth('2040-06'), [b, a])).toEqual(b);
+    expect(settlementPeriodOf(yearMonth('2026-09'), [a, b])).toBeUndefined();
+  });
+
   it('counts any later date when there is no next period', () => {
     const due = dueOf('ten-a');
     const input = withPayments(
@@ -557,6 +580,12 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     expect(settlementStatus(cents(10000), [{ amount: cents(10000), source: 'manual' }])).toBe(
       'parziale',
     );
+  });
+
+  it('calls a payment in the wrong direction partial (question 16, open)', () => {
+    const csv = (amount: number) => ({ amount: cents(amount), source: 'csv' as const });
+    expect(settlementStatus(cents(-4000), [csv(1000)])).toBe('parziale');
+    expect(settlementStatus(cents(10000), [csv(-2000)])).toBe('parziale');
   });
 
   it('sums paid and residual in the total, and leaves the empty beds blank', () => {

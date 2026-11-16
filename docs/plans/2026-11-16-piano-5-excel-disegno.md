@@ -318,6 +318,10 @@ fuori (o com'è indicato) e il resto procede.
     elencata come «in attesa di pagamento». Serve un'altra intestazione o un motivo?
     **Risposta di user1 (D15): una colonna «Motivo»** con «in attesa di pagamento», «importo
     diverso» o «quota maggiore della rata». R179, task 14.
+16. **(Nuova, aperta, dalla revisione.) Versamento nella direzione sbagliata.** Credito
+    dell'inquilino −40,00 € e un bonifico dell'inquilino di +10,00 €: oggi «parziale» (residuo
+    −50,00 €); conguaglio +100,00 € e una nostra restituzione di −20,00 €: oggi «parziale» (residuo
+    120,00 €). Vanno chiamati «versato in più» o in un altro modo?
 
 ## Mie scelte (da controllare)
 
