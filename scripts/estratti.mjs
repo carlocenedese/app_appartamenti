@@ -11,7 +11,8 @@
 // 3c adds escludi (excludes one movement written by an import), abbina (confirms a match of bills
 // and instalments by hand) and annulla-riconciliazione (undoes one operation of the
 // reconciliation; annulla-incassi is its synonym, R116); riconcilia runs every phase (R126);
-// uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132).
+// uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132);
+// plan 3d adds imu-atteso (the expected IMU of an apartment and year).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -35,6 +36,7 @@ import {
   TransferPurposeSchema,
   TimestampSchema,
   YearMonthSchema,
+  YearSchema,
   cancelAutomaticClass,
   cancelAutomaticPayment,
   checkConsistency,
@@ -57,6 +59,7 @@ import {
   saveAccount,
   saveBankProfile,
   saveTenant,
+  setImuYear,
   undoBlockedBy,
   undoImport,
   undoOperation,
@@ -106,7 +109,7 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti).',
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -128,6 +131,9 @@ const MESSAGES = {
   'leg-not-allowed': 'Rifiutato: il movimento indicato non è una gamba di questo giroconto.',
   'same-account': 'Rifiutato: i due conti sono lo stesso conto.',
   'invalid-amount': 'Rifiutato: l’importo deve essere positivo.',
+  'bad-rates': 'Rifiutato: le rate vanno numerate da 1 senza buchi, con importi positivi.',
+  'rates-mismatch':
+    'Rifiutato: un altro appartamento dello stesso gruppo e anno ha un altro numero di rate.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -183,6 +189,10 @@ const OPTIONS = {
   a: { type: 'string' },
   importo: { type: 'string' },
   data: { type: 'string' },
+  anno: { type: 'string' },
+  gruppo: { type: 'string' },
+  totale: { type: 'string' },
+  rata: { type: 'string', multiple: true },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -202,6 +212,7 @@ const RECONCILE_KINDS = [
   'transfer.reconcile',
   'transfer.confirm',
   'transfer.manual',
+  'imu.expected',
 ];
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
@@ -235,6 +246,29 @@ function parsePart(text) {
   }
   try {
     return { kind: pieces[0], forMonth: forMonth.data, amount: parseEuro(pieces[2]) };
+  } catch {
+    throw invalid('bad-arguments');
+  }
+}
+
+/** `<n>[:<importo>][:<AAAA-MM-GG>]`: an empty or missing field is not known (plan 3d). */
+function parseRate(text) {
+  const [index, amount = '', dueDate = '', ...rest] = text.split(':');
+  const date = ISODateSchema.safeParse(dueDate);
+  if (!/^[1-9][0-9]{0,2}$/.test(index) || rest.length > 0 || (dueDate !== '' && !date.success)) {
+    throw invalid('bad-arguments');
+  }
+  return {
+    index: Number(index),
+    ...(amount === '' ? {} : { expected: euro(amount) }),
+    ...(dueDate === '' ? {} : { dueDate: date.data }),
+  };
+}
+
+/** An amount as `parseEuro` reads it; anything else is a bad argument. */
+function euro(text) {
+  try {
+    return parseEuro(text);
   } catch {
     throw invalid('bad-arguments');
   }
@@ -730,6 +764,36 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'imu-atteso') {
+    need(values, 'appartamento', 'anno', 'gruppo');
+    if (
+      positionals.length > 0 ||
+      values.rata === undefined ||
+      !YearSchema.safeParse(values.anno).success
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await setImuYear(
+      store,
+      {
+        apartmentId: values.appartamento,
+        year: values.anno,
+        f24Group: values.gruppo,
+        ...(values.totale === undefined ? {} : { annualTotal: euro(values.totale) }),
+        rates: values.rata.map(parseRate),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      imuYearId: result.imuYearId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
   if (name === 'abbina') {
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
     const result = await confirmMatch(
@@ -905,6 +969,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'giroconto',
         'giroconto-manuale',
         'saldi',
+        'imu-atteso',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -927,7 +992,11 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
-      appartamento: ['conto', 'uscita'],
+      appartamento: ['conto', 'uscita', 'imu-atteso'],
+      anno: ['imu-atteso'],
+      gruppo: ['imu-atteso'],
+      totale: ['imu-atteso'],
+      rata: ['imu-atteso'],
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino'],

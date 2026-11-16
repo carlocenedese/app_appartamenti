@@ -16,6 +16,7 @@ import {
   InstalmentSchema,
   MovementClassSchema,
   MovementRuleSchema,
+  ImuYearSchema,
   NoteSchema,
   PaymentSchema,
   SupplierProfileSchema,
@@ -228,6 +229,14 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     purpose: 'saldo',
     source: 'confirmed',
   },
+  imuYear: {
+    ...base,
+    id: 'imu-apt-1-2026',
+    apartmentId: 'apt-1',
+    year: '2026',
+    f24Group: 'gruppo-1',
+    rates: [{ index: 1 }, { index: 2, expected: 60000 }],
+  },
   supplierProfile: {
     ...base,
     supplier: 'Fornitore Luce',
@@ -325,6 +334,7 @@ describe('recordSchemas', () => {
         'tenant',
         'payer',
         'transfer',
+        'imuYear',
       ].sort(),
     );
   });
@@ -344,6 +354,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.supplierProfile).toBe(SupplierProfileSchema);
     expect(recordSchemas.movementClass).toBe(MovementClassSchema);
     expect(recordSchemas.movementRule).toBe(MovementRuleSchema);
+    expect(recordSchemas.imuYear).toBe(ImuYearSchema);
   });
 });
 
@@ -1389,5 +1400,34 @@ describe('MovementClassSchema (plan 3c, task 1)', () => {
     expect(ok({ ruleId: 'r' })).toBe(false);
     expect(ok({ id: 'mc-t2' })).toBe(false);
     expect(ok({ excludeReason: 'altro' })).toBe(false);
+  });
+});
+
+describe('ImuYearSchema (plan 3d, task 1)', () => {
+  const year = {
+    ...base,
+    id: 'imu-berchet-2026',
+    apartmentId: 'berchet',
+    year: '2026',
+    f24Group: 'berchet-lovarini',
+    rates: [{ index: 1 }, { index: 2, expected: 60000 }],
+  };
+  const ok = (changes: Record<string, unknown>) =>
+    ImuYearSchema.safeParse(changed(year, changes)).success;
+
+  it('accepts rates without amount, with an amount, a due date and an annual total', () => {
+    expect(ImuYearSchema.parse(year)).toEqual(year);
+    expect(ok({ annualTotal: 130000, rates: [{ index: 1, dueDate: '2026-06-16' }] })).toBe(true);
+  });
+
+  it('refuses another id, a year not AAAA, indices not 1 to n, amounts not positive', () => {
+    expect(ok({ id: 'imu-berchet-2025' })).toBe(false);
+    expect(ok({ year: '26' })).toBe(false);
+    expect(ok({ rates: [{ index: 1 }, { index: 3 }] })).toBe(false);
+    expect(ok({ rates: [{ index: 2 }, { index: 1 }] })).toBe(false);
+    expect(ok({ rates: [{ index: 1, expected: 0 }] })).toBe(false);
+    expect(ok({ annualTotal: -1 })).toBe(false);
+    expect(ok({ rates: [] })).toBe(false);
+    expect(ok({ f24Group: '' })).toBe(false);
   });
 });

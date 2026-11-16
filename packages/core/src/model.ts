@@ -984,6 +984,51 @@ export const TransferSchema = RecordBaseSchema.extend({
   });
 export type Transfer = z.infer<typeof TransferSchema>;
 
+// --- IMU (plan 3d) ---------------------------------------------------------------------------
+
+/** A year as four digits, `AAAA` (text, as in the ids). */
+export const YearSchema = z.string().regex(/^[0-9]{4}$/);
+const PositiveCentsSchema = z
+  .int()
+  .min(1)
+  .transform((n): Cents => cents(n));
+
+/**
+ * The IMU expected for one apartment and year (`imu-<apartmentId>-<year>`, plan 3d): one entry
+ * per rate, indices 1 to n, amounts and due dates when known (data, never computed: no fiscal
+ * rule in the code). The apartments with the same `f24Group` and `year` are paid by one F24.
+ */
+export const ImuYearSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  year: YearSchema,
+  f24Group: NonEmptyString,
+  /** The annual total, when it is the only figure known (question 10: data only). */
+  annualTotal: PositiveCentsSchema.optional(),
+  rates: z
+    .array(
+      z.object({
+        index: z.int().min(1),
+        expected: PositiveCentsSchema.optional(),
+        /** Only shown, never used for a state (question 6). */
+        dueDate: ISODateSchema.optional(),
+      }),
+    )
+    .min(1),
+})
+  .refine((y) => y.id === `imu-${y.apartmentId}-${y.year}`, {
+    message: 'The id must be imu-<apartmentId>-<year>',
+    path: ['id'],
+  })
+  .refine((y) => y.rates.every((r, i) => r.index === i + 1), {
+    message: 'The rate indices go from 1 to n, in order',
+    path: ['rates'],
+  })
+  .meta({
+    description:
+      'id is imu-<apartmentId>-<year>; rates[i].index is i + 1; amounts are positive cents.',
+  });
+export type ImuYear = z.infer<typeof ImuYearSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -1009,6 +1054,7 @@ export const recordSchemas = {
   movementClass: MovementClassSchema,
   movementRule: MovementRuleSchema,
   transfer: TransferSchema,
+  imuYear: ImuYearSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 
