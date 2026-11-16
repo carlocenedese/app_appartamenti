@@ -5,7 +5,9 @@ import {
   assignTaxPayment,
   commitChange,
   copyPreviousTaxYear,
+  isoDate,
   loadAll,
+  loadTaxTable,
   readJournal,
   recordPath,
   recordSchemas,
@@ -303,5 +305,51 @@ describe('assignTaxPayment (plan 10, task 2)', () => {
     expect(await assign(store, 'tx-util', one(3000))).toEqual(refused('not-tax-debit'));
     expect(await assign(store, 'tx-imu', one(60000))).toEqual(refused('imu-assigned'));
     expect(await snapshot(store)).toEqual(before);
+  });
+});
+
+describe('loadTaxTable (plan 10, task 3)', () => {
+  it('reads the tables of the year and the January warnings, without the payables source', async () => {
+    const store = await fixtureStore();
+    await setTaxEstimate(
+      store,
+      { apartmentId: 'nord', year: '2026', voce: 'registro', amount: cents(0) },
+      'p1',
+      clock,
+      ids('e'),
+    );
+    await assignTaxPayment(
+      store,
+      {
+        transactionId: 'tx-ced',
+        parts: [{ voce: 'registro', year: '2026', amount: cents(100000) }],
+      },
+      'p1',
+      clock,
+      ids('a'),
+    );
+    const result = await loadTaxTable(store, { year: '2026', today: isoDate('2026-01-10') });
+    expect(result.status).toBe('computed');
+    if (result.status !== 'computed') return;
+    expect(result.tables.map((t) => [t.taxpayer, t.apartmentIds])).toEqual([
+      ['user1', ['nord']],
+      ['user2', ['sud']],
+    ]);
+    expect(result.tables[0]?.rows.find((r) => r.voce === 'registro')).toEqual({
+      voce: 'registro',
+      state: 'da-verificare',
+      reasons: ['no-expected-source'],
+      estimate: 0,
+      paid: 100000,
+    });
+    expect(result.warnings).toEqual([{ apartmentId: 'sud', year: '2026', canCopy: false }]);
+    expect(await loadTaxTable(store, { year: '26', today: isoDate('2026-01-10') })).toEqual(
+      refused('bad-year'),
+    );
+    const path = recordPath('apartment', 'nord');
+    store.putRaw(path, (store.getRaw(path) ?? '').replace('user1', 'user9'));
+    expect(await loadTaxTable(store, { year: '2026', today: isoDate('2026-01-10') })).toEqual(
+      refused('inconsistent-store'),
+    );
   });
 });

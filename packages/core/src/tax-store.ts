@@ -6,10 +6,17 @@
  * same request on the same state, no amount or name in a summary.
  */
 import { checkConsistency, commitChange } from './journal';
+import { TAX_DISCREPANCY_TOLERANCE, taxTable, taxYearWarnings } from './taxes';
+import type { TaxYearWarning, TaxpayerTable } from './taxes';
 import {
   ApartmentSchema,
   BankTransactionSchema,
+  BillMatchSchema,
+  ContractSchema,
+  ImuYearSchema,
+  InstalmentSchema,
   MovementClassSchema,
+  RentYearSchema,
   TaxEstimateSchema,
   TaxPaymentSchema,
   TaxVoiceSchema,
@@ -18,6 +25,7 @@ import {
 import type { TaxPayment, TaxVoice } from './model';
 import type { Cents } from './money';
 import { parseOrThrow } from './parse';
+import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -248,4 +256,40 @@ export async function assignTaxPayment(
     newId,
   );
   return { status: 'assigned', operationId: operation.id, taxPaymentId: id };
+}
+
+export type LoadTaxTableResult =
+  | { status: 'computed'; tables: TaxpayerTable[]; warnings: TaxYearWarning[] }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'bad-year' };
+
+/**
+ * The tables of `year` (`taxTable` with `TAX_DISCREPANCY_TOLERANCE`, no `expectedItems` until
+ * plan 9 is there) and the January warnings of `today` (R213). Read only.
+ */
+export async function loadTaxTable(
+  store: Store,
+  options: { year: string; today: ISODate },
+): Promise<LoadTaxTableResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  if (!YearSchema.safeParse(options.year).success) return { status: 'refused', reason: 'bad-year' };
+  const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+  const estimates = (await loadAll(store, 'taxEstimate', TaxEstimateSchema)).records;
+  const tables = taxTable({
+    year: options.year,
+    tolerance: TAX_DISCREPANCY_TOLERANCE,
+    apartments,
+    estimates,
+    imuYears: (await loadAll(store, 'imuYear', ImuYearSchema)).records,
+    classes: (await loadAll(store, 'movementClass', MovementClassSchema)).records,
+    transactions: (await loadAll(store, 'transaction', BankTransactionSchema)).records,
+    instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
+    matches: (await loadAll(store, 'match', BillMatchSchema)).records,
+    taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
+    contracts: (await loadAll(store, 'contract', ContractSchema)).records,
+    rentYears: (await loadAll(store, 'rentYear', RentYearSchema)).records,
+  });
+  const warnings = taxYearWarnings({ today: options.today, apartments, estimates });
+  return { status: 'computed', tables, warnings };
 }

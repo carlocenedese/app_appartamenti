@@ -58,4 +58,5 @@ export * from './contract-store';
 export * from './apartment-store';
 export * from './condominio';
 export * from './condo-store';
+export * from './taxes';
 export * from './tax-store';
