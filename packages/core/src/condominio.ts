@@ -4,7 +4,7 @@
  */
 import { expectedDebit } from './match';
 import type { Apartment, BillMatch, CondoDocument, Instalment } from './model';
-import { cents } from './money';
+import { cents, splitCents } from './money';
 import type { Cents } from './money';
 import type { ISODate } from './period';
 import { compareText } from './text';
@@ -172,4 +172,16 @@ export function condoDifferences(
     .sort(
       (a, b) => compareText(a.apartmentId, b.apartmentId) || compareText(a.esercizio, b.esercizio),
     );
+}
+
+/** `amount` in equal parts over `tenantIds`, leftover cents to the first ones (`splitCents`). */
+export function equalShares(
+  amount: Cents,
+  tenantIds: readonly string[],
+): { tenantId: string; amount: Cents }[] {
+  const parts = splitCents(
+    amount,
+    tenantIds.map(() => 1),
+  );
+  return tenantIds.map((tenantId, i) => ({ tenantId, amount: parts[i] as Cents }));
 }

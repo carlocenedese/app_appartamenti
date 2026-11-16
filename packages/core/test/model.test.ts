@@ -19,6 +19,7 @@ import {
   ImuRuleSchema,
   ImuYearSchema,
   CondoDocumentSchema,
+  TenantRecoverySchema,
   NoteSchema,
   PaymentSchema,
   SupplierProfileSchema,
@@ -260,6 +261,15 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     kind: 'preventivo',
     total: 120000,
   },
+  tenantRecovery: {
+    ...base,
+    id: 'rec-1',
+    apartmentId: 'apt-1',
+    instalmentId: 'str-1',
+    amount: 15000,
+    shares: [{ tenantId: 'ten-1', amount: 15000 }],
+    status: 'da-recuperare',
+  },
   supplierProfile: {
     ...base,
     supplier: 'Fornitore Luce',
@@ -361,6 +371,7 @@ describe('recordSchemas', () => {
         'rentYear',
         'imuRule',
         'condoDocument',
+        'tenantRecovery',
       ].sort(),
     );
   });
@@ -383,6 +394,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.imuYear).toBe(ImuYearSchema);
     expect(recordSchemas.imuRule).toBe(ImuRuleSchema);
     expect(recordSchemas.condoDocument).toBe(CondoDocumentSchema);
+    expect(recordSchemas.tenantRecovery).toBe(TenantRecoverySchema);
   });
 });
 
@@ -1603,5 +1615,25 @@ describe('condominium documents and setting (plan 8, task 1)', () => {
     expect(
       ApartmentSchema.safeParse({ ...apartment, condoDifferenceTo: 'inquilini' }).success,
     ).toBe(false);
+  });
+});
+
+describe('TenantRecoverySchema (plan 8, task 7)', () => {
+  const rec = validRecords.tenantRecovery;
+  const ok = (changes: Record<string, unknown>) =>
+    TenantRecoverySchema.safeParse(changed(rec, changes)).success;
+
+  it('accepts shares that add up, a period and every status', () => {
+    expect(ok({ periodLabel: '2026-27', status: 'non-recuperabile' })).toBe(true);
+    expect(ok({ status: 'recuperata' })).toBe(true);
+  });
+
+  it('refuses a tenant twice, shares that do not add up, amounts not positive, another status', () => {
+    const half = { tenantId: 'ten-1', amount: 7500 };
+    expect(ok({ shares: [half, half] })).toBe(false);
+    expect(ok({ shares: [half] })).toBe(false);
+    expect(ok({ amount: 0, shares: [{ tenantId: 'ten-1', amount: 0 }] })).toBe(false);
+    expect(ok({ shares: [] })).toBe(false);
+    expect(ok({ status: 'pagata' })).toBe(false);
   });
 });

@@ -3257,4 +3257,84 @@ describe('pnpm estratti condominio (piano 8)', () => {
     expect(details.json.differences[0]).toMatchObject({ difference: 3000 });
     expect((await run(['condominio', ...s.common, '--tipo', 'x'])).code).toBe(2);
   });
+
+  it('recupero: quote uguali di default, stato di user1, rifiuti, nessun importo in uscita', async () => {
+    const tenancy = (id, tenantId) => ({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt-a',
+      tenantId,
+      from: '2026-10',
+      monthlyRent: 30000,
+      monthlyForfait: 3000,
+    });
+    const s = await setup([
+      ['apartment', apartment({ id: 'apt-a' })],
+      [
+        'instalment',
+        {
+          id: 'str-1',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-a',
+          kind: 'condominio',
+          esercizio: '2026-27',
+          rateIndex: 1,
+          rateCount: 1,
+          dueDate: '2026-11-30',
+          rata: 27183,
+          quotaProprieta: 0,
+          conguaglioPrec: 0,
+          straordinaria: true,
+          coversFrom: '2026-11',
+          coversTo: '2026-11',
+        },
+      ],
+      ['tenancy', tenancy('tcy-1', 'ten-1')],
+      ['tenancy', tenancy('tcy-2', 'ten-2')],
+    ]);
+    const rec = [
+      'recupero',
+      ...s.common,
+      '--id',
+      'rec-1',
+      '--appartamento',
+      'apt-a',
+      '--voce',
+      'str-1',
+      '--importo',
+      '150,01',
+      '--inquilini',
+      'ten-2,ten-1',
+      '--periodo',
+      '2026-27',
+    ];
+    const saved = await run(rec);
+    expect([saved.code, saved.json.status, saved.json.recoveryId]).toEqual([0, 'saved', 'rec-1']);
+    expect(saved.out).not.toMatch(/15001|7501|ten-/);
+    expect(stored(s, 'tenantRecovery', 'rec-1')).toMatchObject({
+      amount: 15001,
+      shares: [
+        { tenantId: 'ten-2', amount: 7501 },
+        { tenantId: 'ten-1', amount: 7500 },
+      ],
+      status: 'da-recuperare',
+      periodLabel: '2026-27',
+    });
+    const manual = await run([...rec, '--quote', '100,01;50,00', '--stato', 'non-recuperabile']);
+    expect(manual.json.status).toBe('saved');
+    expect(stored(s, 'tenantRecovery', 'rec-1').shares[0].amount).toBe(10001);
+    const tooMuch = await run(rec.map((a) => (a === '150,01' ? '271,84' : a)));
+    expect([tooMuch.code, tooMuch.json.reason]).toEqual([1, 'amount-too-high']);
+    expect((await run([...rec, '--quote', '1,00'])).code).toBe(2);
+    expect((await run([...rec, '--stato', 'pagata'])).code).toBe(2);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      manual.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+  });
 });

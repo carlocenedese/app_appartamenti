@@ -69,6 +69,8 @@ import {
   saveBankProfile,
   saveApartment,
   saveCondoDocument,
+  saveTenantRecovery,
+  equalShares,
   saveContract,
   setContractRent,
   saveTenant,
@@ -174,6 +176,12 @@ const MESSAGES = {
   'missing-fields':
     'Rifiutato: per un appartamento nuovo servono nome, locatore, posti, annualità e differenza del condominio.',
   'invalid-document': 'Rifiutato: i dati del documento del condominio non sono validi.',
+  'not-extraordinary':
+    'Rifiutato: la voce non è una spesa condominiale straordinaria viva di questo appartamento.',
+  'amount-too-high': 'Rifiutato: da recuperare più della spesa anticipata.',
+  'bad-shares':
+    'Rifiutato: quote non valide (inquilino ripetuto o senza presenza, quota non positiva, somma diversa).',
+  'invalid-recovery': 'Rifiutato: i dati del recupero non sono validi.',
   'invalid-apartment': 'Rifiutato: i dati dell’appartamento non sono validi.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
@@ -257,6 +265,11 @@ const OPTIONS = {
   'differenza-condominio': { type: 'string' },
   esercizio: { type: 'string' },
   'quota-conduttore': { type: 'string' },
+  voce: { type: 'string' },
+  inquilini: { type: 'string' },
+  quote: { type: 'string' },
+  periodo: { type: 'string' },
+  stato: { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -282,6 +295,7 @@ const RECONCILE_KINDS = [
   'contract.rent',
   'apartment.save',
   'condo.document',
+  'recovery.save',
   'rent.year',
 ];
 
@@ -1020,6 +1034,48 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  // recupero: the part of an extraordinary expense to recover from tenants chosen by user1, with
+  // their shares (equal when --quote is absent); --stato set by user1 (plan 8, group B).
+  if (name === 'recupero') {
+    need(values, 'id', 'appartamento', 'voce', 'importo', 'inquilini');
+    const tenants = idList(values.inquilini);
+    const stato = values.stato ?? 'da-recuperare';
+    if (
+      positionals.length > 0 ||
+      !['da-recuperare', 'recuperata', 'non-recuperabile'].includes(stato) ||
+      values.periodo === ''
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const amount = euro(values.importo);
+    const quotes = values.quote?.split(';').map(euro);
+    if (quotes !== undefined && quotes.length !== tenants.length) throw invalid('bad-arguments');
+    const result = await saveTenantRecovery(
+      store,
+      {
+        id: values.id,
+        apartmentId: values.appartamento,
+        instalmentId: values.voce,
+        amount,
+        shares:
+          quotes === undefined
+            ? equalShares(amount, tenants)
+            : tenants.map((tenantId, i) => ({ tenantId, amount: quotes[i] })),
+        status: stato,
+        ...optional('periodLabel', values.periodo),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      recoveryId: result.recoveryId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
   // The owners' check of the condominium expenses (section 12) and the differences consuntivo −
   // preventivo; amounts and dates only with --dettagli (R107, R194).
   if (name === 'condominio') {
@@ -1473,6 +1529,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'appartamento',
         'condominio-documento',
         'condominio',
+        'recupero',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1504,7 +1561,13 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'affitti-anno',
         'condominio-documento',
         'condominio',
+        'recupero',
       ],
+      voce: ['recupero'],
+      inquilini: ['recupero'],
+      quote: ['recupero'],
+      periodo: ['recupero'],
+      stato: ['recupero'],
       esercizio: ['condominio-documento', 'condominio'],
       'quota-conduttore': ['condominio-documento'],
       anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno'],
@@ -1520,7 +1583,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       gambe: ['giroconto'],
       da: ['giroconto-manuale'],
       a: ['giroconto-manuale'],
-      importo: ['giroconto-manuale'],
+      importo: ['giroconto-manuale', 'recupero'],
       data: ['giroconto-manuale'],
       dal: ['importa', 'contratto-canone'],
       al: ['importa'],

@@ -1191,6 +1191,36 @@ export const CondoDocumentSchema = RecordBaseSchema.extend({
 export type CondoDocument = z.infer<typeof CondoDocumentSchema>;
 
 /**
+ * Part of an extraordinary condominium expense caused by tenants and advanced by the owners, to be
+ * recovered from them in their settlement (plan 8, group B, R196). `amount` is what user1 enters
+ * (part of the expense at most); `shares` the tenants user1 chose with their parts; `status` is set
+ * by user1 (`non-recuperabile`: the expense stays with the owner); `periodLabel` the settlement
+ * period user1 chose (none: in no settlement).
+ */
+export const TenantRecoverySchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  /** A live extraordinary condominium `Instalment` of the same apartment. */
+  instalmentId: NonEmptyString,
+  amount: PositiveCentsSchema,
+  shares: z.array(z.object({ tenantId: NonEmptyString, amount: PositiveCentsSchema })).min(1),
+  status: z.enum(['da-recuperare', 'recuperata', 'non-recuperabile']),
+  periodLabel: NonEmptyString.optional(),
+})
+  .refine((r) => unique(r.shares.map((s) => s.tenantId)), {
+    message: 'A tenant appears once',
+    path: ['shares'],
+  })
+  .refine((r) => r.shares.reduce((sum, s) => sum + s.amount, 0) === r.amount, {
+    message: 'The shares add up to the amount',
+    path: ['shares'],
+  })
+  .meta({
+    description:
+      'amount and shares are positive cents; each tenant once; the shares add up to amount.',
+  });
+export type TenantRecovery = z.infer<typeof TenantRecoverySchema>;
+
+/**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
  */
@@ -1219,6 +1249,7 @@ export const recordSchemas = {
   rentYear: RentYearSchema,
   imuRule: ImuRuleSchema,
   condoDocument: CondoDocumentSchema,
+  tenantRecovery: TenantRecoverySchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 
