@@ -25,7 +25,7 @@ import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
 
-export type ContractInput = Omit<Contract, 'v' | 'rev' | 'deleted' | 'rent'>;
+export type ContractInput = Omit<Contract, 'v' | 'rev' | 'deleted' | 'rent' | 'takeovers'>;
 
 export type SaveContractResult =
   | { status: 'saved'; operationId: string; contractId: string }
@@ -97,9 +97,9 @@ async function write(
 
 /**
  * Creates or updates `input.id` (a new `rev`; a deleted one comes back) in one `contract.save`
- * operation. Every data field is replaced except `rent`, which stays as stored (absent for a new
- * contract). Refused without writing, in this order: `inconsistent-store`; `invalid-contract`
- * (the input with `rent` or `deleted`, or one the schema refuses: `start` after `end`, a rate
+ * operation. Every data field is replaced except `rent` and `takeovers` (plan 11), which stay as
+ * stored (absent for a new contract). Refused without writing, in this order: `inconsistent-store`;
+ * `invalid-contract` (the input with `rent`, `takeovers` or `deleted`, or one the schema refuses: `start` after `end`, a rate
  * without `taxRegime: 'cedolare'`, a repeated id, ...); `unknown-apartment`
  * (absent or deleted); `unknown-tenancy` (a `tenancyIds` entry is not a live tenancy of the same
  * apartment); `unknown-deposit` (a `depositPaymentIds` entry is not a live `caparra` payment of
@@ -116,9 +116,10 @@ export async function saveContract(
   const refuse = (reason: Extract<SaveContractResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
-  // A constant refusal, never a ZodError: the rent history is written only by setContractRent.
+  // A constant refusal, never a ZodError: the rent history and the takeovers have their own writes.
   if (
     'rent' in input ||
+    'takeovers' in input ||
     'deleted' in input ||
     !ContractSchema.safeParse({ ...input, v: 1, rev: 1 }).success
   ) {
@@ -139,9 +140,16 @@ export async function saveContract(
   const before = (await contractsWithDeleted(store)).find((c) => c.id === input.id);
   const rent = before?.rent;
   if (!rentHistoryValid({ ...input, rent })) return refuse('rent-outside-contract');
+  const takeovers = before?.takeovers;
   const after = parseOrThrow(
     ContractSchema,
-    { ...input, v: 1, rev: (before?.rev ?? 0) + 1, ...(rent === undefined ? {} : { rent }) },
+    {
+      ...input,
+      v: 1,
+      rev: (before?.rev ?? 0) + 1,
+      ...(rent === undefined ? {} : { rent }),
+      ...(takeovers === undefined ? {} : { takeovers }),
+    },
     'contract',
   );
   return write(

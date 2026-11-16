@@ -193,6 +193,16 @@ describe('saveContract (plan 7, task 2)', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
+  it('keeps the takeovers on update (plan 11): only a takeover writes them', async () => {
+    const store = await fixtureStore();
+    const takeovers = [{ month: '2026-03', outTenancyId: 'tcy-a', inTenancyId: 'tcy-b' }];
+    await seed(store, 'contract', [{ ...base, ...contract(), takeovers }], 't');
+    expect(await save(store, contract({ tenancyIds: ['tcy-a', 'tcy-b'] }))).toMatchObject({
+      status: 'saved',
+    });
+    expect((await contracts(store))[0]?.takeovers).toEqual(takeovers);
+  });
+
   it('saves a tenancy outside the dates and leaves it unchanged (Review Focus 1)', async () => {
     const store = await fixtureStore();
     const tenancyPath = recordPath('tenancy', 'tcy-early');
@@ -234,6 +244,7 @@ describe('saveContract (plan 7, task 2)', () => {
       contract({ depositPaymentIds: ['pay-c1', 'pay-c1'] }),
       withExtra({ rent: [{ from: '2025-10', monthlyRent: 1, monthlyAdvance: 0 }] }),
       withExtra({ deleted: true }),
+      withExtra({ takeovers: [] }),
       withExtra({ type: '2+2' }),
     ]) {
       expect(await save(store, input)).toEqual(refused('invalid-contract'));

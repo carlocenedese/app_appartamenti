@@ -33,6 +33,12 @@ import { SEMVER_PATTERN } from './version';
 /** Whole euro cents, any sign. Parses to the branded `Cents`. */
 export const CentsSchema = z.int().transform((n): Cents => cents(n));
 
+/** Whole euro cents, at least one. */
+const PositiveCentsSchema = z
+  .int()
+  .min(1)
+  .transform((n): Cents => cents(n));
+
 // The patterns end up in the exported JSON Schema, where Python validators apply them with
 // `re.search`. Digits are spelled [0-9] because `\d` also matches other scripts' digits there, and
 // the month and day ranges are in the pattern so that "2026-13" or "2026-99-99" never pass it.
@@ -243,6 +249,16 @@ export const ContractSchema = RecordBaseSchema.extend({
       z.object({ from: YearMonthSchema, monthlyRent: CentsSchema, monthlyAdvance: CentsSchema }),
     )
     .optional(),
+  /** Takeovers (plan 11): `month` is the first month of the incoming tenancy. Only a takeover writes it. */
+  takeovers: z
+    .array(
+      z.object({
+        month: YearMonthSchema,
+        outTenancyId: NonEmptyString,
+        inTenancyId: NonEmptyString,
+      }),
+    )
+    .optional(),
 })
   .refine((contract) => notAfter(contract.start, contract.end), {
     message: 'The contract ends before it starts',
@@ -264,11 +280,26 @@ export const ContractSchema = RecordBaseSchema.extend({
     message: 'Rent entries: from strictly increasing within start..end, rent > 0, advance >= 0',
     path: ['rent'],
   })
+  .refine(
+    ({ takeovers = [] }) =>
+      unique(takeovers.map((t) => t.outTenancyId)) &&
+      unique(takeovers.map((t) => t.inTenancyId)) &&
+      takeovers.every(
+        (t, i) =>
+          t.outTenancyId !== t.inTenancyId &&
+          (i === 0 || notAfter(takeovers[i - 1]?.month ?? '', t.month)),
+      ),
+    {
+      message: 'Takeovers: months not decreasing, a tenancy leaves once and enters once',
+      path: ['takeovers'],
+    },
+  )
   .meta({
     description:
       'start must not be after end. cedolareRateBp only with taxRegime cedolare. tenancyIds and ' +
       'depositPaymentIds without repetitions. rent: from strictly increasing, each between start ' +
-      'and end, monthlyRent > 0, monthlyAdvance >= 0.',
+      'and end, monthlyRent > 0, monthlyAdvance >= 0. takeovers: month not decreasing, ' +
+      'outTenancyId unique, inTenancyId unique, outTenancyId different from inTenancyId.',
   });
 export type Contract = z.infer<typeof ContractSchema>;
 export type ContractRent = NonNullable<Contract['rent']>[number];
@@ -303,6 +334,8 @@ export const TenancySchema = RecordBaseSchema.extend({
   monthlyRent: CentsSchema,
   /** What the tenant actually pays each month as flat service charge. */
   monthlyForfait: CentsSchema,
+  /** The deposit expected from this tenant (plan 11), typed by user1: only checked, never computed. */
+  expectedDeposit: PositiveCentsSchema.optional(),
 })
   .refine((tenancy) => tenancy.to === undefined || notAfter(tenancy.from, tenancy.to), {
     message: 'The tenancy ends before it starts',
@@ -1072,11 +1105,6 @@ export const TransferSchema = RecordBaseSchema.extend({
 export type Transfer = z.infer<typeof TransferSchema>;
 
 // --- IMU (plan 3d) ---------------------------------------------------------------------------
-
-const PositiveCentsSchema = z
-  .int()
-  .min(1)
-  .transform((n): Cents => cents(n));
 
 /**
  * The IMU expected for one apartment and year (`imu-<apartmentId>-<year>`, plan 3d): one entry

@@ -679,6 +679,26 @@ describe('Contract data and rent history (plan 7, task 1)', () => {
     expect(ContractSchema.safeParse(contract).success).toBe(false);
   });
 
+  it('takeovers (plan 11): months not decreasing, a tenancy leaves once and enters once', () => {
+    const t = (month: string, outTenancyId: string, inTenancyId: string) => ({
+      month,
+      outTenancyId,
+      inTenancyId,
+    });
+    const ok = changed(full, {
+      takeovers: [t('2026-03', 'a', 'b'), t('2026-03', 'c', 'd'), t('2026-06', 'b', 'e')],
+    });
+    expect(ContractSchema.parse(ok)).toEqual(ok);
+    for (const takeovers of [
+      [t('2026-04', 'a', 'b'), t('2026-03', 'c', 'd')],
+      [t('2026-03', 'a', 'b'), t('2026-05', 'a', 'c')],
+      [t('2026-03', 'a', 'b'), t('2026-05', 'c', 'b')],
+      [t('2026-03', 'a', 'a')],
+    ]) {
+      expect(ContractSchema.safeParse(changed(full, { takeovers })).success).toBe(false);
+    }
+  });
+
   it('accepts an ordinario contract without a rate and a zero advance', () => {
     const ordinario = changed(without(full, 'cedolareRateBp'), {
       taxRegime: 'ordinario',
@@ -749,6 +769,12 @@ describe('Tenancy', () => {
     expect(NoteSchema.safeParse(changed(validRecords.note, { targetType: 'supply' })).success).toBe(
       true,
     );
+  });
+
+  it('has an optional positive expected deposit (plan 11)', () => {
+    const at = (expectedDeposit: number) =>
+      TenancySchema.safeParse(changed(validRecords.tenancy, { expectedDeposit })).success;
+    expect([at(50000), at(0), at(-1)]).toEqual([true, false, false]);
   });
 
   it('rejects a tenancy that ends before it starts', () => {
