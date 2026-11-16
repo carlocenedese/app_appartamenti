@@ -9,66 +9,19 @@ import {
   writeXlsx,
 } from '../src/index';
 import type { RecordKind } from '../src/index';
-import { FIXTURE, fixtureInput } from './helpers/excel-fixture';
+import { FIXTURE, fixtureInput, fixtureRecords, statementRecord } from './helpers/excel-fixture';
+import type { StoreRecords } from './helpers/excel-fixture';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
 const QUERY = { apartmentId: 'apt-nord', periodLabel: '2026-27' };
 
-const account = {
-  id: 'acc-nord',
-  v: 1,
-  rev: 1,
-  apartmentId: 'apt-nord',
-  label: 'Conto Nord',
-  bankProfileId: 'bp-sintetico',
-};
-const statement = (id: string, from: string, to: string) => ({
-  id,
-  v: 1,
-  rev: 1,
-  accountId: 'acc-nord',
-  bankProfileId: 'bp-sintetico',
-  fileName: `${id}.xlsx`,
-  suggestedPath: `Nord/Estratti/${id}.xlsx`,
-  from,
-  to,
-  periodSource: 'file',
-  rowCount: 0,
-  transactionIds: [],
-  held: [],
-});
-
-/**
- * The fixture as a store: every record except the assumed match (assumed matches are never
- * saved), one account and statements for October-December 2026 and July-September 2027, so the
- * gas bill of March 2027 has no statement and the water bill of July 2027 waits for its debit.
- */
-async function fixtureStore(
-  extra: Partial<Record<RecordKind, { id: string; rev: number }[]>> = {},
-) {
+/** The fixture as records of a store, with `extra` in place of a kind. */
+async function fixtureStore(extra: StoreRecords = {}) {
   const store = new MemoryStore();
-  const records: Partial<Record<RecordKind, { id: string; rev: number }[]>> = {
-    apartment: FIXTURE.apartments,
-    contract: FIXTURE.contracts,
-    tenant: FIXTURE.tenants,
-    tenancy: FIXTURE.tenancies,
-    bill: FIXTURE.bills,
-    instalment: FIXTURE.instalments,
-    match: FIXTURE.matches.filter((m) => m.by !== 'assumed'),
-    payment: FIXTURE.payments,
-    account: [account],
-    statement: [
-      statement('st-1', '2026-10-01', '2026-12-31'),
-      statement('st-2', '2027-07-01', '2027-09-30'),
-    ],
-    ...extra,
-  };
-  for (const [kind, list] of Object.entries(records) as [
-    RecordKind,
-    { id: string; rev: number }[],
-  ][]) {
-    for (const record of list) {
+  const records = { ...fixtureRecords(), ...extra };
+  for (const [kind, list] of Object.entries(records) as [RecordKind, StoreRecords[RecordKind]][]) {
+    for (const record of list ?? []) {
       await writeRecord(store, recordPath(kind, record.id), record, {
         expectedRev: null,
       });
@@ -103,7 +56,7 @@ describe('loadExcelInput', () => {
     await writeRecord(
       store,
       recordPath('statement', 'st-3'),
-      statement('st-3', '2027-03-01', '2027-03-31'),
+      statementRecord('st-3', '2027-03-01', '2027-03-31'),
       { expectedRev: null },
     );
     const loaded = await loadExcelInput(store, QUERY);

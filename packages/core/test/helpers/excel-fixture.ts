@@ -14,7 +14,7 @@ import {
   TenantSchema,
   YearMonthSchema,
 } from '../../src/index';
-import type { ConguaglioInput, Tenant } from '../../src/index';
+import type { ConguaglioInput, RecordKind, Tenant } from '../../src/index';
 
 export const ExcelFixtureSchema = z.object({
   description: z.string(),
@@ -56,5 +56,59 @@ export function fixtureInput(
     tenancies: copy.tenancies,
     payments: copy.payments,
     tenants: copy.tenants,
+  };
+}
+
+export type StoreRecords = Partial<
+  Record<RecordKind, readonly { id: string; rev: number; [key: string]: unknown }[]>
+>;
+
+/** A statement of the account of Nord, with no rows: it only says which days are covered. */
+export const statementRecord = (id: string, from: string, to: string) => ({
+  id,
+  v: 1,
+  rev: 1,
+  accountId: 'acc-nord',
+  bankProfileId: 'bp-sintetico',
+  fileName: `${id}.xlsx`,
+  suggestedPath: `Nord/Estratti/${id}.xlsx`,
+  from,
+  to,
+  periodSource: 'file',
+  rowCount: 0,
+  transactionIds: [],
+  held: [],
+});
+
+/**
+ * The fixture as the records of a store: every record except the assumed match (assumed matches
+ * are never saved), one account and statements for October-December 2026 and July-September
+ * 2027, so the gas bill of March 2027 has no statement (assumed) and the water bill of July 2027
+ * waits for its debit.
+ */
+export function fixtureRecords(fixture: ExcelFixture = FIXTURE): StoreRecords {
+  return {
+    apartment: fixture.apartments,
+    contract: fixture.contracts,
+    tenant: fixture.tenants,
+    tenancy: fixture.tenancies,
+    bill: fixture.bills,
+    instalment: fixture.instalments,
+    match: fixture.matches.filter((m) => m.by !== 'assumed'),
+    payment: fixture.payments,
+    account: [
+      {
+        id: 'acc-nord',
+        v: 1,
+        rev: 1,
+        apartmentId: 'apt-nord',
+        label: 'Conto Nord',
+        bankProfileId: 'bp-sintetico',
+      },
+    ],
+    statement: [
+      statementRecord('st-1', '2026-10-01', '2026-12-31'),
+      statementRecord('st-2', '2027-07-01', '2027-09-30'),
+    ],
   };
 }
