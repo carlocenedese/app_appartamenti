@@ -200,7 +200,7 @@ async function writeInstalments(
  * when the reading names none, there is no such record, it is deleted, or its file is not a valid
  * profile: `decideRegistration` then sends the reading to a person.
  */
-async function readSupplierProfile(
+export async function readSupplierProfile(
   store: Store,
   result: ExtractionResult,
 ): Promise<SupplierProfile | undefined> {
