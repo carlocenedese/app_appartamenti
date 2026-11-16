@@ -187,7 +187,7 @@ describe('pnpm excel', () => {
     expect(readdirSync(folder)).toEqual(['Conguaglio_Nord_2026-27.xlsx']);
   });
 
-  it('writes the owners file with --proprietari, only to --uscita', async () => {
+  it('writes the owners file with --proprietari, to --uscita or the default path', async () => {
     const args = ['--cartella', data, '--appartamento', 'apt-nord', '--periodo', '2026-27'];
     const file = join(out, 'Proprietari.xlsx');
     const first = await main([...args, '--proprietari', '--uscita', file]);
@@ -212,11 +212,17 @@ describe('pnpm excel', () => {
     outputs.push(again.output);
     expect(again.code).toBe(1);
     expect(JSON.parse(again.output)).toMatchObject({ reason: 'file-exists' });
-    const noOutput = await main([...args, '--proprietari']);
-    outputs.push(noOutput.output);
-    expect(noOutput.code).toBe(2);
-    expect(JSON.parse(noOutput.output)).toMatchObject({ reason: 'bad-arguments' });
     rmSync(file);
+    // Without --uscita: the default path under the data folder (5b, D2).
+    const byDefault = await main([...args, '--proprietari']);
+    outputs.push(byDefault.output);
+    expect(byDefault.code).toBe(0);
+    const folder = join(data, 'Riservato_proprietari', 'Excel', 'Nord', '2026-27');
+    expect(readdirSync(folder)).toEqual(['Proprietari_Nord_2026-27.xlsx']);
+    const twice = await main([...args, '--proprietari']);
+    outputs.push(twice.output);
+    expect(JSON.parse(twice.output)).toMatchObject({ reason: 'file-exists' });
+    rmSync(join(data, 'Riservato_proprietari'), { recursive: true });
   });
 
   it('refuses a default folder that is a link or a file, writing nothing', async () => {

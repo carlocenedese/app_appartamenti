@@ -7,7 +7,9 @@
 import { instalmentOwnerShare } from './conguaglio';
 import type { ConguaglioInput } from './conguaglio';
 import { expectedDebit } from './match';
-import type { Instalment } from './model';
+import { apartmentFolder } from './accounts';
+import type { Apartment, Instalment } from './model';
+import { safeWord } from './proposal';
 import { cents } from './money';
 import type { Cents } from './money';
 import { annualitaRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
@@ -15,7 +17,7 @@ import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
 import type { XlsxCell, XlsxWorkbook } from './xlsx-write';
 
-export type OwnersStatus = 'pagata' | 'assunta' | 'in-attesa';
+export type OwnersStatus = 'pagata' | 'importo-diverso' | 'assunta' | 'in-attesa';
 
 export interface OwnersItem {
   instalmentId: string;
@@ -62,6 +64,7 @@ export const OWNERS_HEADERS = [
 
 const STATUS_LABELS: Record<OwnersStatus, string> = {
   pagata: 'pagata',
+  'importo-diverso': 'importo diverso',
   assunta: 'assunta, non verificata',
   'in-attesa': 'in attesa di pagamento',
 };
@@ -105,6 +108,12 @@ export function ownersItems(input: ConguaglioInput): OwnersItem[] {
       const real = amounts.filter((m) => m.by !== 'assumed');
       const expected = expectedDebit(i);
       const straordinaria = i.straordinaria === true;
+      const debited = total(real.map((m) => m.amount));
+      // 5b D1, R184: a real debit other than the expected one; no «duplicato».
+      const status = (): OwnersStatus => {
+        if (real.length > 0) return debited === expected ? 'pagata' : 'importo-diverso';
+        return amounts.length > 0 ? 'assunta' : 'in-attesa';
+      };
       return {
         instalmentId: i.id,
         esercizio: i.esercizio,
@@ -118,10 +127,10 @@ export function ownersItems(input: ConguaglioInput): OwnersItem[] {
         conguaglioPrec: i.conguaglioPrec,
         ownerShare: straordinaria ? expected : instalmentOwnerShare(i),
         expected,
-        ...(real.length === 0 ? {} : { debited: total(real.map((m) => m.amount)) }),
+        ...(real.length === 0 ? {} : { debited }),
         commission: total(own.filter((m) => m.part === 'commission').map((m) => m.amount)),
         debitDates: [...new Set(real.map((m) => m.transactionDate))].sort(compareText),
-        status: real.length > 0 ? 'pagata' : amounts.length > 0 ? 'assunta' : 'in-attesa',
+        status: status(),
       };
     });
 }
@@ -170,5 +179,24 @@ export function buildOwnersWorkbook(input: ConguaglioInput): XlsxWorkbook {
     sum((i) => i.commission),
   ]);
   const header = OWNERS_HEADERS.map((value): XlsxCell => ({ kind: 'text', value }));
-  return { sheets: [{ name: OWNERS_SHEET, rows: [header, ...rows] }] };
+  // 5b D5, R184: as the tenants' file (R171), every period is open; N = instalments not paid.
+  const waiting = items.filter((i) => i.status === 'in-attesa' || i.status === 'importo-diverso');
+  const provisional: XlsxCell[] = [
+    { kind: 'text', value: `Conguaglio provvisorio: voci in attesa ${String(waiting.length)}` },
+  ];
+  return { sheets: [{ name: OWNERS_SHEET, rows: [provisional, header, ...rows] }] };
+}
+
+/**
+ * Where the owners' file goes under the shared folder (5b D2, R184):
+ * `Riservato_proprietari/Excel/<Appartamento>/<periodo>/Proprietari_<Appartamento>_<periodo>.xlsx`,
+ * with the safe names of `excelFilePath`.
+ */
+export function ownersFilePath(
+  apartment: Pick<Apartment, 'name'>,
+  period: Pick<ConguaglioInput['period'], 'label'>,
+): string {
+  const folder = apartmentFolder(apartment.name);
+  const label = safeWord(period.label, 'periodo', 20);
+  return `Riservato_proprietari/Excel/${folder}/${label}/Proprietari_${folder}_${label}.xlsx`;
 }

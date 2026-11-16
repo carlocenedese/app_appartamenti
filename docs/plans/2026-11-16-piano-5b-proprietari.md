@@ -46,3 +46,13 @@ Quelli del piano 5 (centesimi interi, core puro, deterministico, nessun dato per
 
 - Decisioni 1-9 → task 1 (1, 2, 3, 4, 5, 6, 7, 9) e task 2 (8). Domande 1-6: nessun task le decide.
 - `loadExcelInput` (piano 5) è l'unico caricamento; `writeXlsx` l'unico scrittore.
+
+## Task 3: risposte di user1 (16 novembre 2026)
+
+**Files:** Modify `packages/core/src/excel-owners.ts`, `scripts/excel.mjs`, i loro test, `docs/progress.md` (R184; R180-R183 sono di un altro ramo).
+
+- Riga in cima `Conguaglio provvisorio: voci in attesa N` (N = rate `in attesa di pagamento` o `importo diverso`), sopra le intestazioni.
+- Stato `importo diverso` quando la somma degli addebiti non assunti è diversa dall'addebito atteso; nessun «duplicato».
+- `ownersFilePath`: `Riservato_proprietari/Excel/<Appartamento>/<periodo>/Proprietari_<Appartamento>_<periodo>.xlsx`; `pnpm excel --proprietari` senza `--uscita` scrive lì (cartelle create, collegamenti e file al posto delle cartelle rifiutati come R176).
+- Restano fuori TARI, banca, saldo tra conti, IMU; periodo e rate a cavallo come sono.
+

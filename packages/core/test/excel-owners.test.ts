@@ -4,6 +4,7 @@ import {
   OWNERS_HEADERS,
   OWNERS_SHEET,
   buildOwnersWorkbook,
+  ownersFilePath,
   cents,
   isoDate,
   writeXlsx,
@@ -16,7 +17,9 @@ type Instalment = ConguaglioInput['instalments'][number];
 type Match = ConguaglioInput['matches'][number];
 const plain = (cell: XlsxCell | null | undefined) => cell?.value ?? null;
 const rowsOf = (input: ConguaglioInput) =>
-  (buildOwnersWorkbook(input).sheets[0]?.rows ?? []).map((r) => r.map(plain));
+  // Below the provisional line on top.
+  (buildOwnersWorkbook(input).sheets[0]?.rows.slice(1) ?? []).map((r) => r.map(plain));
+const top = (input: ConguaglioInput) => buildOwnersWorkbook(input).sheets[0]?.rows[0];
 
 const base = fixtureInput();
 const cond = base.instalments.find((i) => i.id === 'inst-cond-1') as Instalment;
@@ -139,6 +142,34 @@ describe('buildOwnersWorkbook', () => {
     expect(rows.at(-1)?.slice(6)).toEqual([140000, 4000, 62000, 144000, 86000, 80]);
   });
 
+  it('says on top that it is provisional, with the instalments not paid (5b, D5)', () => {
+    expect(top(fixtureInput())).toEqual([
+      { kind: 'text', value: 'Conguaglio provvisorio: voci in attesa 0' },
+    ]);
+    const input = fixtureInput();
+    input.matches = input.matches.filter((m) => m.itemId !== 'inst-cond-1');
+    expect(top(input)?.[0]?.value).toBe('Conguaglio provvisorio: voci in attesa 1');
+  });
+
+  it('says «importo diverso» when the debit is not the expected one (5b, D1)', () => {
+    const input = fixtureInput();
+    const m = input.matches.find((x) => x.itemId === 'inst-cond-1') as Match;
+    m.amount = cents(35000);
+    const row = rowsOf(input)[1];
+    expect(row?.slice(9, 14)).toEqual([36000, 35000, 0, '06/10/2026', 'importo diverso']);
+    expect(top(input)?.[0]?.value).toBe('Conguaglio provvisorio: voci in attesa 1');
+  });
+
+  it('puts the file in Riservato_proprietari/Excel/ with a safe name (5b, D2)', () => {
+    const period = { label: '2026-27' };
+    expect(ownersFilePath({ name: 'Città: è Nord' }, period)).toBe(
+      'Riservato_proprietari/Excel/Citta-e-Nord/2026-27/Proprietari_Citta-e-Nord_2026-27.xlsx',
+    );
+    expect(ownersFilePath({ name: 'nul' }, period)).toBe(
+      'Riservato_proprietari/Excel/Appartamento_nul/2026-27/Proprietari_Appartamento_nul_2026-27.xlsx',
+    );
+  });
+
   it('leaves the total debited empty when nothing is debited', () => {
     const input = fixtureInput();
     input.matches = input.matches.filter((m) => m.itemId !== 'inst-cond-1');
@@ -193,7 +224,7 @@ describe('the bytes of the owners file', () => {
 
   it('are the same in every time zone', () => {
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      'dd288bac789dd71b7047929f7b30dcbfc94b0391bc289320c44238669c79cbe4',
+      '4d6a3defadead27fbd27d2f6692644ed1f997e6c5607e44d21bb84da107ba555',
     );
   });
 });
