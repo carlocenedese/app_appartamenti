@@ -22,6 +22,7 @@ import {
   TenantRecoverySchema,
   TaxEstimateSchema,
   TaxPaymentSchema,
+  ContactSchema,
   NoteSchema,
   PayableKindSchema,
   PayableSchema,
@@ -289,6 +290,14 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     voce: 'cedolare',
     amount: 180000,
   },
+  contact: {
+    ...base,
+    id: 'ctc-1',
+    role: 'amministratore',
+    name: 'Amministratore Prova',
+    email: 'amministratore@example.test',
+    apartmentIds: ['apt-1'],
+  },
   taxPayment: {
     ...base,
     id: 'taxp-tx-1',
@@ -403,6 +412,7 @@ describe('recordSchemas', () => {
         'tenantRecovery',
         'taxEstimate',
         'taxPayment',
+        'contact',
       ].sort(),
     );
   });
@@ -429,6 +439,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.tenantRecovery).toBe(TenantRecoverySchema);
     expect(recordSchemas.taxEstimate).toBe(TaxEstimateSchema);
     expect(recordSchemas.taxPayment).toBe(TaxPaymentSchema);
+    expect(recordSchemas.contact).toBe(ContactSchema);
   });
 });
 
@@ -1733,6 +1744,31 @@ describe('TenantRecoverySchema (plan 8, task 7)', () => {
     expect(ok({ amount: 0, shares: [{ tenantId: 'ten-1', amount: 0 }] })).toBe(false);
     expect(ok({ shares: [] })).toBe(false);
     expect(ok({ status: 'pagata' })).toBe(false);
+  });
+});
+
+describe('ContactSchema (plan 14, R251)', () => {
+  const ok = (changes: Record<string, unknown>) =>
+    ContactSchema.safeParse(changed(validRecords.contact, changes)).success;
+
+  it('accepts a supplier with free-text contacts, supplies and no apartment', () => {
+    expect(
+      ok({
+        role: 'fornitore',
+        phone: '+39 000 000 0000',
+        notes: 'Solo al mattino',
+        apartmentIds: [],
+        supplyIds: ['sup-1'],
+      }),
+    ).toBe(true);
+  });
+
+  it('refuses another role, an empty name or field, a link twice', () => {
+    expect(ok({ role: 'idraulico' })).toBe(false);
+    expect(ok({ name: '' })).toBe(false);
+    expect(ok({ phone: '' })).toBe(false);
+    expect(ok({ apartmentIds: ['apt-1', 'apt-1'] })).toBe(false);
+    expect(ok({ supplyIds: ['sup-1', 'sup-1'] })).toBe(false);
   });
 });
 

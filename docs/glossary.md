@@ -66,6 +66,8 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | differenza di consuntivo           | condominium difference (`condoDifferenceTo`, `condoDifferences`) | consuntivo − preventivo: agli inquilini (predefinito) o al proprietario (R193, R194) |
 | controllo delle spese condominiali | owners' condominium check (`condoCheck`)                         | pagata, senza addebito, importo diverso, duplicato, in programma, assunta (R194)     |
 | recupero da un inquilino           | tenant recovery (`tenantRecovery`)                               | spesa straordinaria causata da inquilini, nel loro conguaglio (R196, R197)           |
+| rubrica, contatto                  | address book, contact (`contact`)                                | amministratore o fornitore, contatti in testo libero (R251)                          |
+| stima del condominio               | condominium estimate (`condoEstimate`)                           | documento dell'esercizio o copia del precedente, mai salvata (R250)                  |
 
 ## Banca e pagamenti
 
