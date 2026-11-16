@@ -59,8 +59,8 @@ coerenza prima di scrivere, un annullamento che non lasci abbinamenti appesi, la
 
 ## Decisioni (Ruling)
 
-- **R260** stato «da rivedere» come record `pendingDocument` minimo (id `doc-<fileHash>` o
-  `doc-<fileHash>-p<a>-<b>`): appartamento, impronta, pagine, tipo, codici dei controlli. Non contiene
+- **R260** stato «da rivedere» come record `pendingDocument` minimo (id `doc-<id nuovo>`, uno per
+  file, pagine e appartamento): appartamento, impronta, pagine, tipo, codici dei controlli. Non contiene
   la lettura né la proposta: alla conferma si rilegge il PDF e la proposta si ricalcola (piano 4).
 - **R261** `knownCodes` è un argomento obbligatorio (nessun luogo li conserva oggi); con lista vuota il
   modo `auto` non registra mai e dà `da-rivedere` con il codice `apartment-codes-unknown`.
@@ -71,7 +71,9 @@ coerenza prima di scrivere, un annullamento che non lasci abbinamenti appesi, la
   del controllo esistente, codice condiviso); media = bollette interamente dentro gli N mesi prima
   dell'inizio, normalizzata per mese di competenza; differenza in punti base arrotondata alla metà
   lontana da zero, solo da mostrare; il confronto con la soglia è esatto sugli interi.
-- **R264** cruscotto: un caricatore rifiutato (`inconsistent-store`) rifiuta tutto il cruscotto.
+- **R264** cruscotto: codici e regole di conteggio come in `docs/progress.md` R264; un caricatore
+  rifiutato rifiuta tutto il cruscotto; `assunta` si conta (R204 domanda 7 aperta).
+- **R265** domande aperte, elencate sotto e in `docs/progress.md`.
 
 ## Domande per user1
 

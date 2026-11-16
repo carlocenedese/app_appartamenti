@@ -59,8 +59,9 @@ export type DashboardResult =
   | { status: 'computed'; apartments: ApartmentDashboard[]; settlements: SettlementStatusRow[] }
   | { status: 'refused'; reason: 'inconsistent-store' | 'bad-year' };
 
-// States that mean nothing is left to do, so they are not counted.
-const DONE = new Set(['pagata', 'assunta', 'versata', 'in-linea']);
+// States that mean nothing is left to do, so they are not counted. `assunta` is counted: whether
+// an instalment without a statement is paid is open (R204, question 7).
+const DONE = new Set(['pagata', 'versata', 'in-linea']);
 
 /**
  * The counts of every live apartment, by id (R264: any loader refused refuses it all):
@@ -73,7 +74,7 @@ const DONE = new Set(['pagata', 'assunta', 'versata', 'in-linea']);
  * `tasse:stima-mancante` (`loadTaxTable`, only with `taxYear`, for each apartment of the taxpayer),
  * and for each settlement period given `conguaglio:voci-in-attesa` (the pending items),
  * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`.
- * States that mean done (`pagata`, `assunta`, `versata`, `in-linea`) are not counted.
+ * States that mean done (`pagata`, `versata`, `in-linea`) are not counted.
  */
 export async function loadDashboard(
   store: Store,

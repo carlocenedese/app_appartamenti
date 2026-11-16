@@ -73,6 +73,32 @@ async function store() {
     kind: 'escluso',
     excludeReason: 'non-reale',
   });
+  await put('tenancy', {
+    ...base,
+    id: 'ten-1',
+    apartmentId: 'apt-2',
+    tenantId: 't-1',
+    from: '2026-01',
+    monthlyRent: 40000,
+    monthlyForfait: 5000,
+    expectedDeposit: 80000,
+  });
+  await put('contract', {
+    ...base,
+    id: 'ctr-1',
+    apartmentId: 'apt-2',
+    type: '1+1',
+    start: '2026-01',
+    end: '2027-12',
+    settlement: 'annuale',
+    agreedRent: true,
+    forStudents: true,
+    durationMonths: 12,
+    signedOn: '2025-12-20',
+    taxRegime: 'cedolare',
+    cedolareRateBp: 1000,
+    tenancyIds: ['ten-1', 'ten-missing'],
+  });
   await put('payable', {
     ...base,
     id: 'scad-1',
@@ -100,7 +126,13 @@ describe('loadDashboard', () => {
         },
         {
           apartmentId: 'apt-2',
-          counts: { 'movimento-senza-uso': 1, 'scadenza:in-ritardo': 1 },
+          counts: {
+            'caparra:mancante': 1,
+            'contratto:tenancy-outside-contract': 1,
+            'contratto:unknown-tenancy': 1,
+            'movimento-senza-uso': 1,
+            'scadenza:in-ritardo': 1,
+          },
         },
       ],
       settlements: [{ apartmentId: 'apt-1', periodLabel: '2025-26', problem: 'unknown-period' }],
@@ -142,7 +174,7 @@ describe('loadDashboard', () => {
 });
 
 describe('loadDashboard on the Excel fixture', () => {
-  it('reports the settlement period given and the checks of contracts and condominium', async () => {
+  it('reports the settlement period given', async () => {
     const s = new MemoryStore();
     for (const [kind, list] of Object.entries(fixtureRecords()) as [
       RecordKind,
@@ -158,11 +190,15 @@ describe('loadDashboard on the Excel fixture', () => {
       settlements: [{ apartmentId: 'apt-nord', periodLabel: '2026-27' }],
     });
     if (result.status !== 'computed') throw new Error(result.reason);
-    const [row] = result.settlements;
-    expect(row).toMatchObject({ apartmentId: 'apt-nord', periodLabel: '2026-27' });
-    expect(row?.problem).toBeUndefined();
-    expect(typeof row?.pending).toBe('number');
-    const counts = result.apartments.find((a) => a.apartmentId === 'apt-nord')?.counts ?? {};
-    expect(Object.values(counts).every((n) => n > 0)).toBe(true);
+    expect(result.settlements).toEqual([
+      { apartmentId: 'apt-nord', periodLabel: '2026-27', pending: 1, unassigned: 8894 },
+    ]);
+    expect(result.apartments).toEqual([
+      {
+        apartmentId: 'apt-nord',
+        counts: { 'conguaglio:posti-vuoti': 1, 'conguaglio:voci-in-attesa': 1 },
+      },
+      { apartmentId: 'apt-sud', counts: {} },
+    ]);
   });
 });

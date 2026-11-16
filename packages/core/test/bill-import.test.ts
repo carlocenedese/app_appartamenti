@@ -207,6 +207,75 @@ describe('importBill', () => {
   });
 });
 
+describe('pendingDocuments', () => {
+  it('counts a whole file waiting as resolved once a part of it is registered', async () => {
+    const { store, input, clock } = await setup({ autoRegister: false });
+    await importBill(store, input, 'u', clock, ids('a'));
+    expect(await pendingDocuments(store)).toHaveLength(1);
+    const part = reading(input.result.fileHash, { pageRange: [1, 1] });
+    const result = await importBill(
+      store,
+      { ...input, result: part, mode: 'manual' },
+      'u',
+      clock,
+      ids('p'),
+    );
+    expect(result).toMatchObject({ status: 'confermata' });
+    expect(await pendingDocuments(store)).toEqual([]);
+  });
+});
+
+describe('importBill of a TARI notice', () => {
+  it('writes one instalment per supply read from the store, and takes them back', async () => {
+    const { store, clock } = await setup();
+    const bytes = new TextEncoder().encode('%PDF-1.7 avviso TARI sintetico');
+    for (const [id, label, apartmentId] of [
+      ['sup-a', 'Uno', 'apt-1'],
+      ['sup-b', 'Due', 'apt-2'],
+    ] as const) {
+      await store.writeJsonAtomic(recordPath('supply', id), {
+        id,
+        v: 1,
+        rev: 1,
+        label,
+        apartments: [{ apartmentId, weight: 10000 }],
+      });
+    }
+    const tari = reading(await hashBytes(bytes), {
+      kind: 'tari',
+      documentKind: 'tari',
+      category: null,
+      profileId: 'prof-tari',
+      fields: {
+        supplier: field('Comune di Esempio'),
+        number: field('2026/1/00001'),
+        issueDate: field('2026-02-20'),
+        dueDate: field('2026-03-16'),
+        periodStart: field('2026-01-01'),
+        periodEnd: field('2026-04-30'),
+        amount: field(18546),
+      },
+      parts: [
+        { label: 'Uno', amount: 10075, source },
+        { label: 'Due', amount: 8471, source },
+      ],
+      identifiers: [],
+    });
+    const input: ImportBillInput = {
+      result: tari,
+      bytes,
+      apartmentId: 'apt-1',
+      knownCodes: [],
+      thresholds: { consumptionAnomalyPercent: 30 },
+      mode: 'manual',
+    };
+    const result = await importBill(store, input, 'u', clock, ids('t'));
+    expect(result.status === 'confermata' && result.ids).toHaveLength(2);
+    const undone = await undoBillImport(store, tari.fileHash, 'u', clock, ids('u'));
+    expect(undone.status === 'undone' && undone.operations).toHaveLength(1);
+  });
+});
+
 describe('undoBillImport', () => {
   it('takes back the bill and the document to review, and can be repeated', async () => {
     const { store, input, result, clock } = await setup({ autoRegister: false });

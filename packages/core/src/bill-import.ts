@@ -8,7 +8,7 @@
  * Pure: the clock and the ids come from the caller.
  */
 import { decideRegistration, readSupplierProfile, registerProposal } from './confirmation';
-import { hashBytes } from './dedupe';
+import { hashBytes, samePages } from './dedupe';
 import { hasOcrReading } from './extraction';
 import type { ExtractionResult } from './extraction';
 import { checkConsistency, commitChange } from './journal';
@@ -73,8 +73,12 @@ function fileDocumentOf(result: ExtractionResult): FileDocument | undefined {
     : undefined;
 }
 
-const samePages = (a?: readonly number[], b?: readonly number[]): boolean =>
-  a?.[0] === b?.[0] && a?.[1] === b?.[1];
+/** How two page ranges of one file compare (`samePages` of `dedupe.ts`; absent = whole file). */
+const pagesCompare = (a?: [number, number], b?: [number, number]) =>
+  samePages(
+    a === undefined ? undefined : { pages: a, documentKind: 'unknown' },
+    b === undefined ? undefined : { pages: b, documentKind: 'unknown' },
+  );
 
 /** The live bills and instalments registered from `fileHash`. */
 async function registeredFrom(store: Store, fileHash: string) {
@@ -179,8 +183,8 @@ export async function importBill(
   if (decision.action === 'auto-register' && input.knownCodes.length > 0) return register('auto');
 
   const pages = fileDocumentOf(result)?.pages;
-  const known = (await registeredFrom(store, result.fileHash)).find((r) =>
-    samePages(r.fileDocument?.pages, pages),
+  const known = (await registeredFrom(store, result.fileHash)).find(
+    (r) => pagesCompare(r.fileDocument?.pages, pages) === 'same',
   );
   if (known !== undefined) return { status: 'duplicate', existingId: known.id };
   const profileOk =
@@ -196,7 +200,9 @@ export async function importBill(
       : decision.reasons;
   const waiting = (await loadAll(store, 'pendingDocument', PendingDocumentSchema)).records.find(
     (d) =>
-      d.fileHash === result.fileHash && d.apartmentId === apartmentId && samePages(d.pages, pages),
+      d.fileHash === result.fileHash &&
+      d.apartmentId === apartmentId &&
+      pagesCompare(d.pages, pages) === 'same',
   );
   if (waiting !== undefined) {
     return { status: 'da-rivedere', pendingId: waiting.id, codes, reasons, checks };
@@ -241,7 +247,7 @@ export async function importBill(
 
 /**
  * The live documents still «da rivedere»: a `pendingDocument` with no live bill or instalment
- * of the same file and pages (R260), sorted by id.
+ * of the same file whose pages are the same or overlap (R260), sorted by id.
  */
 export async function pendingDocuments(store: Store): Promise<PendingDocument[]> {
   const docs = (await loadAll(store, 'pendingDocument', PendingDocumentSchema)).records;
@@ -251,7 +257,9 @@ export async function pendingDocuments(store: Store): Promise<PendingDocument[]>
   return docs.filter(
     (d) =>
       !registered.some(
-        (r) => r.fileHash === d.fileHash && samePages(r.fileDocument?.pages, d.pages),
+        // A part registered from a whole file waiting (split by hand) resolves it too.
+        (r) =>
+          r.fileHash === d.fileHash && pagesCompare(r.fileDocument?.pages, d.pages) !== 'disjoint',
       ),
   );
 }
