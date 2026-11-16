@@ -221,11 +221,13 @@ export function settlementPeriodOf(month: YearMonth, periods: readonly Span[]): 
   return (ended.length > 0 ? ended : takes).at(-1);
 }
 
-export type SettlementStatus = 'saldato' | 'parziale' | 'da pagare';
+export type SettlementStatus =
+  'saldato' | 'parziale' | 'da pagare' | 'da restituire' | 'versato in più';
 
 /**
- * The status of a settlement (section 27, R6, question 3): `saldato` once nothing is left and
- * every payment counted is in a statement; `da pagare` while nothing is paid; else `parziale`.
+ * The status of a settlement (section 27, R6, question 3, R178): `saldato` once nothing is left and
+ * every payment counted is in a statement; `versato in più` beyond the settlement, on its side;
+ * while nothing is paid `da pagare`, or `da restituire` for a credit of the tenant; else `parziale`.
  */
 export function settlementStatus(
   due: Cents,
@@ -233,7 +235,9 @@ export function settlementStatus(
 ): SettlementStatus {
   const versato = total(paid.map((p) => p.amount));
   if (versato === due && paid.every((p) => p.source === 'csv')) return 'saldato';
-  return versato === 0 ? 'da pagare' : 'parziale';
+  if (due >= 0 ? versato > due : versato < due) return 'versato in più';
+  if (versato === 0) return due < 0 ? 'da restituire' : 'da pagare';
+  return 'parziale';
 }
 
 export const EXCEL_SHEETS = [

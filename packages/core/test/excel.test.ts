@@ -8,6 +8,7 @@ import {
   buildConguaglioWorkbook,
   calcConguaglio,
   excelFilePath,
+  settlementStatus,
   cents,
   isoDate,
   writeXlsx,
@@ -521,6 +522,24 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     // After the end of 2026-27 it goes back to the period that ended (D11).
     const nov = withPayments([conguaglio('c1', 'ten-a', { date: isoDate('2027-11-10') })], periods);
     expect(anna(nov)).toEqual([due, 1000, due - 1000, 'parziale']);
+  });
+
+  it('says what is left over or to give back (D12, D14)', () => {
+    const csv = (amount: number) => ({ amount: cents(amount), source: 'csv' as const });
+    expect(settlementStatus(cents(10000), [csv(12000)])).toBe('versato in più');
+    expect(settlementStatus(cents(-4000), [csv(-5000)])).toBe('versato in più');
+    expect(settlementStatus(cents(0), [csv(1000)])).toBe('versato in più');
+    expect(settlementStatus(cents(-4000), [])).toBe('da restituire');
+    expect(settlementStatus(cents(-4000), [csv(5000), csv(-5000)])).toBe('da restituire');
+    expect(settlementStatus(cents(-4000), [csv(-1000)])).toBe('parziale');
+    expect(settlementStatus(cents(-4000), [csv(-4000)])).toBe('saldato');
+    // The other words stay.
+    expect(settlementStatus(cents(0), [])).toBe('saldato');
+    expect(settlementStatus(cents(10000), [csv(5000), csv(-5000)])).toBe('da pagare');
+    expect(settlementStatus(cents(10000), [csv(4000)])).toBe('parziale');
+    expect(settlementStatus(cents(10000), [{ amount: cents(10000), source: 'manual' }])).toBe(
+      'parziale',
+    );
   });
 
   it('sums paid and residual in the total, and leaves the empty beds blank', () => {
