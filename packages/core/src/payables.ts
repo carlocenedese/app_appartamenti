@@ -63,6 +63,8 @@ export interface PayableItem {
     /** Unpaid, and no statement of the paying account covers the due date (question 7: open). */
     | 'periodo-senza-estratto';
   repeatYearly?: true;
+  /** The reference year chosen by user1 (plan 13, R242). */
+  taxYear?: number;
   /** A live item was repeated from this one. */
   repeated?: true;
 }
@@ -127,9 +129,9 @@ function isPayablePaid(
 }
 
 /**
- * The «ancora previsto» of cedolare and registro from the payables (plan 13, R243): each live
- * unpaid payable of those kinds, with `year` = its `taxYear` as `AAAA` and `amount` = `expected`
- * when present (the table never takes a missing one as zero). By record id.
+ * The payables of cedolare and registro for the tax table (plan 13, R243, R246): each live one,
+ * with `year` = its `taxYear` as `AAAA`, `amount` = `expected` when present (the table never takes
+ * a missing one as zero) and `paid` (its movement, if any) when paid. By record id.
  */
 export function payableExpectedItems(input: {
   payables: Payable[];
@@ -141,13 +143,21 @@ export function payableExpectedItems(input: {
   return live(input.payables)
     .sort((a, b) => compareText(a.id, b.id))
     .flatMap((p) =>
-      (p.kind === 'cedolare' || p.kind === 'registro') && !isPayablePaid(p, transactions, classOf)
+      p.kind === 'cedolare' || p.kind === 'registro'
         ? [
             {
               apartmentId: p.apartmentId,
               voce: p.kind,
               ...(p.taxYear === undefined ? {} : { year: String(p.taxYear).padStart(4, '0') }),
               ...(p.expected === undefined ? {} : { amount: p.expected }),
+              ...(p.paid !== undefined && isPayablePaid(p, transactions, classOf)
+                ? {
+                    paid:
+                      p.paid.transactionId === undefined
+                        ? {}
+                        : { transactionId: p.paid.transactionId },
+                  }
+                : {}),
             },
           ]
         : [],
@@ -247,6 +257,7 @@ export function scadenzario(input: ScadenzarioInput): {
         ...(paid && p.paid !== undefined ? { paidOn: p.paid.date } : {}),
         ...(paid && txId !== undefined ? { transactionId: txId } : {}),
         ...(p.repeatYearly === true ? { repeatYearly: true as const } : {}),
+        ...(p.taxYear === undefined ? {} : { taxYear: p.taxYear }),
         ...(repeated.has(p.id) ? { repeated: true as const } : {}),
       },
       paid,

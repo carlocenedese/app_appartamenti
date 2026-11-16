@@ -368,7 +368,7 @@ describe('scadenzario (plan 9, task 2)', () => {
 });
 
 describe('payableExpectedItems (plan 13, answer 4 of user1)', () => {
-  it('takes the unpaid cedolare and registro payables, with their reference year and amount', () => {
+  it('takes the cedolare and registro payables, with reference year, amount and payment', () => {
     const items = payableExpectedItems({
       transactions: [tx('t-out', -1600, '2026-11-12')],
       classes: [
@@ -384,7 +384,7 @@ describe('payableExpectedItems (plan 13, answer 4 of user1)', () => {
         payable('scad-a', { taxYear: 2026, expected: 6700 }),
         payable('scad-b', { kind: 'cedolare', taxYear: 2025 }),
         payable('scad-c', { kind: 'cedolare', expected: 100 }),
-        // Paid by hand: not expected any more; paid by an excluded movement: still expected.
+        // Paid by hand: given as paid; paid by an excluded movement: still expected.
         payable('scad-d', { taxYear: 2026, expected: 1, paid: { date: '2026-11-01' } }),
         payable('scad-e', {
           taxYear: 2026,
@@ -399,7 +399,27 @@ describe('payableExpectedItems (plan 13, answer 4 of user1)', () => {
       { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 6700 },
       { apartmentId: 'pulci', voce: 'cedolare', year: '2025' },
       { apartmentId: 'pulci', voce: 'cedolare', amount: 100 },
+      { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 1, paid: {} },
       { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 1600 },
+    ]);
+    expect(
+      payableExpectedItems({
+        transactions: [tx('t1', -6700)],
+        classes: [
+          recordSchemas.movementClass.parse({
+            ...base,
+            id: 'mc-t1',
+            transactionId: 't1',
+            kind: 'tasse',
+            apartmentId: 'pulci',
+          }),
+        ],
+        payables: [
+          payable('scad-p', { taxYear: 2026, paid: { date: '2026-11-10', transactionId: 't1' } }),
+        ],
+      }),
+    ).toEqual([
+      { apartmentId: 'pulci', voce: 'registro', year: '2026', paid: { transactionId: 't1' } },
     ]);
     expect(
       payableExpectedItems({

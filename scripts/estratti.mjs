@@ -260,6 +260,8 @@ const MESSAGES = {
     'Rifiutato: il movimento è assegnato a cedolare o registro: annullare prima l’assegnazione.',
   'tax-year-empty':
     'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
+  'tax-no-payable':
+    'Da verificare: nessuna scadenza con anno di riferimento per questa voce e quest’anno; una scadenza senza anno va riscritta con «scadenza-nuova --id <id> --anno-riferimento <AAAA>».',
   'tax-discrepancy':
     'Discrepanza tra la stima e il pagato più l’ancora previsto: solo un avviso, non blocca nulla.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -1501,6 +1503,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
           state: r.state,
           reasons: r.reasons,
           ...(r.state === 'discrepanza' ? { message: MESSAGES['tax-discrepancy'] } : {}),
+          ...(r.reasons.includes('no-expected-source')
+            ? { message: MESSAGES['tax-no-payable'] }
+            : {}),
           ...(details
             ? {
                 estimate: r.estimate,
@@ -1796,6 +1801,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
           state: i.state,
           ...optional('check', i.check),
           ...optional('repeatYearly', i.repeatYearly),
+          ...optional('taxYear', i.taxYear),
           ...optional('repeated', i.repeated),
           ...(details
             ? {

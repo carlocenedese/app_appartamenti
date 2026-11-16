@@ -44,18 +44,22 @@ export type TaxReason =
   | 'unassigned-tax-movement'
   | 'no-expected-source'
   | 'expected-amount-missing'
+  | 'payable-paid-outside'
+  | 'payable-and-payment'
   | 'rule-undecided';
 
 /**
- * An amount still expected from Scadenze e pagamenti (plan 9, `payableExpectedItems`), for the
- * voci without own records. Without `year` (no reference year chosen) it flags the voce in every
- * year; without `amount` it flags the voce of its year (R243).
+ * A payable of Scadenze e pagamenti (plan 9, `payableExpectedItems`), for the voci without own
+ * records. Without `year` (no reference year chosen) it flags the voce in every year; without
+ * `amount` it flags the voce of its year; `paid` is out of the expected and must be in the paid
+ * (R243, R246).
  */
 export interface TaxExpectedItem {
   apartmentId: string;
   voce: 'cedolare' | 'registro';
   year?: string;
   amount?: Cents;
+  paid?: { transactionId?: string };
 }
 
 export interface TaxRow {
@@ -185,6 +189,8 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     }
 
     // Cedolare and registro: the parts of the year of the assigned «tasse» debits.
+    const counted = new Set<string>(); // `<apartment or movement>\0<voce>` of a counted part
+    const key = (id: string, voce: TaxVoice) => `${id}\u0000${voce}`;
     for (const payment of taxPayments) {
       const tx = transactions.get(payment.transactionId);
       const cls = classOf.get(payment.transactionId);
@@ -192,8 +198,10 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       if (apartmentId === undefined || !mine.has(apartmentId)) continue;
       const valid = isDebit(tx) && cls?.kind === 'tasse' && cls.imu === undefined;
       for (const part of payment.parts.filter((p) => p.year === year)) {
-        if (valid) at(part.voce).paid += part.amount;
-        else flag(part.voce, 'stale-assignment');
+        if (valid) {
+          at(part.voce).paid += part.amount;
+          counted.add(key(apartmentId, part.voce)).add(key(payment.transactionId, part.voce));
+        } else flag(part.voce, 'stale-assignment');
       }
     }
 
@@ -214,13 +222,24 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       }
     }
 
+    // The payables of plan 9 (R243): without one of the taxpayer for the voce and year the
+    // expected is not known (never zero); a paid one must be in the paid of the table.
     for (const voce of ['cedolare', 'registro'] as const) {
-      if (input.expectedItems === undefined) flag(voce, 'no-expected-source');
-      for (const item of input.expectedItems ?? []) {
-        if (item.voce !== voce || !mine.has(item.apartmentId)) continue;
-        if (item.year === undefined) flag(voce, 'no-expected-source');
-        else if (item.year !== year) continue;
-        else if (item.amount === undefined) flag(voce, 'expected-amount-missing');
+      const own = (input.expectedItems ?? []).filter(
+        (i) => i.voce === voce && mine.has(i.apartmentId),
+      );
+      const ofYear = own.filter((i) => i.year === year);
+      if (ofYear.length === 0 || own.some((i) => i.year === undefined)) {
+        flag(voce, 'no-expected-source');
+      }
+      for (const item of ofYear) {
+        if (item.paid !== undefined) {
+          const tx = item.paid.transactionId;
+          if (tx === undefined || !counted.has(key(tx, voce))) flag(voce, 'payable-paid-outside');
+          continue;
+        }
+        if (counted.has(key(item.apartmentId, voce))) flag(voce, 'payable-and-payment');
+        if (item.amount === undefined) flag(voce, 'expected-amount-missing');
         else at(voce).expected += item.amount;
       }
     }

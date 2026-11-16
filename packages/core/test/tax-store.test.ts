@@ -391,18 +391,18 @@ describe('loadTaxTable (plan 10, task 3)', () => {
     ]);
     expect(result.tables[0]?.rows.find((r) => r.voce === 'registro')).toEqual({
       voce: 'registro',
-      state: 'discrepanza',
-      reasons: [],
+      // The payable still to pay beside the assigned payment: never linked by itself (R246).
+      state: 'da-verificare',
+      reasons: ['payable-and-payment'],
       estimate: 0,
       paid: 100000,
       expected: 6700,
-      difference: 106700,
     });
-    // Without payables the expected is zero, not unknown; a payable without year stays unknown.
-    expect(result.tables[0]?.rows.find((r) => r.voce === 'cedolare')).toMatchObject({
-      reasons: ['missing-estimate'],
-      expected: 0,
-    });
+    // No payable for the voce and year: the expected is unknown, never zero (R243).
+    expect(result.tables[0]?.rows.find((r) => r.voce === 'cedolare')?.reasons).toEqual([
+      'missing-estimate',
+      'no-expected-source',
+    ]);
     expect(result.tables[1]?.rows.find((r) => r.voce === 'cedolare')?.reasons).toEqual([
       'missing-estimate',
       'no-expected-source',

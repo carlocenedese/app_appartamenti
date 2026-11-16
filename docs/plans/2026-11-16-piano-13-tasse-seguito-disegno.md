@@ -1,6 +1,6 @@
 # Piano 13: seguito di Tasse e stime (disegno)
 
-Stato: **implementato** (16 novembre 2026), regole R240-R245. Piano: `docs/plans/2026-11-16-piano-13-tasse-seguito.md`.
+Stato: **implementato** (16 novembre 2026), regole R240-R246. Piano: `docs/plans/2026-11-16-piano-13-tasse-seguito.md`.
 Applica quattro risposte di user1 alle domande del piano 10 (disegno
 `docs/plans/2026-11-16-piano-10-tasse-disegno.md`, R210-R217) e nient'altro. Solo core e riga di
 comando, niente schermate; nessun dato reale (`user1`/`user2`, importi inventati).
@@ -39,7 +39,14 @@ o con classe `escluso` non prova il pagamento) una voce `{ apartmentId, voce, ye
 - senza anno: motivo `no-expected-source` della voce in **ogni** anno del contribuente (non si sa a
   quale anno vada: nessuna regola per sceglierlo).
 
-`loadTaxTable` passa sempre queste voci: senza scadenze l'ancora previsto è 0.
+`loadTaxTable` passa sempre queste voci. Senza alcuna scadenza del contribuente per la voce e
+l'anno l'ancora previsto **non** è zero: `no-expected-source` (revisione). Una scadenza pagata esce
+dall'ancora previsto e, se il suo pagamento non è nel pagato della tabella (pagata a mano, movimento
+senza `tasse-assegna` della stessa voce e anno, movimento non contabilizzato), dà
+`payable-paid-outside`; una scadenza non pagata accanto a una parte assegnata della stessa voce,
+anno e appartamento dà `payable-and-payment`, senza collegamento automatico (R246). `scadenze`
+mostra l'anno di riferimento; `tasse` dice di riscrivere le scadenze senza anno con
+`--anno-riferimento`.
 
 ## TARI
 
@@ -75,3 +82,9 @@ di gennaio (domanda 7); F24 misto IMU e cedolare (domanda 8); TARI dell'appartam
 2. **Scadenza senza anno di riferimento:** oggi dà `no-expected-source` in ogni anno: va bene, o
    basta l'anno della scadenza?
 3. **TARI:** commissione bancaria fuori e pagato senza controllo d'importo, come ora?
+4. **Nessuna scadenza = zero o non noto?** Oggi non noto (`no-expected-source`).
+
+Il calcolo IMU resta com'è (pagato così com'è, soglia di 0,10 € già decisa per le discrepanze
+fiscali); restano **da confermare** le tre letture della domanda 1: «fine anno» = ogni rata con un
+F24; discrepanza se supera la soglia uno qualsiasi dei due confronti; una rata mai pagata lascia la
+riga aperta.
