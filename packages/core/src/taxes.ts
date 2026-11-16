@@ -88,7 +88,10 @@ export interface TaxTableInput {
   taxPayments: TaxPayment[];
   contracts: Contract[];
   rentYears: RentYear[];
-  /** Absent while plan 9 is not there: cedolare and registro are then `no-expected-source`. */
+  /**
+   * Absent until the adapter from the payables of plan 9 (waiting for the answer on the tax year of
+   * a payable, question 3): cedolare and registro are then `no-expected-source`.
+   */
   expectedItems?: TaxExpectedItem[];
 }
 
@@ -106,7 +109,9 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     throw new RangeError('The threshold must be whole cents, not negative');
   }
   const apartments = live(input.apartments);
-  const owner = new Map(apartments.map((a) => [a.id, a.locatore]));
+  // The same taxpayer typed with other spaces or another Unicode form is one taxpayer.
+  const taxpayerOf = (a: Apartment) => a.locatore.trim().normalize('NFC');
+  const owner = new Map(apartments.map((a) => [a.id, taxpayerOf(a)]));
   const transactions = new Map(live(input.transactions).map((t) => [t.id, t]));
   const classes = live(input.classes);
   const classOf = new Map(classes.map((c) => [c.transactionId, c]));
@@ -120,11 +125,11 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     classes: input.classes,
     transactions: input.transactions,
   }).filter((r) => r.year === year);
-  const taxpayers = [...new Set(apartments.map((a) => a.locatore))].sort(compareText);
+  const taxpayers = [...new Set(apartments.map(taxpayerOf))].sort(compareText);
 
   return taxpayers.map((taxpayer) => {
     const apartmentIds = apartments
-      .filter((a) => a.locatore === taxpayer)
+      .filter((a) => taxpayerOf(a) === taxpayer)
       .map((a) => a.id)
       .sort(compareText);
     const mine = new Set(apartmentIds);
@@ -138,6 +143,9 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     for (const rate of rates.filter((r) => r.apartmentIds.some((id) => mine.has(id)))) {
       if (!rate.apartmentIds.every((id) => owner.get(id) === taxpayer)) {
         flag('imu', 'imu-mixed-taxpayers');
+      } else if (rate.paid !== undefined && !isDebit(transactions.get(rate.transactionId ?? ''))) {
+        // A pending (not booked) F24: not paid yet from the CSV (R2), to be checked.
+        flag('imu', 'imu-to-check');
       } else if (rate.paid !== undefined) {
         at('imu').paid += rate.paid;
         if (rate.status !== 'pagata') flag('imu', 'imu-to-check');
@@ -148,7 +156,10 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       }
     }
 
-    // TARI: the esercizio of a TARI instalment is its year.
+    // TARI: the esercizio of a TARI instalment taken as its year, the commission left out and no
+    // check of the amount: not decided by user1 (design, question 10), so the row stays
+    // `rule-undecided` (da verificare) with the amounts shown.
+    flag('tari', 'rule-undecided');
     for (const instalment of live(input.instalments)) {
       if (instalment.kind !== 'tari' || instalment.esercizio !== year) continue;
       if (!mine.has(instalment.apartmentId)) continue;

@@ -226,6 +226,8 @@ const MESSAGES = {
   'nothing-to-copy': 'Rifiutato: nessuna stima dell’anno prima da copiare.',
   'not-tax-debit': 'Rifiutato: il movimento non è un addebito contabilizzato classificato «tasse».',
   'imu-assigned': 'Rifiutato: il movimento paga una rata IMU: annullare prima l’assegnazione.',
+  'tax-assigned':
+    'Rifiutato: il movimento è assegnato a cedolare o registro: annullare prima l’assegnazione.',
   'tax-year-empty':
     'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
   'tax-discrepancy':
@@ -438,7 +440,9 @@ function parseTaxPart(text) {
   ) {
     throw invalid('bad-arguments');
   }
-  return { voce, year, amount: euro(amount) };
+  const value = euro(amount);
+  if (value <= 0) throw invalid('bad-arguments');
+  return { voce, year, amount: value };
 }
 
 const month = (text) => {
@@ -848,6 +852,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (result.status === 'refused' && result.reason === 'not-automatic') {
       // The reason is the core's; the message is the one of a class, not of a payment.
       throw new Stop('rejected', result.reason, { message: MESSAGES['class-not-automatic'] });
+    }
+    if (result.status === 'refused' && result.reason === 'has-dependents') {
+      // Plan 10: a tax payment on the movement.
+      throw new Stop('rejected', result.reason, {
+        message: MESSAGES['movement-has-dependents'],
+        recordIds: result.recordIds,
+      });
     }
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     return { status: 'cancelled', operationId: result.operationId };
@@ -1397,7 +1408,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     return {
       status: result.status,
       estimateIds: result.estimateIds,
-      operationId: result.operationId,
+      ...(result.status === 'copied' ? { operationId: result.operationId } : {}),
     };
   }
 
@@ -1424,9 +1435,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !YearSchema.safeParse(values.anno).success) {
       throw invalid('bad-arguments');
     }
+    // Today: --oggi, or the UTC date of the clock (as scadenze).
     const result = await loadTaxTable(store, {
       year: values.anno,
-      today: day(clock().slice(0, 10)),
+      today: day(values.oggi ?? clock().slice(0, 10)),
     });
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     const details = values.dettagli === true;
@@ -1946,7 +1958,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       ],
       data: ['giroconto-manuale', 'scadenza-pagata'],
       entro: ['scadenze'],
-      oggi: ['scadenze'],
+      oggi: ['scadenze', 'tasse'],
       scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
       'ogni-anno': ['scadenza-nuova'],
       dal: ['importa', 'contratto-canone'],

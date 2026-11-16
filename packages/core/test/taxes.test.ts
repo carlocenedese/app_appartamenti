@@ -220,15 +220,14 @@ describe('taxTable (plan 10, task 3)', () => {
         expected: 0,
         difference: 0,
       },
-      // The commission is not a tax; 0,05 € off is within the threshold.
+      // The year and the amounts of the TARI are not decided by user1: shown, da verificare.
       {
         voce: 'tari',
-        state: 'in-linea',
-        reasons: [],
+        state: 'da-verificare',
+        reasons: ['rule-undecided'],
         estimate: 20005,
         paid: 10000,
         expected: 10000,
-        difference: -5,
       },
       { voce: 'condominio', state: 'da-verificare', reasons: ['rule-undecided'], estimate: 3 },
     ]);
@@ -339,7 +338,7 @@ describe('taxTable (plan 10, task 3)', () => {
     expect(rowOf(tables, 'user1', 'tari')).toEqual({
       voce: 'tari',
       state: 'da-verificare',
-      reasons: ['assumed-payment'],
+      reasons: ['assumed-payment', 'rule-undecided'],
       estimate: 20005,
       paid: 0,
       expected: 10000,
@@ -368,7 +367,7 @@ describe('taxTable (plan 10, task 3)', () => {
     for (const voce of ['cedolare', 'imu', 'registro']) {
       expect(rowOf(tables, 'user1', voce)?.reasons).toEqual(['unassigned-tax-movement']);
     }
-    expect(rowOf(tables, 'user1', 'tari')?.state).toBe('in-linea');
+    expect(rowOf(tables, 'user1', 'tari')?.reasons).toEqual(['rule-undecided']);
     expect(rowOf(tables, 'user2', 'cedolare')?.reasons).toEqual(['missing-estimate']);
   });
 
@@ -387,6 +386,39 @@ describe('taxTable (plan 10, task 3)', () => {
       paid: 0,
     });
     expect(rowOf(tables, 'user1', 'registro')?.state).toBe('in-linea');
+  });
+
+  it('IMU: an F24 not yet booked is not paid and is to be checked', () => {
+    const tables = taxTable(
+      input({
+        transactions: parse('transaction', [
+          tx('tx-imu1', -50000, { booked: false }),
+          tx('tx-ced', -100000),
+        ]),
+      }),
+    );
+    expect(rowOf(tables, 'user1', 'imu')).toMatchObject({
+      state: 'da-verificare',
+      reasons: ['imu-to-check'],
+      paid: 0,
+      expected: 50000,
+    });
+  });
+
+  it('one taxpayer even with other spaces or another Unicode form of the same name', () => {
+    const tables = taxTable(
+      input({
+        apartments: parse('apartment', [
+          apartment('nord', 'Società Inventata'),
+          apartment('est', ' Societa\u0300 Inventata '),
+          apartment('sud', 'user2'),
+        ]),
+      }),
+    );
+    expect(tables.map((t) => [t.taxpayer, t.apartmentIds])).toEqual([
+      ['Società Inventata', ['est', 'nord']],
+      ['user2', ['sud']],
+    ]);
   });
 
   it('the cedolare estimate of R182 is shown beside, never in the amounts', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   TaxEstimateSchema,
   TaxPaymentSchema,
+  assignImuF24,
   assignTaxPayment,
   commitChange,
   copyPreviousTaxYear,
@@ -12,6 +13,7 @@ import {
   recordPath,
   recordSchemas,
   setTaxEstimate,
+  undoBlockedBy,
   undoOperation,
 } from '../src/index';
 import type { RecordKind } from '../src/index';
@@ -208,10 +210,24 @@ describe('copyPreviousTaxYear (plan 10, task 2)', () => {
       ['tax-nord-2026-imu', 0, 1],
       ['tax-sud-2026-tari', 1000, 1],
     ]);
-    // A second copy would overwrite: refused.
-    expect(await copyPreviousTaxYear(store, { year: '2026' }, 'p1', clock, ids('d'))).toEqual(
+    // The same copy again writes nothing; after a change it would overwrite: refused.
+    const same = await snapshot(store);
+    expect(await copyPreviousTaxYear(store, { year: '2026' }, 'p1', clock, ids('d'))).toEqual({
+      status: 'unchanged',
+      estimateIds: ['tax-nord-2026-cedolare', 'tax-nord-2026-imu', 'tax-sud-2026-tari'],
+    });
+    expect(await snapshot(store)).toEqual(same);
+    await setTaxEstimate(
+      store,
+      { apartmentId: 'nord', year: '2026', voce: 'imu', amount: cents(5) },
+      'p1',
+      clock,
+      ids('g'),
+    );
+    expect(await copyPreviousTaxYear(store, { year: '2026' }, 'p1', clock, ids('h'))).toEqual(
       refused('year-not-empty'),
     );
+    await undoOperation(store, 'g-1', 'p1', clock, ids('k'));
     // After the undo the records come back with a new rev.
     await undoOperation(store, 'c-1', 'p1', clock, ids('u'));
     expect(
@@ -278,6 +294,22 @@ describe('assignTaxPayment (plan 10, task 2)', () => {
       status: 'unchanged',
       taxPaymentId: 'taxp-tx-ced',
     });
+    // Same parts in another order: the same assignment.
+    expect(await assign(store, 'tx-ced', [...parts].reverse(), 'z')).toEqual({
+      status: 'unchanged',
+      taxPaymentId: 'taxp-tx-ced',
+    });
+    // The class cannot be undone, nor the movement assigned to an IMU rate, while it is there.
+    expect(await undoBlockedBy(store, 's3-1')).toEqual(['taxp-tx-ced']);
+    expect(
+      await assignImuF24(
+        store,
+        { transactionId: 'tx-ced', f24Group: 'g', year: '2026', rateIndex: 1 },
+        'p1',
+        clock,
+        ids('i'),
+      ),
+    ).toEqual(refused('tax-assigned'));
     expect(await snapshot(store)).toEqual(before);
     expect(
       await assign(store, 'tx-ced', [{ voce: 'registro', year: '2026', amount: 100000 }], 'r'),

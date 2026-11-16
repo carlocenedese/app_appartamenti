@@ -9,8 +9,7 @@ dell'anno e stima della cedolare), R190-R198 (condominio), R150-R156 e R184 (Exc
 proprietari); la risposta 7 di user1 del 14 novembre 2026 («Tasse e stime: chiedere conferma per
 discrepanze maggiori di 0,10 €»). Codice letto: `model.ts`, `imu.ts`, `contract.ts`,
 `contract-store.ts`, `condominio.ts`, `match.ts`, `xlsx-write.ts`, `excel-owners.ts`,
-`scripts/estratti.mjs`, `scripts/excel.mjs`; il ramo del piano 9 (`payables.ts`, PR #47, **non
-ancora su `main`**) solo per allineare i nomi. Nessun documento reale: `user1`/`user2`,
+`scripts/estratti.mjs`, `scripts/excel.mjs`; il piano 9 (`payables.ts`, PR #47, ora su `main`) per allineare i nomi. Nessun documento reale: `user1`/`user2`,
 appartamenti, importi e codici inventati.
 
 ## Perché
@@ -43,7 +42,8 @@ stima e nessun modo di dire a quale tassa e a quale anno va un F24 che non è IM
 - Colori del cruscotto, interfaccia, elenco delle discrepanze con link (lo darà l'interfaccia: la
   tabella ha già lo stato per voce).
 - Calcolo di qualunque imposta: nessuna aliquota nel codice (CLAUDE.md, sezione 34).
-- Collegamento con le scadenze del piano 9 (`payable`): non è su `main`; vedi «Ancora previsto».
+- Adattatore dalle scadenze del piano 9 (`payable`, ora su `main`) a `expectedItems`: attende la
+  risposta alla domanda 3 sull'anno d'imposta; vedi «Ancora previsto».
 
 ## Decisioni già prese da user1
 
@@ -103,9 +103,10 @@ appartamenti e cinque righe (una per voce). Per ogni riga:
   - **IMU:** l'atteso delle rate senza F24 (`attesa`); senza atteso (`expected` mancante, anche con
     il solo totale annuo) motivo `imu-expected-missing`.
   - **TARI:** `expectedDebit` delle rate senza abbinamenti veri e senza `assumed`.
-  - **Cedolare e registro:** dalle scadenze del piano 9, **non ancora su `main`**: un ingresso
-    `expectedItems` (`apartmentId`, `voce`, `year`, `amount`) che un adattatore riempirà dalle
-    voci `payable`. Senza l'ingresso (oggi, riga di comando) motivo `no-expected-source`.
+  - **Cedolare e registro:** dalle scadenze del piano 9 (su `main`): un ingresso `expectedItems`
+    (`apartmentId`, `voce`, `year`, `amount`) che un adattatore riempirà dalle voci `payable` dopo
+    la risposta alla domanda 3 (anno d'imposta di una scadenza). Senza l'ingresso (oggi, riga di
+    comando) motivo `no-expected-source`.
   - **Condominio:** come il pagato, `rule-undecided`.
 - **Movimenti «tasse» non assegnati:** un movimento vivo, contabilizzato, in uscita, classificato
   «tasse» per un appartamento del contribuente, con la data nell'anno, senza rata IMU e senza
@@ -154,18 +155,20 @@ collegamento seguito); l'uscita stampa solo stato, anno e numeri di fogli, appar
 
 ## Mie scelte (Ruling, da confermare)
 
-1. Il contribuente è `Apartment.locatore` (glossario: «chi intesta il contratto e gli adempimenti
-   fiscali»; lo stesso del piano 9). Nessun nome nel codice.
+1. Il contribuente come `Apartment.locatore` **non è deciso** (domanda 10): il codice raggruppa per
+   `locatore` (senza spazi ai bordi, in NFC), come il piano 9, solo per poter mostrare la tabella.
 2. La tabella è per contribuente, quindi un F24 IMU di un gruppo fatto solo di appartamenti dello
    stesso contribuente non si ripartisce (la ripartizione di R164 serve al saldo tra conti).
 3. Stima zero ammessa e diversa da «mancante».
-4. TARI: l'anno è l'`esercizio` della rata (per la TARI è l'anno, `model.ts`); la commissione (R7)
-   non è una tassa e non conta.
-5. Pagato senza controllo d'importo per la TARI: lo fa già R2 nel conguaglio; qui una differenza si
-   vede come discrepanza.
+4. TARI (anno = `esercizio` della rata, commissione fuori, pagato senza controllo d'importo) **non
+   è deciso** (domanda 11): la riga mostra gli importi così letti ma resta sempre `da-verificare`
+   con `rule-undecided`.
+5. IMU con il solo totale annuo: le rate non hanno atteso, quindi la riga è `imu-expected-missing`
+   (da verificare) finché manca un F24, e non è mai in linea prima del saldo (domanda 12, non
+   decisa). Un F24 IMU non contabilizzato non conta come pagato e dà `imu-to-check`.
 6. Movimenti in entrata classificati «tasse» (rimborsi) ignorati e non assegnabili (domanda 6).
-7. La copia prende solo l'anno prima e rifiuta se l'anno ha già una stima per un appartamento
-   indicato.
+7. La copia prende solo l'anno prima; rilanciata quando le stime dell'anno sono esattamente le
+   copie dà `unchanged`, altrimenti rifiuta se l'anno ha già una stima per un appartamento indicato.
 
 ## Domande per user1
 
@@ -176,7 +179,7 @@ collegamento seguito); l'uscita stampa solo stato, anno e numeri di fogli, appar
 2. **Soglia:** la decisione «conferma per discrepanze maggiori di 0,10 €» vale per questa tabella
    (letta così)? «Chiedere conferma» vuol dire che una discrepanza si può confermare (accettare) e
    smette di comparire? Oggi è solo uno stato.
-3. **Ancora previsto di cedolare e registro:** quando il piano 9 sarà su `main`, una scadenza
+3. **Ancora previsto di cedolare e registro:** ora che il piano 9 è su `main`, una scadenza
    `payable` di tipo `cedolare` o `registro` ha una data ma non l'anno d'imposta: si usa l'anno della
    scadenza, o serve un campo? E `bollo`/`f24` in quale voce?
 4. **Pagato dalle scadenze segnate pagate a mano** (piano 9, `paid` senza movimento): contano nel
@@ -191,3 +194,9 @@ collegamento seguito); l'uscita stampa solo stato, anno e numeri di fogli, appar
    assegnare a cedolare o registro (`imu-assigned`).
 9. La TARI in tabella è quella dell'appartamento (gli inquilini la rimborsano col forfait): va
    bene così o la voce TARI della sezione 34 è un'altra cosa?
+10. **Contribuente:** è il `locatore` dell'appartamento? Come si tratta un appartamento in
+    comproprietà (più contribuenti, con quali quote)? Oggi si raggruppa per `locatore` (non deciso).
+11. **TARI:** l'anno d'imposta è l'`esercizio` della rata? La commissione bancaria (R7) resta fuori?
+    Il pagato si controlla contro l'importo della rata? Oggi la riga resta `rule-undecided`.
+12. **IMU con il solo totale annuo** (come il 2025): prima del saldo la riga non può essere in linea
+    (manca l'atteso per rata). Va bene così, o l'ancora previsto è il totale meno il pagato?

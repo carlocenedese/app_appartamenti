@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  TaxPaymentSchema,
   AccountSchema,
   BankProfileSchema,
   BankTransactionSchema,
@@ -620,7 +621,7 @@ describe('undoImport with payments', () => {
   // Plan 3c, task 4: matches and classes on its movements block too; exclusions do not.
   const put = (
     store: MemoryStore,
-    kind: 'match' | 'movementClass' | 'transfer',
+    kind: 'match' | 'movementClass' | 'transfer' | 'taxPayment',
     after: { id: string },
   ) =>
     commitChange(
@@ -682,11 +683,23 @@ describe('undoImport with payments', () => {
     );
     await put(store, 'transfer', transfer('tr-gone', { outTransactionId: b }, { deleted: true }));
     await put(store, 'transfer', transfer('tr-other', { outTransactionId: 'other' }));
+    // Plan 10: a live tax payment on a movement going away.
+    await put(
+      store,
+      'taxPayment',
+      TaxPaymentSchema.parse({
+        id: `taxp-${a}`,
+        v: 1,
+        rev: 1,
+        transactionId: a,
+        parts: [{ voce: 'registro', year: '2026', amount: 100 }],
+      }),
+    );
     const before = await snapshot(store);
     expect(await undoImport(store, r.statement.id, 'p1', clock, newId)).toEqual({
       status: 'refused',
       reason: 'dependent-records',
-      recordIds: ['m-auto', 'm-z', `mc-${b}`, 'tr-in'],
+      recordIds: ['m-auto', 'm-z', `mc-${b}`, `taxp-${a}`, 'tr-in'],
     });
     expect(await snapshot(store)).toEqual(before);
     // The payments are checked first.

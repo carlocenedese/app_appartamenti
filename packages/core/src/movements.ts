@@ -26,6 +26,7 @@ import type {
   Transfer,
 } from './model';
 import { payablesRepeatedFrom, payablesUsing } from './payable-store';
+import { taxPaymentsUsing } from './tax-store';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -108,7 +109,8 @@ const CANCEL_KINDS = ['income.cancel-payment', 'outgoing.cancel-auto'];
  * records on other paths are no dependents of it: every undo of such an operation asks here.
  * For an `imu.expected` (plan 3d), the live classes assigned to a rate of its year that the undo
  * would take away or change in group or number of rates (`imuDependents`). For any operation
- * that wrote a live class (plan 9), the live payables paid by its movement; for one that created a
+ * that wrote a live class (plan 9), the live payables paid by its movement, then (plan 10) the live
+ * tax payments on it; for one that created a
  * payable, the live payables repeated from it.
  */
 export async function undoBlockedBy(store: Store, operationId: string): Promise<string[]> {
@@ -132,6 +134,9 @@ export async function undoBlockedBy(store: Store, operationId: string): Promise<
   });
   const linked = await payablesUsing(store, classed);
   if (linked.length > 0) return linked;
+  // Plan 10: a class whose movement is assigned to a tax (`taxPayment`).
+  const taxed = await taxPaymentsUsing(store, classed);
+  if (taxed.length > 0) return taxed;
   // Plan 9: an undo that would take away an item a live item was repeated from.
   const created = (operation?.changes ?? []).flatMap(({ path, before, after }) => {
     if (!path.includes('/payable/')) return [];

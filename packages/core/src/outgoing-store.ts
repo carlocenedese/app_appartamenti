@@ -27,6 +27,7 @@ import {
 } from './model';
 import type { OutgoingKind } from './model';
 import { movementUses } from './movements';
+import { taxPaymentsUsing } from './tax-store';
 import { isPayerIban, outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
 import type { MovementClassDraft, OutgoingProposal } from './outgoing';
 import { parseOrThrow } from './parse';
@@ -415,13 +416,15 @@ export async function confirmTenantOutgoing(
 
 export type CancelClassResult =
   | { status: 'cancelled'; operationId: string }
-  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-class' | 'not-automatic' };
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-class' | 'not-automatic' }
+  | { status: 'refused'; reason: 'has-dependents'; recordIds: string[] };
 
 /**
  * Cancels the automatic class of `transactionId` by itself (as R121): an `outgoing.cancel-auto`
  * operation that deletes it, which `undoOperation` takes back. The movement is then `undone` and
  * never automatic again. Automatic: a live class with `ruleId` whose latest change is an
- * `outgoing.reconcile` (`not-automatic` otherwise); none live is `unknown-class`.
+ * `outgoing.reconcile` (`not-automatic` otherwise); none live is `unknown-class`; a live
+ * `taxPayment` on the movement is `has-dependents` with its id (plan 10).
  */
 export async function cancelAutomaticClass(
   store: Store,
@@ -430,7 +433,7 @@ export async function cancelAutomaticClass(
   clock: () => string,
   newId: () => string,
 ): Promise<CancelClassResult> {
-  const refuse = (reason: Extract<CancelClassResult, { status: 'refused' }>['reason']) =>
+  const refuse = (reason: 'inconsistent-store' | 'unknown-class' | 'not-automatic') =>
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   const id = `mc-${transactionId}`;
@@ -441,6 +444,9 @@ export async function cancelAutomaticClass(
   const path = recordPath('movementClass', id);
   const by = latestOperationByPath((await readJournal(store)).operations).get(path);
   if (cls.ruleId === undefined || by?.kind !== 'outgoing.reconcile') return refuse('not-automatic');
+  // Plan 10: the movement is assigned to a tax; undo that first.
+  const recordIds = await taxPaymentsUsing(store, [transactionId]);
+  if (recordIds.length > 0) return { status: 'refused', reason: 'has-dependents', recordIds };
   const operation = await commitChange(
     store,
     {

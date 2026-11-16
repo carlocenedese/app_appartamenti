@@ -537,6 +537,25 @@ describe('cancelAutomaticClass and the undo chain (plan 3c, task 6, review focus
     return store;
   }
 
+  it('a tax payment on the movement blocks the cancel (plan 10)', async () => {
+    const store = await classified();
+    await put(store, 'taxPayment', [
+      {
+        ...base,
+        id: 'taxp-y',
+        transactionId: 'y',
+        parts: [{ voce: 'registro', year: '2028', amount: 4200 }],
+      },
+    ]);
+    const before = await snapshot(store);
+    expect(await cancelAutomaticClass(store, 'y', 'p1', clock, ids('k'))).toEqual({
+      status: 'refused',
+      reason: 'has-dependents',
+      recordIds: ['taxp-y'],
+    });
+    expect(await snapshot(store)).toEqual(before);
+  });
+
   it('cancelled by itself: undone, never automatic again; refusals', async () => {
     const store = await classified();
     expect(await cancelAutomaticClass(store, 'y', 'p1', clock, ids('k'))).toEqual({

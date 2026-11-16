@@ -3731,6 +3731,9 @@ describe('pnpm estratti tasse (piano 10)', () => {
       'tx-ced',
       ...parts.flatMap((p) => ['--parte', p]),
     ];
+    for (const bad of [assegna('cedolare:2026:0'), assegna('cedolare:2026:-1,00')]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]); // R214: an amount not positive
+    }
     const twice = await run(assegna('cedolare:2026:1,00', 'cedolare:2026:1,00'));
     expect([twice.code, twice.json.reason, twice.json.message]).toEqual([
       1,
@@ -3824,14 +3827,36 @@ describe('pnpm estratti tasse (piano 10)', () => {
       '--appartamento',
       'nord',
     ]);
-    expect([again.code, again.json.reason]).toEqual([1, 'year-not-empty']);
-    expect((await run(['tasse', ...january, '--anno', '2027'])).json.warnings).toEqual([]);
-    const undo = await run([
-      'annulla-riconciliazione',
-      ...s.common,
-      '--operazione',
-      copied.json.operationId,
+    expect([again.code, again.json]).toEqual([
+      0,
+      { status: 'unchanged', estimateIds: ['tax-nord-2027-imu'] },
     ]);
-    expect(undo.code).toBe(0);
+    const edited = await run([
+      'tasse-stima',
+      ...s.common,
+      '--appartamento',
+      'nord',
+      '--anno',
+      '2027',
+      '--voce',
+      'imu',
+      '--importo',
+      '600,00',
+    ]);
+    const changed = await run(['tasse-copia', ...january, '--anno', '2027']);
+    expect([changed.code, changed.json.reason]).toEqual([1, 'year-not-empty']);
+    expect((await run(['tasse', ...january, '--anno', '2027'])).json.warnings).toEqual([]);
+    // --oggi gives the day instead of the clock (as scadenze).
+    const byDay = await run(['tasse', ...s.common, '--anno', '2028', '--oggi', '2028-01-02']);
+    expect(byDay.json.warnings).toMatchObject([
+      { apartmentId: 'nord', year: '2028', canCopy: true },
+    ]);
+    expect((await run(['tasse', ...s.common, '--anno', '2028', '--oggi', '2028-13-01'])).code).toBe(
+      2,
+    );
+    for (const operation of [edited.json.operationId, copied.json.operationId]) {
+      const undo = await run(['annulla-riconciliazione', ...s.common, '--operazione', operation]);
+      expect(undo.code).toBe(0);
+    }
   });
 });

@@ -30,6 +30,17 @@ import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
 
+/** The live `taxPayment`s on these movements, sorted ids (as `payablesUsing`, plan 9). */
+export async function taxPaymentsUsing(
+  store: Store,
+  transactionIds: readonly string[],
+): Promise<string[]> {
+  return (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records
+    .filter((p) => transactionIds.includes(p.transactionId))
+    .map((p) => p.id)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
 export interface SetTaxEstimateInput {
   apartmentId: string;
   year: string;
@@ -106,6 +117,7 @@ export async function setTaxEstimate(
 
 export type CopyPreviousTaxYearResult =
   | { status: 'copied'; operationId: string; estimateIds: string[] }
+  | { status: 'unchanged'; estimateIds: string[] }
   | {
       status: 'refused';
       reason:
@@ -121,7 +133,8 @@ export type CopyPreviousTaxYearResult =
  * in one `tax.copy` operation (section 34: proposed, never automatic; R211). Refused without
  * writing: `inconsistent-store`; `bad-year` (not `AAAA`, or `0000`); `unknown-apartment`;
  * `year-not-empty` (one of those apartments already has a live estimate in `year`: nothing is
- * ever overwritten); `nothing-to-copy`. A copied record deleted by an undo comes back with a new
+ * ever overwritten); `nothing-to-copy`. Run again on the same state (the live estimates of `year`
+ * of those apartments are exactly the copies) it is `unchanged`. A copied record deleted by an undo comes back with a new
  * `rev`.
  */
 export async function copyPreviousTaxYear(
@@ -145,8 +158,18 @@ export async function copyPreviousTaxYear(
   const previous = String(Number(input.year) - 1).padStart(4, '0');
   const all = (await loadAll(store, 'taxEstimate', TaxEstimateSchema, withDeleted)).records;
   const live = all.filter((e) => e.deleted !== true && targets.has(e.apartmentId));
-  if (live.some((e) => e.year === input.year)) return refuse('year-not-empty');
   const sources = live.filter((e) => e.year === previous).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const present = live.filter((e) => e.year === input.year).sort((a, b) => (a.id < b.id ? -1 : 1));
+  if (present.length > 0) {
+    const key = (e: { apartmentId: string; voce: string; amount: number }) =>
+      `${e.apartmentId}\u0000${e.voce}\u0000${String(e.amount)}`;
+    const same =
+      present.length === sources.length &&
+      present.every((e, i) => sources[i] !== undefined && key(e) === key(sources[i]));
+    return same
+      ? { status: 'unchanged', estimateIds: present.map((e) => e.id) }
+      : refuse('year-not-empty');
+  }
   if (sources.length === 0) return refuse('nothing-to-copy');
   const changes = sources.map((source) => {
     const id = `tax-${source.apartmentId}-${input.year}-${source.voce}`;
@@ -216,7 +239,11 @@ export async function assignTaxPayment(
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   const id = `taxp-${input.transactionId}`;
-  const parsed = TaxPaymentSchema.safeParse({ id, v: 1, rev: 1, ...input });
+  // By voce and year: the same parts in another order are the same assignment.
+  const parts = [...input.parts].sort((a, b) =>
+    a.voce !== b.voce ? (a.voce < b.voce ? -1 : 1) : a.year < b.year ? -1 : a.year > b.year ? 1 : 0,
+  );
+  const parsed = TaxPaymentSchema.safeParse({ id, v: 1, rev: 1, ...input, parts });
   if (!parsed.success) return refuse('bad-parts');
   const tx = (await loadAll(store, 'transaction', BankTransactionSchema)).records.find(
     (t) => t.id === input.transactionId,
