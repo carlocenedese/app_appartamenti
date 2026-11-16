@@ -77,3 +77,4 @@ export type {
   MetricDifference,
 } from './consumption';
 export * from './bill-import';
+export * from './dashboard';
