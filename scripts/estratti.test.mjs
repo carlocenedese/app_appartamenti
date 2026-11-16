@@ -3396,6 +3396,8 @@ describe('pnpm estratti condominio (piano 8)', () => {
     const wrong = await run(ask.map((a) => (a === 'apt-a' ? 'apt-x' : a)).concat('2026-27'));
     expect([wrong.code, wrong.json.reason]).toEqual([1, 'unknown-apartment']);
     expect((await run(['condominio-stima', ...s.common, '--appartamento', 'apt-a'])).code).toBe(2);
+    expect((await run([...ask, '2026/27'])).code).toBe(2);
+    expect((await run([...ask, ''])).code).toBe(2);
   });
 
   it('contatto e contatti: rubrica, nomi e contatti solo con --dettagli, annulla (R253)', async () => {
@@ -3454,6 +3456,8 @@ describe('pnpm estratti condominio (piano 8)', () => {
     );
     expect((await run(create.map((a) => (a === 'amministratore' ? 'idraulico' : a)))).code).toBe(2);
     expect((await run(['contatti', ...s.common, '--nome', 'x'])).code).toBe(2);
+    const noApartment = await run(['contatti', ...s.common, '--appartamento', 'apt-x']);
+    expect([noApartment.code, noApartment.json.reason]).toEqual([1, 'unknown-apartment']);
     const unknown = await run(create.map((a) => (a === 'apt-a,apt-b' ? 'apt-x' : a)));
     expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-apartment']);
     expect(unknown.out).not.toMatch(/Prova/);

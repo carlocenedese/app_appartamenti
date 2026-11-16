@@ -20,10 +20,11 @@ sovrascrive nulla. Indicizzazioni, medie e variazioni percentuali **non** si fan
 dell'appartamento:
 
 - l'esercizio ha un documento: fonte `consuntivo` se c'è, altrimenti `preventivo`;
-- altrimenti l'esercizio **precedente più vicino con un documento** (il più grande per `compareText`
-  strettamente minore; `esercizio` è testo libero, `2025-26` < `2026-27`), con la stessa scelta del
-  documento: fonte `copiata`, con `fromEsercizio` e `fromKind`;
-- nessun documento prima: nessuna stima.
+- altrimenti l'esercizio **precedente più vicino della stessa forma numerica** con un documento
+  (`2026` da `2025`, `2026-27` da `2025-26`: il più grande strettamente minore), con la stessa scelta
+  del documento: fonte `copiata`, con `fromEsercizio` e `fromKind`;
+- nessun documento prima, una forma diversa o un esercizio non numerico: nessuna stima, nessuna
+  conversione.
 
 Restituisce `{ apartmentId, esercizio, source, fromEsercizio, fromKind, total, quotaConduttore?,
 lines? }` con gli importi del documento così come sono. Non entra nella tabella delle tasse (la riga
@@ -58,8 +59,9 @@ nome e contatti solo con `--dettagli`.
    consuntivo (e così per l'esercizio stesso: il consuntivo prevale sul preventivo). Va bene?
 2. **Più anni senza dati**: oggi si copia l'ultimo esercizio con un documento, anche di due o più anni
    prima, e la fonte lo dice. Va bene, o dopo un anno vuoto non si stima?
-3. **Formati diversi di `esercizio`** nello stesso appartamento (`2026` e `2026-27`): l'ordine è
-   quello del testo e può sbagliare. Serve un formato fisso legato a `condominioStart`?
+3. **Formati diversi di `esercizio`** nello stesso appartamento (`2026` e `2026-27`): oggi si copia
+   solo dalla stessa forma numerica, mai tra forme diverse né da un testo come `abc`. Serve una
+   conversione, o un formato fisso legato a `condominioStart`?
 4. **Stima e tabella delle tasse**: la stima deve alimentare la riga «condominio quota proprietario»
    (oggi `rule-undecided`, R216 domanda 1)? E con quale quota (totale meno quota conduttore)?
 5. **Un solo amministratore per appartamento**? Oggi non si controlla.

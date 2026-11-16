@@ -8,6 +8,7 @@ import { ApartmentSchema, ContactSchema, SupplySchema } from './model';
 import type { Contact } from './model';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
+import { assertSafeSegment } from './store/store';
 import type { Store } from './store/store';
 import { compareText } from './text';
 
@@ -38,6 +39,11 @@ export async function saveContact(
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id)) return refuse('invalid-contact');
+  try {
+    assertSafeSegment(input.id); // also a name reserved on Windows (`CON`, `nul`)
+  } catch {
+    return refuse('invalid-contact');
+  }
   const all = (await loadAll(store, 'contact', ContactSchema, { includeDeleted: true })).records;
   const before = all.find((c) => c.id === input.id);
   const record = (rev: number) => ContactSchema.safeParse({ ...input, v: 1, rev });
@@ -71,15 +77,27 @@ export async function saveContact(
 }
 
 export type LoadContactsResult =
-  { status: 'ok'; contacts: Contact[] } | { status: 'refused'; reason: 'inconsistent-store' };
+  | { status: 'ok'; contacts: Contact[] }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-apartment' };
 
-/** The live contacts, of one apartment and role when given, sorted by id. Writes nothing. */
+/**
+ * The live contacts, of one live apartment (else `unknown-apartment`) and role when given, sorted
+ * by id. Writes nothing.
+ */
 export async function loadContacts(
   store: Store,
   query: { apartmentId?: string; role?: Contact['role'] },
 ): Promise<LoadContactsResult> {
   if ((await checkConsistency(store)).length > 0) {
     return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  if (
+    query.apartmentId !== undefined &&
+    !(await loadAll(store, 'apartment', ApartmentSchema)).records.some(
+      (a) => a.id === query.apartmentId,
+    )
+  ) {
+    return { status: 'refused', reason: 'unknown-apartment' };
   }
   const contacts = (await loadAll(store, 'contact', ContactSchema)).records
     .filter(
@@ -89,4 +107,13 @@ export async function loadContacts(
     )
     .sort((a, b) => compareText(a.id, b.id));
   return { status: 'ok', contacts };
+}
+
+/** The live contacts linked to any of `apartmentIds` (plan 14, R252: they block an undo), sorted. */
+export async function contactsUsing(store: Store, apartmentIds: string[]): Promise<string[]> {
+  if (apartmentIds.length === 0) return [];
+  return (await loadAll(store, 'contact', ContactSchema)).records
+    .filter((c) => c.apartmentIds.some((id) => apartmentIds.includes(id)))
+    .map((c) => c.id)
+    .sort(compareText);
 }

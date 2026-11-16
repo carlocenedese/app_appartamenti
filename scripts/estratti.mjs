@@ -1287,7 +1287,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
   // The estimate of a fiscal year (plan 14, R250): source always, amounts only with --dettagli.
   if (name === 'condominio-stima') {
     need(values, 'appartamento', 'esercizio');
-    if (positionals.length > 0) throw invalid('bad-arguments');
+    // The same form as a fiscal year of condominio-documento (`saveCondoDocument`).
+    if (positionals.length > 0 || !/^[A-Za-z0-9_-]{1,32}$/.test(values.esercizio)) {
+      throw invalid('bad-arguments');
+    }
     const result = await loadCondoEstimate(store, {
       apartmentId: values.appartamento,
       esercizio: values.esercizio,

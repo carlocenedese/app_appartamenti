@@ -256,7 +256,8 @@ export interface CondoEstimate {
 /**
  * The condominium estimate of one apartment and fiscal year (section 34, user1's decision of plan
  * 14): its own live document (the consuntivo, else the preventivo), else a copy of the nearest
- * earlier fiscal year with one, amounts unchanged, else none. Computed on read, never written.
+ * earlier fiscal year of the same numeric form with one, amounts unchanged, else none. Computed on
+ * read, never written.
  */
 export function condoEstimate(
   documents: readonly CondoDocument[],
@@ -264,10 +265,17 @@ export function condoEstimate(
   esercizio: string,
 ): CondoEstimate | undefined {
   const own = documents.filter((d) => d.deleted !== true && d.apartmentId === apartmentId);
-  // shortcut: `esercizio` is free text ordered as text, wrong if one apartment mixes formats (question 3).
+  // A copy only between numeric fiscal years of the same form (`2026`, `2026-27`): there the text
+  // order is the order of the years; other forms are never converted (question 3).
+  const form = (e: string) => e.replace(/[0-9]/g, '0');
+  const numeric = /^0+(?:-0+)*$/.test(form(esercizio));
   const from = own
     .map((d) => d.esercizio)
-    .filter((e) => compareText(e, esercizio) <= 0)
+    .filter(
+      (e) =>
+        e === esercizio ||
+        (numeric && form(e) === form(esercizio) && compareText(e, esercizio) < 0),
+    )
     .sort(compareText)
     .at(-1);
   if (from === undefined) return undefined;

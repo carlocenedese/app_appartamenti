@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { loadContacts, readJournal, recordPath, recordSchemas, saveContact } from '../src/index';
+import {
+  loadContacts,
+  readJournal,
+  recordPath,
+  recordSchemas,
+  saveApartment,
+  saveContact,
+  undoBlockedBy,
+  undoOperation,
+} from '../src/index';
 import type { SaveContactInput } from '../src/index';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
@@ -85,7 +94,39 @@ describe('saveContact (plan 14, R252)', () => {
     expect(await save(store, { ...admin, supplyIds: ['sup-x'] })).toEqual(
       refused('unknown-supply'),
     );
+    expect(await save(store, { ...admin, id: 'CON' })).toEqual(refused('invalid-contact'));
+    expect(await save(store, { ...admin, id: 'nul' })).toEqual(refused('invalid-contact'));
     expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('refuses links to a deleted apartment or supply', async () => {
+    const store = await withApartments();
+    for (const [kind, id] of [
+      ['apartment', 'apt-b'],
+      ['supply', 'sup-1'],
+    ] as const) {
+      const path = recordPath(kind, id);
+      const raw = JSON.parse(store.getRaw(path) ?? '{}') as Record<string, unknown>;
+      await store.writeJsonAtomic(path, { ...raw, deleted: true });
+    }
+    expect(await save(store, { ...admin, apartmentIds: ['apt-b'] })).toEqual({
+      status: 'refused',
+      reason: 'unknown-apartment',
+    });
+    expect(await save(store, { ...admin, supplyIds: ['sup-1'] })).toEqual({
+      status: 'refused',
+      reason: 'unknown-supply',
+    });
+  });
+
+  it('a contact undone and saved again comes back with a new rev, never unchanged', async () => {
+    const store = await withApartments();
+    const saved = await save(store, admin);
+    if (saved.status !== 'saved') throw new Error('not saved');
+    await undoOperation(store, saved.operationId, 'p1', clock, ids('u'));
+    expect(await loadContacts(store, {})).toEqual({ status: 'ok', contacts: [] });
+    expect(await save(store, admin, 'd')).toMatchObject({ status: 'saved' });
+    expect(await loadContacts(store, {})).toMatchObject({ contacts: [{ id: 'ctc-1', rev: 3 }] });
   });
 
   it('refuses an inconsistent store', async () => {
@@ -121,5 +162,37 @@ describe('loadContacts (plan 14, R252)', () => {
     expect(await idsOf({})).toEqual(['ctc-0', 'ctc-1', 'ctc-2']);
     expect(await idsOf({ apartmentId: 'apt-a' })).toEqual(['ctc-0', 'ctc-1']);
     expect(await idsOf({ role: 'amministratore', apartmentId: 'apt-b' })).toEqual(['ctc-2']);
+    expect(await loadContacts(store, { apartmentId: 'apt-x' })).toEqual({
+      status: 'refused',
+      reason: 'unknown-apartment',
+    });
+  });
+});
+
+describe('undoBlockedBy and contacts (plan 14, R252)', () => {
+  it('blocks the undo of an apartment creation while a live contact links it', async () => {
+    const store = new MemoryStore();
+    const created = await saveApartment(
+      store,
+      {
+        id: 'apt-a',
+        name: 'Appartamento A',
+        locatore: 'user1',
+        posti: 2,
+        annualitaStart: { month: 10, day: 1 },
+        condoDifferenceTo: 'tenants',
+      },
+      'p1',
+      clock,
+      ids('a'),
+    );
+    if (created.status !== 'created') throw new Error('not created');
+    expect(await undoBlockedBy(store, created.operationId)).toEqual([]);
+    const saved = await save(store, admin);
+    expect(await undoBlockedBy(store, created.operationId)).toEqual(['ctc-1']);
+    if (saved.status !== 'saved') throw new Error('not saved');
+    expect(await undoBlockedBy(store, saved.operationId)).toEqual([]);
+    await undoOperation(store, saved.operationId, 'p1', clock, ids('u'));
+    expect(await undoBlockedBy(store, created.operationId)).toEqual([]);
   });
 });

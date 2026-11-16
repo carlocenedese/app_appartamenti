@@ -78,6 +78,30 @@ describe('condoEstimate (plan 14, R250)', () => {
     ];
     expect(condoEstimate(docs, 'apt-a', '2026-27')).toBeUndefined();
   });
+
+  it('a previous year with both documents gives its consuntivo', () => {
+    const docs = [doc('2025-26', 'preventivo', 1000), doc('2025-26', 'consuntivo', 1100)];
+    expect(condoEstimate(docs, 'apt-a', '2026-27')).toMatchObject({
+      source: 'copiata',
+      fromKind: 'consuntivo',
+      total: 1100,
+    });
+  });
+
+  it('copies only from the same numeric form, never across forms or from other text', () => {
+    const docs = [doc('2025', 'preventivo', 1000), doc('2024-25', 'preventivo', 2000)];
+    expect(condoEstimate(docs, 'apt-a', '2026')).toMatchObject({ fromEsercizio: '2025' });
+    expect(condoEstimate(docs, 'apt-a', '2026-27')).toMatchObject({ fromEsercizio: '2024-25' });
+    // `2025` < `2025-26` as text, but another form: no copy, no conversion.
+    expect(condoEstimate([docs[0] as CondoDocument], 'apt-a', '2025-26')).toBeUndefined();
+    const later = [doc('2027-28', 'preventivo', 3000), doc('25-26', 'preventivo', 4000)];
+    expect(condoEstimate(later, 'apt-a', '26-27')).toMatchObject({ fromEsercizio: '25-26' });
+    expect(condoEstimate([later[0] as CondoDocument], 'apt-a', '26-27')).toBeUndefined();
+    expect(condoEstimate(later, 'apt-a', 'abc')).toBeUndefined();
+    expect(condoEstimate([doc('abc', 'preventivo', 5)], 'apt-a', 'abc')).toMatchObject({
+      source: 'preventivo',
+    });
+  });
 });
 
 describe('loadCondoEstimate (plan 14, R250)', () => {
