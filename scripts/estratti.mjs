@@ -32,6 +32,9 @@
 // user1), tasse-assegna (a «tasse» debit assigned to cedolare or registro and tax years),
 // tasse-copia (the estimates of the year before, copied only on this command) and tasse (the
 // table by taxpayer and the January warning; amounts and the taxpayer only with --dettagli).
+// Plan 15 adds bolletta (imports a PDF with its reading from `python -I -m bollette_pdf extract`:
+// registered by itself, confirmed with --conferma, or left «da rivedere»), annulla-bolletta (takes
+// back what a PDF created) and cruscotto (counts by code and apartment for the Home).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -109,6 +112,11 @@ import {
   undoBlockedBy,
   undoImport,
   undoOperation,
+  ExtractionResultSchema,
+  hashBytes,
+  importBill,
+  loadDashboard,
+  undoBillImport,
 } from '../packages/core/src/index.ts';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -265,6 +273,12 @@ const MESSAGES = {
   'tax-discrepancy':
     'Discrepanza tra la stima e il pagato più l’ancora previsto: solo un avviso, non blocca nulla.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
+  'bad-reading': 'La lettura non è valida: rifarla con «python -I -m bollette_pdf extract».',
+  'bill-rejected': 'Rifiutato: niente da registrare, o file diverso da quello letto.',
+  'duplicate-bill': 'Questo documento è già registrato.',
+  'possible-duplicate-bill': 'Un documento con gli stessi dati è già registrato: controllare.',
+  'has-dependents-bill':
+    'Rifiutato: un abbinamento o un recupero usa la bolletta; annullare prima quelli.',
 };
 
 /** Thrown to stop with a status; `invalid` is exit 2, `rejected` exit 1. */
@@ -362,6 +376,11 @@ const OPTIONS = {
   presenza: { type: 'string' },
   tasso: { type: 'string', multiple: true },
   addebito: { type: 'string', multiple: true },
+  lettura: { type: 'string' },
+  'soglia-consumi': { type: 'string' },
+  codici: { type: 'string' },
+  conferma: { type: 'boolean' },
+  'periodo-conguaglio': { type: 'string', multiple: true },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -1767,6 +1786,121 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'bolletta') {
+    // The reading comes from `python -I -m bollette_pdf extract` (plan 2a): no new reader here.
+    need(values, 'appartamento', 'lettura', 'soglia-consumi');
+    if (positionals.length !== 1) throw invalid('bad-arguments');
+    // The threshold of the anomaly check is not decided in the code (R262).
+    if (!/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(values['soglia-consumi'])) {
+      throw invalid('bad-arguments');
+    }
+    const bytes = readBytes(positionals[0]);
+    let read;
+    try {
+      read = ExtractionResultSchema.safeParse(
+        JSON.parse(readBytes(values.lettura).toString('utf8')),
+      );
+    } catch {
+      throw invalid('bad-reading');
+    }
+    if (!read.success) throw invalid('bad-reading');
+    const knownCodes = (values.codici ?? '').split(',').filter((c) => c !== '');
+    const result = await importBill(
+      store,
+      {
+        result: read.data,
+        bytes,
+        apartmentId: values.appartamento,
+        knownCodes,
+        thresholds: { consumptionAnomalyPercent: Number(values['soglia-consumi']) },
+        mode: values.conferma === true ? 'manual' : 'auto',
+      },
+      who,
+      clock,
+      newId,
+    );
+    const details = values.dettagli === true;
+    // Codes and ids only; the messages hold amounts, months and quantities (R107).
+    const checks = (list) =>
+      list.map((c) => ({
+        code: c.code,
+        severity: c.severity,
+        ...(details ? { message: c.message } : {}),
+      }));
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    if (result.status === 'rejected') {
+      throw new Stop('rejected', 'bill-rejected', {
+        checks: checks(result.checks),
+        ...(details ? { detail: result.reason } : {}),
+      });
+    }
+    if (result.status === 'duplicate' || result.status === 'possible-duplicate') {
+      throw new Stop('rejected', `${result.status}-bill`, { existingId: result.existingId });
+    }
+    if (result.status === 'da-rivedere') {
+      return {
+        status: result.status,
+        pendingId: result.pendingId,
+        ...optional('operationId', result.operationId),
+        codes: result.codes,
+        checks: checks(result.checks),
+        ...(details ? { reasons: result.reasons } : {}),
+      };
+    }
+    return {
+      status: result.status,
+      ids: result.ids,
+      operationId: result.operationId,
+      checks: checks(result.checks),
+    };
+  }
+
+  if (name === 'annulla-bolletta') {
+    if (positionals.length !== 1) throw invalid('bad-arguments');
+    const fileHash = await hashBytes(readBytes(positionals[0]));
+    const result = await undoBillImport(store, fileHash, who, clock, newId);
+    if (result.status === 'refused') {
+      throw new Stop(
+        'rejected',
+        result.reason === 'has-dependents' ? 'has-dependents-bill' : result.reason,
+        result.reason === 'has-dependents' ? { recordIds: result.recordIds } : {},
+      );
+    }
+    return { status: 'undone', operationIds: result.operations.map((o) => o.id) };
+  }
+
+  if (name === 'cruscotto') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const { entro, anno } = values;
+    if (entro !== undefined && !/^[0-9]{1,3}$/.test(entro)) throw invalid('bad-arguments');
+    if (anno !== undefined && !/^[0-9]{4}$/.test(anno)) throw invalid('bad-arguments');
+    const settlements = (values['periodo-conguaglio'] ?? []).map((text) => {
+      const at = text.indexOf(':');
+      if (at < 1 || at === text.length - 1) throw invalid('bad-arguments');
+      return { apartmentId: text.slice(0, at), periodLabel: text.slice(at + 1) };
+    });
+    const result = await loadDashboard(store, {
+      // Today: --oggi, or the UTC date of the clock, as `scadenze`.
+      today: day(values.oggi ?? clock().slice(0, 10)),
+      ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
+      ...optional('taxYear', anno),
+      settlements,
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    // Counts and codes; the share of the empty beds is an amount: only with --dettagli (R107).
+    return {
+      status: 'ok',
+      apartments: result.apartments,
+      settlements: result.settlements.map((r) => ({
+        apartmentId: r.apartmentId,
+        periodLabel: r.periodLabel,
+        ...optional('problem', r.problem),
+        ...optional('pending', r.pending),
+        ...(values.dettagli === true ? optional('unassigned', r.unassigned) : {}),
+      })),
+    };
+  }
+
   if (name === 'scadenze') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const { stato, tipo, entro } = values;
@@ -2114,6 +2248,9 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-copia',
         'tasse-assegna',
         'tasse',
+        'bolletta',
+        'annulla-bolletta',
+        'cruscotto',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -2139,6 +2276,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'stato-contratti',
         'caparra-restituzione',
         'tasse',
+        'bolletta',
+        'cruscotto',
       ],
       parte: ['conferma', 'abbina', 'tasse-assegna'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
@@ -2163,6 +2302,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'caparra-restituzione',
         'tasse-stima',
         'tasse-copia',
+        'bolletta',
       ],
       voce: ['recupero', 'tasse-stima'],
       inquilini: ['recupero'],
@@ -2171,7 +2311,16 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       stato: ['scadenze', 'recupero'],
       esercizio: ['condominio-documento', 'condominio'],
       'quota-conduttore': ['condominio-documento'],
-      anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno', 'tasse-stima', 'tasse-copia', 'tasse'],
+      anno: [
+        'imu-atteso',
+        'imu-f24',
+        'imu',
+        'affitti-anno',
+        'tasse-stima',
+        'tasse-copia',
+        'tasse',
+        'cruscotto',
+      ],
       gruppo: ['imu-atteso', 'imu-f24'],
       totale: ['imu-atteso', 'affitti-anno', 'condominio-documento'],
       rata: ['imu-atteso', 'imu-f24'],
@@ -2192,8 +2341,13 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-stima',
       ],
       data: ['giroconto-manuale', 'scadenza-pagata'],
-      entro: ['scadenze'],
-      oggi: ['scadenze', 'tasse'],
+      entro: ['scadenze', 'cruscotto'],
+      oggi: ['scadenze', 'tasse', 'cruscotto'],
+      lettura: ['bolletta'],
+      'soglia-consumi': ['bolletta'],
+      codici: ['bolletta'],
+      conferma: ['bolletta'],
+      'periodo-conguaglio': ['cruscotto'],
       scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
       'ogni-anno': ['scadenza-nuova'],
       'anno-riferimento': ['scadenza-nuova', 'scadenza-ripeti'],
