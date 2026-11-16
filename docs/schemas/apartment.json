@@ -83,6 +83,13 @@
       ],
       "description": "A month and day that exist every year; day must exist in that month."
     },
+    "condoDifferenceTo": {
+      "type": "string",
+      "enum": [
+        "tenants",
+        "owner"
+      ]
+    },
     "rentLateDays": {
       "type": "integer",
       "minimum": 0,

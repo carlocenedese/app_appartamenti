@@ -18,6 +18,7 @@ import {
   MovementRuleSchema,
   ImuRuleSchema,
   ImuYearSchema,
+  CondoDocumentSchema,
   NoteSchema,
   PaymentSchema,
   SupplierProfileSchema,
@@ -251,6 +252,14 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     year: '2026',
     totalRent: 1935000,
   },
+  condoDocument: {
+    ...base,
+    id: 'condoc-apt-1-2026-27-preventivo',
+    apartmentId: 'apt-1',
+    esercizio: '2026-27',
+    kind: 'preventivo',
+    total: 120000,
+  },
   supplierProfile: {
     ...base,
     supplier: 'Fornitore Luce',
@@ -351,6 +360,7 @@ describe('recordSchemas', () => {
         'imuYear',
         'rentYear',
         'imuRule',
+        'condoDocument',
       ].sort(),
     );
   });
@@ -372,6 +382,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.movementRule).toBe(MovementRuleSchema);
     expect(recordSchemas.imuYear).toBe(ImuYearSchema);
     expect(recordSchemas.imuRule).toBe(ImuRuleSchema);
+    expect(recordSchemas.condoDocument).toBe(CondoDocumentSchema);
   });
 });
 
@@ -1550,5 +1561,47 @@ describe('ImuRuleSchema (plan 3d, task 5)', () => {
     expect(ok({ validFrom: '2026-06-15', validTo: '2026-06-14' })).toBe(false);
     expect(ok({ f24Group: '' })).toBe(false);
     expect(ok({ key: 'nessuna' })).toBe(false);
+  });
+});
+
+describe('condominium documents and setting (plan 8, task 1)', () => {
+  const doc = {
+    ...base,
+    id: 'condoc-apt-1-2026-27-consuntivo',
+    apartmentId: 'apt-1',
+    esercizio: '2026-27',
+    kind: 'consuntivo',
+    total: 100000,
+    quotaConduttore: 70000,
+    lines: [
+      { label: 'Pulizia scale', amount: 60000, quotaConduttore: 60000 },
+      { label: 'Assicurazione', amount: 40000 },
+    ],
+  };
+  const ok = (changes: Record<string, unknown>) =>
+    CondoDocumentSchema.safeParse(changed(doc, changes)).success;
+
+  it('accepts a document with lines that add up to the total', () => {
+    expect(CondoDocumentSchema.parse(doc)).toEqual(doc);
+    expect(ok({ lines: undefined, quotaConduttore: undefined })).toBe(true);
+  });
+
+  it('refuses another id, another kind, lines that do not add up', () => {
+    expect(ok({ id: 'condoc-apt-1-2026-27-preventivo' })).toBe(false);
+    expect(ok({ kind: 'rendiconto' })).toBe(false);
+    expect(ok({ lines: [{ label: 'Pulizia scale', amount: 1 }] })).toBe(false);
+    expect(ok({ esercizio: '' })).toBe(false);
+  });
+
+  it('takes condoDifferenceTo tenants or owner, optional', () => {
+    const apartment = validRecords.apartment;
+    for (const value of ['tenants', 'owner']) {
+      expect(ApartmentSchema.safeParse({ ...apartment, condoDifferenceTo: value }).success).toBe(
+        true,
+      );
+    }
+    expect(
+      ApartmentSchema.safeParse({ ...apartment, condoDifferenceTo: 'inquilini' }).success,
+    ).toBe(false);
   });
 });

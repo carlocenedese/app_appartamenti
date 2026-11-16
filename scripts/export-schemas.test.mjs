@@ -24,6 +24,7 @@ describe('writeJsonSchemas', () => {
       'apartment',
       'bankProfile',
       'bill',
+      'condoDocument',
       'contract',
       'extractionResult',
       'imuRule',

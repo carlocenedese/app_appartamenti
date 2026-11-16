@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "apartmentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "esercizio": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "preventivo",
+        "consuntivo"
+      ]
+    },
+    "total": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "quotaConduttore": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "amount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "quotaConduttore": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "label",
+          "amount"
+        ]
+      }
+    },
+    "fileHash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fileDocument": {
+      "type": "object",
+      "properties": {
+        "pages": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "documentKind": {
+          "type": "string",
+          "enum": [
+            "bill",
+            "tari",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "pages",
+        "documentKind"
+      ],
+      "description": "pages[0] must not be after pages[1]."
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "apartmentId",
+    "esercizio",
+    "kind",
+    "total"
+  ],
+  "description": "id is condoc-<apartmentId>-<esercizio>-<kind>; when lines are present, their amounts add up to total."
+}

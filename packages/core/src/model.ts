@@ -149,6 +149,11 @@ export const ApartmentSchema = RecordBaseSchema.extend({
   annualitaStart: AnnualitaStartSchema,
   /** Start of the condominium fiscal year, when the apartment has one. */
   condominioStart: AnnualitaStartSchema.optional(),
+  /**
+   * Who bears the condominium difference consuntivo − preventivo, i.e. last year's settlement on an
+   * instalment (plan 8, R190): `tenants` when absent (R3), `owner` keeps it out of the conguaglio.
+   */
+  condoDifferenceTo: z.enum(['tenants', 'owner']).optional(),
   /** Days of grace before a rent payment counts as late (R109); `DEFAULT_RENT_LATE_DAYS` if absent. */
   rentLateDays: z.int().min(0).max(31).optional(),
   /** Street address, as written on the notices. */
@@ -1144,6 +1149,47 @@ export const ImuRuleSchema = RecordBaseSchema.extend({
   .meta({ description: 'When both are present, validFrom must not be after validTo.' });
 export type ImuRule = z.infer<typeof ImuRuleSchema>;
 
+// --- Condominium (plan 8) ----------------------------------------------------------------------
+
+/**
+ * A condominium document of one apartment and fiscal year (`condoc-<apartmentId>-<esercizio>-<kind>`,
+ * plan 8, R190): the budget (`preventivo`) or the final account (`consuntivo`). `total` is the
+ * unit's share; `quotaConduttore` the tenants' share when the administrator's document gives it
+ * (it wins over any rule). The instalment plan is the `Instalment`s of the same `esercizio`.
+ */
+export const CondoDocumentSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  /** Same text as `Instalment.esercizio`, e.g. `2026-27`. */
+  esercizio: NonEmptyString,
+  kind: z.enum(['preventivo', 'consuntivo']),
+  total: CentsSchema,
+  quotaConduttore: CentsSchema.optional(),
+  lines: z
+    .array(
+      z.object({
+        label: NonEmptyString,
+        amount: CentsSchema,
+        quotaConduttore: CentsSchema.optional(),
+      }),
+    )
+    .optional(),
+  fileHash: NonEmptyString.optional(),
+  fileDocument: FileDocumentSchema.optional(),
+})
+  .refine((d) => d.id === `condoc-${d.apartmentId}-${d.esercizio}-${d.kind}`, {
+    message: 'The id must be condoc-<apartmentId>-<esercizio>-<kind>',
+    path: ['id'],
+  })
+  .refine(
+    (d) => d.lines === undefined || d.lines.reduce((sum, l) => sum + l.amount, 0) === d.total,
+    { message: 'The lines add up to the total', path: ['lines'] },
+  )
+  .meta({
+    description:
+      'id is condoc-<apartmentId>-<esercizio>-<kind>; when lines are present, their amounts add up to total.',
+  });
+export type CondoDocument = z.infer<typeof CondoDocumentSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -1172,6 +1218,7 @@ export const recordSchemas = {
   imuYear: ImuYearSchema,
   rentYear: RentYearSchema,
   imuRule: ImuRuleSchema,
+  condoDocument: CondoDocumentSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 
