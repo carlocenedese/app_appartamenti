@@ -85,6 +85,29 @@ describe('saveCondoDocument (plan 8, task 3)', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
+  it('refuses a document whose id is already another apartment and year (id-collision)', async () => {
+    const store = await withApartment();
+    await store.writeJsonAtomic(
+      recordPath('apartment', 'apt-a-2026'),
+      recordSchemas.apartment.parse({
+        id: 'apt-a-2026',
+        v: 1,
+        rev: 1,
+        name: 'Appartamento B',
+        locatore: 'user1',
+        posti: 2,
+        annualitaStart: { month: 10, day: 1 },
+      }),
+    );
+    await save(store, budget);
+    expect(
+      await save(store, { ...budget, apartmentId: 'apt-a-2026', esercizio: '27' }, 'f'),
+    ).toEqual({
+      status: 'refused',
+      reason: 'id-collision',
+    });
+  });
+
   it('a diverged store is inconsistent-store', async () => {
     const store = await withApartment();
     await save(store, budget);
@@ -188,8 +211,9 @@ describe('tenant recoveries (plan 8, task 7)', () => {
       operationId: 'r-1',
       recoveryId: 'rec-1',
     });
-    const [, op] = (await readJournal(store)).operations;
-    expect(op ?? (await readJournal(store)).operations[0]).toMatchObject({
+    const operations = (await readJournal(store)).operations;
+    expect(operations).toHaveLength(1);
+    expect(operations[0]).toMatchObject({
       kind: 'recovery.save',
       summary: 'Recupero da un inquilino salvato.',
     });

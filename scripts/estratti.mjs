@@ -185,7 +185,11 @@ const MESSAGES = {
   'amount-too-high': 'Rifiutato: da recuperare più della spesa anticipata.',
   'bad-shares':
     'Rifiutato: quote non valide (inquilino ripetuto o senza presenza, quota non positiva, somma diversa).',
+  'recovery-above-expense':
+    'Avviso: i recuperi superano la spesa straordinaria, corretta dopo: controllare i recuperi.',
   'invalid-recovery': 'Rifiutato: i dati del recupero non sono validi.',
+  'needs-confirmation':
+    'Rifiutato: posti e inizio dell’annualità cambiano ogni conguaglio: ripetere con --modifica.',
   'invalid-apartment': 'Rifiutato: i dati dell’appartamento non sono validi.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
@@ -267,6 +271,7 @@ const OPTIONS = {
   annualita: { type: 'string' },
   'esercizio-condominio': { type: 'string' },
   'differenza-condominio': { type: 'string' },
+  modifica: { type: 'boolean' },
   esercizio: { type: 'string' },
   'quota-conduttore': { type: 'string' },
   voce: { type: 'string' },
@@ -1002,12 +1007,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
       who,
       clock,
       newId,
+      { confirmed: v.modifica === true },
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     return {
       status: result.status,
       apartmentId: result.apartmentId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+      ...(result.status === 'unchanged' ? {} : { operationId: result.operationId }),
     };
   }
 
@@ -1132,6 +1138,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         tenants: r.shares.length,
         ...(details ? { amount: r.amount, shares: r.shares } : {}),
       })),
+      warnings: result.warnings.map((w) => ({ ...w, message: MESSAGES[w.code] })),
     };
   }
 
@@ -1618,9 +1625,14 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         ].map((option) => [option, ['contratto']]),
       ),
       ...Object.fromEntries(
-        ['locatore', 'posti', 'annualita', 'esercizio-condominio', 'differenza-condominio'].map(
-          (option) => [option, ['appartamento']],
-        ),
+        [
+          'locatore',
+          'posti',
+          'annualita',
+          'esercizio-condominio',
+          'differenza-condominio',
+          'modifica',
+        ].map((option) => [option, ['appartamento']]),
       ),
       contratto: ['contratto-canone'],
       canone: ['contratto-canone'],

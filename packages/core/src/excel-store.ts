@@ -6,6 +6,7 @@
  */
 import type { ZodType } from 'zod';
 import type { ExcelInput } from './excel';
+import { loadFreeDebits } from './condo-store';
 import { checkConsistency } from './journal';
 import { planMatch } from './match-store';
 import {
@@ -64,6 +65,10 @@ export async function loadExcelInput(
     return refuse('ambiguous-period');
   }
 
+  const matches = [
+    ...(await records('match', BillMatchSchema)),
+    ...(await planMatch(store)).assumedMatches,
+  ];
   // Every settlement period, once and in order (R177).
   const spans = [
     ...new Map(all.map((p) => [`${p.from}/${p.to}`, { from: p.from, to: p.to }])).values(),
@@ -81,10 +86,8 @@ export async function loadExcelInput(
       payments: own(await records('payment', PaymentSchema)),
       contracts,
       recoveries: own(await records('tenantRecovery', TenantRecoverySchema)),
-      matches: [
-        ...(await records('match', BillMatchSchema)),
-        ...(await planMatch(store)).assumedMatches,
-      ],
+      matches,
+      freeDebits: await loadFreeDebits(store, matches),
     },
   };
 }

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AccountSchema,
+  BankTransactionSchema,
   CondoDocumentSchema,
+  MovementClassSchema,
   condoCheck,
+  freeDebits,
   condoDifferences,
   cents,
   isoDate,
@@ -9,7 +13,7 @@ import {
   recordPath,
   recordSchemas,
 } from '../src/index';
-import type { BillMatch, CondoDocument, Instalment, RecordKind } from '../src/index';
+import type { BillMatch, CondoDocument, FreeDebit, Instalment, RecordKind } from '../src/index';
 import { apartment, instalment, match, mulberry32, shuffled } from './helpers/conguaglio-builders';
 import { MemoryStore } from './helpers/memory-store';
 
@@ -34,9 +38,92 @@ describe('condoCheck (plan 8, task 5, section 12)', () => {
     expect(statusOf(r, [debit(r, 14999, 'tx-1')], '2026-06-01')).toBe('importo-diverso');
   });
 
-  it('duplicato: two debits on the same instalment, whatever the amounts', () => {
-    const two = [debit(r, 15000, 'tx-1'), debit(r, 15000, 'tx-2')];
-    expect(statusOf(r, two, '2026-06-01')).toBe('duplicato');
+  it('a payment in two matched parts that add up is pagata, never duplicato (R198)', () => {
+    const split = [debit(r, 7500, 'tx-1'), debit(r, 7500, 'tx-2')];
+    expect(statusOf(r, split, '2026-06-01')).toBe('pagata');
+  });
+
+  it('duplicato: a free movement of the same amount within the window of the due date', () => {
+    const paid = [debit(r, 15000, 'tx-1')];
+    const check = (free: FreeDebit[]) =>
+      condoCheck({ instalments: [r], matches: paid, asOf: isoDate('2026-06-01'), free })[0]?.status;
+    const free = (date: string, amount = -15000, apartmentId = 'apt'): FreeDebit => ({
+      apartmentId,
+      date: isoDate(date),
+      amount: cents(amount),
+    });
+    // Due 2026-05-10, window 5 days before, 10 after.
+    expect(check([free('2026-05-05')])).toBe('duplicato');
+    expect(check([free('2026-05-20')])).toBe('duplicato');
+    expect(check([free('2026-05-04')])).toBe('pagata');
+    expect(check([free('2026-05-21')])).toBe('pagata');
+    expect(check([free('2026-05-12', -14999)])).toBe('pagata');
+    expect(check([free('2026-05-12', -15000, 'apt-2')])).toBe('pagata');
+    // Not paid yet: a free movement is a candidate for the match, not a second charge.
+    expect(
+      condoCheck({
+        instalments: [r],
+        matches: [],
+        asOf: isoDate('2026-06-01'),
+        free: [free('2026-05-12')],
+      })[0]?.status,
+    ).toBe('senza-addebito');
+  });
+
+  it('freeDebits: outgoing movements without a match, payment, transfer or exclusion', () => {
+    const base = { v: 1 as const, rev: 1, description: 'x', statementHash: 's' };
+    const tx = (id: string, amount: number, extra: Record<string, unknown> = {}) =>
+      BankTransactionSchema.parse({
+        ...base,
+        id,
+        apartmentId: 'apt-x',
+        accountId: 'acc-1',
+        date: '2026-05-12',
+        amount,
+        ...extra,
+      });
+    const result = freeDebits({
+      accounts: [
+        AccountSchema.parse({
+          ...base,
+          id: 'acc-1',
+          apartmentId: 'apt',
+          label: 'C',
+          bankProfileId: 'bp',
+        }),
+      ],
+      transactions: [
+        tx('free', -15000),
+        tx('classified', -15000),
+        tx('in', 15000),
+        tx('matched', -15000),
+        tx('excluded', -15000),
+        tx('gone', -15000, { deleted: true }),
+      ],
+      classes: [
+        MovementClassSchema.parse({
+          ...base,
+          id: 'mc-classified',
+          transactionId: 'classified',
+          kind: 'condominio',
+          apartmentId: 'apt',
+        }),
+        MovementClassSchema.parse({
+          ...base,
+          id: 'mc-excluded',
+          transactionId: 'excluded',
+          kind: 'escluso',
+          excludeReason: 'doppione',
+        }),
+      ],
+      payments: [],
+      matches: [debit(r, 15000, 'matched')],
+      transfers: [],
+    });
+    expect(result).toEqual([
+      { apartmentId: 'apt', date: '2026-05-12', amount: -15000 },
+      { apartmentId: 'apt', date: '2026-05-12', amount: -15000 },
+    ]);
   });
 
   it('senza-addebito from the day after the due date, in-programma up to it', () => {
@@ -136,7 +223,7 @@ describe('condoDifferences (plan 8, task 5)', () => {
 });
 
 describe('loadCondo (plan 8, task 5)', () => {
-  async function storeWith(records: [RecordKind, { id: string }][]) {
+  async function storeWith(records: [RecordKind, { id: string } & Record<string, unknown>][]) {
     const store = new MemoryStore();
     for (const [kind, r] of records) {
       await store.writeJsonAtomic(recordPath(kind, r.id), recordSchemas[kind].parse(r));
@@ -171,7 +258,38 @@ describe('loadCondo (plan 8, task 5)', () => {
       rates: [{ instalmentId: 'r1', status: 'assunta' }],
       differences: [{ apartmentId: 'apt', difference: 6000 }],
       recoveries: [],
+      warnings: [],
     });
+  });
+
+  it('warns when the recoveries are above an expense edited down after them (R198)', async () => {
+    const recovery = {
+      id: 'rec-1',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt',
+      instalmentId: 'r1',
+      amount: 15001,
+      shares: [{ tenantId: 't', amount: 15001 }],
+      status: 'da-recuperare',
+    };
+    const store = await storeWith([
+      ['apartment', apartment()],
+      ['instalment', rata('r1')],
+      ['tenantRecovery', recovery],
+    ]);
+    expect(await loadCondo(store, { asOf: isoDate('2026-06-01') })).toMatchObject({
+      warnings: [{ code: 'recovery-above-expense', instalmentId: 'r1' }],
+    });
+    const fine = await storeWith([
+      ['apartment', apartment()],
+      ['instalment', rata('r1')],
+      [
+        'tenantRecovery',
+        { ...recovery, amount: 15000, shares: [{ tenantId: 't', amount: 15000 }] },
+      ],
+    ]);
+    expect(await loadCondo(fine, { asOf: isoDate('2026-06-01') })).toMatchObject({ warnings: [] });
   });
 
   it('refuses an inconsistent store', async () => {

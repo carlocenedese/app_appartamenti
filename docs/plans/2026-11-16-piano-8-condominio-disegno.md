@@ -122,8 +122,8 @@ in `calcConguaglio`.
 
 | Stato | Quando (in quest'ordine) |
 | --- | --- |
-| `duplicato` | due o più movimenti diversi negli abbinamenti `amount` confermati non assunti |
-| `pagata` | addebiti non assunti con somma = addebito atteso |
+| `duplicato` | pagata (sotto) e un movimento in uscita libero (senza abbinamento, pagamento, giroconto né esclusione) dell'appartamento pagante con lo stesso importo dell'addebito atteso, entro `MATCH_WINDOW` dalla scadenza (R198) |
+| `pagata` | addebiti non assunti con somma = addebito atteso (anche in più parti, R2) |
 | `importo-diverso` | addebiti non assunti con somma ≠ addebito atteso |
 | `assunta` | solo abbinamenti assunti (periodo senza estratto, R2) |
 | `senza-addebito` | nessun abbinamento e `asOf` > scadenza (dal giorno dopo, nessuna tolleranza) |
@@ -172,8 +172,10 @@ mostrarli (domanda 10); la riga di comando `condominio` li elenca con lo stato.
 4. **Documento e rate.** Quando il preventivo dà la quota conduttore, la quota della proprietà delle
    rate (`quotaProprieta`) deve venire da lì (totale − quota conduttore) e sostituire quella scritta
    sulle rate? Oggi nulla si scrive da solo e il piano non confronta i due numeri.
-5. **Pagamento in più addebiti.** Due addebiti la cui somma è la rata sono `duplicato` (lettura
-   letterale della risposta) o `pagata`? R2 ammette più addebiti per una voce.
+5. **Duplicato (revisione, R198).** Un pagamento in più parti abbinate è `pagata`. `duplicato` è
+   una stima: rata pagata e un altro movimento libero con lo stesso importo dell'addebito atteso nella
+   finestra di abbinamento (`MATCH_WINDOW`, 5 giorni prima e 10 dopo la scadenza). Va bene la
+   finestra? Un secondo addebito di importo diverso o fuori finestra non si segnala.
 6. **Data di oggi.** Il giorno dopo la scadenza si conta sulla data UTC dell'orologio: va bene, o
    serve la data italiana (a cavallo della mezzanotte cambia di un giorno)?
 7. **File dei proprietari e scadenza.** Il file non ha una data: deve mostrare `senza addebito` e
@@ -197,6 +199,11 @@ mostrarli (domanda 10); la riga di comando `condominio` li elenca con lo stato.
     bene, o il recupero entra anche prima del pagamento?
 15. **Due recuperi sulla stessa spesa.** Il piano somma tutti i recuperi vivi di una rata e rifiuta se
     superano la spesa. Va bene?
+
+## Osservazioni della revisione
+
+- M6 della revisione del piano 8: annotata come osservazione su richiesta del coordinatore, non
+  trattata in questo piano (il testo del rilievo non è riportato qui).
 
 ## Mie scelte (da controllare)
 

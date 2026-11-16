@@ -8,7 +8,7 @@
 
 **Stack tecnologico:** TypeScript strict, Zod 4, Vitest; nessuna dipendenza nuova, nessun Python.
 
-**Specifica:** il disegno `docs/plans/2026-11-16-piano-8-condominio-disegno.md` (decisioni 1-7, «Mie scelte» 1-5, **domande 1-13 aperte**: nessuna blocca un task, ognuna è fuori dal piano o trattata come scritto nel task); `docs/spec.md` sezioni 6, 12, 15, 16, 24, 32, 42.
+**Specifica:** il disegno `docs/plans/2026-11-16-piano-8-condominio-disegno.md` (decisioni 1-7, «Mie scelte» 1-5, **domande 1-15 aperte**: nessuna blocca un task, ognuna è fuori dal piano o trattata come scritto nel task); `docs/spec.md` sezioni 6, 12, 15, 16, 24, 32, 42.
 
 ## Metodo di esecuzione
 

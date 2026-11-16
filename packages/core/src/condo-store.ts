@@ -5,20 +5,26 @@
  * `checkConsistency` reports a problem, nothing for the same request on the same state. No amount
  * or name in a summary.
  */
-import { condoCheck, condoDifferences } from './condominio';
-import type { CondoCheckRow, CondoDifference } from './condominio';
+import { condoCheck, condoDifferences, freeDebits } from './condominio';
+import type { CondoCheckRow, CondoDifference, FreeDebit } from './condominio';
+import type { ZodType } from 'zod';
 import { checkConsistency, commitChange } from './journal';
 import { planMatch } from './match-store';
 import { expectedDebit } from './match';
 import {
+  AccountSchema,
   ApartmentSchema,
+  BankTransactionSchema,
   BillMatchSchema,
+  MovementClassSchema,
+  PaymentSchema,
+  TransferSchema,
   CondoDocumentSchema,
   InstalmentSchema,
   TenancySchema,
   TenantRecoverySchema,
 } from './model';
-import type { CondoDocument, TenantRecovery } from './model';
+import type { BillMatch, CondoDocument, TenantRecovery } from './model';
 import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -30,7 +36,10 @@ export type SaveCondoDocumentInput = Omit<CondoDocument, 'id' | 'v' | 'rev' | 'd
 export type SaveCondoDocumentResult =
   | { status: 'saved'; operationId: string; documentId: string }
   | { status: 'unchanged'; documentId: string }
-  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-apartment' | 'invalid-document' };
+  | {
+      status: 'refused';
+      reason: 'inconsistent-store' | 'unknown-apartment' | 'invalid-document' | 'id-collision';
+    };
 
 /**
  * Creates or replaces `condoc-<apartmentId>-<esercizio>-<kind>` (a new `rev`; a deleted one comes
@@ -56,6 +65,15 @@ export async function saveCondoDocument(
     await loadAll(store, 'condoDocument', CondoDocumentSchema, { includeDeleted: true })
   ).records;
   const before = docs.find((d) => d.id === id);
+  // `a` + `b-c` and `a-b` + `c` give the same id: never write over another apartment's document.
+  if (
+    before !== undefined &&
+    (before.apartmentId !== input.apartmentId ||
+      before.esercizio !== input.esercizio ||
+      before.kind !== input.kind)
+  ) {
+    return refuse('id-collision');
+  }
   const record = (rev: number) => CondoDocumentSchema.safeParse({ ...input, id, v: 1, rev });
   const parsed = record((before?.rev ?? 0) + 1);
   if (!parsed.success) return refuse('invalid-document');
@@ -88,6 +106,11 @@ export type LoadCondoResult =
       differences: CondoDifference[];
       /** The live recoveries on the instalments read, sorted by id. */
       recoveries: TenantRecovery[];
+      /**
+       * Instalments whose live recoveries now add up to more than the expense (it was edited down
+       * after them): a warning only, nothing is capped (R198).
+       */
+      warnings: { code: 'recovery-above-expense'; instalmentId: string }[];
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
 
@@ -119,12 +142,41 @@ export async function loadCondo(
     wanted,
   );
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+  const warnings = instalments
+    .filter(
+      (i) =>
+        recoveries.filter((r) => r.instalmentId === i.id).reduce((sum, r) => sum + r.amount, 0) >
+        expectedDebit(i),
+    )
+    .map((i) => ({ code: 'recovery-above-expense' as const, instalmentId: i.id }))
+    .sort((a, b) => compareText(a.instalmentId, b.instalmentId));
   return {
     status: 'computed',
-    rates: condoCheck({ instalments, matches, asOf: query.asOf }),
+    rates: condoCheck({
+      instalments,
+      matches,
+      asOf: query.asOf,
+      free: await loadFreeDebits(store, matches),
+    }),
     differences: condoDifferences(apartments, documents),
     recoveries,
+    warnings,
   };
+}
+
+/** `freeDebits` on the live records of the store, with `matches` (saved and assumed). */
+export async function loadFreeDebits(store: Store, matches: BillMatch[]): Promise<FreeDebit[]> {
+  const records = async <T extends { id: string }>(kind: string, schema: ZodType<T>) =>
+    (await loadAll(store, kind, schema)).records;
+  return freeDebits({
+    // Deleted accounts too: the money did move (as `accountBalances`).
+    accounts: (await loadAll(store, 'account', AccountSchema, { includeDeleted: true })).records,
+    transactions: await records('transaction', BankTransactionSchema),
+    classes: await records('movementClass', MovementClassSchema),
+    payments: await records('payment', PaymentSchema),
+    matches,
+    transfers: await records('transfer', TransferSchema),
+  });
 }
 
 export type SaveTenantRecoveryInput = Omit<TenantRecovery, 'v' | 'rev' | 'deleted'>;

@@ -5,6 +5,7 @@
  * columns. Never shared with the tenants: nothing about them goes in. Values only. Pure.
  */
 import { instalmentStatus } from './condominio';
+import type { FreeDebit } from './condominio';
 import { instalmentOwnerShare, previousToTenants } from './conguaglio';
 import type { ConguaglioInput } from './conguaglio';
 import { expectedDebit } from './match';
@@ -82,7 +83,7 @@ const monthRange = (from: YearMonth, to: YearMonth): YearMonth[] =>
  * period, with the criterion of the sheet «Bollette» (R153) but with the extraordinary and the
  * pending ones; sorted by `coversFrom`, then `id`.
  */
-export function ownersItems(input: ConguaglioInput): OwnersItem[] {
+export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] }): OwnersItem[] {
   const { apartment, period } = input;
   const periodMonths = new Set(monthRange(period.from, period.to));
   const matches = input.matches.filter(
@@ -133,7 +134,7 @@ export function ownersItems(input: ConguaglioInput): OwnersItem[] {
         commission: total(own.filter((m) => m.part === 'commission').map((m) => m.amount)),
         debitDates: [...new Set(real.map((m) => m.transactionDate))].sort(compareText),
         // 5b D1 (R184) and plan 8 (R195): the check of section 12, without a date.
-        status: instalmentStatus(i, own) as OwnersStatus,
+        status: instalmentStatus(i, own, undefined, input.freeDebits) as OwnersStatus,
       };
     });
 }
@@ -146,7 +147,9 @@ const dayMonthYear = (day: ISODate): string =>
   `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
 
 /** The owners' file (plan 5b): the sheet `OWNERS_SHEET`, then the row «Totale» (section 19). */
-export function buildOwnersWorkbook(input: ConguaglioInput): XlsxWorkbook {
+export function buildOwnersWorkbook(
+  input: ConguaglioInput & { freeDebits?: FreeDebit[] },
+): XlsxWorkbook {
   const items = ownersItems(input);
   const rows: (XlsxCell | null)[][] = items.map((item) => [
     text(item.esercizio),

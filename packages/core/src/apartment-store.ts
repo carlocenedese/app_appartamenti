@@ -14,11 +14,11 @@ type DataFields = Omit<Apartment, 'id' | 'v' | 'rev' | 'deleted'>;
 export type SaveApartmentInput = { id: string } & Partial<DataFields>;
 
 export type SaveApartmentResult =
-  | { status: 'saved'; operationId: string; apartmentId: string }
+  | { status: 'created' | 'updated'; operationId: string; apartmentId: string }
   | { status: 'unchanged'; apartmentId: string }
   | {
       status: 'refused';
-      reason: 'inconsistent-store' | 'missing-fields' | 'invalid-apartment';
+      reason: 'inconsistent-store' | 'missing-fields' | 'invalid-apartment' | 'needs-confirmation';
     };
 
 /** Required to create one: `condoDifferenceTo` is the question asked at creation. */
@@ -31,9 +31,11 @@ const CREATE_FIELDS = [
 ] as const satisfies readonly (keyof DataFields)[];
 
 /**
- * Creates `input.id` (every field of `CREATE_FIELDS` needed, else `missing-fields`) or updates it:
- * the fields given replace the stored ones, the others stay. A deleted apartment comes back.
- * `invalid-apartment` when the schema refuses the result.
+ * Creates `input.id` (`created`; every field of `CREATE_FIELDS` needed, else `missing-fields`) or
+ * updates it (`updated`): the fields given replace the stored ones, the others stay. A deleted
+ * apartment comes back with its old fields (`created`). `invalid-apartment` when the id is not a
+ * safe file name part or the schema refuses the result; changing `posti` or `annualitaStart` of a
+ * live apartment needs `options.confirmed` (`needs-confirmation`: they change every settlement).
  */
 export async function saveApartment(
   store: Store,
@@ -41,21 +43,37 @@ export async function saveApartment(
   profileId: string,
   clock: () => string,
   newId: () => string,
+  options: { confirmed?: boolean } = {},
 ): Promise<SaveApartmentResult> {
   const refuse = (reason: Extract<SaveApartmentResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id)) return refuse('invalid-apartment');
   const all = (await loadAll(store, 'apartment', ApartmentSchema, { includeDeleted: true }))
     .records;
   const before = all.find((a) => a.id === input.id);
   const live = before !== undefined && before.deleted !== true;
-  if (!live && CREATE_FIELDS.some((field) => input[field] === undefined)) {
+  const given: Partial<DataFields> = Object.fromEntries(
+    Object.entries(input).filter(([, v]) => v !== undefined),
+  );
+  const kept = Object.fromEntries(
+    Object.entries(before ?? {}).filter(([key]) => key !== 'deleted'),
+  ) as Partial<DataFields>;
+  const merged = { ...kept, ...given };
+  if (!live && CREATE_FIELDS.some((field) => merged[field] === undefined)) {
     return refuse('missing-fields');
   }
-  const given = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+  if (
+    live &&
+    options.confirmed !== true &&
+    ((given.posti !== undefined && given.posti !== before.posti) ||
+      (given.annualitaStart !== undefined &&
+        JSON.stringify(given.annualitaStart) !== JSON.stringify(before.annualitaStart)))
+  ) {
+    return refuse('needs-confirmation');
+  }
   const parsed = ApartmentSchema.safeParse({
-    ...(live ? before : {}),
-    ...given,
+    ...merged,
     v: 1,
     rev: (before?.rev ?? 0) + 1,
   });
@@ -76,5 +94,5 @@ export async function saveApartment(
     clock,
     newId,
   );
-  return { status: 'saved', operationId: operation.id, apartmentId: input.id };
+  return { status: live ? 'updated' : 'created', operationId: operation.id, apartmentId: input.id };
 }

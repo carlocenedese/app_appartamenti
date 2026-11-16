@@ -22,7 +22,7 @@ describe('saveApartment (plan 8, task 2)', () => {
   it('creates an apartment with the condominium setting in one operation', async () => {
     const store = new MemoryStore();
     expect(await save(store, create)).toEqual({
-      status: 'saved',
+      status: 'created',
       operationId: 'e-1',
       apartmentId: 'apt-a',
     });
@@ -64,7 +64,7 @@ describe('saveApartment (plan 8, task 2)', () => {
       }),
     );
     const update = { id: 'apt-a', condoDifferenceTo: 'tenants' as const };
-    expect(await save(store, update)).toMatchObject({ status: 'saved' });
+    expect(await save(store, update)).toMatchObject({ status: 'updated' });
     expect(await records(store)).toEqual([
       expect.objectContaining({
         rev: 4,
@@ -87,6 +87,64 @@ describe('saveApartment (plan 8, task 2)', () => {
     expect(await save(store, { id: 'apt-a', posti: 3 }, 'f')).toEqual({
       status: 'refused',
       reason: 'inconsistent-store',
+    });
+  });
+
+  it('changes beds or lease year start of a live apartment only when confirmed', async () => {
+    const store = new MemoryStore();
+    await save(store, create);
+    expect(await save(store, { id: 'apt-a', posti: 5 }, 'f')).toEqual({
+      status: 'refused',
+      reason: 'needs-confirmation',
+    });
+    expect(await save(store, { id: 'apt-a', annualitaStart: { month: 9, day: 1 } }, 'f')).toEqual({
+      status: 'refused',
+      reason: 'needs-confirmation',
+    });
+    expect(await save(store, { id: 'apt-a', posti: 4 }, 'f')).toMatchObject({
+      status: 'unchanged',
+    });
+    expect(
+      await saveApartment(store, { id: 'apt-a', posti: 5 }, 'p1', clock, ids('g'), {
+        confirmed: true,
+      }),
+    ).toMatchObject({ status: 'updated' });
+    expect((await records(store))[0]?.posti).toBe(5);
+  });
+
+  it('brings a deleted apartment back with its old fields (rooms, rentLateDays)', async () => {
+    const store = new MemoryStore();
+    await store.writeJsonAtomic(
+      recordPath('apartment', 'apt-a'),
+      ApartmentSchema.parse({
+        v: 1,
+        rev: 2,
+        deleted: true,
+        id: 'apt-a',
+        name: 'Appartamento A',
+        locatore: 'user1',
+        posti: 2,
+        rooms: ['Camera 1', 'Camera 2'],
+        rentLateDays: 5,
+        annualitaStart: { month: 10, day: 1 },
+      }),
+    );
+    expect(await save(store, { id: 'apt-a' })).toEqual({
+      status: 'refused',
+      reason: 'missing-fields',
+    });
+    expect(await save(store, { id: 'apt-a', condoDifferenceTo: 'tenants' })).toMatchObject({
+      status: 'created',
+    });
+    const [back] = await records(store);
+    expect(back).toMatchObject({ rev: 3, rooms: ['Camera 1', 'Camera 2'], rentLateDays: 5 });
+    expect(back?.deleted).toBeUndefined();
+  });
+
+  it('refuses an id that is not a safe file name part', async () => {
+    expect(await save(new MemoryStore(), { ...create, id: 'a/b' })).toEqual({
+      status: 'refused',
+      reason: 'invalid-apartment',
     });
   });
 });

@@ -1,13 +1,7 @@
 // Recoveries from tenants in the settlement (plan 8, group B, task 8). Invented amounts: an
 // extraordinary expense of 200,00 €, 150,01 € to recover from two tenants of a 4-bed apartment.
 import { describe, expect, it } from 'vitest';
-import {
-  ExcelRecoveriesError,
-  SettlementInputError,
-  buildConguaglioWorkbook,
-  calcConguaglio,
-  cents,
-} from '../src/index';
+import { ExcelRecoveriesError, buildConguaglioWorkbook, calcConguaglio, cents } from '../src/index';
 import type { ConguaglioInput, TenantRecovery } from '../src/index';
 import { apartment, bill, instalment, match, period, tenancy } from './helpers/conguaglio-builders';
 import { fixtureInput } from './helpers/excel-fixture';
@@ -97,12 +91,13 @@ describe('recoveries in calcConguaglio (plan 8, task 8, R197)', () => {
       amount: cents(100),
       shares: [{ tenantId: 'z', amount: cents(100) }],
     });
-    expect(() => calcConguaglio(input({ recoveries: [away] }))).toThrow(SettlementInputError);
-    try {
-      calcConguaglio(input({ recoveries: [away] }));
-    } catch (error) {
-      expect((error as SettlementInputError).code).toBe('recovery-tenant-absent');
-    }
+    expect(() => calcConguaglio(input({ recoveries: [away] }))).toThrow(
+      expect.objectContaining({
+        name: 'SettlementInputError',
+        code: 'recovery-tenant-absent',
+        tenantId: 'z',
+      }),
+    );
   });
 
   it("the tenants' Excel refuses a period with a recovery (question 10), not without", () => {

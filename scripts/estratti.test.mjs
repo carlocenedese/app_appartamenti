@@ -3082,7 +3082,7 @@ describe('pnpm estratti condominio (piano 8)', () => {
       reason: 'missing-fields',
     });
     const saved = await run([...base, ...create, '--differenza-condominio', 'proprietario']);
-    expect([saved.code, saved.json.status]).toEqual([0, 'saved']);
+    expect([saved.code, saved.json.status]).toEqual([0, 'created']);
     expect(stored(s, 'apartment', 'apt-a')).toMatchObject({
       posti: 4,
       annualitaStart: { month: 10, day: 1 },
@@ -3090,7 +3090,7 @@ describe('pnpm estratti condominio (piano 8)', () => {
       condoDifferenceTo: 'owner',
     });
     const update = await run([...base, '--differenza-condominio', 'inquilini']);
-    expect(update.json.status).toBe('saved');
+    expect(update.json.status).toBe('updated');
     expect(stored(s, 'apartment', 'apt-a')).toMatchObject({
       posti: 4,
       condoDifferenceTo: 'tenants',
@@ -3109,6 +3109,10 @@ describe('pnpm estratti condominio (piano 8)', () => {
     ]);
     expect(undo.code).toBe(0);
     expect(stored(s, 'apartment', 'apt-a').condoDifferenceTo).toBe('owner');
+    const beds = await run([...base, '--posti', '5']);
+    expect([beds.code, beds.json.reason]).toEqual([1, 'needs-confirmation']);
+    expect((await run([...base, '--posti', '5', '--modifica'])).json.status).toBe('updated');
+    expect((await run([...base, '--posti', '4', '--modifica'])).json.status).toBe('updated');
   });
 
   it('condominio-documento: salva, non riscrive, rifiuta, annulla', async () => {
@@ -3248,6 +3252,7 @@ describe('pnpm estratti condominio (piano 8)', () => {
       ['r-str', true, 'senza-addebito'],
     ]);
     expect(out.json.anomalies).toBe(2);
+    expect(out.json.warnings).toEqual([]);
     expect(out.json.differences).toEqual([
       { apartmentId: 'apt-a', esercizio: '2026-27', to: 'owner', conduttore: 0 },
     ]);

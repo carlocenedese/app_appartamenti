@@ -14,6 +14,7 @@ import {
 } from './conguaglio';
 import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguaglio';
 import { apartmentFolder } from './accounts';
+import type { FreeDebit } from './condominio';
 import { safeWord } from './proposal';
 import type { Apartment, Bill, BillMatch, Instalment, Payment, Tenancy, Tenant } from './model';
 import { cents, formatEuro, splitCents } from './money';
@@ -209,6 +210,8 @@ export interface ExcelInput extends ConguaglioInput {
    * without `forMonth` to one period only (R177); without it, only `period` is known.
    */
   periods?: { from: YearMonth; to: YearMonth }[];
+  /** The free outgoing movements, for the «duplicato» of the owners' file (R198). */
+  freeDebits?: FreeDebit[];
 }
 
 type Span = { from: YearMonth; to: YearMonth };

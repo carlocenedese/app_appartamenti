@@ -2,8 +2,20 @@
  * Condominium documents and the owners' check of the condominium expenses (plan 8, section 12).
  * Pure: the date of today (`asOf`) is an argument.
  */
-import { expectedDebit } from './match';
-import type { Apartment, BillMatch, CondoDocument, Instalment } from './model';
+import { MATCH_WINDOW, expectedDebit } from './match';
+import type {
+  Account,
+  Apartment,
+  BankTransaction,
+  BillMatch,
+  CondoDocument,
+  Instalment,
+  MovementClass,
+  Payment,
+  Transfer,
+} from './model';
+import { movementUses } from './movements';
+import { addDays } from './period';
 import { cents, splitCents } from './money';
 import type { Cents } from './money';
 import type { ISODate } from './period';
@@ -30,24 +42,73 @@ export type CondoStatus =
   | 'in-programma'
   | 'in-attesa';
 
+/** An outgoing movement that no match, payment, transfer or exclusion uses (R198). */
+export interface FreeDebit {
+  /** The apartment of the movement's account, else the movement's own. */
+  apartmentId: string;
+  date: ISODate;
+  /** Negative, as on the statement. */
+  amount: Cents;
+}
+
+/**
+ * The live outgoing movements without a use that could hide a second charge (R198): no exclusion,
+ * no confirmed real match, no payment, no transfer leg (`movementUses`); a class does not count, a
+ * double charge classified by a learnt rule is still free.
+ */
+export function freeDebits(state: {
+  accounts: readonly Account[];
+  transactions: readonly BankTransaction[];
+  classes: MovementClass[];
+  payments: Payment[];
+  matches: BillMatch[];
+  transfers: Transfer[];
+}): FreeDebit[] {
+  const uses = movementUses(state);
+  const apartmentOf = new Map(state.accounts.map((a) => [a.id, a.apartmentId]));
+  return state.transactions
+    .filter(
+      (t) =>
+        t.deleted !== true &&
+        t.amount < 0 &&
+        (uses.get(t.id) ?? []).every((use) => use === 'classificato'),
+    )
+    .map((t) => ({
+      apartmentId:
+        (t.accountId === undefined ? undefined : apartmentOf.get(t.accountId)) ?? t.apartmentId,
+      date: t.date,
+      amount: t.amount,
+    }));
+}
+
 /**
  * The payment state of one instalment from its live confirmed `amount` matches, in this order:
- * two or more real debits (`duplicato`, user1: two debits for the same instalment), real debits
- * adding up to `rata + conguaglioPrec` (`pagata`) or not (`importo-diverso`), assumed only
- * (`assunta`, R2), none: `senza-addebito` from the day after the due date (no tolerance),
- * `in-programma` up to it, `in-attesa` without a date.
+ * real debits adding up to `rata + conguaglioPrec` are `pagata`, or `duplicato` when a free
+ * outgoing movement of the paying apartment (`paidFromApartmentId`, else `apartmentId`) has that
+ * same amount within `MATCH_WINDOW` of the due date (R198: the parts of a split payment are
+ * matched, so never free); real debits of another sum `importo-diverso`; assumed only `assunta`
+ * (R2); none: `senza-addebito` from the day after the due date (no tolerance), `in-programma` up
+ * to it, `in-attesa` without a date.
  */
 export function instalmentStatus(
   instalment: Instalment,
   matches: readonly BillMatch[],
   asOf?: ISODate,
+  free: readonly FreeDebit[] = [],
 ): CondoStatus {
   const amounts = ownDebits(instalment, matches);
   const real = amounts.filter((m) => m.by !== 'assumed');
-  if (new Set(real.map((m) => m.transactionId)).size > 1) return 'duplicato';
   if (real.length > 0) {
     const debited = real.reduce((sum, m) => sum + m.amount, 0);
-    return debited === expectedDebit(instalment) ? 'pagata' : 'importo-diverso';
+    const expected = expectedDebit(instalment);
+    if (debited !== expected) return 'importo-diverso';
+    const payer = instalment.paidFromApartmentId ?? instalment.apartmentId;
+    const from = addDays(instalment.dueDate, -MATCH_WINDOW.daysBefore);
+    const to = addDays(instalment.dueDate, MATCH_WINDOW.daysAfter);
+    const twice = free.some(
+      (d) => d.apartmentId === payer && d.amount === -expected && from <= d.date && d.date <= to,
+    );
+    return twice ? 'duplicato' : 'pagata';
   }
   if (amounts.length > 0) return 'assunta';
   if (asOf === undefined) return 'in-attesa';
@@ -89,6 +150,7 @@ export function condoCheck(input: {
   instalments: readonly Instalment[];
   matches: readonly BillMatch[];
   asOf: ISODate;
+  free?: readonly FreeDebit[];
 }): CondoCheckRow[] {
   return input.instalments
     .filter((i) => i.deleted !== true && i.kind === 'condominio')
@@ -111,7 +173,12 @@ export function condoCheck(input: {
         expected: expectedDebit(i),
         ...(real.length === 0 ? {} : { debited: cents(real.reduce((s, m) => s + m.amount, 0)) }),
         debitDates: [...new Set(real.map((m) => m.transactionDate))].sort(compareText),
-        status: instalmentStatus(i, input.matches, input.asOf) as CondoCheckRow['status'],
+        status: instalmentStatus(
+          i,
+          input.matches,
+          input.asOf,
+          input.free,
+        ) as CondoCheckRow['status'],
       };
     });
 }
