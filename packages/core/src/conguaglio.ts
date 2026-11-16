@@ -239,7 +239,7 @@ export function billsForAnnualita(
  * A record with `rata` 0 (last year's settlement paid on its own) carries no owner share, whatever
  * its `quotaProprieta` says (R-C8): the yearly share comes off the ordinary instalments only.
  */
-function ownerShare(instalment: Instalment): Cents {
+export function instalmentOwnerShare(instalment: Instalment): Cents {
   if (instalment.kind !== 'condominio' || instalment.rata === 0) return cents(0);
   return equalSplit(instalment.quotaProprieta, instalment.rateCount)[
     instalment.rateIndex - 1
@@ -270,7 +270,7 @@ export function allocateInstalment(
 
   const previous = instalment.kind === 'condominio' ? instalment.conguaglioPrec : cents(0);
   const covered = monthRange(instalment.coversFrom, instalment.coversTo);
-  const net = cents(paid - previous - ownerShare(instalment));
+  const net = cents(paid - previous - instalmentOwnerShare(instalment));
   equalSplit(net, covered.length).forEach((amount, index) => {
     row(covered[index] as YearMonth).rata += amount;
   });
@@ -533,7 +533,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
       pending.push({ itemType: 'instalment', itemId: instalment.id, reason: 'importo diverso' });
       continue;
     }
-    if (instalment.rata > 0 && ownerShare(instalment) > instalment.rata) {
+    if (instalment.rata > 0 && instalmentOwnerShare(instalment) > instalment.rata) {
       pending.push({
         itemType: 'instalment',
         itemId: instalment.id,

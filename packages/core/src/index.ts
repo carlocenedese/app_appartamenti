@@ -50,6 +50,7 @@ export * from './zip';
 export * from './xlsx-write';
 export * from './excel';
 export * from './excel-store';
+export * from './excel-owners';
 export * from './imu-store';
 export * from './imu';
 export * from './contract';
