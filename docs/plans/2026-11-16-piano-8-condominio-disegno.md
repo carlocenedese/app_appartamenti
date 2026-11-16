@@ -202,8 +202,9 @@ mostrarli (domanda 10); la riga di comando `condominio` li elenca con lo stato.
 
 ## Osservazioni della revisione
 
-- M6 della revisione del piano 8: annotata come osservazione su richiesta del coordinatore, non
-  trattata in questo piano (il testo del rilievo non è riportato qui).
+- M6 della revisione del piano 8: con `owner` il file dei proprietari sceglie ancora le righe con i
+  mesi dell'esercizio (`esercizioMonths`), quindi una rata compare nel file di un periodo che il lato
+  degli inquilini non tocca più. È innocuo ma non coincide con `excel.ts`; non trattato in questo piano.
 
 ## Mie scelte (da controllare)
 
