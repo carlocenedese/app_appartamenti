@@ -4,6 +4,7 @@
  * Proposals are recomputed, never stored, and carry ids, constant reasons and categories only.
  */
 import { normaliseIban } from './iban';
+import { imuRates } from './imu';
 import { latestOperationByPath, undoTargetOf } from './journal';
 import type { Operation } from './journal';
 import type {
@@ -12,6 +13,8 @@ import type {
   BankTransaction,
   Bill,
   BillMatch,
+  ImuRule,
+  ImuYear,
   MovementClass,
   MovementRule,
   OutgoingKind,
@@ -37,6 +40,12 @@ export interface OutgoingProposal {
   reason: OutgoingReason;
   /** Only an order for the choice (question 7), never a class. */
   suggestedKind?: OutgoingKind;
+  /**
+   * On a `p-f24-` covered by a learnt IMU rule (plan 3d, task 5): its group and, when the group
+   * has an open rate in the year of the movement, that year and the lowest open rate. Always to
+   * confirm with `assignImuF24`, never written.
+   */
+  imuSuggestion?: { f24Group: string; year?: string; rateIndex?: number };
 }
 
 export type MovementClassDraft = Omit<MovementClass, 'v' | 'rev'>;
@@ -58,6 +67,43 @@ export interface OutgoingInput {
   operations: Operation[];
   /** For `f24Pattern`: the live one of the account of a movement. */
   bankProfiles: BankProfile[];
+  /** For `imuSuggestion` (plan 3d, task 5); none without. */
+  imuRules?: ImuRule[];
+  imuYears?: ImuYear[];
+}
+
+/**
+ * The suggestion of a learnt IMU rule for the F24 `tx` (question 8): the live rules of its
+ * account with its counterparty key (or none for both), `validFrom` absent or not after its
+ * date, `validTo` absent or not before it, all of one group; then the year of its date and the
+ * open (`attesa`) rate with the lowest index of that group and year (question 7).
+ */
+export function imuSuggestionOf(
+  tx: BankTransaction,
+  key: PayerKey | undefined,
+  input: Pick<OutgoingInput, 'imuRules' | 'imuYears' | 'classes' | 'transactions'>,
+): OutgoingProposal['imuSuggestion'] {
+  const groups = new Set(
+    (input.imuRules ?? [])
+      .filter(
+        (r) =>
+          r.deleted !== true &&
+          r.accountId === tx.accountId &&
+          r.key === key &&
+          (r.validFrom === undefined || r.validFrom <= tx.date) &&
+          (r.validTo === undefined || r.validTo >= tx.date),
+      )
+      .map((r) => r.f24Group),
+  );
+  const [f24Group] = groups;
+  if (groups.size !== 1 || f24Group === undefined) return undefined;
+  const year = tx.date.slice(0, 4);
+  const open = imuRates({
+    years: (input.imuYears ?? []).filter((y) => y.f24Group === f24Group && y.year === year),
+    classes: input.classes,
+    transactions: input.transactions,
+  }).find((r) => r.status === 'attesa');
+  return open === undefined ? { f24Group } : { f24Group, year, rateIndex: open.rateIndex };
 }
 
 /**
@@ -188,12 +234,14 @@ export function reconcileOutgoing(input: OutgoingInput): {
       );
       // Always a proposal, even with a valid rule (decision 5).
       if (isF24(tx, profile)) {
+        const imuSuggestion = imuSuggestionOf(tx, key, input);
         proposals.push({
           id: `p-f24-${tx.id}`,
           transactionId: tx.id,
           step: 'f24',
           reason: 'f24',
           suggestedKind: 'tasse',
+          ...(imuSuggestion === undefined ? {} : { imuSuggestion }),
         });
         continue;
       }

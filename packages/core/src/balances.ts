@@ -10,15 +10,17 @@
  * - `uscita` / `f24`: a class that passes `inBalance` on a movement of an account of X with an
  *   `apartmentId` Y ≠ X, for `-tx.amount` (a refund lowers the debt); an F24 of X itself is
  *   listed in `toSplit`, with no amount (decision 9, question 5), and with the reason of its IMU
- *   rate when it has one (plan 3d, task 3: the split waits for the answers of user1);
+ *   rate when it has one;
+ * - `imu`: an F24 of X assigned to a `pagata` IMU rate of a group with X (plan 3d, task 4):
+ *   the share (`imuShares`) of each other apartment Y of the group, and no `toSplit`;
  * - `giroconto`: a live «saldo» transfer from an account of F to one of T, for `-amount` owed by F
  *   to T, dated on the record (the first leg), never computed again from the legs.
  *
  * Items taken as paid with no statement (`assumed`) are listed in `unverified`, never in the net
  * (question 11); the income of the tenants never counts. Nothing depends on the input order.
  */
-import { imuRateKey, imuRates } from './imu';
-import type { ImuRateStatus } from './imu';
+import { imuRateKey, imuRates, imuShares } from './imu';
+import type { ImuRate } from './imu';
 import type { MatchItemRef, MatchItemType } from './match';
 import { checkConsistency } from './journal';
 import { planMatch } from './match-store';
@@ -51,7 +53,7 @@ import { compareText } from './text';
 
 export interface BalanceItem {
   date: ISODate;
-  kind: 'rata' | 'bolletta' | 'commissione' | 'uscita' | 'f24' | 'giroconto';
+  kind: 'rata' | 'bolletta' | 'commissione' | 'uscita' | 'f24' | 'giroconto' | 'imu';
   payerApartmentId: string;
   forApartmentId: string;
   /** Positive: what `forApartmentId` owes to `payerApartmentId`. */
@@ -123,18 +125,18 @@ export function accountBalances(input: BalanceInput): AccountBalances {
     tx.apartmentId;
   const items: BalanceItem[] = [];
   const toSplit: ToSplit[] = [];
-  const rateStatus = new Map<string, ImuRateStatus>(
+  const rates = new Map<string, ImuRate>(
     imuRates({
       years: input.imuYears,
       classes: input.classes,
       transactions: input.transactions,
-    }).map((r) => [imuRateKey(r), r.status]),
+    }).map((r) => [imuRateKey(r), r]),
   );
   /** A rate gone (its year undone) has no expected either. */
-  const reasonOf = (status: ImuRateStatus | undefined): ImuSplitReason =>
-    status === 'pagata'
+  const reasonOf = (rate: ImuRate | undefined): ImuSplitReason =>
+    rate?.status === 'pagata'
       ? 'imu-da-ripartire'
-      : status === 'da-riconciliare'
+      : rate?.status === 'da-riconciliare'
         ? 'imu-da-riconciliare'
         : 'imu-importo-mancante';
 
@@ -162,10 +164,30 @@ export function accountBalances(input: BalanceInput): AccountBalances {
     const payer = payerOf(tx);
     if (c.apartmentId === payer) {
       if (c.f24 !== true) continue;
-      const imu =
-        c.imu === undefined
-          ? {}
-          : { imu: { ...c.imu, reason: reasonOf(rateStatus.get(imuRateKey(c.imu))) } };
+      const rate = c.imu === undefined ? undefined : rates.get(imuRateKey(c.imu));
+      // Only the F24 the rate counts (a second one on it is to reconcile, question 9), and not
+      // while the payer is outside the group (`assignImuF24` refuses both).
+      const own = rate !== undefined && rate.transactionId === tx.id;
+      const shares =
+        own && rate.apartmentIds.includes(payer)
+          ? imuShares(rate, input.imuYears, tx.amount)
+          : undefined;
+      if (shares !== undefined) {
+        for (const share of shares.filter((s) => s.apartmentId !== payer)) {
+          items.push({
+            date: tx.date,
+            kind: 'imu',
+            payerApartmentId: payer,
+            forApartmentId: share.apartmentId,
+            amount: share.amount,
+            refId: tx.id,
+          });
+        }
+        continue;
+      }
+      const reason: ImuSplitReason =
+        rate !== undefined && !own ? 'imu-da-riconciliare' : reasonOf(rate);
+      const imu = c.imu === undefined ? {} : { imu: { ...c.imu, reason } };
       toSplit.push({ transactionId: tx.id, apartmentId: payer, date: tx.date, ...imu });
       continue;
     }

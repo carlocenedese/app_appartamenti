@@ -5,6 +5,8 @@ import {
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
+  ImuRuleSchema,
+  ImuYearSchema,
   MovementClassSchema,
   MovementRuleSchema,
   PayerSchema,
@@ -459,5 +461,71 @@ describe('F24 (plan 3c, task 7, decision 5)', () => {
         bankProfiles: [profile],
       }),
     ).toEqual({ classes: [], proposals: [], missingDocument: [] });
+  });
+
+  it('a learnt IMU rule suggests the group, the year and the lowest open rate (plan 3d, task 5)', () => {
+    const imuRule = (extra: Record<string, unknown> = {}) =>
+      ImuRuleSchema.parse({
+        ...base,
+        id: 'imur-x',
+        accountId: 'acc-berchet',
+        key: `iban:${SUPPLIER}`,
+        f24Group: 'berchet-lovarini',
+        ...extra,
+      });
+    const year = ImuYearSchema.parse({
+      ...base,
+      id: 'imu-berchet-2028',
+      apartmentId: 'berchet',
+      year: '2028',
+      f24Group: 'berchet-lovarini',
+      rates: [{ index: 1 }, { index: 2 }],
+    });
+    const paid = MovementClassSchema.parse({
+      ...base,
+      id: 'mc-old',
+      transactionId: 'old',
+      kind: 'tasse',
+      apartmentId: 'berchet',
+      f24: true,
+      imu: { f24Group: 'berchet-lovarini', year: '2028', rateIndex: 1 },
+    });
+    const old = tx('old', -6700, undefined, { description: 'PAGAMENTO F24 X', date: '2028-01-10' });
+    const suggestion = (over: Partial<Parameters<typeof reconcileOutgoing>[0]>) =>
+      run({ transactions: [f24], bankProfiles: [profile], ...over }).proposals[0]?.imuSuggestion;
+    expect(suggestion({ imuRules: [imuRule()], imuYears: [year] })).toEqual({
+      f24Group: 'berchet-lovarini',
+      year: '2028',
+      rateIndex: 1,
+    });
+    // Rate 1 paid: rate 2. Every rate paid or no year: the group only.
+    const more = { transactions: [f24, old], classes: [paid], imuRules: [imuRule()] };
+    expect(suggestion({ ...more, imuYears: [year] })).toMatchObject({ rateIndex: 2 });
+    expect(suggestion({ imuRules: [imuRule()] })).toEqual({ f24Group: 'berchet-lovarini' });
+    // Another key, another account, out of its dates, deleted, or two groups: none.
+    for (const rules of [
+      [imuRule({ key: 'name:altro' })],
+      [imuRule({ key: undefined })],
+      [imuRule({ accountId: 'acc-pulci' })],
+      [imuRule({ validTo: '2028-02-09' })],
+      [imuRule({ validFrom: '2028-02-11' })],
+      [imuRule({ deleted: true })],
+      [imuRule(), imuRule({ id: 'imur-y', f24Group: 'altro' })],
+    ]) {
+      expect(suggestion({ imuRules: rules, imuYears: [year] })).toBeUndefined();
+    }
+    // A rule without a key covers an F24 without a counterparty.
+    const bare = tx('f', -6700, undefined, { description: 'PAGAMENTO F24 DELEGA 0001' });
+    expect(
+      run({
+        transactions: [bare],
+        bankProfiles: [profile],
+        imuRules: [imuRule({ key: undefined })],
+      }).proposals[0]?.imuSuggestion,
+    ).toEqual({ f24Group: 'berchet-lovarini' });
+    // Never a class.
+    expect(
+      run({ transactions: [f24], bankProfiles: [profile], imuRules: [imuRule()] }).classes,
+    ).toEqual([]);
   });
 });
