@@ -1242,8 +1242,9 @@ describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, t
       const s = await treConti();
       const run = cli(['riconcilia', ...s.common]);
       expect(run.code).toBe(0);
-      // The leg of the transfer from Lovarini is the transfers' own (fix finale I3), not skipped.
-      expect(run.json).toMatchObject({ status: 'reconciled', written: 2, skipped: 0 });
+      // The leg of a transfer proposal keeps the income's own «chi» (user1, 16 November): it is
+      // skipped as an own-account movement, as before the fix finale I3.
+      expect(run.json).toMatchObject({ status: 'reconciled', written: 2, skipped: 1 });
       expect(Object.keys(run.json).slice(0, 4)).toEqual([
         'status',
         'written',
