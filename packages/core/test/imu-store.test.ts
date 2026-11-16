@@ -486,6 +486,28 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
       ]);
       // The older F24 still falls under the older rule.
       expect(await suggestionOf(store, 'g')).toMatchObject({ f24Group: 'berchet-lovarini' });
+      // The first assignment is undone only after the later one that closed its rule.
+      await expect(undoOperation(store, 'b-1', 'p1', clock, ids('u'))).rejects.toThrow(
+        /depend on it/,
+      );
+    });
+
+    it('a rule of another group starting on the movement is rule-conflict-dates, nothing written', async () => {
+      const store = await f24Store();
+      await put(store, 'imuRule', [
+        {
+          ...base,
+          id: 'imur-old',
+          accountId: 'acc-berchet',
+          f24Group: 'pulci',
+          validFrom: '2026-06-14',
+        },
+      ]);
+      const before = await snapshot(store);
+      expect(await remember(store)).toEqual(refused('rule-conflict-dates'));
+      expect(await snapshot(store)).toEqual(before);
+      // «solo questa volta»: no rule, so no conflict.
+      expect(await assign(store)).toMatchObject({ status: 'assigned' });
     });
   });
 

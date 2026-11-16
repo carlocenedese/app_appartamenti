@@ -604,6 +604,33 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
       amount: 40200,
       refId: 't-imu',
     });
+    // A second F24 on the same rate (only by hand-edited data): never split, to reconcile.
+    const twice = accountBalances(
+      withExtra({
+        transactions: [
+          tx('t-imu', 'acc-berchet', '2027-06-14', -100500),
+          tx('t-imu2', 'acc-berchet', '2027-06-15', -100500),
+        ],
+        classes: [cls('t-imu', imu(1)), cls('t-imu2', imu(1))],
+        imuYears: [imuYear('berchet', 60000), imuYear('lovarini', 40000)],
+      }),
+    );
+    expect(twice.pairs[0]?.items.filter((i) => i.kind === 'imu').map((i) => i.refId)).toEqual([
+      't-imu',
+    ]);
+    expect(twice.toSplit).toEqual([
+      {
+        transactionId: 't-imu2',
+        apartmentId: 'berchet',
+        date: '2027-06-15',
+        imu: {
+          f24Group: 'berchet-lovarini',
+          year: '2027',
+          rateIndex: 1,
+          reason: 'imu-da-riconciliare',
+        },
+      },
+    ]);
     // The payer outside the group of the rate (possible only by hand-edited data): no split.
     const others = [imuYear('lovarini', 60000), imuYear('pulci', 40000)];
     expect(run(100000, 1, others).toSplit).toEqual(split('imu-da-ripartire'));

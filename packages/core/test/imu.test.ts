@@ -381,6 +381,27 @@ describe('imuShares and the annual check (plan 3d, task 4; answers of user1, 16 
     ]);
   });
 
+  it('the shares always sum to the debit, whatever the weights', () => {
+    for (const [b, l, paid] of [
+      [1, 2, 3],
+      [33333, 66667, 100001],
+      [1, 1, 2],
+      [1, 99999, 100000],
+      [70001, 29999, 100100],
+      [12345, 67891, 80236],
+    ] as const) {
+      const ys = [
+        year('berchet', [{ index: 1, expected: b }]),
+        year('lovarini', [{ index: 1, expected: l }]),
+      ];
+      const shares = sharesOf(ys, paid) ?? [];
+      expect([b, l, shares.reduce((sum, x) => sum + x.amount, 0)]).toEqual([b, l, paid]);
+    }
+    // A rate said paid without its years (no such input from imuRates): no split, no throw.
+    const [r] = rate(years, [['f', 100000, 1]]);
+    expect(imuShares(r as ImuRate, [], cents(-100000))).toBeUndefined();
+  });
+
   it('no split out of the 1% or with the expected of one apartment only', () => {
     expect(sharesOf(years, 101001)).toBeUndefined();
     const one = [

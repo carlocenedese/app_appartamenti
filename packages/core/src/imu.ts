@@ -161,9 +161,14 @@ export function imuShares(
       rate.annual === undefined
         ? y?.rates.find((r) => r.index === rate.rateIndex)?.expected
         : y?.annualTotal;
-    return { itemId: apartmentId, weight: weight ?? cents(0) };
+    return weight === undefined ? undefined : { itemId: apartmentId, weight };
   });
-  return splitSharedDebit(debit, weights).map((s) => ({
+  // `pagata` has every weight; a missing one would be no split (toSplit), never a RangeError.
+  if (weights.some((w) => w === undefined)) return undefined;
+  return splitSharedDebit(
+    debit,
+    weights.filter((w) => w !== undefined),
+  ).map((s) => ({
     apartmentId: s.itemId,
     amount: s.amount,
   }));

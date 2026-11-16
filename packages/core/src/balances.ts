@@ -165,9 +165,11 @@ export function accountBalances(input: BalanceInput): AccountBalances {
     if (c.apartmentId === payer) {
       if (c.f24 !== true) continue;
       const rate = c.imu === undefined ? undefined : rates.get(imuRateKey(c.imu));
-      // Not split while the payer is outside the group (`assignImuF24` refuses that).
+      // Only the F24 the rate counts (a second one on it is to reconcile, question 9), and not
+      // while the payer is outside the group (`assignImuF24` refuses both).
+      const own = rate !== undefined && rate.transactionId === tx.id;
       const shares =
-        rate?.apartmentIds.includes(payer) === true
+        own && rate.apartmentIds.includes(payer)
           ? imuShares(rate, input.imuYears, tx.amount)
           : undefined;
       if (shares !== undefined) {
@@ -183,7 +185,9 @@ export function accountBalances(input: BalanceInput): AccountBalances {
         }
         continue;
       }
-      const imu = c.imu === undefined ? {} : { imu: { ...c.imu, reason: reasonOf(rate) } };
+      const reason: ImuSplitReason =
+        rate !== undefined && !own ? 'imu-da-riconciliare' : reasonOf(rate);
+      const imu = c.imu === undefined ? {} : { imu: { ...c.imu, reason } };
       toSplit.push({ transactionId: tx.id, apartmentId: payer, date: tx.date, ...imu });
       continue;
     }
