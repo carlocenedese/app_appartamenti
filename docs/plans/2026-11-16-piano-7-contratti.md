@@ -33,6 +33,8 @@
 
 ## Da confermare con user1
 
+**Risposte di user1 (16 novembre 2026, piano 7-bis, R180-R183):** 1 stima della cedolare sugli affitti dell'anno inseriti a mano (R182); 2 controllo R34 sullo storico del contratto del mese, `contrattoMensile` come riserva (R180); 3 solo il totale; 4 `rent-differs` com'è; 6 un record; 7, 8 non ora; 9 avviso `contract-overlap` (R181); 5 resta fuori. Testo originale del piano, prima delle risposte:
+
 Nessuna domanda blocca un task. Domanda 1 (cedolare attesa) e domande 5, 7, 8: fuori dal piano, nessun task. Domanda 2: il conguaglio non cambia (Review Focus 4). Domanda 3: solo il totale. Domanda 4: il posto vuoto dà `rent-differs`, come R34. Domanda 6: un record per i rinnovi; con la risposta opposta si salvano due contratti, nessun codice cambia. Una risposta diversa cambia solo il punto indicato.
 
 ## Revisione mirata (Review Focus)

@@ -9,6 +9,40 @@ import type { Cents } from './money';
 import { addMonths } from './period';
 import type { YearMonth } from './period';
 
+/**
+ * The cedolare ESTIMATE (R182): `totalRent × rateBp / 10000`, one rounding to the cent, half up.
+ * Both figures are data typed by user1; the result is only shown, to be confirmed by user1.
+ */
+export function cedolareExpected(totalRent: Cents, rateBp: number): Cents {
+  // BigInt: the product can pass Number.MAX_SAFE_INTEGER; rateBp <= 10000 keeps the result safe.
+  return cents(Number((BigInt(totalRent) * BigInt(rateBp) + 5000n) / 10000n));
+}
+
+/**
+ * The rate of the estimate of `apartmentId` in `year`: the one `cedolareRateBp` of its live
+ * contracts with a month in the year, all `cedolare` with a rate; none for a mixed year (one of
+ * them not `cedolare` or without a rate), for two different rates, or with no contract (R182).
+ */
+export function cedolareRateForYear(
+  contracts: readonly Contract[],
+  apartmentId: string,
+  year: string,
+): number | undefined {
+  const rates = new Set(
+    contracts
+      .filter(
+        (c) =>
+          c.deleted !== true &&
+          c.apartmentId === apartmentId &&
+          c.start <= `${year}-12` &&
+          `${year}-01` <= c.end,
+      )
+      .map((c) => (c.taxRegime === 'cedolare' ? c.cedolareRateBp : undefined)),
+  );
+  const [rate, ...others] = [...rates];
+  return others.length === 0 ? rate : undefined;
+}
+
 /** The entry of `rent` with the largest `from` not after `month`; none before the first entry. */
 export function rentForMonth(
   contract: Pick<Contract, 'rent'>,
@@ -26,11 +60,14 @@ export type ContractCheckCode =
   | 'unlinked-tenancy'
   | 'unknown-deposit'
   | 'deposit-other-tenant'
-  | 'rent-differs';
+  | 'rent-differs'
+  | 'contract-overlap';
 
 export interface ContractCheck {
   code: ContractCheckCode;
   contractId: string;
+  /** `contract-overlap`: the other live contract of the apartment, after `contractId` by id. */
+  otherContractId?: string;
   tenancyId?: string;
   paymentId?: string;
   from?: YearMonth;
@@ -49,7 +86,7 @@ const compare = (a: string | undefined, b: string | undefined): number => {
 
 /**
  * The checks of the live contracts (plan 7, design section 3), ordered by `contractId`, `code`,
- * `tenancyId`, `paymentId`, `from`. A list to show, never a correction and never a block.
+ * `otherContractId`, `tenancyId`, `paymentId`, `from`. A list to show, never a correction and never a block.
  */
 export function contractChecks(input: {
   contracts: readonly Contract[];
@@ -108,6 +145,18 @@ export function contractChecks(input: {
   for (const contract of contracts)
     out.push(...rentDiffers(contract, [...tenancies.values()], input.asOf));
 
+  // Two live contracts of one apartment with months in common: two rents for the same month.
+  const byId = [...contracts].sort((a, b) => compare(a.id, b.id));
+  byId.forEach((a, i) => {
+    for (const b of byId.slice(i + 1)) {
+      const from = a.start > b.start ? a.start : b.start;
+      const to = a.end < b.end ? a.end : b.end;
+      if (a.apartmentId === b.apartmentId && from <= to) {
+        out.push({ code: 'contract-overlap', contractId: a.id, otherContractId: b.id, from, to });
+      }
+    }
+  });
+
   // Only where the apartment uses links, so apartments without them give no warning per tenancy.
   const linking = contracts
     .filter((c) => c.tenancyIds !== undefined)
@@ -126,6 +175,7 @@ export function contractChecks(input: {
     (a, b) =>
       compare(a.contractId, b.contractId) ||
       compare(a.code, b.code) ||
+      compare(a.otherContractId, b.otherContractId) ||
       compare(a.tenancyId, b.tenancyId) ||
       compare(a.paymentId, b.paymentId) ||
       compare(a.from, b.from),

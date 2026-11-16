@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   ContractSchema,
+  RentYearSchema,
   commitChange,
   isoDate,
   loadAll,
   loadContractChecks,
+  loadRentYears,
   readJournal,
   recordPath,
   recordSchemas,
   saveContract,
   setContractRent,
+  setRentYear,
   undoOperation,
   yearMonth,
 } from '../src/index';
@@ -394,5 +397,97 @@ describe('loadContractChecks (plan 7, task 3)', () => {
     const before = await snapshot(store);
     expect(await loadContractChecks(store, { asOf })).toEqual(refused('inconsistent-store'));
     expect(await snapshot(store)).toEqual(before);
+  });
+});
+
+describe('setRentYear and loadRentYears (user1, question 1 of plan 7, R182)', () => {
+  const write = (store: MemoryStore, totalRent: number, prefix = 'y', apartmentId = 'berchet') =>
+    setRentYear(
+      store,
+      { apartmentId, year: '2026', totalRent: cents(totalRent) },
+      'p1',
+      clock,
+      ids(prefix),
+    );
+
+  it('saves the rents of the year typed by user1, then writes nothing for the same total', async () => {
+    const store = await fixtureStore();
+    expect(await write(store, 1935000)).toEqual({
+      status: 'saved',
+      operationId: 'y-1',
+      rentYearId: 'rent-berchet-2026',
+    });
+    const op = (await readJournal(store)).operations.find((o) => o.id === 'y-1');
+    expect(op).toMatchObject({ kind: 'rent.year', apartmentId: 'berchet' });
+    expect(op?.summary).toBe('Aggiornati gli affitti di un anno.'); // no amount in a summary
+    const before = await snapshot(store);
+    expect(await write(store, 1935000, 'z')).toEqual({
+      status: 'unchanged',
+      rentYearId: 'rent-berchet-2026',
+    });
+    expect(await snapshot(store)).toEqual(before);
+    expect(await write(store, 1950000, 'w')).toMatchObject({ status: 'saved' });
+    await undoOperation(store, 'w-1', 'p1', clock, ids('u'));
+    // Undo of the creation marks it deleted; saving again brings it back with a new rev.
+    await undoOperation(store, 'y-1', 'p1', clock, ids('v'));
+    const stored = async () =>
+      (await loadAll(store, 'rentYear', RentYearSchema, { includeDeleted: true })).records[0];
+    const gone = await stored();
+    expect(gone).toMatchObject({ deleted: true });
+    expect(await write(store, 1935000, 'b')).toMatchObject({ status: 'saved' });
+    const back = await stored();
+    expect(back?.rev).toBe((gone?.rev ?? 0) + 1);
+    expect(back).not.toHaveProperty('deleted');
+    const years = await loadRentYears(store, {});
+    expect(years).toEqual({
+      status: 'computed',
+      rentYears: [{ apartmentId: 'berchet', year: '2026', totalRent: 1935000 }],
+    });
+  });
+
+  it('refusals write nothing', async () => {
+    const store = await fixtureStore();
+    const before = await snapshot(store);
+    expect(await write(store, 0)).toEqual(refused('bad-amount'));
+    expect(await write(store, -1)).toEqual(refused('bad-amount'));
+    expect(await write(store, 1000, 'y', 'nessuno')).toEqual(refused('unknown-apartment'));
+    expect(
+      await setRentYear(
+        store,
+        { apartmentId: 'berchet', year: '26', totalRent: cents(1000) },
+        'p1',
+        clock,
+        ids('y'),
+      ),
+    ).toEqual(refused('bad-year'));
+    expect(await snapshot(store)).toEqual(before);
+    const path = recordPath('tenancy', 'tcy-a');
+    store.putRaw(path, (store.getRaw(path) ?? '').replace('ten-anna', 'ten-altro'));
+    expect(await write(store, 1000)).toEqual(refused('inconsistent-store'));
+    expect(await loadRentYears(store, {})).toEqual(refused('inconsistent-store'));
+  });
+
+  it('the estimate uses the rate of the contracts, by apartment and year', async () => {
+    const store = await fixtureStore();
+    await save(store, contract());
+    await write(store, 1935000);
+    await write(store, 1000000, 'l', 'lovarini');
+    expect(await loadRentYears(store, { apartmentId: 'berchet' })).toEqual({
+      status: 'computed',
+      rentYears: [
+        {
+          apartmentId: 'berchet',
+          year: '2026',
+          totalRent: 1935000,
+          cedolareRateBp: 1000,
+          cedolareExpected: 193500,
+        },
+      ],
+    });
+    // No cedolare contract for Lovarini: the total only.
+    expect(await loadRentYears(store, { apartmentId: 'lovarini' })).toEqual({
+      status: 'computed',
+      rentYears: [{ apartmentId: 'lovarini', year: '2026', totalRent: 1000000 }],
+    });
   });
 });

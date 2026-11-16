@@ -205,6 +205,9 @@ canone richiede di decidere quali pagamenti contano: resta fuori (domanda 5).
 Regole di calcolo o di fiducia non decise: non le decido io. Finché sono aperte il punto resta fuori o
 dietro un rifiuto, indicato per ognuna. Per ognuna la mia raccomandazione e un esempio inventato.
 
+Risposte di user1 del 16 novembre 2026 (piano 7-bis): domande 1-4 e 6-9 decise, scritte in grassetto
+sotto ognuna; la domanda 5 resta aperta (fuori).
+
 1. **Cedolare attesa (`cedolareExpected`).** La sezione 34 dice che nulla si calcola da solo e che le
    tasse le inserisce l'utente anno per anno; calcolarla è una regola nuova. Se la si vuole: su quale
    base (canone del contratto o affitti incassati; acconto spese escluso; mesi del contratto nell'anno
@@ -212,39 +215,45 @@ dietro un rifiuto, indicato per ognuna. Per ognuna la mia raccomandazione e un e
    stima = somma dei `monthlyRent` (senza acconto) dei mesi del contratto nell'anno × aliquota, un solo
    arrotondamento al centesimo (metà in su), solo come proposta della stima di inizio anno da
    confermare. Esempio: canone 1.600,00 € da gennaio a settembre e 1.650,00 € da ottobre a dicembre,
-   aliquota 10%: (14.400,00 + 4.950,00) × 10% = 1.935,00 €. *Aperta: nessuna funzione; l'aliquota si
-   salva e si mostra soltanto.*
+   aliquota 10%: (14.400,00 + 4.950,00) × 10% = 1.935,00 €. **Decisa da user1 (R182):** la base è
+   il totale degli affitti dell'appartamento nell'anno inserito a mano da user1 (record `rentYear`,
+   comando `affitti-anno`), non il canone del contratto né i versamenti; aliquota quella del
+   contratto (`cedolareRateBp`); `cedolareExpected` con un solo arrotondamento al centesimo (metà
+   in su), solo stima mostrata da confermare, mai scritta come pagata.
 2. **Fonte del controllo del conguaglio (R34).** `calcConguaglio` usa `Apartment.contrattoMensile`, un
    numero solo. Deve usare lo storico del contratto del mese, quando c'è? Raccomando: sì, contratto del
    mese se ha il canone, altrimenti `contrattoMensile`; poi `contrattoMensile` si toglie. Esempio:
    rinnovo da 1.750,00 a 1.800,00 € a ottobre: oggi l'avviso scatta per tutti i mesi dopo, con lo
-   storico no. *Aperta: il conguaglio non cambia; il controllo nuovo sta solo in `contratti`.*
+   storico no. **Decisa da user1 (R180):** sì, contratto vivo del mese con il canone, altrimenti
+   `contrattoMensile`, che per ora resta (si toglierà più avanti).
 3. **Canone per contratto o per camera.** Il piano tiene il totale del contratto (come R4). Serve anche
    il canone per camera (sezione 26: «canone mensile della camera»)? Raccomando: per ora no; il canone
-   per camera è già nella presenza (`monthlyRent`). *Aperta: solo il totale.*
+   per camera è già nella presenza (`monthlyRent`). **Decisa da user1:** no, solo il totale.
 4. **Posto vuoto.** Un mese con un posto vuoto ha un totale minore del contratto e dà `rent-differs`
    (come R34). Deve tacere? Raccomando: no, è un avviso utile (il posto vuoto è a carico della
    proprietà, R1), ma mostrato come tale. Esempio: 4 presenze da 380,00 € su un contratto di 1.900,00 €
-   → avviso con totale 1.520,00 €. *Aperta: avviso come oggi.*
+   → avviso con totale 1.520,00 €. **Decisa da user1:** l'avviso `rent-differs` resta com'è.
 5. **Versamenti ricevuti contro canone.** Confrontare i `Payment` `canone` di un mese con il canone del
    contratto richiede di decidere quali contano (confermati, `forMonth`, di quali inquilini). Serve?
    Raccomando: no, gli arretrati (R117) lo coprono per inquilino. *Aperta: fuori.*
 6. **Rinnovo annuale: un contratto o uno per anno.** Il piano tiene un solo record per i transitori
    rinnovati (`end` con le proroghe certe, R1 con `settlement: 'annuale'`) e il rinnovo come voce del
    canone. Va bene, o ogni rinnovo è un contratto nuovo con un nuovo codice? Esempio: Berchet
-   2025-10 – 2027-09 con un rinnovo a 2026-10 in una voce del canone. *Aperta: un record; con la
-   risposta opposta basta salvare due contratti, nulla nel codice cambia.*
+   2025-10 – 2027-09 con un rinnovo a 2026-10 in una voce del canone. **Decisa da user1:** un record,
+   il rinnovo è una voce dello storico del canone.
 7. **Cessione e subentro.** La sezione 26 vuole data e codice della registrazione della cessione
    separati da quelli del contratto. Un elenco `assignments` nel contratto o un record a parte con il
-   piano del subentro? Raccomando: con il piano del subentro (sezione 17). *Aperta: fuori.*
+   piano del subentro? Raccomando: con il piano del subentro (sezione 17). **Decisa da user1:** non
+   ora.
 8. **Caparra attesa.** Controllare l'importo del `Payment` `caparra` contro la caparra del modulo
    (500 €, sezione 26) è una regola di controllo nuova. Raccomando: con la procedura del nuovo
-   inquilino, dove l'importo è un parametro dell'appartamento. *Aperta: nessun controllo sull'importo.*
+   inquilino, dove l'importo è un parametro dell'appartamento. **Decisa da user1:** non ora.
 9. **Contratti vivi sovrapposti.** Due contratti vivi dello stesso appartamento con mesi in comune
    (per esempio un rinnovo salvato come contratto nuovo senza accorciare il primo) danno due canoni
    per lo stesso mese e due confronti di R4. Serve un controllo `contract-overlap` in `contratti`?
    Raccomando: sì, solo come avviso. Esempio: Berchet 2025-10 – 2027-09 e 2026-10 – 2028-09 →
-   avviso per 2026-10 – 2027-09. *Aperta (revisione del piano 7): nessun controllo.*
+   avviso per 2026-10 – 2027-09. **Decisa da user1 (R181):** sì, avviso `contract-overlap` con i mesi
+   in comune, in `contractChecks` e in `contratti`.
 
 ## Mie scelte (da controllare)
 
