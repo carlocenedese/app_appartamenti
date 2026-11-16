@@ -131,6 +131,7 @@ export interface AssignImuF24Input {
 
 export type AssignImuF24Result =
   | { status: 'assigned'; operationId: string; classId: string }
+  | { status: 'unchanged'; classId: string }
   | {
       status: 'refused';
       reason:
@@ -151,6 +152,7 @@ export type AssignImuF24Result =
  * already assigned movement). `unknown-rate`: no live year of the group and year has that rate;
  * `payer-not-in-group`: the apartment of the account has no live year in it;
  * `rate-already-paid`: another live class has the same rate (question 9: one F24 per rate).
+ * The same assignment already stored is `unchanged`, nothing written.
  */
 export async function assignImuF24(
   store: Store,
@@ -173,17 +175,28 @@ export async function assignImuF24(
   const classes = (await loadAll(store, 'movementClass', MovementClassSchema, all)).records;
   const id = `mc-${input.transactionId}`;
   const before = classes.find((c) => c.id === id);
-  const proposed = (await planOutgoing(store)).proposals.some(
-    (p) => p.id === `p-f24-${input.transactionId}` && p.step === 'f24',
-  );
-  const toSplit =
+  if (tx === undefined || payer === undefined) return refuse('not-imu-candidate');
+  const ownF24 =
     before !== undefined &&
     before.deleted !== true &&
     before.f24 === true &&
-    before.imu === undefined &&
     before.ruleId === undefined &&
     before.apartmentId === payer;
-  if (tx === undefined || payer === undefined || !(proposed || toSplit)) {
+  if (
+    ownF24 &&
+    before.imu?.f24Group === input.f24Group &&
+    before.imu.year === input.year &&
+    before.imu.rateIndex === input.rateIndex
+  ) {
+    return { status: 'unchanged', classId: id };
+  }
+  const toSplit = ownF24 && before.imu === undefined;
+  const proposed =
+    !toSplit &&
+    (await planOutgoing(store)).proposals.some(
+      (p) => p.id === `p-f24-${input.transactionId}` && p.step === 'f24',
+    );
+  if (!(proposed || toSplit)) {
     return refuse('not-imu-candidate');
   }
   const group = (await loadAll(store, 'imuYear', ImuYearSchema)).records.filter(

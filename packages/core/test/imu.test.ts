@@ -1,7 +1,15 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+  ApartmentSchema,
   BankTransactionSchema,
+  BillMatchSchema,
+  BillSchema,
   IMU_TOLERANCE_PERCENT,
+  InstalmentSchema,
+  PaymentSchema,
+  TenancySchema,
+  calcConguaglio,
+  loadAll,
   ImuYearSchema,
   MovementClassSchema,
   assignImuF24,
@@ -16,6 +24,7 @@ import type { BankTransaction, ConguaglioInput, ImuYear, MovementClass } from '.
 import { cents } from '../src/money';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
+import * as builders from './helpers/conguaglio-builders';
 
 // Invented amounts only (plan 3d, decision 1).
 const base = { v: 1 as const, rev: 1 };
@@ -248,5 +257,91 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
     const path = recordPath('imuYear', 'imu-berchet-2026');
     s.putRaw(path, (s.getRaw(path) ?? '').replace('60000', '1'));
     expect(await loadImuRates(s)).toEqual({ status: 'refused', reason: 'inconsistent-store' });
+  });
+});
+
+describe('the settlement of the tenants with and without the IMU (plan 3d, Review Focus 5)', () => {
+  it('gives the same result and keeps its records after setImuYear and assignImuF24', async () => {
+    const s = new MemoryStore();
+    const put = async (
+      kind: keyof typeof recordSchemas,
+      records: ({ id: string } & Record<string, unknown>)[],
+    ) => {
+      for (const r of records) {
+        await s.writeJsonAtomic(recordPath(kind, r.id), recordSchemas[kind].parse(r));
+      }
+    };
+    // Invented records: one bill, one tenant, one payment; an F24 from the account of the apartment.
+    const luce = builders.bill('luce', '2026-01-01', '2026-03-31', 9000);
+    await put('apartment', [builders.apartment()]);
+    await put('bill', [luce]);
+    await put('match', [builders.match(luce, 9000)]);
+    await put('tenancy', [builders.tenancy('t1', '2025-10', undefined)]);
+    await put('payment', [builders.payment('t1', '2026-01', 48000)]);
+    await put('account', [
+      { ...base, id: 'acc-apt', apartmentId: builders.APT, label: 'Conto', bankProfileId: 'bp' },
+    ]);
+    await put('bankProfile', [
+      {
+        ...base,
+        id: 'bp',
+        bank: 'Banca inventata',
+        validFrom: '2020-01-01',
+        container: 'csv',
+        header: { allOf: ['Data'] },
+        columns: { date: 'Data', description: ['Descrizione'], amount: 'Importo' },
+        dateFormat: 'DD/MM/YYYY',
+        f24Pattern: '^PAGAMENTO F24\\b',
+      },
+    ]);
+    await put('transaction', [
+      tx('f', -50000, { apartmentId: builders.APT, accountId: 'acc-apt' }),
+    ]);
+    const settle = async () => {
+      const all = { includeDeleted: false };
+      return calcConguaglio({
+        apartment:
+          (await loadAll(s, 'apartment', ApartmentSchema, all)).records[0] ?? builders.apartment(),
+        period: builders.period('2025-10', '2026-09'),
+        bills: (await loadAll(s, 'bill', BillSchema, all)).records,
+        instalments: (await loadAll(s, 'instalment', InstalmentSchema, all)).records,
+        matches: (await loadAll(s, 'match', BillMatchSchema, all)).records,
+        tenancies: (await loadAll(s, 'tenancy', TenancySchema, all)).records,
+        payments: (await loadAll(s, 'payment', PaymentSchema, all)).records,
+      });
+    };
+    const settlementFiles = async () =>
+      (await snapshot(s)).filter((f) =>
+        /^_app\/dati\/(apartment|bill|match|tenancy|payment|instalment)\//.test(f),
+      );
+    const before = await settle();
+    expect(before.tenants.map((t) => t.tenantId)).toEqual(['t1']);
+    const files = await settlementFiles();
+    expect(
+      await setImuYear(
+        s,
+        {
+          apartmentId: builders.APT,
+          year: '2026',
+          f24Group: 'g',
+          rates: [{ index: 1, expected: cents(50000) }],
+        },
+        'p1',
+        clock,
+        ids('a'),
+      ),
+    ).toMatchObject({ status: 'saved' });
+    expect(
+      await assignImuF24(
+        s,
+        { transactionId: 'f', f24Group: 'g', year: '2026', rateIndex: 1 },
+        'p1',
+        clock,
+        ids('b'),
+      ),
+    ).toMatchObject({ status: 'assigned' });
+    expect((await loadImuRates(s)).status).toBe('computed');
+    expect(await settle()).toEqual(before);
+    expect(await settlementFiles()).toEqual(files);
   });
 });

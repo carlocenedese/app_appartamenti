@@ -831,6 +831,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       newId,
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    if (result.status === 'unchanged') return { status: 'unchanged', classId: result.classId };
     return { status: 'assigned', operationId: result.operationId, classId: result.classId };
   }
 

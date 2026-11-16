@@ -344,6 +344,8 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
     const after = await snapshot(store);
     expect(await assign(store, { transactionId: 'h' })).toEqual(refused('rate-already-paid'));
     expect(await assign(store, { rateIndex: 2 })).toEqual(refused('not-imu-candidate'));
+    // The same assignment again: unchanged, nothing written.
+    expect(await assign(store, {}, 'z')).toEqual({ status: 'unchanged', classId: 'mc-f' });
     expect(await snapshot(store)).toEqual(after);
   });
 

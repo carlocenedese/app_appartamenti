@@ -2173,6 +2173,15 @@ describe('pnpm estratti IMU (piano 3d)', () => {
         operationId: assigned.json.operationId,
         classId: `mc-${s.first}`,
       });
+      const snapAssigned = snapshot(s.dir);
+      const same = s.run(f24(s, s.first, '1'));
+      expect([same.code, same.json]).toEqual([
+        0,
+        { status: 'unchanged', classId: `mc-${s.first}` },
+      ]);
+      expect(snapshot(s.dir)).toEqual(snapAssigned);
+      const otherRate = s.run(f24(s, s.first, '2'));
+      expect([otherRate.code, otherRate.json.reason]).toEqual([1, 'not-imu-candidate']);
       const twice = s.run(f24(s, s.second, '1'));
       expect([twice.code, twice.json.reason]).toEqual([1, 'rate-already-paid']);
       const undoImport = s.run(['annulla', ...s.common, '--estratto', s.statementId]);
@@ -2265,6 +2274,12 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       );
       expect(cli(fixed).code).toBe(0);
       expect(cli(['imu', ...s.common]).json.toReconcile).toBe(0);
+      // The whole path again: nothing written.
+      const settled = snapshot(s.dir);
+      expect(cli(fixed).json.status).toBe('unchanged');
+      expect(cli(f24(s, s.first, '1')).json.status).toBe('unchanged');
+      expect(cli(f24(s, s.second, '2')).json.status).toBe('unchanged');
+      expect(snapshot(s.dir)).toEqual(settled);
     },
     TIMEOUT,
   );
