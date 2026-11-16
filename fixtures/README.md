@@ -95,3 +95,12 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
   prima riconciliazione, le conferme (una per pagante) e gli automatici e le proposte dopo. Gli IBAN
   sono quelli di prova `…0301`-`…0313` della tabella sopra (costruiti con `ibanEndingWith`). La
   legge `packages/core/test/income-year.test.ts`.
+
+## Excel dei conguagli (piano 5)
+
+- `fixtures/excel/anno-esempio.json`: l'annualità 2026-27 inventata dell'appartamento Nord (4 posti,
+  `apt-nord`) con Sud (`apt-sud`) per la TARI comune: luce a cavallo, internet con commissione, gas
+  presunto, acqua in attesa, condominio con parte della proprietà e conguaglio dell'anno prima, un
+  posto vuoto per tre mesi, un cambio di inquilino nello stesso posto, canoni, un conguaglio versato
+  e uno restituito, una caparra restituita. Inquilini con nomi inventati («Anna Prova», …), nessun
+  IBAN. La leggono `packages/core/test/helpers/excel-fixture.ts` e i test dell'Excel.

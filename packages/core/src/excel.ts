@@ -1,0 +1,419 @@
+/**
+ * The Excel of the settlement of one apartment and one period (plan 5): the rows of the sheets,
+ * built from `calcConguaglio` and its own allocation functions, so the sheets cannot disagree
+ * with the settlement. Values only, no formula (question 1). Pure: no I/O, no clock.
+ */
+import {
+  CATEGORY_ORDER,
+  allocateBillToMonths,
+  allocateInstalment,
+  calcConguaglio,
+  isPresent,
+} from './conguaglio';
+import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguaglio';
+import type { Bill, BillMatch, Instalment, Payment, Tenancy, Tenant } from './model';
+import { cents, formatEuro, splitCents } from './money';
+import type { Cents } from './money';
+import { annualitaRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
+import type { ISODate, YearMonth } from './period';
+import { MONTH_NAMES, monthRangeLabel } from './tari-note';
+import { compareText } from './text';
+import type { XlsxCell, XlsxSheet, XlsxWorkbook } from './xlsx-write';
+
+/** One row of the sheet «Bollette»: a bill or an instalment that counts in the settlement. */
+export interface ExcelItem {
+  itemType: 'bill' | 'instalment';
+  itemId: string;
+  category: CostCategory;
+  supplier?: string;
+  number?: string;
+  from: ISODate;
+  to: ISODate;
+  dueDate?: ISODate;
+  /** The dates of the debits matched to the amount, distinct and sorted; assumed ones excluded. */
+  debitDates: ISODate[];
+  /** Every amount match is assumed (no statement covers it, R2). */
+  assumed: boolean;
+  /** The amount debited; for a condominium instalment, the tenants' part (R8). */
+  amount: Cents;
+  commission: Cents;
+  /** Amount and commission of the months of the period only, as `calcConguaglio` splits them. */
+  inPeriod: Cents;
+  fileName?: string;
+  note?: string;
+}
+
+const live = <T extends { deleted?: boolean }>(records: readonly T[]): T[] =>
+  records.filter((record) => record.deleted !== true);
+const total = (values: readonly number[]): Cents =>
+  cents(values.reduce((sum, value) => sum + value, 0));
+const monthRange = (from: YearMonth, to: YearMonth): YearMonth[] =>
+  monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`));
+
+/** `agosto–settembre 2026`, or two ranges when the months outside lie on both sides. */
+function outsideLabel(outside: YearMonth[], periodFrom: YearMonth): string {
+  const before = outside.filter((m) => m < periodFrom);
+  const after = outside.filter((m) => m > periodFrom);
+  return [before, after]
+    .filter((side) => side.length > 0)
+    .map((side) => monthRangeLabel(side[0] as YearMonth, side[side.length - 1] as YearMonth))
+    .join(' e ');
+}
+
+/**
+ * The rows of the sheet «Bollette»: the live bills and instalments of the apartment that
+ * `calcConguaglio` takes into `result` (same filters, not `pending`: R2), sorted by start, then
+ * by category in `CATEGORY_ORDER`, then by id.
+ */
+export function excelItems(input: ConguaglioInput, result: ConguaglioResult): ExcelItem[] {
+  const { apartment, period } = input;
+  const periodMonths = new Set(monthRange(period.from, period.to));
+  const inPeriod = (months: YearMonth[]) => months.some((m) => periodMonths.has(m));
+  const pending = new Set(result.pending.map((p) => `${p.itemType}\u0000${p.itemId}`));
+  const matches = new Map<string, BillMatch[]>();
+  for (const match of live(input.matches)) {
+    if (!match.confirmed) continue;
+    const key = `${match.itemType}\u0000${match.itemId}`;
+    matches.set(key, [...(matches.get(key) ?? []), match]);
+  }
+  const own = <T extends { apartmentId: string; deleted?: boolean }>(records: T[]): T[] =>
+    live(records).filter((record) => record.apartmentId === apartment.id);
+
+  const debits = (itemType: ExcelItem['itemType'], id: string) => {
+    const all = matches.get(`${itemType}\u0000${id}`) ?? [];
+    const amounts = all.filter((m) => m.part === 'amount');
+    return {
+      amount: total(amounts.map((m) => m.amount)),
+      commission: total(all.filter((m) => m.part === 'commission').map((m) => m.amount)),
+      debitDates: [
+        ...new Set(amounts.filter((m) => m.by !== 'assumed').map((m) => m.transactionDate)),
+      ].sort(compareText),
+      assumed: amounts.length > 0 && amounts.every((m) => m.by === 'assumed'),
+    };
+  };
+
+  const billItem = (bill: Bill): ExcelItem => {
+    const { amount, commission, debitDates, assumed } = debits('bill', bill.id);
+    const amounts = allocateBillToMonths(bill, amount);
+    const commissions = allocateBillToMonths(bill, commission);
+    const shares = amounts.map((share, i) => ({
+      month: share.month,
+      amount: share.amount + (commissions[i]?.amount ?? 0),
+    }));
+    const inside = total(shares.filter((s) => periodMonths.has(s.month)).map((s) => s.amount));
+    const outside = shares.filter((s) => !periodMonths.has(s.month));
+    const fileName = bill.filePath.split('/').pop();
+    return {
+      itemType: 'bill',
+      itemId: bill.id,
+      category: bill.category,
+      supplier: bill.supplier,
+      ...(bill.number === undefined ? {} : { number: bill.number }),
+      from: bill.periodStart,
+      to: bill.periodEnd,
+      ...(bill.dueDate === undefined ? {} : { dueDate: bill.dueDate }),
+      debitDates,
+      assumed,
+      amount,
+      commission,
+      inPeriod: inside,
+      ...(fileName === undefined || fileName === '' ? {} : { fileName }),
+      ...(outside.length === 0
+        ? {}
+        : {
+            note:
+              `Bolletta a cavallo: ${formatEuro(total(outside.map((s) => s.amount)))} nei mesi ` +
+              `${outsideLabel(
+                outside.map((s) => s.month),
+                period.from,
+              )}, fuori da questo periodo.`,
+          }),
+    };
+  };
+
+  const instalmentItem = (instalment: Instalment): ExcelItem => {
+    const { amount: paid, commission, debitDates, assumed } = debits('instalment', instalment.id);
+    const covered = monthRange(instalment.coversFrom, instalment.coversTo);
+    const parts = allocateInstalment(instalment, paid, esercizioOf(instalment));
+    const commissions = splitCents(
+      commission,
+      covered.map(() => 1),
+    );
+    const inside =
+      total(parts.filter((p) => periodMonths.has(p.month)).map((p) => p.rata + p.conguaglioPrec)) +
+      total(commissions.filter((_, i) => periodMonths.has(covered[i] as YearMonth)));
+    return {
+      itemType: 'instalment',
+      itemId: instalment.id,
+      category: instalment.kind,
+      number: `Rata ${String(instalment.rateIndex)} di ${String(instalment.rateCount)}, ${instalment.esercizio}`,
+      from: isoDate(`${instalment.coversFrom}-01`),
+      to: lastDayOfMonth(instalment.coversTo),
+      dueDate: instalment.dueDate,
+      debitDates,
+      assumed,
+      amount: total(parts.map((p) => p.rata + p.conguaglioPrec)),
+      commission,
+      inPeriod: cents(inside),
+    };
+  };
+
+  const esercizioOf = (instalment: Instalment) =>
+    instalment.kind === 'condominio' && apartment.condominioStart !== undefined
+      ? annualitaRange(instalment.esercizio, apartment.condominioStart)
+      : undefined;
+
+  const bills = own(input.bills).filter(
+    (bill) =>
+      bill.includedInConguaglio &&
+      bill.sharedWithTenants &&
+      inPeriod(monthsInPeriod(bill.periodStart, bill.periodEnd)) &&
+      !pending.has(`bill\u0000${bill.id}`),
+  );
+  const instalments = own(input.instalments).filter((instalment) => {
+    if (instalment.straordinaria === true) return false;
+    if (pending.has(`instalment\u0000${instalment.id}`)) return false;
+    const esercizio = esercizioOf(instalment);
+    const previousYear =
+      esercizio !== undefined && instalment.kind === 'condominio' && instalment.conguaglioPrec !== 0
+        ? monthsInPeriod(esercizio.from, esercizio.to)
+        : [];
+    return inPeriod([...monthRange(instalment.coversFrom, instalment.coversTo), ...previousYear]);
+  });
+
+  const rank = (category: CostCategory) => CATEGORY_ORDER.indexOf(category);
+  return [...bills.map(billItem), ...instalments.map(instalmentItem)].sort(
+    (a, b) =>
+      compareText(a.from, b.from) ||
+      rank(a.category) - rank(b.category) ||
+      compareText(a.itemId, b.itemId),
+  );
+}
+
+export interface ExcelInput extends ConguaglioInput {
+  tenants: Tenant[];
+}
+
+export const EXCEL_SHEETS = [
+  'Bollette',
+  'Conguagli',
+  'Affitti versati',
+  'Versamenti conguaglio',
+] as const;
+export type ExcelSheetName = (typeof EXCEL_SHEETS)[number];
+
+/**
+ * The headers of each sheet, in one place until user1 sends the format of the example (question
+ * 2). «Affitti versati» goes on with one column per month of the period (`ott 2026`).
+ */
+export const EXCEL_HEADERS: Record<ExcelSheetName, readonly string[]> = {
+  Bollette: [
+    'Tipo',
+    'Fornitore',
+    'Numero',
+    'Periodo dal',
+    'Periodo al',
+    'Scadenza',
+    'Addebito',
+    'Importo',
+    'Commissione',
+    'Quota nel periodo',
+    'File',
+    'Nota',
+  ],
+  Conguagli: [
+    'Posto',
+    'Inquilino',
+    'Mesi',
+    'N. mesi',
+    'Spese',
+    'Condominio',
+    'Forfait incassato',
+    'Conguaglio',
+  ],
+  'Affitti versati': ['Posto', 'Inquilino', 'Quota'],
+  'Versamenti conguaglio': ['Inquilino', 'Data', 'Importo', 'Mese indicato', 'Origine'],
+};
+
+const CATEGORY_LABELS: Record<CostCategory, string> = {
+  elettricita: 'Elettricità',
+  gas: 'Gas',
+  acqua: 'Acqua',
+  internet: 'Internet',
+  altro: 'Altro',
+  tari: 'TARI',
+  condominio: 'Condominio',
+};
+
+const SOURCE_LABELS: Record<Payment['source'], string> = {
+  csv: 'estratto conto',
+  manual: 'a mano',
+  excel: 'Excel',
+};
+
+/** A tenant of the period has no live `tenant` record, so no name (question 8). */
+export class ExcelInputError extends Error {
+  readonly code = 'missing-tenant';
+  readonly tenantIds: string[];
+
+  constructor(tenantIds: string[]) {
+    // Constant message: the ids are in `tenantIds`.
+    super("Un inquilino del periodo non ha un'anagrafica: aggiungila prima di generare l'Excel.");
+    this.name = 'ExcelInputError';
+    this.tenantIds = tenantIds;
+  }
+}
+
+const text = (value: string | undefined): XlsxCell | null =>
+  value === undefined || value === '' ? null : { kind: 'text', value };
+const euro = (value: Cents): XlsxCell => ({ kind: 'euro', value });
+const date = (value: ISODate | undefined): XlsxCell | null =>
+  value === undefined ? null : { kind: 'date', value };
+/** `ott`. */
+const shortMonth = (month: YearMonth): string =>
+  (MONTH_NAMES[Number(month.slice(5, 7)) - 1] ?? '').slice(0, 3);
+/** `ott 2026`. */
+const monthWithYear = (month: YearMonth): string => `${shortMonth(month)} ${month.slice(0, 4)}`;
+/** `10/12/2026`. */
+const dayMonthYear = (day: ISODate): string =>
+  `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
+
+/**
+ * The Excel of the settlement of `input.period` for `input.apartment` (plan 5): the sheets of
+ * `EXCEL_SHEETS`, values only. A `SettlementInputError` of `calcConguaglio` goes through as it
+ * is; a tenant of the period without a live `Tenant` throws `ExcelInputError`. No paid, residual
+ * or status column, no deposit, no row of the empty beds, no pending item (questions 1, 3, 4, 6).
+ */
+export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
+  const result = calcConguaglio(input);
+  const { apartment, period } = input;
+  const names = new Map(live(input.tenants).map((t) => [t.id, t.name]));
+  const missing = result.tenants.map((t) => t.tenantId).filter((id) => !names.has(id));
+  if (missing.length > 0) throw new ExcelInputError(missing);
+  const nameOf = (tenantId: string) => names.get(tenantId) ?? '';
+
+  const months = monthRange(period.from, period.to);
+  const longPeriod = months.length > 12;
+  const settled = new Set(result.tenants.map((t) => t.tenantId));
+  const tenancies = live(input.tenancies).filter(
+    (t) =>
+      t.apartmentId === apartment.id &&
+      settled.has(t.tenantId) &&
+      months.some((m) => isPresent(t, m)),
+  );
+  const monthsOf = (t: Tenancy) => months.filter((m) => isPresent(t, m));
+  const roomRank = (room: string | undefined) => {
+    const index = room === undefined ? -1 : (apartment.rooms ?? []).indexOf(room);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  const byBed = (a: Tenancy, b: Tenancy) =>
+    roomRank(a.room) - roomRank(b.room) ||
+    compareText(monthsOf(a)[0] ?? '', monthsOf(b)[0] ?? '') ||
+    compareText(a.tenantId, b.tenantId) ||
+    compareText(a.id, b.id);
+  tenancies.sort(
+    (a, b) => compareText(monthsOf(a)[0] ?? '', monthsOf(b)[0] ?? '') || compareText(a.id, b.id),
+  );
+  const presences = (tenantId: string) => tenancies.filter((t) => t.tenantId === tenantId);
+  const firstPresence = (tenantId: string) => presences(tenantId)[0] as Tenancy;
+
+  const items = excelItems(input, result);
+  const bollette: (XlsxCell | null)[][] = items.map((item) => [
+    text(CATEGORY_LABELS[item.category]),
+    text(item.supplier),
+    text(item.number),
+    date(item.from),
+    date(item.to),
+    date(item.dueDate),
+    text(item.assumed ? 'assunta, non verificata' : item.debitDates.map(dayMonthYear).join(', ')),
+    euro(item.amount),
+    euro(item.commission),
+    euro(item.inPeriod),
+    text(item.fileName),
+    text(item.note),
+  ]);
+
+  const label = (m: YearMonth) => (longPeriod ? monthWithYear(m) : shortMonth(m));
+  const settlements = [...result.tenants].sort((a, b) =>
+    byBed(firstPresence(a.tenantId), firstPresence(b.tenantId)),
+  );
+  const columns = settlements.map((t) => [
+    t.spese + t.commissione,
+    t.condominio.rata + t.condominio.conguaglioPrec,
+    t.forfaitIncassato,
+    t.due,
+  ]);
+  const conguagli: (XlsxCell | null)[][] = settlements.map((t, i) => {
+    const own = presences(t.tenantId);
+    const rooms = [...new Set(own.flatMap((p) => (p.room === undefined ? [] : [p.room])))];
+    const spans = own.map((p) => {
+      const present = monthsOf(p);
+      const first = present[0] as YearMonth;
+      const last = present[present.length - 1] as YearMonth;
+      return first === last ? label(first) : `${label(first)} – ${label(last)}`;
+    });
+    return [
+      text(rooms.join(', ')),
+      text(nameOf(t.tenantId)),
+      text(spans.join('; ')),
+      { kind: 'int', value: new Set(own.flatMap(monthsOf)).size },
+      ...(columns[i] ?? []).map((v) => euro(cents(v))),
+    ];
+  });
+  conguagli.push([
+    text('Totale'),
+    null,
+    null,
+    null,
+    ...[0, 1, 2, 3].map((c) => euro(total(columns.map((col) => col[c] ?? 0)))),
+  ]);
+
+  const payments = live(input.payments).filter(
+    (p) => p.confirmed && p.apartmentId === apartment.id,
+  );
+  const rentDates = new Map<string, ISODate[]>();
+  for (const p of payments) {
+    if (p.kind !== 'canone') continue;
+    const key = `${p.tenantId}\u0000${p.forMonth ?? p.date.slice(0, 7)}`;
+    rentDates.set(key, [...(rentDates.get(key) ?? []), p.date]);
+  }
+  const affitti: (XlsxCell | null)[][] = [...tenancies].sort(byBed).map((t) => [
+    text(t.room),
+    text(nameOf(t.tenantId)),
+    euro(cents(t.monthlyRent + t.monthlyForfait)),
+    ...months.map((m) =>
+      isPresent(t, m)
+        ? text(
+            [...(rentDates.get(`${t.tenantId}\u0000${m}`) ?? [])]
+              .sort(compareText)
+              .map((d) => `${d.slice(8, 10)} ${shortMonth(d.slice(0, 7) as YearMonth)}`)
+              .join(', '),
+          )
+        : null,
+    ),
+  ]);
+
+  const versamenti: (XlsxCell | null)[][] = payments
+    .filter((p) => p.kind === 'conguaglio' && settled.has(p.tenantId))
+    .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id))
+    .map((p) => [
+      text(nameOf(p.tenantId)),
+      date(p.date),
+      euro(p.amount),
+      text(p.forMonth === undefined ? undefined : monthWithYear(p.forMonth)),
+      text(SOURCE_LABELS[p.source]),
+    ]);
+
+  const header = (name: ExcelSheetName, extra: string[] = []): XlsxCell[] =>
+    [...EXCEL_HEADERS[name], ...extra].map((value) => ({ kind: 'text', value }));
+  const sheet = (name: ExcelSheetName, rows: (XlsxCell | null)[][], extra?: string[]) =>
+    ({ name, rows: [header(name, extra), ...rows] }) satisfies XlsxSheet;
+  return {
+    sheets: [
+      sheet('Bollette', bollette),
+      sheet('Conguagli', conguagli),
+      sheet('Affitti versati', affitti, months.map(monthWithYear)),
+      sheet('Versamenti conguaglio', versamenti),
+    ],
+  };
+}

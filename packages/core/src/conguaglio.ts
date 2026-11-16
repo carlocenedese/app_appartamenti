@@ -115,7 +115,7 @@ export interface ConguaglioResult {
   warnings: ConguaglioWarning[];
 }
 
-const CATEGORY_ORDER: readonly CostCategory[] = [
+export const CATEGORY_ORDER: readonly CostCategory[] = [
   'elettricita',
   'gas',
   'acqua',

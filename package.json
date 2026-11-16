@@ -22,7 +22,8 @@
     "python:dev-install": "node scripts/python.mjs -I python/tools/dev_install.py",
     "schemas:export": "tsx scripts/export-schemas.mjs",
     "golden:report": "tsx scripts/golden-report.mjs",
-    "estratti": "tsx scripts/estratti.mjs"
+    "estratti": "tsx scripts/estratti.mjs",
+    "excel": "tsx scripts/excel.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

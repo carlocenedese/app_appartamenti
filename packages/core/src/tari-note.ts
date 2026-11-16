@@ -43,7 +43,7 @@ function monthName(month: YearMonth): { name: string; year: string } {
 }
 
 /** `gennaio–aprile 2026`, `dicembre 2025–gennaio 2026`, `maggio 2026`. */
-function monthRange(from: YearMonth, to: YearMonth): string {
+export function monthRangeLabel(from: YearMonth, to: YearMonth): string {
   if (to < from) throw new RangeError('The assigned months end before they start');
   const start = monthName(from);
   const end = monthName(to);
@@ -87,7 +87,7 @@ export function tariNote(input: {
   }
 
   const sentences = [
-    `Avviso ${avviso.number}${avviso.issueDate === undefined ? '' : ` del ${noteDate(avviso.issueDate)}`}, periodo ${avviso.periodLabel}, mesi assegnati ${monthRange(months.from, months.to)}.`,
+    `Avviso ${avviso.number}${avviso.issueDate === undefined ? '' : ` del ${noteDate(avviso.issueDate)}`}, periodo ${avviso.periodLabel}, mesi assegnati ${monthRangeLabel(months.from, months.to)}.`,
     `Addebito ${noteEuro(debit)} il ${noteDate(transaction.date)} sul conto di ${payer.apartmentName}.`,
   ];
   const list = (amountOf: (part: TariNotePart) => Cents): string =>
