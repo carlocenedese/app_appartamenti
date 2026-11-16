@@ -1,0 +1,140 @@
+{
+  "description": "Due appartamenti inventati senza contratti (piano 7, task 6): li scrivono i comandi contratto e contratto-canone. Cinque presenze a Berchet, quella di Elena Fittizia da 2025-09; la caparra di Franco Immaginario, che non ha presenze collegate. Nomi e importi inventati.",
+  "records": {
+    "apartment": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "berchet",
+        "name": "Appartamento Berchet",
+        "locatore": "user1",
+        "posti": 5,
+        "annualitaStart": {
+          "month": 10,
+          "day": 1
+        }
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "lovarini",
+        "name": "Appartamento Lovarini",
+        "locatore": "user1",
+        "posti": 5,
+        "annualitaStart": {
+          "month": 10,
+          "day": 1
+        }
+      }
+    ],
+    "tenant": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-anna",
+        "name": "Anna Prova"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-bruno",
+        "name": "Bruno Esempio"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-carla",
+        "name": "Carla Finta"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-dario",
+        "name": "Dario Inventato"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-elena",
+        "name": "Elena Fittizia"
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "ten-franco",
+        "name": "Franco Immaginario"
+      }
+    ],
+    "tenancy": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tcy-anna",
+        "apartmentId": "berchet",
+        "tenantId": "ten-anna",
+        "from": "2025-10",
+        "to": "2027-09",
+        "monthlyRent": 35000,
+        "monthlyForfait": 3000
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tcy-bruno",
+        "apartmentId": "berchet",
+        "tenantId": "ten-bruno",
+        "from": "2025-10",
+        "to": "2027-09",
+        "monthlyRent": 35000,
+        "monthlyForfait": 3000
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tcy-carla",
+        "apartmentId": "berchet",
+        "tenantId": "ten-carla",
+        "from": "2025-10",
+        "to": "2027-09",
+        "monthlyRent": 35000,
+        "monthlyForfait": 3000
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tcy-dario",
+        "apartmentId": "berchet",
+        "tenantId": "ten-dario",
+        "from": "2025-10",
+        "to": "2027-09",
+        "monthlyRent": 35000,
+        "monthlyForfait": 3000
+      },
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "tcy-elena",
+        "apartmentId": "berchet",
+        "tenantId": "ten-elena",
+        "from": "2025-09",
+        "to": "2027-09",
+        "monthlyRent": 33000,
+        "monthlyForfait": 3000
+      }
+    ],
+    "payment": [
+      {
+        "v": 1,
+        "rev": 1,
+        "id": "pay-franco",
+        "apartmentId": "berchet",
+        "tenantId": "ten-franco",
+        "date": "2025-09-25",
+        "amount": 50000,
+        "confirmed": true,
+        "kind": "caparra",
+        "source": "manual"
+      }
+    ]
+  }
+}

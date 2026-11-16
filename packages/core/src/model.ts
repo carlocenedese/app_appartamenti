@@ -214,13 +214,79 @@ export const ContractSchema = RecordBaseSchema.extend({
   /** Last month of the contract, including extensions that are already certain. */
   end: YearMonthSchema,
   settlement: z.enum(['annuale', 'intero-contratto']),
+  // Plan 7: optional data fields; none of them is read by a calculation.
+  /** Canone concordato. */
+  agreedRent: z.literal(true).optional(),
+  /** Contract for university students. */
+  forStudents: z.literal(true).optional(),
+  /** The duration written in the contract (not derived from start/end, which include extensions). */
+  durationMonths: z.int().min(1).optional(),
+  signedOn: ISODateSchema.optional(),
+  /** Identifier and date of the registration: the code is personal data, never in a log or message. */
+  registration: z
+    .object({ code: NonEmptyString.optional(), date: ISODateSchema.optional() })
+    .optional(),
+  taxRegime: z.enum(['cedolare', 'ordinario']).optional(),
+  /** Cedolare rate in basis points as entered by the user: data only, never used to compute a tax. */
+  cedolareRateBp: z.int().min(1).max(10000).optional(),
+  tenancyIds: z.array(NonEmptyString).optional(),
+  /** `Payment` records of kind `caparra`. */
+  depositPaymentIds: z.array(NonEmptyString).optional(),
+  /** Rent history: each entry holds from its month until the next entry. */
+  rent: z
+    .array(
+      z.object({ from: YearMonthSchema, monthlyRent: CentsSchema, monthlyAdvance: CentsSchema }),
+    )
+    .optional(),
 })
   .refine((contract) => notAfter(contract.start, contract.end), {
     message: 'The contract ends before it starts',
     path: ['end'],
   })
-  .meta({ description: 'start must not be after end.' });
+  .refine(
+    (contract) => contract.cedolareRateBp === undefined || contract.taxRegime === 'cedolare',
+    { message: 'A cedolare rate needs taxRegime cedolare', path: ['cedolareRateBp'] },
+  )
+  .refine((contract) => unique(contract.tenancyIds), {
+    message: 'A tenancy is linked once',
+    path: ['tenancyIds'],
+  })
+  .refine((contract) => unique(contract.depositPaymentIds), {
+    message: 'A deposit is linked once',
+    path: ['depositPaymentIds'],
+  })
+  .refine((contract) => rentHistoryValid(contract), {
+    message: 'Rent entries: from strictly increasing within start..end, rent > 0, advance >= 0',
+    path: ['rent'],
+  })
+  .meta({
+    description:
+      'start must not be after end. cedolareRateBp only with taxRegime cedolare. tenancyIds and ' +
+      'depositPaymentIds without repetitions. rent: from strictly increasing, each between start ' +
+      'and end, monthlyRent > 0, monthlyAdvance >= 0.',
+  });
 export type Contract = z.infer<typeof ContractSchema>;
+export type ContractRent = NonNullable<Contract['rent']>[number];
+
+function unique(values: readonly string[] | undefined): boolean {
+  return values === undefined || new Set(values).size === values.length;
+}
+
+/** The rule on `Contract.rent`, also used by the writes to refuse before parsing. */
+export function rentHistoryValid(contract: {
+  start: string;
+  end: string;
+  rent?: readonly { from: string; monthlyRent: number; monthlyAdvance: number }[] | undefined;
+}): boolean {
+  return (contract.rent ?? []).every(
+    (entry, i, all) =>
+      notAfter(contract.start, entry.from) &&
+      notAfter(entry.from, contract.end) &&
+      (i === 0 || (all[i - 1]?.from ?? '') < entry.from) &&
+      entry.monthlyRent > 0 &&
+      entry.monthlyAdvance >= 0,
+  );
+}
 
 export const TenancySchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,

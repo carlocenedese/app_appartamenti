@@ -1,11 +1,25 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
-import { commitChange, recordPath, recordSchemas } from '../packages/core/src/index.ts';
+import {
+  ContractSchema,
+  commitChange,
+  recordPath,
+  recordSchemas,
+  settlementPeriods,
+} from '../packages/core/src/index.ts';
 import { apartment } from '../packages/core/test/helpers/conguaglio-builders.ts';
 import {
   pythonAvailability,
@@ -14,6 +28,7 @@ import {
 import { scanText } from './check-personal-data.mjs';
 import { ibanEndingWith } from '../packages/core/test/helpers/iban-build.ts';
 import { main } from './estratti.mjs';
+import { main as excelMain } from './excel.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FIXTURE = JSON.parse(
@@ -2283,4 +2298,552 @@ describe('pnpm estratti IMU (piano 3d)', () => {
     },
     TIMEOUT,
   );
+});
+
+describe('pnpm estratti contratti (piano 7, task 5)', () => {
+  // Invented tenants, amounts and registration codes (fixtures/README.md); main() in process.
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: ids() });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+  let idCounter = 0;
+  const ids = () => () => `cli-${String((idCounter += 1))}`;
+  const tenancy = (id, tenantId, extra = {}) => ({
+    id,
+    v: 1,
+    rev: 1,
+    apartmentId: 'berchet',
+    tenantId,
+    from: '2025-10',
+    to: '2026-09',
+    monthlyRent: 35000,
+    monthlyForfait: 3000,
+    ...extra,
+  });
+
+  async function contractSetup() {
+    const dir = join(root, `c${String((counter += 1))}`);
+    mkdirSync(dir);
+    const store = new FsStore(dir);
+    const records = [
+      ['apartment', apartment({ id: 'berchet' })],
+      ['apartment', apartment({ id: 'lovarini' })],
+      ['tenancy', tenancy('tcy-a', 'ten-anna')],
+      ['tenancy', tenancy('tcy-b', 'ten-bruno')],
+      [
+        'payment',
+        {
+          id: 'pay-c1',
+          v: 1,
+          rev: 1,
+          apartmentId: 'berchet',
+          tenantId: 'ten-anna',
+          date: '2025-09-25',
+          amount: 50000,
+          confirmed: true,
+          kind: 'caparra',
+          source: 'manual',
+        },
+      ],
+    ];
+    let n = 0;
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      () => `seed-${String((n += 1))}`,
+    );
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+  const contratto = (s, ...extra) => [
+    'contratto',
+    ...s.common,
+    '--id',
+    'ctr-berchet',
+    '--appartamento',
+    'berchet',
+    '--tipo',
+    '1+1',
+    '--inizio',
+    '2025-10',
+    '--fine',
+    '2027-09',
+    '--conguaglio',
+    'annuale',
+    ...extra,
+  ];
+  const full = [
+    '--concordato',
+    '--studenti',
+    '--regime',
+    'cedolare',
+    '--aliquota-cedolare',
+    '10',
+    '--codice-registrazione',
+    'CODICE-PROVA-0001',
+    '--presenze',
+    'tcy-a,tcy-b',
+  ];
+  const canone = (s, ...extra) => [
+    'contratto-canone',
+    ...s.common,
+    '--contratto',
+    'ctr-berchet',
+    ...extra,
+  ];
+  const stored = (s) =>
+    JSON.parse(readFileSync(join(s.dir, '_app', 'dati', 'contract', 'ctr-berchet.json'), 'utf8'));
+
+  it('contratto: salva, la seconda volta non scrive, aliquota in punti base, argomenti 2', async () => {
+    const s = await contractSetup();
+    const saved = await run(contratto(s, ...full));
+    expect([saved.code, saved.json]).toEqual([
+      0,
+      { status: 'saved', contractId: 'ctr-berchet', operationId: saved.json.operationId },
+    ]);
+    expect(stored(s)).toMatchObject({
+      agreedRent: true,
+      forStudents: true,
+      taxRegime: 'cedolare',
+      cedolareRateBp: 1000,
+      registration: { code: 'CODICE-PROVA-0001' },
+      tenancyIds: ['tcy-a', 'tcy-b'],
+    });
+    const snap = snapshot(s.dir);
+    expect((await run(contratto(s, ...full))).json).toEqual({
+      status: 'unchanged',
+      contractId: 'ctr-berchet',
+    });
+    expect(snapshot(s.dir)).toEqual(snap);
+    const rate = (value) =>
+      contratto(s, '--regime', 'cedolare', '--aliquota-cedolare', value, '--durata', '12');
+    expect((await run(rate('10,5'))).code).toBe(0);
+    expect(stored(s)).toMatchObject({ cedolareRateBp: 1050, durationMonths: 12 });
+    expect(stored(s)).not.toHaveProperty('tenancyIds'); // an absent option removes the field
+    expect((await run(rate('10,05'))).code).toBe(0);
+    expect(stored(s).cedolareRateBp).toBe(1005);
+    const snap2 = snapshot(s.dir);
+    for (const bad of [
+      rate('10.5'),
+      rate('abc'),
+      rate('0'),
+      rate('100,001'),
+      rate('100,01'),
+      rate(''),
+      contratto(s, '--regime', 'ordinario', '--aliquota-cedolare', '10'),
+      contratto(s, '--aliquota-cedolare', '10'),
+      contratto(s, '--regime', 'misto'),
+      contratto(s, '--inizio', '2025-13'),
+      contratto(s, '--fine', '2025-09'),
+      contratto(s, '--presenze', 'tcy-a,tcy-a'),
+      contratto(s, '--presenze', 'tcy-a,'),
+      contratto(s, '--caparre', 'pay c1'),
+      contratto(s, '--durata', '0'),
+      contratto(s, '--firmato', '2025-02-30'),
+      contratto(s, '--registrato', '2025-10'),
+      contratto(s, '--codice-registrazione', ''),
+      contratto(s, 'x'),
+      contratto(s).map((a) => (a === '1+1' ? '2+2' : a)),
+      contratto(s).map((a) => (a === 'annuale' ? 'mensile' : a)),
+      contratto(s).map((a) => (a === 'ctr-berchet' ? 'ctr:berchet' : a)),
+      ['contratto', ...s.common, '--id', 'ctr-berchet'],
+      ['riconcilia', ...s.common, '--contratto', 'ctr-berchet'],
+      ['riconcilia', ...s.common, '--presenze', 'tcy-a'],
+      ['imu', ...s.common, '--aliquota-cedolare', '10'],
+      ['contratti', ...s.common, '--tipo', '1+1'],
+      ['saldi', ...s.common, '--dal', '2026-10-01'],
+      ['saldi', ...s.common, '--al', '2026-10-31'],
+      ['contratti', ...s.common, '--al', '2026-10'],
+    ]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]);
+    }
+    expect(snapshot(s.dir)).toEqual(snap2);
+    const unknown = await run(contratto(s, '--presenze', 'tcy-nessuna'));
+    expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-tenancy']);
+    expect(unknown.json.message).toMatch(/^Rifiutato: /);
+    const deposit = await run(contratto(s, '--caparre', 'pay-nessuno'));
+    expect([deposit.code, deposit.json.reason]).toEqual([1, 'unknown-deposit']);
+    expect(snapshot(s.dir)).toEqual(snap2);
+  });
+
+  it('contratto-canone, contratti senza dati personali, annullamento', async () => {
+    const s = await contractSetup();
+    const outs = [];
+    const go = async (args) => {
+      const r = await run(args);
+      outs.push(r.out);
+      return r;
+    };
+    const created = await go(
+      contratto(s, ...full, '--caparre', 'pay-c1', '--firmato', '2025-09-20'),
+    );
+    expect(created.code).toBe(0);
+    const first = await go(
+      canone(s, '--dal', '2025-10', '--canone', '1600,00', '--acconto', '150,00'),
+    );
+    expect([first.code, first.json]).toEqual([
+      0,
+      { status: 'saved', contractId: 'ctr-berchet', operationId: first.json.operationId },
+    ]);
+    expect(stored(s).rent).toEqual([
+      { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 },
+    ]);
+    for (const bad of [
+      canone(s, '--dal', '2025-10', '--canone', '0', '--acconto', '150,00'),
+      canone(s, '--dal', '2025-10', '--canone', '-1,00', '--acconto', '150,00'),
+      canone(s, '--dal', '2025-10', '--canone', '1600,00', '--acconto', '-1,00'),
+      canone(s, '--dal', '2025-10', '--canone', 'abc', '--acconto', '150,00'),
+      canone(s, '--dal', '2025-13', '--canone', '1600,00', '--acconto', '150,00'),
+      canone(s, '--dal', '2025-10', '--canone', '1600,00'),
+    ]) {
+      expect([bad, (await go(bad)).code]).toEqual([bad, 2]);
+    }
+    const outside = await go(
+      canone(s, '--dal', '2030-01', '--canone', '1600,00', '--acconto', '0'),
+    );
+    expect([outside.code, outside.json.reason]).toEqual([1, 'month-outside-contract']);
+    const nobody = await go([
+      'contratto-canone',
+      ...s.common,
+      '--contratto',
+      'ctr-nessuno',
+      '--dal',
+      '2025-10',
+      '--canone',
+      '1,00',
+      '--acconto',
+      '0',
+    ]);
+    expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-contract']);
+    const renewal = await go(
+      canone(s, '--dal', '2026-10', '--canone', '1650,00', '--acconto', '150,00'),
+    );
+    expect(renewal.code).toBe(0);
+
+    const list = await go(['contratti', ...s.common]);
+    expect(list.code).toBe(0);
+    const message =
+      'Canone del contratto diverso dal totale delle presenze: controllare il contratto o le presenze.';
+    expect(list.json).toEqual({
+      status: 'ok',
+      contracts: [
+        {
+          id: 'ctr-berchet',
+          apartmentId: 'berchet',
+          type: '1+1',
+          start: '2025-10',
+          end: '2027-09',
+          settlement: 'annuale',
+          agreedRent: true,
+          forStudents: true,
+          taxRegime: 'cedolare',
+          tenancies: 2,
+          deposits: 1,
+          rentEntries: 2,
+        },
+      ],
+      checks: [
+        {
+          code: 'rent-differs',
+          contractId: 'ctr-berchet',
+          from: '2025-10',
+          to: '2026-09',
+          message,
+        },
+        {
+          code: 'rent-differs',
+          contractId: 'ctr-berchet',
+          from: '2026-10',
+          to: '2026-11',
+          message,
+        },
+      ],
+    });
+    const text = outs.join('');
+    expect(scanText(text)).toEqual([]);
+    expect(text).not.toMatch(
+      /CODICE-PROVA|tcy-|pay-|2025-09-20|1000|160000|165000|15000|76000|175000|180000/,
+    );
+    expect(text).not.toMatch(/[0-9],[0-9]{2}/);
+    expect((await go(['contratti', ...s.common, '--appartamento', 'lovarini'])).json).toEqual({
+      status: 'ok',
+      contracts: [],
+      checks: [],
+    });
+
+    const details = await run(['contratti', ...s.common, '--dettagli']);
+    expect(details.json.contracts[0]).toMatchObject({
+      registration: { code: 'CODICE-PROVA-0001' },
+      signedOn: '2025-09-20',
+      cedolareRateBp: 1000,
+      tenancyIds: ['tcy-a', 'tcy-b'],
+      depositPaymentIds: ['pay-c1'],
+      rent: [
+        { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 },
+        { from: '2026-10', monthlyRent: 165000, monthlyAdvance: 15000 },
+      ],
+    });
+    expect(details.json.checks[0]).toMatchObject({ expected: 175000, actual: 76000 });
+
+    const underRent = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      created.json.operationId,
+    ]);
+    expect([underRent.code, underRent.json.reason]).toEqual([1, 'has-dependents']);
+    const dependent = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      first.json.operationId,
+    ]);
+    expect([dependent.code, dependent.json.reason]).toEqual([1, 'has-dependents']);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      renewal.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    const after = await run(['contratti', ...s.common, '--dettagli']);
+    expect(after.json.contracts[0].rent).toEqual([
+      { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 },
+    ]);
+  });
+
+  it('un errore inatteso dà 3', async () => {
+    const s = await contractSetup();
+    const failed = await main(contratto(s), {
+      now: () => ORA,
+      newId: () => {
+        throw new Error('segreto-nel-messaggio');
+      },
+    });
+    expect(failed.code).toBe(3);
+    expect(failed.output).not.toMatch(/segreto/);
+  });
+});
+
+describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, task 6)', () => {
+  const FIXTURE_CONTRACTS = JSON.parse(
+    readFileSync(join(ROOT, 'fixtures', 'contracts', 'due-appartamenti.json'), 'utf8'),
+  );
+  let n = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `f6-${String((n += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+
+  /** A data folder with the records of the fixture, written through the journal. */
+  async function fixtureFolder(extra = []) {
+    const dir = join(root, `f6-${String((counter += 1))}`);
+    mkdirSync(dir);
+    const records = [
+      ...Object.entries(FIXTURE_CONTRACTS.records).flatMap(([kind, list]) =>
+        list.map((r) => [kind, r]),
+      ),
+      ...extra,
+    ];
+    let k = 0;
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      () => `seed-${String((k += 1))}`,
+    );
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+  const base = {
+    berchet: ['--id', 'ctr-berchet', '--appartamento', 'berchet', '--tipo', '1+1'],
+    lovarini: ['--id', 'ctr-lovarini', '--appartamento', 'lovarini', '--tipo', '3+2'],
+  };
+  const commands = (s) => [
+    [
+      'contratto',
+      ...s.common,
+      ...base.berchet,
+      '--inizio',
+      '2025-10',
+      '--fine',
+      '2027-09',
+      '--conguaglio',
+      'annuale',
+      '--concordato',
+      '--studenti',
+      '--regime',
+      'cedolare',
+      '--aliquota-cedolare',
+      '10',
+      '--codice-registrazione',
+      'CODICE-PROVA-0001',
+      '--firmato',
+      '2025-09-20',
+      '--registrato',
+      '2025-10-10',
+      '--presenze',
+      'tcy-anna,tcy-bruno,tcy-carla,tcy-dario,tcy-elena',
+      '--caparre',
+      'pay-franco',
+    ],
+    [
+      'contratto',
+      ...s.common,
+      ...base.lovarini,
+      '--inizio',
+      '2025-10',
+      '--fine',
+      '2030-09',
+      '--conguaglio',
+      'intero-contratto',
+      '--concordato',
+      '--regime',
+      'ordinario',
+      '--codice-registrazione',
+      'CODICE-PROVA-0002',
+    ],
+    [
+      'contratto-canone',
+      ...s.common,
+      '--contratto',
+      'ctr-berchet',
+      '--dal',
+      '2025-10',
+      '--canone',
+      '1600,00',
+      '--acconto',
+      '150,00',
+    ],
+    [
+      'contratto-canone',
+      ...s.common,
+      '--contratto',
+      'ctr-berchet',
+      '--dal',
+      '2026-10',
+      '--canone',
+      '1730,00',
+      '--acconto',
+      '150,00',
+    ],
+  ];
+  const message =
+    'Canone del contratto diverso dal totale delle presenze: controllare il contratto o le presenze.';
+
+  it('il percorso completo: controlli, seconda esecuzione, annullamento, Excel invariato', async () => {
+    const s = await fixtureFolder();
+    const outs = [];
+    const results = [];
+    for (const args of commands(s)) {
+      const r = await run(args);
+      outs.push(r.out);
+      results.push(r);
+      expect([args[0], r.code, r.json.status]).toEqual([args[0], 0, 'saved']);
+    }
+    const list = await run(['contratti', ...s.common]);
+    outs.push(list.out);
+    expect(list.json.checks).toEqual([
+      { code: 'deposit-other-tenant', contractId: 'ctr-berchet' },
+      { code: 'rent-differs', contractId: 'ctr-berchet', from: '2025-10', to: '2026-09', message },
+      { code: 'tenancy-outside-contract', contractId: 'ctr-berchet' },
+    ]);
+    expect(list.json.contracts.map((c) => [c.id, c.type, c.settlement, c.taxRegime])).toEqual([
+      ['ctr-berchet', '1+1', 'annuale', 'cedolare'],
+      ['ctr-lovarini', '3+2', 'intero-contratto', 'ordinario'],
+    ]);
+    const details = await run(['contratti', ...s.common, '--dettagli']);
+    expect(details.json.checks).toEqual([
+      expect.objectContaining({ code: 'deposit-other-tenant', paymentId: 'pay-franco' }),
+      expect.objectContaining({ code: 'rent-differs', expected: 175000, actual: 188000 }),
+      expect.objectContaining({ code: 'tenancy-outside-contract', tenancyId: 'tcy-elena' }),
+    ]);
+
+    // The same commands again: nothing written.
+    const settled = snapshot(s.dir);
+    for (const args of commands(s)) {
+      const r = await run(args);
+      outs.push(r.out);
+      expect([args[0], r.code, r.json.status]).toEqual([args[0], 0, 'unchanged']);
+    }
+    expect(snapshot(s.dir)).toEqual(settled);
+
+    // Without --dettagli no personal data (R107).
+    const text = outs.join('');
+    expect(scanText(text)).toEqual([]);
+    expect(text).not.toMatch(/CODICE-PROVA|tcy-|pay-|ten-|Prova|Esempio|2025-09-20|2025-10-10/);
+    expect(text).not.toMatch(/175000|188000|160000|173000|15000|1000\b/);
+
+    // Undoing the renewal: the interval goes on to the month of the clock.
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      results[3].json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    const after = await run(['contratti', ...s.common]);
+    expect(after.json.checks.filter((c) => c.code === 'rent-differs')).toEqual([
+      { code: 'rent-differs', contractId: 'ctr-berchet', from: '2025-10', to: '2026-11', message },
+    ]);
+
+    // The Excel and the settlement periods as with a contract of the fields of before.
+    const plain = await fixtureFolder([
+      [
+        'contract',
+        {
+          id: 'ctr-berchet',
+          v: 1,
+          rev: 1,
+          apartmentId: 'berchet',
+          type: '1+1',
+          start: '2025-10',
+          end: '2027-09',
+          settlement: 'annuale',
+        },
+      ],
+    ]);
+    const stored = (dir) =>
+      ContractSchema.parse(
+        JSON.parse(readFileSync(join(dir, '_app', 'dati', 'contract', 'ctr-berchet.json'), 'utf8')),
+      );
+    const annualita = FIXTURE_CONTRACTS.records.apartment[0].annualitaStart;
+    expect(settlementPeriods(stored(s.dir), annualita)).toEqual(
+      settlementPeriods(stored(plain.dir), annualita),
+    );
+    const excelOf = async (dir) => {
+      const target = join(dir, 'berchet.xlsx');
+      const r = await excelMain(
+        [
+          '--cartella',
+          dir,
+          '--appartamento',
+          'berchet',
+          '--periodo',
+          '2025-26',
+          '--uscita',
+          target,
+        ],
+        { newId: () => 'tmp-excel', link: linkSync },
+      );
+      expect(r.code).toBe(0);
+      return readFileSync(target);
+    };
+    expect((await excelOf(s.dir)).equals(await excelOf(plain.dir))).toBe(true);
+  });
 });

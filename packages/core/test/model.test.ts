@@ -559,6 +559,84 @@ describe('Contract', () => {
   });
 });
 
+describe('Contract data and rent history (plan 7, task 1)', () => {
+  // Invented figures and codes only (fixtures/README.md).
+  const full = {
+    ...base,
+    id: 'ctr-berchet',
+    apartmentId: 'berchet',
+    type: '1+1',
+    start: '2025-10',
+    end: '2027-09',
+    settlement: 'annuale',
+    agreedRent: true,
+    forStudents: true,
+    durationMonths: 12,
+    signedOn: '2025-09-20',
+    registration: { code: 'CODICE-PROVA-0001', date: '2025-10-10' },
+    taxRegime: 'cedolare',
+    cedolareRateBp: 1000,
+    tenancyIds: ['tcy-a'],
+    depositPaymentIds: ['pay-c1'],
+    rent: [
+      { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 },
+      { from: '2026-10', monthlyRent: 165000, monthlyAdvance: 15000 },
+    ],
+  };
+  const fixture = (path: string): unknown =>
+    JSON.parse(readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'));
+
+  it('a contract without the new fields stays valid and equal, as do the fixtures', () => {
+    expect(ContractSchema.parse(validRecords.contract)).toEqual(validRecords.contract);
+    const excel = fixture('../../../fixtures/excel/anno-esempio.json') as { contracts: unknown[] };
+    const golden = fixture('../../../fixtures/golden/berchet-2024-25.json') as {
+      contract: unknown;
+    };
+    for (const contract of [...excel.contracts, golden.contract]) {
+      expect(ContractSchema.parse(contract)).toEqual(contract);
+    }
+  });
+
+  it('accepts a complete contract', () => {
+    expect(ContractSchema.parse(full)).toEqual(full);
+  });
+
+  const rent = (entries: Record<string, unknown>[]) => changed(full, { rent: entries });
+  const entry = (from: string, monthlyRent = 160000, monthlyAdvance = 15000) => ({
+    from,
+    monthlyRent,
+    monthlyAdvance,
+  });
+  it.each([
+    ['equal from', rent([entry('2025-10'), entry('2025-10')])],
+    ['decreasing from', rent([entry('2026-10'), entry('2025-10')])],
+    ['from before start', rent([entry('2025-09')])],
+    ['from after end', rent([entry('2027-10')])],
+    ['zero rent', rent([entry('2025-10', 0)])],
+    ['negative advance', rent([entry('2025-10', 160000, -1)])],
+    ['rate with ordinario', changed(full, { taxRegime: 'ordinario' })],
+    ['rate without regime', without(full, 'taxRegime')],
+    ['rate 0', changed(full, { cedolareRateBp: 0 })],
+    ['rate 10001', changed(full, { cedolareRateBp: 10001 })],
+    ['repeated tenancy', changed(full, { tenancyIds: ['a', 'a'] })],
+    ['repeated deposit', changed(full, { depositPaymentIds: ['a', 'a'] })],
+    ['duration 0', changed(full, { durationMonths: 0 })],
+    ['agreedRent false', changed(full, { agreedRent: false })],
+    ['forStudents false', changed(full, { forStudents: false })],
+    ['impossible registration date', changed(full, { registration: { date: '2025-02-30' } })],
+  ])('rejects %s', (_name, contract) => {
+    expect(ContractSchema.safeParse(contract).success).toBe(false);
+  });
+
+  it('accepts an ordinario contract without a rate and a zero advance', () => {
+    const ordinario = changed(without(full, 'cedolareRateBp'), {
+      taxRegime: 'ordinario',
+      rent: [entry('2025-10', 160000, 0)],
+    });
+    expect(ContractSchema.safeParse(ordinario).success).toBe(true);
+  });
+});
+
 describe('Tenancy', () => {
   it('has an optional room and an optional end month', () => {
     const parsed = TenancySchema.parse(without(validRecords.tenancy, 'room', 'to'));
