@@ -24,6 +24,10 @@
 // or updates the fields given), condominio-documento (preventivo or consuntivo of a fiscal year),
 // condominio (the owners' check of the condominium expenses, the differences and the recoveries)
 // and recupero (part of an extraordinary expense to recover from tenants chosen by user1).
+// Plan 11 adds presenza (the arrival of a tenant, optionally in a contract), fine-presenza (the last
+// month of a stay), subentro (a takeover inside a contract), stato-contratti (tenancies, takeovers,
+// deposits and checks of each contract) and caparra-restituzione (the return statement of a deposit,
+// read only, every figure typed by user1).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -79,6 +83,11 @@ import {
   equalShares,
   saveContract,
   setContractRent,
+  saveTenancy,
+  endTenancy,
+  recordTakeover,
+  loadContractStatus,
+  loadDepositReturn,
   saveTenant,
   setImuYear,
   setRentYear,
@@ -137,7 +146,7 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti, appartamenti, condominio, scadenze).',
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti, appartamenti, condominio, scadenze, presenze).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -209,6 +218,23 @@ const MESSAGES = {
   'invalid-apartment': 'Rifiutato: i dati dell’appartamento non sono validi.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
+  'invalid-tenancy':
+    'Rifiutato: i dati della presenza non sono validi (identificativo, mesi o importi).',
+  'unknown-tenant': 'Rifiutato: inquilino sconosciuto o cancellato.',
+  'same-tenant': 'Rifiutato: nel subentro l’inquilino che entra è quello che esce.',
+  'no-contract': 'Rifiutato: la presenza che esce non è in esattamente un contratto vivo.',
+  'tenancy-exists': 'Rifiutato: la presenza che entra esiste già con altri dati.',
+  'beds-conflict':
+    'Rifiutato: con questa presenza il conguaglio non si può calcolare (posto occupato, posto sconosciuto, troppi inquilini o inquilino presente due volte).',
+  'tenancy-has-dependents':
+    'Rifiutato: l’inquilino ha versamenti o recuperi in questo appartamento: annullarli prima.',
+  'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
+  'no-deposit': 'Rifiutato: nessuna caparra versata da questo inquilino in questo appartamento.',
+  'already-returned': 'Rifiutato: la caparra risulta già restituita.',
+  'invalid-dates': 'Rifiutato: la data finale è prima di quella iniziale.',
+  'missing-rate': 'Rifiutato: manca il tasso legale di un anno.',
+  'deposit-return-draft':
+    'Prospetto con le date, i tassi e il conguaglio indicati: da controllare prima dell’invio.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
 };
 
@@ -299,6 +325,13 @@ const OPTIONS = {
   inquilini: { type: 'string' },
   quote: { type: 'string' },
   periodo: { type: 'string' },
+  posto: { type: 'string' },
+  affitto: { type: 'string' },
+  forfait: { type: 'string' },
+  'caparra-attesa': { type: 'string' },
+  presenza: { type: 'string' },
+  tasso: { type: 'string', multiple: true },
+  addebito: { type: 'string', multiple: true },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -329,6 +362,9 @@ const RECONCILE_KINDS = [
   'payable.save',
   'payable.repeat',
   'payable.paid',
+  'tenancy.save',
+  'tenancy.end',
+  'tenancy.takeover',
 ];
 
 const PAYABLE_STATES = ['da-pagare', 'in-scadenza', 'pagata', 'in-ritardo'];
@@ -1392,6 +1428,168 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'presenza' || name === 'fine-presenza' || name === 'subentro') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const v = values;
+    const nonNegative = (text) => {
+      const amount = euro(text);
+      if (amount < 0) throw invalid('bad-arguments');
+      return amount;
+    };
+    const deposit = v['caparra-attesa'] === undefined ? undefined : positive(v['caparra-attesa']);
+    let result;
+    try {
+      if (name === 'presenza') {
+        need(v, 'id', 'appartamento', 'inquilino', 'dal', 'affitto', 'forfait');
+        result = await saveTenancy(
+          store,
+          {
+            id: v.id,
+            apartmentId: v.appartamento,
+            tenantId: v.inquilino,
+            ...optional('room', v.posto),
+            from: month(v.dal),
+            ...optional('to', v.al === undefined ? undefined : month(v.al)),
+            monthlyRent: nonNegative(v.affitto),
+            monthlyForfait: nonNegative(v.forfait),
+            ...optional('expectedDeposit', deposit),
+            ...optional('contractId', v.contratto),
+          },
+          who,
+          clock,
+          newId,
+        );
+      } else if (name === 'fine-presenza') {
+        need(v, 'presenza', 'mese');
+        result = await endTenancy(
+          store,
+          { tenancyId: v.presenza, lastMonth: month(v.mese) },
+          who,
+          clock,
+          newId,
+        );
+      } else {
+        need(v, 'presenza', 'mese', 'id', 'inquilino', 'affitto', 'forfait');
+        result = await recordTakeover(
+          store,
+          {
+            outTenancyId: v.presenza,
+            lastMonth: month(v.mese),
+            incoming: {
+              id: v.id,
+              tenantId: v.inquilino,
+              monthlyRent: nonNegative(v.affitto),
+              monthlyForfait: nonNegative(v.forfait),
+              ...optional('expectedDeposit', deposit),
+            },
+          },
+          who,
+          clock,
+          newId,
+        );
+      }
+    } catch (error) {
+      // An id the store refuses (a name reserved on Windows) is a bad argument.
+      if (error instanceof RangeError) throw invalid('bad-arguments');
+      throw error;
+    }
+    if (result.status === 'refused') {
+      throw new Stop('rejected', result.reason, {
+        ...optional('code', result.code),
+        ...optional('month', result.month),
+      });
+    }
+    return {
+      status: result.status,
+      tenancyId: result.tenancyId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  if (name === 'stato-contratti') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await loadContractStatus(store, {
+      asOf: month(clock().slice(0, 7)),
+      ...optional('apartmentId', values.appartamento),
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const details = values.dettagli === true;
+    const count = (list, keys) =>
+      Object.fromEntries(keys.map((k) => [k, list.filter((x) => x === k).length]));
+    // Counts and codes only; tenancies, tenants, months and amounts with --dettagli (R107).
+    return {
+      status: 'ok',
+      contracts: result.contracts.map(({ contract, tenancies, deposits, checks }) => ({
+        contractId: contract.id,
+        apartmentId: contract.apartmentId,
+        tenancies: count(
+          tenancies.map((t) => t.state),
+          ['futura', 'in-corso', 'uscita'],
+        ),
+        takeovers: contract.takeovers?.length ?? 0,
+        deposits: count(
+          deposits.map((d) => d.status),
+          ['versata', 'diversa', 'mancante', 'non-impostata'],
+        ),
+        ...(deposits.some((d) => d.status === 'diversa' || d.status === 'mancante')
+          ? { message: MESSAGES['deposit-check'] }
+          : {}),
+        checks: checks.map((c) => c.code),
+        ...(details
+          ? {
+              tenancyList: tenancies.map(({ tenancy: t, state }) => ({
+                tenancyId: t.id,
+                tenantId: t.tenantId,
+                room: t.room,
+                from: t.from,
+                to: t.to,
+                state,
+                monthlyRent: t.monthlyRent,
+                monthlyForfait: t.monthlyForfait,
+                expectedDeposit: t.expectedDeposit,
+              })),
+              takeoverList: contract.takeovers,
+              depositList: deposits,
+            }
+          : {}),
+      })),
+    };
+  }
+
+  if (name === 'caparra-restituzione') {
+    need(values, 'appartamento', 'inquilino', 'dal', 'al', 'conguaglio');
+    if (positionals.length > 0 || (values.tasso ?? []).length === 0) {
+      throw invalid('bad-arguments');
+    }
+    const rates = values.tasso.map((text) => {
+      const found = /^([0-9]{4}):(.+)$/.exec(text);
+      if (found === null) throw invalid('bad-arguments');
+      return { year: Number(found[1]), rateBp: basisPoints(found[2]) };
+    });
+    const extraCharges = (values.addebito ?? []).map((text) => {
+      const at = text.lastIndexOf(':');
+      if (at < 1) throw invalid('bad-arguments');
+      return { label: text.slice(0, at), amount: positive(text.slice(at + 1)) };
+    });
+    const result = await loadDepositReturn(store, {
+      apartmentId: values.appartamento,
+      tenantId: values.inquilino,
+      from: day(values.dal),
+      to: day(values.al),
+      rates,
+      conguaglio: euro(values.conguaglio),
+      extraCharges,
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    // Every line is an amount: only with --dettagli (R107).
+    return {
+      status: 'ok',
+      lines: result.statement.lines.length,
+      message: MESSAGES['deposit-return-draft'],
+      ...(values.dettagli === true ? { statement: result.statement } : {}),
+    };
+  }
+
   if (name === 'scadenze') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const { stato, tipo, entro } = values;
@@ -1589,7 +1787,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw new Stop('rejected', 'has-dependents', {
         message:
           MESSAGES[
-            target.kind === 'imu.expected' ? 'imu-has-assignments' : 'movement-has-dependents'
+            target.kind === 'imu.expected'
+              ? 'imu-has-assignments'
+              : target.kind.startsWith('tenancy.')
+                ? 'tenancy-has-dependents'
+                : 'movement-has-dependents'
           ],
         recordIds,
       });
@@ -1723,6 +1925,11 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'condominio-documento',
         'condominio',
         'recupero',
+        'presenza',
+        'fine-presenza',
+        'subentro',
+        'stato-contratti',
+        'caparra-restituzione',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1737,14 +1944,24 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti', 'scadenze', 'condominio'],
+      dettagli: [
+        'riconcilia',
+        'importa',
+        'saldi',
+        'imu',
+        'contratti',
+        'scadenze',
+        'condominio',
+        'stato-contratti',
+        'caparra-restituzione',
+      ],
       parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
       pagamento: ['annulla-pagamento'],
       movimento: ['escludi', 'annulla-uscita', 'imu-f24', 'scadenza-pagata'],
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
-      inquilino: ['conferma', 'uscita-inquilino'],
+      inquilino: ['conferma', 'uscita-inquilino', 'presenza', 'subentro', 'caparra-restituzione'],
       appartamento: [
         'conto',
         'uscita',
@@ -1756,6 +1973,9 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'condominio-documento',
         'condominio',
         'recupero',
+        'presenza',
+        'stato-contratti',
+        'caparra-restituzione',
       ],
       voce: ['recupero'],
       inquilini: ['recupero'],
@@ -1771,7 +1991,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino', 'contratto', 'scadenze', 'scadenza-nuova', 'condominio-documento'],
-      mese: ['uscita-inquilino'],
+      mese: ['uscita-inquilino', 'fine-presenza', 'subentro'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],
       gambe: ['giroconto'],
@@ -1783,13 +2003,19 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       oggi: ['scadenze'],
       scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
       'ogni-anno': ['scadenza-nuova'],
-      dal: ['importa', 'contratto-canone'],
-      al: ['importa'],
+      dal: ['importa', 'contratto-canone', 'presenza', 'caparra-restituzione'],
+      al: ['importa', 'presenza', 'caparra-restituzione'],
+      posto: ['presenza'],
+      affitto: ['presenza', 'subentro'],
+      forfait: ['presenza', 'subentro'],
+      'caparra-attesa': ['presenza', 'subentro'],
+      presenza: ['fine-presenza', 'subentro'],
+      tasso: ['caparra-restituzione'],
+      addebito: ['caparra-restituzione'],
       ...Object.fromEntries(
         [
           'inizio',
           'fine',
-          'conguaglio',
           'concordato',
           'studenti',
           'durata',
@@ -1812,7 +2038,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
           'modifica',
         ].map((option) => [option, ['appartamento']]),
       ),
-      contratto: ['contratto-canone'],
+      conguaglio: ['contratto', 'caparra-restituzione'],
+      contratto: ['contratto-canone', 'presenza'],
       canone: ['contratto-canone'],
       acconto: ['contratto-canone'],
     };
