@@ -1220,6 +1220,65 @@ export const TenantRecoverySchema = RecordBaseSchema.extend({
   });
 export type TenantRecovery = z.infer<typeof TenantRecoverySchema>;
 
+// --- Taxes and estimates (plan 10) -------------------------------------------------------------
+
+/** The voci of «Tasse e stime» (section 34). */
+export const TAX_VOICES = ['cedolare', 'imu', 'registro', 'tari', 'condominio'] as const;
+export const TaxVoiceSchema = z.enum(TAX_VOICES);
+export type TaxVoice = z.infer<typeof TaxVoiceSchema>;
+
+/**
+ * The start-of-year estimate of one apartment, year and voce typed by user1
+ * (`tax-<apartmentId>-<year>-<voce>`, plan 10, R210): data, never computed. Zero means «nothing
+ * expected», which differs from no record.
+ */
+export const TaxEstimateSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  year: YearSchema,
+  voce: TaxVoiceSchema,
+  amount: z
+    .int()
+    .min(0)
+    .transform((n): Cents => cents(n)),
+})
+  .refine((e) => e.id === `tax-${e.apartmentId}-${e.year}-${e.voce}`, {
+    message: 'The id must be tax-<apartmentId>-<year>-<voce>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is tax-<apartmentId>-<year>-<voce>; amount is cents, not negative.' });
+export type TaxEstimate = z.infer<typeof TaxEstimateSchema>;
+
+/**
+ * A «tasse» debit assigned by user1 to cedolare or registro and tax years (`taxp-<transactionId>`,
+ * plan 10, R210): the parts add up to the debit (checked by the write, R2). IMU F24s have their
+ * own assignment (`MovementClass.imu`).
+ */
+export const TaxPaymentSchema = RecordBaseSchema.extend({
+  transactionId: NonEmptyString,
+  parts: z
+    .array(
+      z.object({
+        voce: z.enum(['cedolare', 'registro']),
+        year: YearSchema,
+        amount: PositiveCentsSchema,
+      }),
+    )
+    .min(1),
+})
+  .refine((p) => p.id === `taxp-${p.transactionId}`, {
+    message: 'The id must be taxp-<transactionId>',
+    path: ['id'],
+  })
+  .refine((p) => unique(p.parts.map((part) => `${part.voce}-${part.year}`)), {
+    message: 'A voce and year appear once',
+    path: ['parts'],
+  })
+  .meta({
+    description:
+      'id is taxp-<transactionId>; parts: at least one, amounts positive cents, each voce and year once.',
+  });
+export type TaxPayment = z.infer<typeof TaxPaymentSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -1250,6 +1309,8 @@ export const recordSchemas = {
   imuRule: ImuRuleSchema,
   condoDocument: CondoDocumentSchema,
   tenantRecovery: TenantRecoverySchema,
+  taxEstimate: TaxEstimateSchema,
+  taxPayment: TaxPaymentSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

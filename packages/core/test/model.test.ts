@@ -20,6 +20,8 @@ import {
   ImuYearSchema,
   CondoDocumentSchema,
   TenantRecoverySchema,
+  TaxEstimateSchema,
+  TaxPaymentSchema,
   NoteSchema,
   PaymentSchema,
   SupplierProfileSchema,
@@ -270,6 +272,23 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     shares: [{ tenantId: 'ten-1', amount: 15000 }],
     status: 'da-recuperare',
   },
+  taxEstimate: {
+    ...base,
+    id: 'tax-apt-1-2026-cedolare',
+    apartmentId: 'apt-1',
+    year: '2026',
+    voce: 'cedolare',
+    amount: 180000,
+  },
+  taxPayment: {
+    ...base,
+    id: 'taxp-tx-1',
+    transactionId: 'tx-1',
+    parts: [
+      { voce: 'cedolare', year: '2025', amount: 60000 },
+      { voce: 'cedolare', year: '2026', amount: 40000 },
+    ],
+  },
   supplierProfile: {
     ...base,
     supplier: 'Fornitore Luce',
@@ -372,6 +391,8 @@ describe('recordSchemas', () => {
         'imuRule',
         'condoDocument',
         'tenantRecovery',
+        'taxEstimate',
+        'taxPayment',
       ].sort(),
     );
   });
@@ -395,6 +416,8 @@ describe('recordSchemas', () => {
     expect(recordSchemas.imuRule).toBe(ImuRuleSchema);
     expect(recordSchemas.condoDocument).toBe(CondoDocumentSchema);
     expect(recordSchemas.tenantRecovery).toBe(TenantRecoverySchema);
+    expect(recordSchemas.taxEstimate).toBe(TaxEstimateSchema);
+    expect(recordSchemas.taxPayment).toBe(TaxPaymentSchema);
   });
 });
 
@@ -1635,5 +1658,33 @@ describe('TenantRecoverySchema (plan 8, task 7)', () => {
     expect(ok({ amount: 0, shares: [{ tenantId: 'ten-1', amount: 0 }] })).toBe(false);
     expect(ok({ shares: [] })).toBe(false);
     expect(ok({ status: 'pagata' })).toBe(false);
+  });
+});
+
+describe('TaxEstimateSchema and TaxPaymentSchema (plan 10, task 1)', () => {
+  const okEstimate = (changes: Record<string, unknown>) =>
+    TaxEstimateSchema.safeParse(changed(validRecords.taxEstimate, changes)).success;
+  const okPayment = (changes: Record<string, unknown>) =>
+    TaxPaymentSchema.safeParse(changed(validRecords.taxPayment, changes)).success;
+
+  it('takes every voce and an amount of zero (nothing expected), not a negative one', () => {
+    for (const voce of ['cedolare', 'imu', 'registro', 'tari', 'condominio']) {
+      expect(okEstimate({ voce, id: `tax-apt-1-2026-${voce}` })).toBe(true);
+    }
+    expect(okEstimate({ amount: 0 })).toBe(true);
+    expect(okEstimate({ amount: -1 })).toBe(false);
+    expect(okEstimate({ voce: 'irpef', id: 'tax-apt-1-2026-irpef' })).toBe(false);
+    expect(okEstimate({ id: 'tax-apt-1-2025-cedolare' })).toBe(false);
+    expect(okEstimate({ year: '26' })).toBe(false);
+  });
+
+  it('takes parts of cedolare or registro, each voce and year once, with positive amounts', () => {
+    expect(okPayment({ parts: [{ voce: 'registro', year: '2026', amount: 6700 }] })).toBe(true);
+    expect(okPayment({ parts: [] })).toBe(false);
+    expect(okPayment({ parts: [{ voce: 'imu', year: '2026', amount: 1 }] })).toBe(false);
+    expect(okPayment({ parts: [{ voce: 'registro', year: '2026', amount: 0 }] })).toBe(false);
+    const part = { voce: 'cedolare', year: '2026', amount: 100 };
+    expect(okPayment({ parts: [part, part] })).toBe(false);
+    expect(okPayment({ id: 'taxp-tx-2' })).toBe(false);
   });
 });
