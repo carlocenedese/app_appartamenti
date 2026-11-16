@@ -22,6 +22,10 @@
 // or updates the fields given), condominio-documento (preventivo or consuntivo of a fiscal year),
 // condominio (the owners' check of the condominium expenses, the differences and the recoveries)
 // and recupero (part of an extraordinary expense to recover from tenants chosen by user1).
+// Plan 10 adds tasse-stima (the start-of-year estimate of an apartment, year and voce typed by
+// user1), tasse-assegna (a «tasse» debit assigned to cedolare or registro and tax years),
+// tasse-copia (the estimates of the year before, copied only on this command) and tasse (the
+// table by taxpayer and the January warning; amounts and the taxpayer only with --dettagli).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -41,6 +45,7 @@ import {
   StatementTableSchema,
   BankTransactionSchema,
   OutgoingKindSchema,
+  TaxVoiceSchema,
   TenantSchema,
   TransferPurposeSchema,
   TimestampSchema,
@@ -81,6 +86,10 @@ import {
   setImuYear,
   setRentYear,
   assignImuF24,
+  assignTaxPayment,
+  copyPreviousTaxYear,
+  loadTaxTable,
+  setTaxEstimate,
   undoBlockedBy,
   undoImport,
   undoOperation,
@@ -130,7 +139,7 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti).',
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti, tasse).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -193,6 +202,18 @@ const MESSAGES = {
   'invalid-apartment': 'Rifiutato: i dati dell’appartamento non sono validi.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
+  'bad-year': 'Rifiutato: anno non valido.',
+  'bad-parts':
+    'Rifiutato: parti non valide (importo non positivo, voce e anno ripetuti, voce non ammessa).',
+  'year-not-empty':
+    'Rifiutato: l’anno ha già delle stime per un appartamento indicato: non si sovrascrive nulla.',
+  'nothing-to-copy': 'Rifiutato: nessuna stima dell’anno prima da copiare.',
+  'not-tax-debit': 'Rifiutato: il movimento non è un addebito contabilizzato classificato «tasse».',
+  'imu-assigned': 'Rifiutato: il movimento paga una rata IMU: annullare prima l’assegnazione.',
+  'tax-year-empty':
+    'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
+  'tax-discrepancy':
+    'Discrepanza tra la stima e il pagato più l’ancora previsto: solo un avviso, non blocca nulla.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
 };
 
@@ -306,6 +327,9 @@ const RECONCILE_KINDS = [
   'condo.document',
   'recovery.save',
   'rent.year',
+  'tax.estimate',
+  'tax.copy',
+  'tax.assign',
 ];
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
@@ -375,6 +399,20 @@ function basisPoints(text) {
   const bp = Number(found[1]) * 100 + Number((found[2] ?? '').padEnd(2, '0'));
   if (bp < 1 || bp > 10000) throw invalid('bad-arguments');
   return bp;
+}
+
+/** `<cedolare|registro>:<AAAA>:<importo>` for tasse-assegna (plan 10). */
+function parseTaxPart(text) {
+  const [voce, year, amount, ...rest] = text.split(':');
+  if (
+    !['cedolare', 'registro'].includes(voce) ||
+    !YearSchema.safeParse(year).success ||
+    amount === undefined ||
+    rest.length > 0
+  ) {
+    throw invalid('bad-arguments');
+  }
+  return { voce, year, amount: euro(amount) };
 }
 
 const month = (text) => {
@@ -1285,6 +1323,113 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'tasse-stima') {
+    need(values, 'appartamento', 'anno', 'voce', 'importo');
+    if (
+      positionals.length > 0 ||
+      !YearSchema.safeParse(values.anno).success ||
+      !TaxVoiceSchema.safeParse(values.voce).success
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const amount = euro(values.importo);
+    if (amount < 0) throw invalid('bad-arguments');
+    const result = await setTaxEstimate(
+      store,
+      { apartmentId: values.appartamento, year: values.anno, voce: values.voce, amount },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      estimateId: result.estimateId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  if (name === 'tasse-copia') {
+    need(values, 'anno');
+    if (positionals.length > 0 || !YearSchema.safeParse(values.anno).success) {
+      throw invalid('bad-arguments');
+    }
+    const result = await copyPreviousTaxYear(
+      store,
+      { year: values.anno, ...optional('apartmentId', values.appartamento) },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      estimateIds: result.estimateIds,
+      operationId: result.operationId,
+    };
+  }
+
+  if (name === 'tasse-assegna') {
+    need(values, 'movimento');
+    if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
+    const result = await assignTaxPayment(
+      store,
+      { transactionId: values.movimento, parts: values.parte.map(parseTaxPart) },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      taxPaymentId: result.taxPaymentId,
+      ...(result.status === 'assigned' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  if (name === 'tasse') {
+    need(values, 'anno');
+    if (positionals.length > 0 || !YearSchema.safeParse(values.anno).success) {
+      throw invalid('bad-arguments');
+    }
+    const result = await loadTaxTable(store, {
+      year: values.anno,
+      today: day(clock().slice(0, 10)),
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const details = values.dettagli === true;
+    // Voce, state, reasons and ids only; amounts and the taxpayer (a name) with --dettagli (R107).
+    return {
+      status: 'ok',
+      year: values.anno,
+      tables: result.tables.map((t) => ({
+        apartmentIds: t.apartmentIds,
+        ...(details ? { taxpayer: t.taxpayer } : {}),
+        rows: t.rows.map((r) => ({
+          voce: r.voce,
+          state: r.state,
+          reasons: r.reasons,
+          ...(r.state === 'discrepanza' ? { message: MESSAGES['tax-discrepancy'] } : {}),
+          ...(details
+            ? {
+                estimate: r.estimate,
+                paid: r.paid,
+                expected: r.expected,
+                difference: r.difference,
+                ...(r.cedolareProposals === undefined
+                  ? {}
+                  : {
+                      cedolareProposals: r.cedolareProposals,
+                      proposalMessage: MESSAGES['cedolare-estimate'],
+                    }),
+              }
+            : {}),
+        })),
+      })),
+      warnings: result.warnings.map((w) => ({ ...w, message: MESSAGES['tax-year-empty'] })),
+    };
+  }
+
   if (name === 'contratti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const result = await loadContractChecks(store, {
@@ -1550,6 +1695,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'condominio-documento',
         'condominio',
         'recupero',
+        'tasse-stima',
+        'tasse-copia',
+        'tasse-assegna',
+        'tasse',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1564,11 +1713,11 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti', 'condominio'],
-      parte: ['conferma', 'abbina'],
+      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti', 'condominio', 'tasse'],
+      parte: ['conferma', 'abbina', 'tasse-assegna'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
       pagamento: ['annulla-pagamento'],
-      movimento: ['escludi', 'annulla-uscita', 'imu-f24'],
+      movimento: ['escludi', 'annulla-uscita', 'imu-f24', 'tasse-assegna'],
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
@@ -1582,15 +1731,17 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'condominio-documento',
         'condominio',
         'recupero',
+        'tasse-stima',
+        'tasse-copia',
       ],
-      voce: ['recupero'],
+      voce: ['recupero', 'tasse-stima'],
       inquilini: ['recupero'],
       quote: ['recupero'],
       periodo: ['recupero'],
       stato: ['recupero'],
       esercizio: ['condominio-documento', 'condominio'],
       'quota-conduttore': ['condominio-documento'],
-      anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno'],
+      anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno', 'tasse-stima', 'tasse-copia', 'tasse'],
       gruppo: ['imu-atteso', 'imu-f24'],
       totale: ['imu-atteso', 'affitti-anno', 'condominio-documento'],
       rata: ['imu-atteso', 'imu-f24'],
@@ -1603,7 +1754,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       gambe: ['giroconto'],
       da: ['giroconto-manuale'],
       a: ['giroconto-manuale'],
-      importo: ['giroconto-manuale', 'recupero'],
+      importo: ['giroconto-manuale', 'recupero', 'tasse-stima'],
       data: ['giroconto-manuale'],
       dal: ['importa', 'contratto-canone'],
       al: ['importa'],
