@@ -1,7 +1,8 @@
 // The Excel of the settlement of one apartment and one period from the command line (plan 5,
 // tasks 7 and 11): `pnpm excel --cartella <dir> --appartamento <id> --periodo <etichetta>
-// [--uscita <file.xlsx>]`; without `--uscita` the file goes to `excelFilePath` under `--cartella`
-// (question 7, R173). The core builds the file; this script opens the data folder with FsStore and
+// [--uscita <file.xlsx>] [--proprietari]`; without `--uscita` the file goes to `excelFilePath`
+// under `--cartella` (question 7, R173). `--proprietari` writes the owners' file instead (plan 5b,
+// R175), only to `--uscita`. The core builds the file; this script opens the data folder with FsStore and
 // writes the bytes through a temporary file in the same folder, linked to the output so that an
 // existing file is never overwritten (section 6, R156).
 //
@@ -28,16 +29,18 @@ import {
   SettlementInputError,
   assertSafeRelPath,
   buildConguaglioWorkbook,
+  buildOwnersWorkbook,
   calcConguaglio,
   excelFilePath,
   excelItems,
   loadExcelInput,
+  ownersItems,
   writeXlsx,
 } from '../packages/core/src/index.ts';
 
 const MESSAGES = {
   'bad-arguments':
-    'Argomenti non validi: servono --cartella, --appartamento e --periodo (--uscita facoltativo).',
+    'Argomenti non validi: servono --cartella, --appartamento e --periodo; --uscita è facoltativo, obbligatorio con --proprietari.',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
   'bad-output':
     'Il file di uscita non è valido: serve un nome .xlsx ammesso, in una cartella che esiste.',
@@ -120,6 +123,7 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
           appartamento: { type: 'string' },
           periodo: { type: 'string' },
           uscita: { type: 'string' },
+          proprietari: { type: 'boolean' },
         },
         allowPositionals: false,
         strict: true,
@@ -127,7 +131,12 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     } catch {
       throw invalid('bad-arguments');
     }
-    if (['cartella', 'appartamento', 'periodo'].some((k) => !values[k]) || values.uscita === '') {
+    if (
+      ['cartella', 'appartamento', 'periodo'].some((k) => !values[k]) ||
+      values.uscita === '' ||
+      // The owners' file has no default path yet (plan 5b, question 2).
+      (values.proprietari === true && values.uscita === undefined)
+    ) {
       throw invalid('bad-arguments');
     }
     try {
@@ -152,6 +161,20 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
       if (existsSync(file)) throw rejected('file-exists');
     }
     const { file, folder } = target;
+    if (values.proprietari === true) {
+      // Plan 5b, R175: no tenancy is read, so no settlement refusal.
+      const owners = buildOwnersWorkbook(loaded.input);
+      writeNew(file, folder, writeXlsx(owners), io);
+      const items = ownersItems(loaded.input);
+      return done(0, {
+        status: 'written',
+        apartmentId: loaded.input.apartment.id,
+        period: loaded.input.period.label,
+        sheets: owners.sheets.length,
+        items: items.length,
+        pending: items.filter((i) => i.status === 'in-attesa').length,
+      });
+    }
     let workbook;
     let result;
     try {

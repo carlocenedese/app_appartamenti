@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   buildConguaglioWorkbook,
+  buildOwnersWorkbook,
   loadExcelInput,
   recordPath,
   writeRecord,
@@ -174,6 +175,38 @@ describe('pnpm excel', () => {
     expect(second.code).toBe(1);
     expect(JSON.parse(second.output)).toMatchObject({ reason: 'file-exists' });
     expect(readdirSync(folder)).toEqual(['Conguaglio_Nord_2026-27.xlsx']);
+  });
+
+  it('writes the owners file with --proprietari, only to --uscita', async () => {
+    const args = ['--cartella', data, '--appartamento', 'apt-nord', '--periodo', '2026-27'];
+    const file = join(out, 'Proprietari.xlsx');
+    const first = await main([...args, '--proprietari', '--uscita', file]);
+    outputs.push(first.output);
+    expect(first.code).toBe(0);
+    expect(JSON.parse(first.output)).toEqual({
+      status: 'written',
+      apartmentId: 'apt-nord',
+      period: '2026-27',
+      sheets: 1,
+      items: 1,
+      pending: 0,
+    });
+    const loaded = await loadExcelInput(new FsStore(data), {
+      apartmentId: 'apt-nord',
+      periodLabel: '2026-27',
+    });
+    expect(new Uint8Array(readFileSync(file))).toEqual(
+      writeXlsx(buildOwnersWorkbook(loaded.input)),
+    );
+    const again = await main([...args, '--proprietari', '--uscita', file]);
+    outputs.push(again.output);
+    expect(again.code).toBe(1);
+    expect(JSON.parse(again.output)).toMatchObject({ reason: 'file-exists' });
+    const noOutput = await main([...args, '--proprietari']);
+    outputs.push(noOutput.output);
+    expect(noOutput.code).toBe(2);
+    expect(JSON.parse(noOutput.output)).toMatchObject({ reason: 'bad-arguments' });
+    rmSync(file);
   });
 
   it('never prints names, amounts, IBANs or paths', () => {
