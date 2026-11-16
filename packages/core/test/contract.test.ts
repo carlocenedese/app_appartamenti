@@ -3,6 +3,9 @@ import {
   ContractSchema,
   PaymentSchema,
   TenancySchema,
+  cedolareExpected,
+  cedolareRateForYear,
+  cents,
   contractChecks,
   rentForMonth,
   yearMonth,
@@ -385,5 +388,47 @@ describe('contractChecks: contract-overlap (user1, question 9 of plan 7, R181)',
       ['ctr-a', 'ctr-c', '2026-09', '2026-09'],
       ['ctr-b', 'ctr-c', '2026-10', '2026-10'],
     ]);
+  });
+});
+
+describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
+  it.each([
+    [1935000, 1000, 193500], // the rents of the year 19.350,00 at 10%
+    [12345, 1000, 1235], // 1234,5 cents: half up
+    [12344, 1000, 1234],
+    [100001, 2100, 21000], // 21000,21 cents
+    [100001, 10000, 100001],
+  ])('%i cents at %i bp is %i cents, one rounding', (total, rate, expected) => {
+    expect(cedolareExpected(cents(total), rate)).toBe(expected);
+  });
+
+  it('the rate of the year: the one rate of the live cedolare contracts touching the year', () => {
+    const cedolare = (id: string, extra: Record<string, unknown> = {}) =>
+      makeContract(id, { taxRegime: 'cedolare', cedolareRateBp: 1000, ...extra });
+    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2026')).toBe(1000);
+    // 2025-10 to 2027-09 touches 2025, 2026 and 2027, not 2024 or 2028.
+    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2024')).toBeUndefined();
+    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2028')).toBeUndefined();
+    expect(cedolareRateForYear([cedolare('a')], 'lovarini', '2026')).toBeUndefined();
+    expect(
+      cedolareRateForYear(
+        [
+          cedolare('a'),
+          cedolare('b', { start: '2026-10', end: '2028-09' }),
+          cedolare('gone', { cedolareRateBp: 2100, deleted: true }),
+          makeContract('ord', { taxRegime: 'ordinario' }),
+        ],
+        'berchet',
+        '2026',
+      ),
+    ).toBe(1000);
+    // Two different rates in the year: no estimate (R182).
+    expect(
+      cedolareRateForYear(
+        [cedolare('a'), cedolare('b', { cedolareRateBp: 2100 })],
+        'berchet',
+        '2026',
+      ),
+    ).toBeUndefined();
   });
 });

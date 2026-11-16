@@ -5,14 +5,16 @@
  * No write ever touches a tenancy, a payment or another contract; no amount, code or name in a
  * summary.
  */
-import { contractChecks } from './contract';
+import { cedolareExpected, cedolareRateForYear, contractChecks } from './contract';
 import type { ContractCheck } from './contract';
 import { checkConsistency, commitChange } from './journal';
 import {
   ApartmentSchema,
   ContractSchema,
   PaymentSchema,
+  RentYearSchema,
   TenancySchema,
+  YearSchema,
   rentHistoryValid,
 } from './model';
 import type { Contract } from './model';
@@ -224,4 +226,113 @@ export async function loadContractChecks(
   );
   const ids = new Set(contracts.map((c) => c.id));
   return { status: 'computed', contracts, checks: checks.filter((c) => ids.has(c.contractId)) };
+}
+
+export type SetRentYearResult =
+  | { status: 'saved'; operationId: string; rentYearId: string }
+  | { status: 'unchanged'; rentYearId: string }
+  | {
+      status: 'refused';
+      reason: 'inconsistent-store' | 'unknown-apartment' | 'bad-year' | 'bad-amount';
+    };
+
+/**
+ * Creates or updates `rent-<apartmentId>-<year>` (a new `rev`; a deleted one comes back), the
+ * rents of the year typed by user1, in one `rent.year` operation (R182). Refused without writing:
+ * `inconsistent-store`; `unknown-apartment` (absent or deleted); `bad-year` (not `AAAA`);
+ * `bad-amount` (not positive). The same total already stored is `unchanged`.
+ */
+export async function setRentYear(
+  store: Store,
+  input: { apartmentId: string; year: string; totalRent: Cents },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<SetRentYearResult> {
+  const refuse = (reason: Extract<SetRentYearResult, { status: 'refused' }>['reason']) =>
+    ({ status: 'refused', reason }) as const;
+  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+  if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
+  if (!YearSchema.safeParse(input.year).success) return refuse('bad-year');
+  if (!Number.isSafeInteger(input.totalRent) || input.totalRent <= 0) return refuse('bad-amount');
+  const id = `rent-${input.apartmentId}-${input.year}`;
+  const before = (
+    await loadAll(store, 'rentYear', RentYearSchema, { includeDeleted: true })
+  ).records.find((y) => y.id === id);
+  const record = (rev: number) =>
+    parseOrThrow(
+      RentYearSchema,
+      {
+        id,
+        v: 1,
+        rev,
+        apartmentId: input.apartmentId,
+        year: input.year,
+        totalRent: input.totalRent,
+      },
+      'rentYear',
+    );
+  if (
+    before !== undefined &&
+    before.deleted !== true &&
+    JSON.stringify(record(before.rev)) === JSON.stringify(before)
+  ) {
+    return { status: 'unchanged', rentYearId: id };
+  }
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'rent.year',
+      apartmentId: input.apartmentId,
+      summary: 'Aggiornati gli affitti di un anno.',
+      changes: [
+        { path: recordPath('rentYear', id), before, after: record((before?.rev ?? 0) + 1) },
+      ],
+    },
+    clock,
+    newId,
+  );
+  return { status: 'saved', operationId: operation.id, rentYearId: id };
+}
+
+export interface RentYearEstimate {
+  apartmentId: string;
+  year: string;
+  totalRent: Cents;
+  /** Only with one rate in the year (`cedolareRateForYear`). */
+  cedolareRateBp?: number;
+  /** An estimate to be confirmed by user1, never a payment (`cedolareExpected`). */
+  cedolareExpected?: Cents;
+}
+
+export type LoadRentYearsResult =
+  | { status: 'computed'; rentYears: RentYearEstimate[] }
+  | { status: 'refused'; reason: 'inconsistent-store' };
+
+/** The live rents of the year by apartment and year, with the cedolare estimate. Read only. */
+export async function loadRentYears(
+  store: Store,
+  options: { apartmentId?: string },
+): Promise<LoadRentYearsResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  const contracts = (await loadAll(store, 'contract', ContractSchema)).records;
+  const rentYears = (await loadAll(store, 'rentYear', RentYearSchema)).records
+    .filter((y) => options.apartmentId === undefined || y.apartmentId === options.apartmentId)
+    .sort((a, b) => (a.id < b.id ? -1 : 1))
+    .map((y): RentYearEstimate => {
+      const rate = cedolareRateForYear(contracts, y.apartmentId, y.year);
+      return {
+        apartmentId: y.apartmentId,
+        year: y.year,
+        totalRent: y.totalRent,
+        ...(rate === undefined
+          ? {}
+          : { cedolareRateBp: rate, cedolareExpected: cedolareExpected(y.totalRent, rate) }),
+      };
+    });
+  return { status: 'computed', rentYears };
 }

@@ -9,6 +9,38 @@ import type { Cents } from './money';
 import { addMonths } from './period';
 import type { YearMonth } from './period';
 
+/**
+ * The cedolare ESTIMATE (R182): `totalRent × rateBp / 10000`, one rounding to the cent, half up.
+ * Both figures are data typed by user1; the result is only shown, to be confirmed by user1.
+ */
+export function cedolareExpected(totalRent: Cents, rateBp: number): Cents {
+  return cents(Math.floor((totalRent * rateBp + 5000) / 10000));
+}
+
+/**
+ * The rate of the estimate of `apartmentId` in `year`: the one `cedolareRateBp` of its live
+ * cedolare contracts with a month in the year; none with no rate or two different ones (R182).
+ */
+export function cedolareRateForYear(
+  contracts: readonly Contract[],
+  apartmentId: string,
+  year: string,
+): number | undefined {
+  const rates = new Set(
+    contracts
+      .filter(
+        (c) =>
+          c.deleted !== true &&
+          c.apartmentId === apartmentId &&
+          c.taxRegime === 'cedolare' &&
+          c.start <= `${year}-12` &&
+          `${year}-01` <= c.end,
+      )
+      .flatMap((c) => (c.cedolareRateBp === undefined ? [] : [c.cedolareRateBp])),
+  );
+  return rates.size === 1 ? [...rates][0] : undefined;
+}
+
 /** The entry of `rent` with the largest `from` not after `month`; none before the first entry. */
 export function rentForMonth(
   contract: Pick<Contract, 'rent'>,

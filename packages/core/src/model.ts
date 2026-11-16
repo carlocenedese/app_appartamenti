@@ -1110,6 +1110,22 @@ export const ImuYearSchema = RecordBaseSchema.extend({
 export type ImuYear = z.infer<typeof ImuYearSchema>;
 
 /**
+ * The rents of one apartment and year as typed by user1 (`rent-<apartmentId>-<year>`, R182):
+ * the base of the cedolare estimate, never derived from the contracts or the payments.
+ */
+export const RentYearSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  year: YearSchema,
+  totalRent: PositiveCentsSchema,
+})
+  .refine((y) => y.id === `rent-${y.apartmentId}-${y.year}`, {
+    message: 'The id must be rent-<apartmentId>-<year>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is rent-<apartmentId>-<year>; totalRent is positive cents.' });
+export type RentYear = z.infer<typeof RentYearSchema>;
+
+/**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
  */
@@ -1135,6 +1151,7 @@ export const recordSchemas = {
   movementRule: MovementRuleSchema,
   transfer: TransferSchema,
   imuYear: ImuYearSchema,
+  rentYear: RentYearSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

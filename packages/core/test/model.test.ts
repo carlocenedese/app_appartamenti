@@ -237,6 +237,13 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     f24Group: 'gruppo-1',
     rates: [{ index: 1 }, { index: 2, expected: 60000 }],
   },
+  rentYear: {
+    ...base,
+    id: 'rent-apt-1-2026',
+    apartmentId: 'apt-1',
+    year: '2026',
+    totalRent: 1935000,
+  },
   supplierProfile: {
     ...base,
     supplier: 'Fornitore Luce',
@@ -335,6 +342,7 @@ describe('recordSchemas', () => {
         'payer',
         'transfer',
         'imuYear',
+        'rentYear',
       ].sort(),
     );
   });
