@@ -162,6 +162,20 @@ describe('pnpm excel', () => {
     expect(readdirSync(out).sort()).toEqual(['Conguaglio.xlsx']);
   });
 
+  it('writes to <Appartamento>/<periodo>/Excel/ under the data folder without --uscita', async () => {
+    const args = ['--cartella', data, '--appartamento', 'apt-nord', '--periodo', '2026-27'];
+    const first = await main(args);
+    outputs.push(first.output);
+    expect(first.code).toBe(0);
+    const folder = join(data, 'Nord', '2026-27', 'Excel');
+    expect(readdirSync(folder)).toEqual(['Conguaglio_Nord_2026-27.xlsx']);
+    const second = await main(args);
+    outputs.push(second.output);
+    expect(second.code).toBe(1);
+    expect(JSON.parse(second.output)).toMatchObject({ reason: 'file-exists' });
+    expect(readdirSync(folder)).toEqual(['Conguaglio_Nord_2026-27.xlsx']);
+  });
+
   it('never prints names, amounts, IBANs or paths', () => {
     const all = outputs.join('');
     expect(outputs.length).toBeGreaterThan(5);

@@ -11,7 +11,9 @@ import {
   isPresent,
 } from './conguaglio';
 import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguaglio';
-import type { Bill, BillMatch, Instalment, Payment, Tenancy, Tenant } from './model';
+import { apartmentFolder } from './accounts';
+import { safeWord } from './proposal';
+import type { Apartment, Bill, BillMatch, Instalment, Payment, Tenancy, Tenant } from './model';
 import { cents, formatEuro, splitCents } from './money';
 import type { Cents } from './money';
 import { annualitaRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
@@ -273,6 +275,20 @@ const SOURCE_LABELS: Record<Payment['source'], string> = {
   manual: 'a mano',
   excel: 'Excel',
 };
+
+/**
+ * Where the Excel of a period goes under the shared folder (section 20, question 7, R173):
+ * `<Appartamento>/<periodo>/Excel/Conguaglio_<Appartamento>_<periodo>.xlsx`, ASCII letters,
+ * digits, `_` and `-` only, never a name Windows reserves.
+ */
+export function excelFilePath(
+  apartment: Pick<Apartment, 'name'>,
+  period: Pick<ConguaglioInput['period'], 'label'>,
+): string {
+  const folder = apartmentFolder(apartment.name);
+  const label = safeWord(period.label, 'periodo', 20);
+  return `${folder}/${label}/Excel/Conguaglio_${folder}_${label}.xlsx`;
+}
 
 /** A tenant of the period has no live `tenant` record, so no name (question 8). */
 export class ExcelInputError extends Error {

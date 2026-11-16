@@ -1,6 +1,7 @@
 // The Excel of the settlement of one apartment and one period from the command line (plan 5,
-// task 7): `pnpm excel --cartella <dir> --appartamento <id> --periodo <etichetta> --uscita
-// <file.xlsx>`. The core builds the file; this script opens the data folder with FsStore and
+// tasks 7 and 11): `pnpm excel --cartella <dir> --appartamento <id> --periodo <etichetta>
+// [--uscita <file.xlsx>]`; without `--uscita` the file goes to `excelFilePath` under `--cartella`
+// (question 7, R173). The core builds the file; this script opens the data folder with FsStore and
 // writes the bytes through a temporary file in the same folder, linked to the output so that an
 // existing file is never overwritten (section 6, R156).
 //
@@ -8,7 +9,15 @@
 // Exit codes (R107): 0 written, 1 refused, 2 arguments not valid, 3 an unexpected failure.
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, linkSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  realpathSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -20,6 +29,7 @@ import {
   assertSafeRelPath,
   buildConguaglioWorkbook,
   calcConguaglio,
+  excelFilePath,
   excelItems,
   loadExcelInput,
   writeXlsx,
@@ -27,7 +37,7 @@ import {
 
 const MESSAGES = {
   'bad-arguments':
-    'Argomenti non validi: servono --cartella, --appartamento, --periodo e --uscita.',
+    'Argomenti non validi: servono --cartella, --appartamento e --periodo (--uscita facoltativo).',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
   'bad-output':
     'Il file di uscita non è valido: serve un nome .xlsx ammesso, in una cartella che esiste.',
@@ -117,7 +127,7 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     } catch {
       throw invalid('bad-arguments');
     }
-    if (['cartella', 'appartamento', 'periodo', 'uscita'].some((k) => !values[k])) {
+    if (['cartella', 'appartamento', 'periodo'].some((k) => !values[k]) || values.uscita === '') {
       throw invalid('bad-arguments');
     }
     try {
@@ -125,14 +135,23 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     } catch {
       throw invalid('bad-folder');
     }
-    const { file, folder } = outputPath(values.uscita);
-    if (existsSync(file)) throw rejected('file-exists');
+    let target = values.uscita === undefined ? undefined : outputPath(values.uscita);
+    if (target !== undefined && existsSync(target.file)) throw rejected('file-exists');
 
     const loaded = await loadExcelInput(new FsStore(values.cartella), {
       apartmentId: values.appartamento,
       periodLabel: values.periodo,
     });
     if (loaded.status !== 'ok') throw rejected(loaded.reason);
+    if (target === undefined) {
+      const file = join(
+        values.cartella,
+        ...excelFilePath(loaded.input.apartment, loaded.input.period).split('/'),
+      );
+      target = { file, folder: dirname(file) };
+      if (existsSync(file)) throw rejected('file-exists');
+    }
+    const { file, folder } = target;
     let workbook;
     let result;
     try {
@@ -147,6 +166,8 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
       }
       throw error;
     }
+    // Only the default folder is created, and only once the file can be built.
+    if (values.uscita === undefined) mkdirSync(folder, { recursive: true });
     writeNew(file, folder, writeXlsx(workbook), io);
     return done(0, {
       status: 'written',

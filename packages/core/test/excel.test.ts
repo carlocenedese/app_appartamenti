@@ -7,6 +7,7 @@ import {
   SettlementInputError,
   buildConguaglioWorkbook,
   calcConguaglio,
+  excelFilePath,
   cents,
   isoDate,
   writeXlsx,
@@ -435,6 +436,22 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     const sum = (i: number) => tenants.reduce((s, r) => s + Number(r[i] ?? 0), 0);
     expect(totale?.slice(8)).toEqual([sum(8), sum(9)]);
     expect(rows.at(-2)?.length).toBe(6);
+  });
+});
+
+describe('excelFilePath (question 7)', () => {
+  const period = { label: '2026-27', from: yearMonth('2026-10'), to: yearMonth('2027-09') };
+
+  it('puts the file in <Appartamento>/<periodo>/Excel/ with a safe name', () => {
+    expect(excelFilePath({ name: 'Nord' }, period)).toBe(
+      'Nord/2026-27/Excel/Conguaglio_Nord_2026-27.xlsx',
+    );
+    expect(excelFilePath({ name: 'Città: è Nord' }, period)).toBe(
+      'Citta-e-Nord/2026-27/Excel/Conguaglio_Citta-e-Nord_2026-27.xlsx',
+    );
+    expect(excelFilePath({ name: 'con' }, period)).toBe(
+      'Appartamento_con/2026-27/Excel/Conguaglio_Appartamento_con_2026-27.xlsx',
+    );
   });
 });
 
