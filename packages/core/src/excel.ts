@@ -305,7 +305,7 @@ const dayMonthYear = (day: ISODate): string =>
  * The Excel of the settlement of `input.period` for `input.apartment` (plan 5): the sheets of
  * `EXCEL_SHEETS`, values only. A `SettlementInputError` of `calcConguaglio` goes through as it
  * is; a tenant of the period without a live `Tenant` throws `ExcelInputError`. No formula, no
- * deposit, no pending item (questions 1, 3, 6).
+ * deposit; the pending items only listed, with no amount (questions 1, 3, 6).
  */
 export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const result = calcConguaglio(input);
@@ -362,6 +362,60 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
       euro(total(items.map((item) => item[k]))),
     ),
   ]);
+  // Question 6: the pending items are listed after the total, with no amount.
+  interface PendingRow {
+    id: string;
+    category: CostCategory;
+    supplier?: string;
+    from: ISODate;
+    to: ISODate;
+  }
+  const pending = result.pending.flatMap((p): PendingRow[] => {
+    if (p.itemType === 'bill') {
+      const b = input.bills.find((x) => x.id === p.itemId);
+      return b === undefined
+        ? []
+        : [
+            {
+              id: b.id,
+              category: b.category,
+              supplier: b.supplier,
+              from: b.periodStart,
+              to: b.periodEnd,
+            },
+          ];
+    }
+    const i = input.instalments.find((x) => x.id === p.itemId);
+    return i === undefined
+      ? []
+      : [
+          {
+            id: i.id,
+            category: i.kind,
+            from: isoDate(`${i.coversFrom}-01`),
+            to: lastDayOfMonth(i.coversTo),
+          },
+        ];
+  });
+  if (pending.length > 0) {
+    const rank = (category: CostCategory) => CATEGORY_ORDER.indexOf(category);
+    pending.sort(
+      (a, b) =>
+        compareText(a.from, b.from) ||
+        rank(a.category) - rank(b.category) ||
+        compareText(a.id, b.id),
+    );
+    bollette.push([], [text('Voci in attesa di pagamento')]);
+    for (const p of pending) {
+      bollette.push([
+        text(CATEGORY_LABELS[p.category]),
+        text(p.supplier),
+        null,
+        date(p.from),
+        date(p.to),
+      ]);
+    }
+  }
 
   const payments = live(input.payments).filter(
     (p) => p.confirmed && p.apartmentId === apartment.id,
@@ -462,12 +516,23 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
 
   const header = (name: ExcelSheetName, extra: string[] = []): XlsxCell[] =>
     [...EXCEL_HEADERS[name], ...extra].map((value) => ({ kind: 'text', value }));
-  const sheet = (name: ExcelSheetName, rows: (XlsxCell | null)[][], extra?: string[]) =>
-    ({ name, rows: [header(name, extra), ...rows] }) satisfies XlsxSheet;
+  // Question 5: with no closing (R5) in the model yet, no period is closed (R171).
+  const provisional: XlsxCell[] = [
+    {
+      kind: 'text',
+      value: `Conguaglio provvisorio: voci in attesa ${String(result.pending.length)}`,
+    },
+  ];
+  const sheet = (
+    name: ExcelSheetName,
+    rows: (XlsxCell | null)[][],
+    extra?: string[],
+    top: XlsxCell[][] = [],
+  ) => ({ name, rows: [...top, header(name, extra), ...rows] }) satisfies XlsxSheet;
   return {
     sheets: [
-      sheet('Bollette', bollette),
-      sheet('Conguagli', conguagli),
+      sheet('Bollette', bollette, [], [provisional]),
+      sheet('Conguagli', conguagli, [], [provisional]),
       sheet('Affitti versati', affitti, months.map(monthWithYear)),
       sheet('Versamenti conguaglio', versamenti),
     ],

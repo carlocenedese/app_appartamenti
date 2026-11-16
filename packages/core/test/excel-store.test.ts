@@ -71,7 +71,9 @@ describe('loadExcelInput', () => {
     const loaded = await loadExcelInput(store, QUERY);
     if (loaded.status !== 'ok') throw new Error(loaded.reason);
     const types = buildConguaglioWorkbook(loaded.input).sheets[0]?.rows.map((r) => r[0]?.value);
-    expect(types).not.toContain('Gas');
+    // Only in the list of the pending items, after the total.
+    expect(types?.slice(types.indexOf('Totale'))).toContain('Gas');
+    expect(types?.slice(0, types.indexOf('Totale'))).not.toContain('Gas');
   });
 
   it('keeps planMatch.run as it was', async () => {

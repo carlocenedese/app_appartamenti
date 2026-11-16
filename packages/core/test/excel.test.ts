@@ -47,8 +47,8 @@ describe('buildConguaglioWorkbook on the fixture', () => {
 
   it('has the four sheets with the headers of EXCEL_HEADERS', () => {
     expect(book.sheets.map((s) => s.name)).toEqual([...EXCEL_SHEETS]);
-    expect(rowsOf(get('Bollette'))[0]).toEqual(EXCEL_HEADERS.Bollette);
-    expect(rowsOf(get('Conguagli'))[0]).toEqual(EXCEL_HEADERS.Conguagli);
+    expect(rowsOf(get('Bollette'))[1]).toEqual(EXCEL_HEADERS.Bollette);
+    expect(rowsOf(get('Conguagli'))[1]).toEqual(EXCEL_HEADERS.Conguagli);
     expect(rowsOf(get('Affitti versati'))[0]).toEqual([
       ...EXCEL_HEADERS['Affitti versati'],
       ...MONTHS,
@@ -75,6 +75,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     ]);
     const rows = rowsOf(sheet);
     expect(rows.map((r) => r[0])).toEqual([
+      'Conguaglio provvisorio: voci in attesa 1',
       'Tipo',
       'Elettricità',
       'Internet',
@@ -82,6 +83,9 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       'Condominio',
       'Gas',
       'Totale',
+      undefined,
+      'Voci in attesa di pagamento',
+      'Acqua',
     ]);
     expect(rows.find((r) => r[0] === 'Gas')?.[6]).toBe('assunta, non verificata');
     expect(rows.find((r) => r[0] === 'Elettricità')?.[11]).toBe(
@@ -95,7 +99,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
 
   it('writes one row per tenant in the order of the beds, with the values of calcConguaglio', () => {
     const result = calcConguaglio(fixtureInput());
-    const rows = rowsOf(get('Conguagli')).slice(1);
+    const rows = rowsOf(get('Conguagli')).slice(2);
     expect(rows.map((r) => r.slice(0, 4))).toEqual([
       ['A', 'Anna Prova', 'ott – set', 12],
       ['B', 'Bruno Prova', 'ott – set', 12],
@@ -134,7 +138,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
   it('makes Spese + Condominio of the total equal to the total of the bills (question 4)', () => {
     const bills = rowsOf(get('Bollette'));
     const billTotal = bills.find((r) => r[0] === 'Totale');
-    const items = bills.slice(1, bills.indexOf(billTotal as Plain[]));
+    const items = bills.slice(2, bills.indexOf(billTotal as Plain[]));
     const column = (i: number) => items.reduce((s, r) => s + Number(r[i] ?? 0), 0);
     expect(billTotal?.slice(7, 10)).toEqual([column(7), column(8), column(9)]);
     const totale = rowsOf(get('Conguagli')).find((r) => r[0] === 'Totale');
@@ -159,6 +163,30 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     expect(elena?.[8]).toBeNull();
   });
 
+  it('says on top that the settlement is provisional (question 5)', () => {
+    for (const name of ['Bollette', 'Conguagli']) {
+      expect(get(name)?.rows[0]).toEqual([
+        { kind: 'text', value: 'Conguaglio provvisorio: voci in attesa 1' },
+      ]);
+    }
+    expect(rowsOf(get('Affitti versati'))[0]?.[0]).toBe('Posto');
+  });
+
+  it('lists the pending items at the bottom of the bills, with no amount (question 6)', () => {
+    const rows = get('Bollette')?.rows ?? [];
+    expect(rows.slice(-3)).toEqual([
+      [],
+      [{ kind: 'text', value: 'Voci in attesa di pagamento' }],
+      [
+        { kind: 'text', value: 'Acqua' },
+        { kind: 'text', value: 'Acqua Esempio' },
+        null,
+        { kind: 'date', value: '2027-04-01' },
+        { kind: 'date', value: '2027-06-30' },
+      ],
+    ]);
+  });
+
   it('lists the settlement payments with their sign, never a deposit', () => {
     expect(rowsOf(get('Versamenti conguaglio')).slice(1)).toEqual([
       ['Anna Prova', '2026-11-20', 5000, 'nov 2026', 'estratto conto'],
@@ -166,7 +194,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     ]);
   });
 
-  it('writes only what is decided (questions 1, 3: no deposit, 6)', () => {
+  it('writes only what is decided (questions 1, 3: no deposit, 6: no amount)', () => {
     const cells = book.sheets.flatMap((s) => s.rows.flat());
     const texts = cells.flatMap((c) => (c?.kind === 'text' ? [c.value] : []));
     expect(texts.filter((t) => t.startsWith('='))).toEqual([]);
@@ -177,9 +205,9 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     for (const word of ['caparra']) {
       expect(headers).not.toContain(word);
     }
-    expect(texts.some((t) => /provvisorio/i.test(t))).toBe(false);
-    // The bill waiting for its debit is in no sheet.
-    expect(texts.some((t) => t.includes('Acqua') || t.includes('acqua-2027'))).toBe(false);
+    // The bill waiting for its debit is only listed, with no amount and no file.
+    expect(texts.filter((t) => t.includes('Acqua'))).toEqual(['Acqua', 'Acqua Esempio']);
+    expect(texts.some((t) => t.includes('acqua-2027'))).toBe(false);
     expect(cells.some((c) => c?.kind === 'euro' && c.value === -53840)).toBe(false);
   });
 });
@@ -203,10 +231,29 @@ describe('buildConguaglioWorkbook variants', () => {
       confirmed: true,
       by: 'auto',
     });
-    const anna = sheets(input).get('Conguagli')?.rows[1];
+    const anna = sheets(input).get('Conguagli')?.rows[2];
     const due = anna?.[7];
     expect(due?.kind).toBe('euro');
     expect(Number(due?.value)).toBeLessThan(0);
+  });
+
+  it('has no pending list with nothing pending, and says 0 on top', () => {
+    const input = fixtureInput();
+    input.bills = input.bills.filter((b) => b.id !== 'bill-acqua');
+    const rows = rowsOf(sheets(input).get('Bollette'));
+    expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 0']);
+    expect(rows.at(-1)?.[0]).toBe('Totale');
+  });
+
+  it('lists a pending instalment with its months and no supplier', () => {
+    const input = fixtureInput();
+    input.matches = input.matches.filter((m) => m.itemId !== 'inst-cond-1');
+    const rows = rowsOf(sheets(input).get('Bollette'));
+    expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 2']);
+    expect(rows.slice(-2)).toEqual([
+      ['Condominio', null, null, '2026-10-01', '2027-01-31'],
+      ['Acqua', 'Acqua Esempio', null, '2027-04-01', '2027-06-30'],
+    ]);
   });
 
   it('leaves out unconfirmed and deleted settlement payments', () => {
@@ -383,7 +430,7 @@ describe('paid, residual and status of the settlement (question 3)', () => {
 
   it('sums paid and residual in the total, and leaves the empty beds blank', () => {
     const rows = rowsOf(sheets().get('Conguagli'));
-    const tenants = rows.slice(1, -2);
+    const tenants = rows.slice(2, -2);
     const totale = rows.at(-1);
     const sum = (i: number) => tenants.reduce((s, r) => s + Number(r[i] ?? 0), 0);
     expect(totale?.slice(8)).toEqual([sum(8), sum(9)]);
@@ -412,7 +459,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '30a9f7b8c6027edd999c390f3632f01561da274ff2b96a6999cf206f08f2bec0',
+      'bc626294435dd883ea42ab56777eef136974be1e98d2d845505012aabc237db0',
     );
   });
 });
