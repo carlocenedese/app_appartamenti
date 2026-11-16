@@ -241,6 +241,59 @@ export function condoDifferences(
     );
 }
 
+export interface CondoEstimate {
+  apartmentId: string;
+  esercizio: string;
+  /** The fiscal year's own document, or `copiata` from an earlier one (plan 14, R250). */
+  source: 'consuntivo' | 'preventivo' | 'copiata';
+  fromEsercizio: string;
+  fromKind: CondoDocument['kind'];
+  total: Cents;
+  quotaConduttore?: Cents;
+  lines?: CondoDocument['lines'];
+}
+
+/**
+ * The condominium estimate of one apartment and fiscal year (section 34, user1's decision of plan
+ * 14): its own live document (the consuntivo, else the preventivo), else a copy of the nearest
+ * earlier fiscal year of the same numeric form with one, amounts unchanged, else none. Computed on
+ * read, never written.
+ */
+export function condoEstimate(
+  documents: readonly CondoDocument[],
+  apartmentId: string,
+  esercizio: string,
+): CondoEstimate | undefined {
+  const own = documents.filter((d) => d.deleted !== true && d.apartmentId === apartmentId);
+  // A copy only between numeric fiscal years of the same form (`2026`, `2026-27`): there the text
+  // order is the order of the years; other forms are never converted (question 3).
+  const form = (e: string) => e.replace(/[0-9]/g, '0');
+  const numeric = /^0+(?:-0+)*$/.test(form(esercizio));
+  const from = own
+    .map((d) => d.esercizio)
+    .filter(
+      (e) =>
+        e === esercizio ||
+        (numeric && form(e) === form(esercizio) && compareText(e, esercizio) < 0),
+    )
+    .sort(compareText)
+    .at(-1);
+  if (from === undefined) return undefined;
+  const pick = (kind: CondoDocument['kind']) =>
+    own.find((d) => d.esercizio === from && d.kind === kind);
+  const doc = (pick('consuntivo') ?? pick('preventivo')) as CondoDocument;
+  return {
+    apartmentId,
+    esercizio,
+    source: from === esercizio ? doc.kind : 'copiata',
+    fromEsercizio: from,
+    fromKind: doc.kind,
+    total: doc.total,
+    ...(doc.quotaConduttore === undefined ? {} : { quotaConduttore: doc.quotaConduttore }),
+    ...(doc.lines === undefined ? {} : { lines: doc.lines }),
+  };
+}
+
 /** `amount` in equal parts over `tenantIds`, leftover cents to the first ones (`splitCents`). */
 export function equalShares(
   amount: Cents,
