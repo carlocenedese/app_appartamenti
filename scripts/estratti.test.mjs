@@ -3801,10 +3801,12 @@ describe('pnpm estratti tasse (piano 10)', () => {
     expect(list.json).toMatchObject({ status: 'ok', year: '2026', warnings: [] });
     expect(list.json.tables).toHaveLength(1);
     expect(list.json.tables[0].apartmentIds).toEqual(['nord']);
+    // Plan 13: no payables, so nothing more expected: 1000,00 € paid on 1234,57 € estimated.
     expect(list.json.tables[0].rows[0]).toEqual({
       voce: 'cedolare',
-      state: 'da-verificare',
-      reasons: ['no-expected-source'],
+      state: 'discrepanza',
+      reasons: [],
+      message: expect.any(String),
     });
     expect(list.out).not.toMatch(new RegExp(`${SECRET}|123457|100000|23457`));
     expect(scanText(list.out)).toEqual([]);
@@ -3820,10 +3822,7 @@ describe('pnpm estratti tasse (piano 10)', () => {
     ]);
     expect(undo.code).toBe(0);
     const after = await run(['tasse', ...s.common, '--anno', '2026', '--dettagli']);
-    expect(after.json.tables[0].rows[0].reasons).toEqual([
-      'no-expected-source',
-      'unassigned-tax-movement',
-    ]);
+    expect(after.json.tables[0].rows[0].reasons).toEqual(['unassigned-tax-movement']);
   });
 
   it('tasse a gennaio avvisa dell’anno vuoto; tasse-copia copia l’anno prima solo a comando', async () => {

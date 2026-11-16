@@ -9,6 +9,7 @@ import {
   isoDate,
   loadAll,
   loadTaxTable,
+  savePayable,
   readJournal,
   recordPath,
   recordSchemas,
@@ -341,8 +342,29 @@ describe('assignTaxPayment (plan 10, task 2)', () => {
 });
 
 describe('loadTaxTable (plan 10, task 3)', () => {
-  it('reads the tables of the year and the January warnings, without the payables source', async () => {
+  it('reads the tables of the year and the January warnings, with the payables source', async () => {
     const store = await fixtureStore();
+    // Plan 13: the payables with a reference year are the expected of cedolare and registro.
+    await savePayable(
+      store,
+      {
+        apartmentId: 'nord',
+        kind: 'registro',
+        dueDate: isoDate('2026-12-16'),
+        expected: cents(6700),
+        taxYear: 2026,
+      },
+      'p1',
+      clock,
+      ids('scad'),
+    );
+    await savePayable(
+      store,
+      { apartmentId: 'sud', kind: 'cedolare', dueDate: isoDate('2026-11-30') },
+      'p1',
+      clock,
+      ids('scad2'),
+    );
     await setTaxEstimate(
       store,
       { apartmentId: 'nord', year: '2026', voce: 'registro', amount: cents(0) },
@@ -369,11 +391,22 @@ describe('loadTaxTable (plan 10, task 3)', () => {
     ]);
     expect(result.tables[0]?.rows.find((r) => r.voce === 'registro')).toEqual({
       voce: 'registro',
-      state: 'da-verificare',
-      reasons: ['no-expected-source'],
+      state: 'discrepanza',
+      reasons: [],
       estimate: 0,
       paid: 100000,
+      expected: 6700,
+      difference: 106700,
     });
+    // Without payables the expected is zero, not unknown; a payable without year stays unknown.
+    expect(result.tables[0]?.rows.find((r) => r.voce === 'cedolare')).toMatchObject({
+      reasons: ['missing-estimate'],
+      expected: 0,
+    });
+    expect(result.tables[1]?.rows.find((r) => r.voce === 'cedolare')?.reasons).toEqual([
+      'missing-estimate',
+      'no-expected-source',
+    ]);
     expect(result.warnings).toEqual([{ apartmentId: 'sud', year: '2026', canCopy: false }]);
     expect(await loadTaxTable(store, { year: '26', today: isoDate('2026-01-10') })).toEqual(
       refused('bad-year'),

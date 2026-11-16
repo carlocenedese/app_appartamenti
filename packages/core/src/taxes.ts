@@ -42,14 +42,19 @@ export type TaxReason =
   | 'stale-assignment'
   | 'unassigned-tax-movement'
   | 'no-expected-source'
+  | 'expected-amount-missing'
   | 'rule-undecided';
 
-/** An amount still expected from Scadenze e pagamenti (plan 9), for the voci without own records. */
+/**
+ * An amount still expected from Scadenze e pagamenti (plan 9, `payableExpectedItems`), for the
+ * voci without own records. Without `year` (no reference year chosen) it flags the voce in every
+ * year; without `amount` it flags the voce of its year (R243).
+ */
 export interface TaxExpectedItem {
   apartmentId: string;
   voce: 'cedolare' | 'registro';
-  year: string;
-  amount: Cents;
+  year?: string;
+  amount?: Cents;
 }
 
 export interface TaxRow {
@@ -88,10 +93,7 @@ export interface TaxTableInput {
   taxPayments: TaxPayment[];
   contracts: Contract[];
   rentYears: RentYear[];
-  /**
-   * Absent until the adapter from the payables of plan 9 (waiting for the answer on the tax year of
-   * a payable, question 3): cedolare and registro are then `no-expected-source`.
-   */
+  /** From `payableExpectedItems` (plan 13); absent: cedolare and registro `no-expected-source`. */
   expectedItems?: TaxExpectedItem[];
 }
 
@@ -201,9 +203,11 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     for (const voce of ['cedolare', 'registro'] as const) {
       if (input.expectedItems === undefined) flag(voce, 'no-expected-source');
       for (const item of input.expectedItems ?? []) {
-        if (item.voce === voce && item.year === year && mine.has(item.apartmentId)) {
-          at(voce).expected += item.amount;
-        }
+        if (item.voce !== voce || !mine.has(item.apartmentId)) continue;
+        if (item.year === undefined) flag(voce, 'no-expected-source');
+        else if (item.year !== year) continue;
+        else if (item.amount === undefined) flag(voce, 'expected-amount-missing');
+        else at(voce).expected += item.amount;
       }
     }
     flag('condominio', 'rule-undecided'); // question 1 of the design

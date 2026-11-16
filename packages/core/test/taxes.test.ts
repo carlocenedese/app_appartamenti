@@ -276,6 +276,44 @@ describe('taxTable (plan 10, task 3)', () => {
     expect(rowOf(tables, 'user1', 'imu')).toMatchObject({ state: 'in-linea' });
   });
 
+  it('a payable without reference year or without amount never counts as zero (plan 13)', () => {
+    const tables = taxTable(
+      input({
+        expectedItems: [
+          { apartmentId: 'nord', voce: 'cedolare', year: '2026', amount: cents(40000) },
+          // No year: it could be of any year, so every year is da verificare.
+          { apartmentId: 'est', voce: 'cedolare' },
+          { apartmentId: 'nord', voce: 'registro', year: '2026' },
+          { apartmentId: 'nord', voce: 'registro', year: '2025' },
+        ],
+      }),
+    );
+    expect(rowOf(tables, 'user1', 'cedolare')).toMatchObject({
+      state: 'da-verificare',
+      reasons: ['no-expected-source'],
+      paid: 40000,
+    });
+    expect(rowOf(tables, 'user1', 'cedolare')).not.toHaveProperty('expected');
+    expect(rowOf(tables, 'user1', 'registro')).toEqual({
+      voce: 'registro',
+      state: 'da-verificare',
+      reasons: ['expected-amount-missing'],
+      estimate: 0,
+      paid: 0,
+      expected: 0,
+    });
+    expect(rowOf(tables, 'user2', 'registro')?.reasons).toEqual(['missing-estimate']);
+    expect(
+      rowOf(
+        taxTable(
+          input({ year: '2030', expectedItems: [{ apartmentId: 'est', voce: 'cedolare' }] }),
+        ),
+        'user1',
+        'cedolare',
+      )?.reasons,
+    ).toEqual(['missing-estimate', 'no-expected-source']);
+  });
+
   it('an estimate missing for one apartment of the taxpayer is da verificare, never a partial sum', () => {
     const tables = taxTable(
       input({

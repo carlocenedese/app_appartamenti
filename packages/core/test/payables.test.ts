@@ -3,6 +3,7 @@ import {
   commitChange,
   isoDate,
   loadScadenzario,
+  payableExpectedItems,
   payableState,
   recordPath,
   recordSchemas,
@@ -363,6 +364,50 @@ describe('scadenzario (plan 9, task 2)', () => {
       { contractId: 'c-now', apartmentId: 'pulci', end: '2026-11' },
       { contractId: 'c-later', apartmentId: 'pulci', end: '2027-09' },
     ]);
+  });
+});
+
+describe('payableExpectedItems (plan 13, answer 4 of user1)', () => {
+  it('takes the unpaid cedolare and registro payables, with their reference year and amount', () => {
+    const items = payableExpectedItems({
+      transactions: [tx('t-out', -1600, '2026-11-12')],
+      classes: [
+        recordSchemas.movementClass.parse({
+          ...base,
+          id: 'mc-t-out',
+          transactionId: 't-out',
+          kind: 'escluso',
+          excludeReason: 'doppione',
+        }),
+      ],
+      payables: [
+        payable('scad-a', { taxYear: 2026, expected: 6700 }),
+        payable('scad-b', { kind: 'cedolare', taxYear: 2025 }),
+        payable('scad-c', { kind: 'cedolare', expected: 100 }),
+        // Paid by hand: not expected any more; paid by an excluded movement: still expected.
+        payable('scad-d', { taxYear: 2026, expected: 1, paid: { date: '2026-11-01' } }),
+        payable('scad-e', {
+          taxYear: 2026,
+          expected: 1600,
+          paid: { date: '2026-11-12', transactionId: 't-out' },
+        }),
+        payable('scad-f', { kind: 'bollo', taxYear: 2026, expected: 1600 }),
+        payable('scad-g', { taxYear: 2026, expected: 5, deleted: true }),
+      ],
+    });
+    expect(items).toEqual([
+      { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 6700 },
+      { apartmentId: 'pulci', voce: 'cedolare', year: '2025' },
+      { apartmentId: 'pulci', voce: 'cedolare', amount: 100 },
+      { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 1600 },
+    ]);
+    expect(
+      payableExpectedItems({
+        transactions: [],
+        classes: [],
+        payables: [payable('scad-y', { taxYear: 7 })],
+      }),
+    ).toEqual([{ apartmentId: 'pulci', voce: 'registro', year: '0007' }]);
   });
 });
 
