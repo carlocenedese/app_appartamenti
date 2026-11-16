@@ -20,6 +20,7 @@ import {
   assertSafeRelPath,
   buildConguaglioWorkbook,
   calcConguaglio,
+  excelItems,
   loadExcelInput,
   writeXlsx,
 } from '../packages/core/src/index.ts';
@@ -153,7 +154,7 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
       period: loaded.input.period.label,
       sheets: EXCEL_SHEETS.length,
       tenants: result.tenants.length,
-      items: (workbook.sheets[0]?.rows.length ?? 1) - 1,
+      items: excelItems(loaded.input, result).length,
       pending: result.pending.length,
     });
   } catch (error) {
