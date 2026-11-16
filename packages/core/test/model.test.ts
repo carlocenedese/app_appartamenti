@@ -16,6 +16,7 @@ import {
   InstalmentSchema,
   MovementClassSchema,
   MovementRuleSchema,
+  ImuRuleSchema,
   ImuYearSchema,
   NoteSchema,
   PaymentSchema,
@@ -229,6 +230,12 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     purpose: 'saldo',
     source: 'confirmed',
   },
+  imuRule: {
+    ...base,
+    id: 'imur-t1',
+    accountId: 'acc-1',
+    f24Group: 'gruppo-1',
+  },
   imuYear: {
     ...base,
     id: 'imu-apt-1-2026',
@@ -335,6 +342,7 @@ describe('recordSchemas', () => {
         'payer',
         'transfer',
         'imuYear',
+        'imuRule',
       ].sort(),
     );
   });
@@ -355,6 +363,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.movementClass).toBe(MovementClassSchema);
     expect(recordSchemas.movementRule).toBe(MovementRuleSchema);
     expect(recordSchemas.imuYear).toBe(ImuYearSchema);
+    expect(recordSchemas.imuRule).toBe(ImuRuleSchema);
   });
 });
 
@@ -1517,5 +1526,21 @@ describe('ImuYearSchema (plan 3d, task 1)', () => {
     expect(ok({ annualTotal: -1 })).toBe(false);
     expect(ok({ rates: [] })).toBe(false);
     expect(ok({ f24Group: '' })).toBe(false);
+  });
+});
+
+describe('ImuRuleSchema (plan 3d, task 5)', () => {
+  const rule = { ...base, id: 'imur-f', accountId: 'acc-1', f24Group: 'berchet-lovarini' };
+  const ok = (changes: Record<string, unknown>) =>
+    ImuRuleSchema.safeParse(changed(rule, changes)).success;
+
+  it('accepts an account and a group, a key and dates; refuses an end before the start', () => {
+    expect(ImuRuleSchema.parse(rule)).toEqual(rule);
+    expect(ok({ key: 'name:ente inventato', validFrom: '2026-06-14', validTo: '2026-06-14' })).toBe(
+      true,
+    );
+    expect(ok({ validFrom: '2026-06-15', validTo: '2026-06-14' })).toBe(false);
+    expect(ok({ f24Group: '' })).toBe(false);
+    expect(ok({ key: 'nessuna' })).toBe(false);
   });
 });

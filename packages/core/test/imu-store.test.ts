@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ImuRuleSchema,
   ImuYearSchema,
   MovementClassSchema,
   assignImuF24,
@@ -387,5 +388,103 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
         .flatMap((o) => o.changes)
         .some((c) => JSON.stringify(c.after).includes('"imu"')),
     ).toBe(false);
+  });
+
+  describe('the learnt rule (plan 3d, task 5; answers of user1 to questions 7 and 8)', () => {
+    const rules = async (store: MemoryStore) =>
+      (await loadAll(store, 'imuRule', ImuRuleSchema, { includeDeleted: true })).records;
+    const remember = (
+      store: MemoryStore,
+      extra: Partial<typeof rate1> & { transactionId?: string } = {},
+      prefix = 'a',
+    ) =>
+      assignImuF24(
+        store,
+        { transactionId: 'f', ...rate1, ...extra, rememberRule: true },
+        'p1',
+        clock,
+        ids(prefix),
+      );
+    const suggestionOf = async (store: MemoryStore, transactionId: string) =>
+      (await planOutgoing(store)).proposals.find((p) => p.transactionId === transactionId)
+        ?.imuSuggestion;
+
+    it('saves the rule last in the same operation; it suggests, never writes; undone with it', async () => {
+      const store = await f24Store();
+      expect(await remember(store)).toEqual({
+        status: 'assigned',
+        operationId: 'a-1',
+        classId: 'mc-f',
+        ruleId: 'imur-f',
+      });
+      expect(await rules(store)).toEqual([
+        { ...base, id: 'imur-f', accountId: 'acc-berchet', f24Group: 'berchet-lovarini' },
+      ]);
+      const [op] = (await readJournal(store)).operations;
+      expect(op?.changes.map((c) => c.path)).toEqual([
+        recordPath('movementClass', 'mc-f'),
+        recordPath('imuRule', 'imur-f'),
+      ]);
+      // The second F24 of the account: the group, its year, the lowest open rate.
+      expect(await suggestionOf(store, 'g')).toEqual({
+        f24Group: 'berchet-lovarini',
+        year: '2026',
+        rateIndex: 2,
+      });
+      await runReconciliation(store, 'p1', clock, ids('r'));
+      expect((await classes(store)).map((c) => c.id)).toEqual(['mc-f']);
+      // The same group again: no second rule.
+      expect(await remember(store, { transactionId: 'g', rateIndex: 2 }, 'b')).toEqual({
+        status: 'assigned',
+        operationId: 'b-1',
+        classId: 'mc-g',
+      });
+      expect((await rules(store)).map((r) => r.id)).toEqual(['imur-f']);
+      await undoOperation(store, 'b-1', 'p1', clock, ids('u'));
+      await undoOperation(store, 'a-1', 'p1', clock, ids('v'));
+      expect(await rules(store)).toMatchObject([{ id: 'imur-f', deleted: true }]);
+      expect(await suggestionOf(store, 'g')).toBeUndefined();
+    });
+
+    it('«solo questa volta» saves none; another group ends the rule the day before', async () => {
+      const store = await f24Store();
+      expect(await assign(store)).toEqual({
+        status: 'assigned',
+        operationId: 'a-1',
+        classId: 'mc-f',
+      });
+      expect(await rules(store)).toEqual([]);
+      await undoOperation(store, 'a-1', 'p1', clock, ids('u'));
+      await remember(store, {}, 'b');
+      await put(store, 'imuYear', [
+        { ...imuYear('berchet', 'berchet-solo'), id: 'imu-berchet-2027', year: '2027' },
+      ]);
+      await put(store, 'transaction', [f24('k', '2027-06-14', -50000)]);
+      expect(await suggestionOf(store, 'k')).toEqual({
+        f24Group: 'berchet-lovarini',
+      });
+      expect(
+        await remember(store, { transactionId: 'k', f24Group: 'berchet-solo', year: '2027' }, 'c'),
+      ).toMatchObject({ status: 'assigned', ruleId: 'imur-k' });
+      expect(await rules(store)).toEqual([
+        {
+          ...base,
+          rev: 2,
+          id: 'imur-f',
+          accountId: 'acc-berchet',
+          f24Group: 'berchet-lovarini',
+          validTo: '2027-06-13',
+        },
+        {
+          ...base,
+          id: 'imur-k',
+          accountId: 'acc-berchet',
+          f24Group: 'berchet-solo',
+          validFrom: '2027-06-14',
+        },
+      ]);
+      // The older F24 still falls under the older rule.
+      expect(await suggestionOf(store, 'g')).toMatchObject({ f24Group: 'berchet-lovarini' });
+    });
   });
 });

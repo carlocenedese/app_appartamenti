@@ -13,6 +13,8 @@ import {
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
+  ImuRuleSchema,
+  ImuYearSchema,
   MovementClassSchema,
   MovementRuleSchema,
   OutgoingKindSchema,
@@ -66,6 +68,8 @@ async function loadOutgoingState(store: Store, alsoUsed: ReadonlySet<string> = n
     used: new Set([...alsoUsed, ...uses.keys()]),
     operations: (await readJournal(store)).operations,
     bankProfiles: (await loadAll(store, 'bankProfile', BankProfileSchema, all)).records,
+    imuRules: (await loadAll(store, 'imuRule', ImuRuleSchema, all)).records,
+    imuYears: (await loadAll(store, 'imuYear', ImuYearSchema, all)).records,
   };
   return { ...state, result: reconcileOutgoing(state) };
 }

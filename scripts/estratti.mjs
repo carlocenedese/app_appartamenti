@@ -677,6 +677,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
           step: p.step,
           reason: p.reason,
           ...(p.suggestedKind === undefined ? {} : { suggestedKind: p.suggestedKind }),
+          // Group, year and index only (plan 3d, task 5): always to confirm with imu-f24.
+          ...(p.imuSuggestion === undefined ? {} : { imuSuggestion: p.imuSuggestion }),
           ...txExtra(p),
         })),
         missingDocument: outgoing.missingDocument.length,
@@ -891,6 +893,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         f24Group: values.gruppo,
         year: values.anno,
         rateIndex: Number(rata),
+        rememberRule: values['solo-questa-volta'] !== true,
       },
       who,
       clock,
@@ -898,7 +901,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     if (result.status === 'unchanged') return { status: 'unchanged', classId: result.classId };
-    return { status: 'assigned', operationId: result.operationId, classId: result.classId };
+    return {
+      status: 'assigned',
+      operationId: result.operationId,
+      classId: result.classId,
+      ...(result.ruleId === undefined ? {} : { ruleId: result.ruleId }),
+    };
   }
 
   if (name === 'imu') {
@@ -1274,7 +1282,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       prova: ['riconcilia'],
       dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti'],
       parte: ['conferma', 'abbina'],
-      'solo-questa-volta': ['conferma', 'uscita', 'giroconto'],
+      'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
       pagamento: ['annulla-pagamento'],
       movimento: ['escludi', 'annulla-uscita', 'imu-f24'],
       motivo: ['escludi'],

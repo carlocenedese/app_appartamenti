@@ -86,6 +86,7 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | gruppo F24            | F24 group (`f24Group`)           | gli appartamenti pagati dallo stesso F24 in un anno (testo negli `imuYear`)                           |
 | importo atteso        | expected amount (`expected`)     | quanto si prevede di pagare per una rata, dal prospetto: un dato, mai calcolato                       |
 | quota IMU             | IMU share (`imuShares`)          | la parte di un appartamento nell'addebito di un F24 IMU, in proporzione agli importi attesi           |
+| regola IMU            | IMU rule (`ImuRule`)             | da un'assegnazione con «ricorda»: conto e controparte suggeriscono il gruppo F24, mai assegnato da sé |
 
 ## Dati e registro
 

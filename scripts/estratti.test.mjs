@@ -2187,6 +2187,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
         status: 'assigned',
         operationId: assigned.json.operationId,
         classId: `mc-${s.first}`,
+        ruleId: `imur-${s.first}`,
       });
       const snapAssigned = snapshot(s.dir);
       const same = s.run(f24(s, s.first, '1'));
@@ -2213,6 +2214,39 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       ]);
       expect(undo.code).toBe(0);
       expect(s.run(f24(s, s.second, '1')).code).toBe(0);
+      noAmounts(outs.join(''));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'imu-f24: la regola appresa suggerisce gruppo, anno e rata in riconcilia; --solo-questa-volta nessuna',
+    async () => {
+      const outs = [];
+      const s = await imuSetup(outs);
+      const once = s.run(f24(s, s.first, '1', '--solo-questa-volta'));
+      expect(once.json).toEqual({
+        status: 'assigned',
+        operationId: once.json.operationId,
+        classId: `mc-${s.first}`,
+      });
+      const proposal = () =>
+        s.run(['riconcilia', ...s.common]).json.outgoing.proposals.find((p) => p.step === 'f24');
+      expect(proposal()).not.toHaveProperty('imuSuggestion');
+      expect(
+        s.run(['annulla-riconciliazione', ...s.common, '--operazione', once.json.operationId]).code,
+      ).toBe(0);
+      const learnt = s.run(f24(s, s.first, '1'));
+      expect(learnt.json).toMatchObject({ status: 'assigned', ruleId: `imur-${s.first}` });
+      expect(proposal()).toEqual({
+        id: `p-f24-${s.second}`,
+        step: 'f24',
+        reason: 'f24',
+        suggestedKind: 'tasse',
+        imuSuggestion: { f24Group: 'berchet-lovarini', year: '2027', rateIndex: 2 },
+      });
+      // Only a suggestion: the second F24 is still to assign.
+      expect(s.run(['imu', ...s.common]).json.rates[1]).toMatchObject({ status: 'attesa', f24: 0 });
       noAmounts(outs.join(''));
     },
     TIMEOUT,
