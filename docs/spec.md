@@ -411,7 +411,7 @@ Dalla cartella "99.Modulistica aggiornata" di Berchet risultano gli stessi modul
 - **Discrepanze**: elenco con link alla voce, solo come avviso: non bloccano nulla.
 - **Esporta per il commercialista**: dati di ogni immobile e contratto (codici, canoni, date, registrazioni) in Excel; il file va in Riservato\_proprietari/Tasse/anno e resta nel registro.
 - Decisione del 6 novembre: gli importi delle tasse si inseriscono anno per anno, quando arriva il momento.
-- Decisione del 16 novembre (piano 7-bis, R182): la cedolare si può solo **stimare**, come proposta da confermare: totale degli affitti dell'anno inserito a mano dall'utente × aliquota inserita nel contratto, un solo arrotondamento al centesimo. Nessun'altra tassa si calcola e la stima non vale mai come pagata.
+- Decisione del 16 novembre (piano 7-bis, R182): la cedolare si può solo **stimare**, come proposta da confermare: totale degli affitti dell'anno inserito a mano dall'utente × aliquota inserita nel contratto, un solo arrotondamento al centesimo, metà in su. Nessun'altra tassa si calcola e la stima non vale mai come pagata.
 
 ## 35. Registro delle modifiche
 

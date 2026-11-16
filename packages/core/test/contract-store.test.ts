@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ContractSchema,
+  RentYearSchema,
   commitChange,
   isoDate,
   loadAll,
@@ -427,6 +428,16 @@ describe('setRentYear and loadRentYears (user1, question 1 of plan 7, R182)', ()
     expect(await snapshot(store)).toEqual(before);
     expect(await write(store, 1950000, 'w')).toMatchObject({ status: 'saved' });
     await undoOperation(store, 'w-1', 'p1', clock, ids('u'));
+    // Undo of the creation marks it deleted; saving again brings it back with a new rev.
+    await undoOperation(store, 'y-1', 'p1', clock, ids('v'));
+    const stored = async () =>
+      (await loadAll(store, 'rentYear', RentYearSchema, { includeDeleted: true })).records[0];
+    const gone = await stored();
+    expect(gone).toMatchObject({ deleted: true });
+    expect(await write(store, 1935000, 'b')).toMatchObject({ status: 'saved' });
+    const back = await stored();
+    expect(back?.rev).toBe((gone?.rev ?? 0) + 1);
+    expect(back).not.toHaveProperty('deleted');
     const years = await loadRentYears(store, {});
     expect(years).toEqual({
       status: 'computed',

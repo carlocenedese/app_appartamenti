@@ -14,12 +14,14 @@ import type { YearMonth } from './period';
  * Both figures are data typed by user1; the result is only shown, to be confirmed by user1.
  */
 export function cedolareExpected(totalRent: Cents, rateBp: number): Cents {
-  return cents(Math.floor((totalRent * rateBp + 5000) / 10000));
+  // BigInt: the product can pass Number.MAX_SAFE_INTEGER; rateBp <= 10000 keeps the result safe.
+  return cents(Number((BigInt(totalRent) * BigInt(rateBp) + 5000n) / 10000n));
 }
 
 /**
  * The rate of the estimate of `apartmentId` in `year`: the one `cedolareRateBp` of its live
- * cedolare contracts with a month in the year; none with no rate or two different ones (R182).
+ * contracts with a month in the year, all `cedolare` with a rate; none for a mixed year (one of
+ * them not `cedolare` or without a rate), for two different rates, or with no contract (R182).
  */
 export function cedolareRateForYear(
   contracts: readonly Contract[],
@@ -32,13 +34,13 @@ export function cedolareRateForYear(
         (c) =>
           c.deleted !== true &&
           c.apartmentId === apartmentId &&
-          c.taxRegime === 'cedolare' &&
           c.start <= `${year}-12` &&
           `${year}-01` <= c.end,
       )
-      .flatMap((c) => (c.cedolareRateBp === undefined ? [] : [c.cedolareRateBp])),
+      .map((c) => (c.taxRegime === 'cedolare' ? c.cedolareRateBp : undefined)),
   );
-  return rates.size === 1 ? [...rates][0] : undefined;
+  const [rate, ...others] = [...rates];
+  return others.length === 0 ? rate : undefined;
 }
 
 /** The entry of `rent` with the largest `from` not after `month`; none before the first entry. */

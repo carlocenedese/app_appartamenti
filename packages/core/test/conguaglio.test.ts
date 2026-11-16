@@ -745,6 +745,30 @@ describe('Step 3c: flat charge (R4)', () => {
     ]);
   });
 
+  it('on the same start the first id wins; an older contract when the latest has no entry', () => {
+    const tie = calc({
+      apartment: apartment({ posti: 5 }),
+      tenancies: berchet,
+      contracts: [
+        lease({ id: 'c2', rent: entry('2026-10', 1) }),
+        lease({ id: 'c1', rent: entry('2026-10', 170000) }),
+      ],
+    });
+    expect(tie.warnings).toEqual([{ code: 'contratto-mensile', expected: 180000, actual: 200000 }]);
+    const older = calc({
+      apartment: apartment({ posti: 5, contrattoMensile: cents(150000) }),
+      tenancies: berchet,
+      contracts: [
+        lease({ id: 'new', start: '2026-10', rent: entry('2027-01', 190000) }),
+        lease({ id: 'old', start: '2026-09', rent: entry('2026-09', 170000) }),
+      ],
+    });
+    // 2026-10..12: `new` has no entry yet, so `old` (180000); from 2027-01 `new` (200000).
+    expect(older.warnings).toEqual([
+      { code: 'contratto-mensile', expected: 180000, actual: 200000 },
+    ]);
+  });
+
   it('takes the contract with the latest start when two live ones cover a month (R34)', () => {
     const result = calc({
       apartment: apartment({ posti: 5 }),

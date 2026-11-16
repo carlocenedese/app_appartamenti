@@ -398,6 +398,8 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
     [12344, 1000, 1234],
     [100001, 2100, 21000], // 21000,21 cents
     [100001, 10000, 100001],
+    [Number.MAX_SAFE_INTEGER, 10000, Number.MAX_SAFE_INTEGER], // BigInt: no precision lost
+    [Number.MAX_SAFE_INTEGER, 1, 900719925474], // 900719925474,0991 cents
   ])('%i cents at %i bp is %i cents, one rounding', (total, rate, expected) => {
     expect(cedolareExpected(cents(total), rate)).toBe(expected);
   });
@@ -416,7 +418,8 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
           cedolare('a'),
           cedolare('b', { start: '2026-10', end: '2028-09' }),
           cedolare('gone', { cedolareRateBp: 2100, deleted: true }),
-          makeContract('ord', { taxRegime: 'ordinario' }),
+          makeContract('ord', { taxRegime: 'ordinario', deleted: true }),
+          makeContract('old', { taxRegime: 'ordinario', start: '2024-01', end: '2025-12' }),
         ],
         'berchet',
         '2026',
@@ -430,5 +433,34 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
         '2026',
       ),
     ).toBeUndefined();
+  });
+
+  it('a mixed year gives no estimate: ordinario or no rate on any live contract (R182)', () => {
+    const cedolare = makeContract('ced', {
+      start: '2026-10',
+      end: '2027-09',
+      taxRegime: 'cedolare',
+      cedolareRateBp: 1000,
+    });
+    const before = { start: '2025-10', end: '2026-09' };
+    // Ordinario January to September, cedolare October to December.
+    expect(
+      cedolareRateForYear(
+        [makeContract('ord', { ...before, taxRegime: 'ordinario' }), cedolare],
+        'berchet',
+        '2026',
+      ),
+    ).toBeUndefined();
+    // A contract with no regime or a cedolare one with no rate.
+    for (const extra of [{}, { taxRegime: 'cedolare' }]) {
+      expect(
+        cedolareRateForYear(
+          [makeContract('x', { ...before, ...extra }), cedolare],
+          'berchet',
+          '2026',
+        ),
+      ).toBeUndefined();
+    }
+    expect(cedolareRateForYear([cedolare], 'berchet', '2026')).toBe(1000);
   });
 });
