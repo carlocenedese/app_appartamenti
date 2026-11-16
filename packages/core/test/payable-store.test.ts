@@ -327,6 +327,44 @@ describe('setPayablePaid', () => {
     expect((await readJournal(store)).operations).toHaveLength(before);
   });
 
+  it('refuses both a date and a movement, writing nothing', async () => {
+    const { store } = await setup();
+    await savePayable(store, input, 'user1', clock, ids('n'));
+    expect(
+      await setPayablePaid(
+        store,
+        { payableId: 'scad-n-1', date: isoDate('2026-11-11'), transactionId: 't-hand' },
+        'user1',
+        clock,
+        ids('q'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'date-and-transaction' });
+    expect((await payables(store))[0]?.paid).toBeUndefined();
+  });
+
+  it('blocks the undo of the creation of an item that has a live successor', async () => {
+    const { store } = await setup();
+    const created = await savePayable(
+      store,
+      { ...input, repeatYearly: true },
+      'user1',
+      clock,
+      ids('n'),
+    );
+    const createdOp = op(created) ?? '';
+    expect(await undoBlockedBy(store, createdOp)).toEqual([]);
+    const next = await repeatPayable(
+      store,
+      { payableId: 'scad-n-1', dueDate: isoDate('2027-11-16') },
+      'user1',
+      clock,
+      ids('r'),
+    );
+    expect(await undoBlockedBy(store, createdOp)).toEqual(['scad-r-1']);
+    await undoOperation(store, op(next) ?? '', 'user1', clock, ids('undo'));
+    expect(await undoBlockedBy(store, createdOp)).toEqual([]);
+  });
+
   it('keeps the movement to one use: no IMU assignment, no undo of its class', async () => {
     const { store, handClassOp } = await setup();
     await savePayable(store, input, 'user1', clock, ids('n'));

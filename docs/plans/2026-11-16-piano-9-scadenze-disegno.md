@@ -1,6 +1,6 @@
 # Piano 9: scadenze e pagamenti del proprietario, core e riga di comando (disegno)
 
-Stato: **bozza da approvare da user1** (16 novembre 2026). Solo disegno; il piano di implementazione è
+Stato: **implementato; regole non decise in «Domande per user1»** (16 novembre 2026). Solo disegno; il piano di implementazione è
 `docs/plans/2026-11-16-piano-9-scadenze.md`. Il piano copre il core (`packages/core`) e la riga di
 comando (`pnpm estratti`); **niente schermate, niente cruscotto e niente veste grafica**. Riferimenti:
 `docs/spec.md` sezioni 10, 23, 30, 34, 38, 39 e 42 (che prevale), `docs/progress.md` R17, R107, R112,
@@ -83,7 +83,8 @@ expected?, state, paidOn?, transactionId?, check?, repeatYearly?, repeated? }`.
   sommano a `expectedDebit` (come R184); con una somma diversa resta da pagare con
   `check: 'importo-diverso'`. Per una rata di un avviso comune basta un abbinamento confermato: le somme
   le ha già controllate `validateMatches` alla conferma (R125). `paidOn` = la data più recente degli
-  addebiti.
+  addebiti. Senza addebito, se nessun estratto del conto che paga copre la scadenza, la voce
+  ha `check: 'periodo-senza-estratto'` e lo stato dalla data (domanda 7, non decisa).
 - **Voci a mano**: pagate con `paid` (se c'è un `transactionId`, solo se il movimento e la sua classe
   sono ancora vivi).
 - **Stato**: `pagata` come sopra; altrimenti `in-ritardo` se `today` è **dopo** `dueDate` (decisione 1);
@@ -153,7 +154,8 @@ pagamento). L'importazione non si annulla comunque finché c'è la classe (R125)
    impronta)? Oggi nessun campo.
 6. **Preavviso dei contratti**: serve un campo nel contratto (mesi di preavviso)? Oggi solo la fine.
 7. **Voci senza estratto conto**: una rata di un periodo che nessun estratto copre è pagata presunta
-   (R17) o in ritardo? Oggi conta solo un abbinamento salvato, quindi è in ritardo.
+   (R17) o in ritardo? Non deciso: lo stato viene solo dalla data e la voce ha l'indicazione neutra
+   `check: 'periodo-senza-estratto'`.
 8. **Segnare pagata a mano una rata IMU, di condominio o TARI** (senza F24 o addebito): serve? Oggi
    solo le voci a mano.
 

@@ -7,8 +7,9 @@
 import { imuRates } from './imu';
 import type { ImuRateStatus } from './imu';
 import { checkConsistency } from './journal';
-import { expectedDebit } from './match';
+import { expectedDebit, statementPeriodsOf } from './match';
 import {
+  AccountSchema,
   ApartmentSchema,
   BankTransactionSchema,
   BillMatchSchema,
@@ -17,6 +18,7 @@ import {
   InstalmentSchema,
   MovementClassSchema,
   PayableSchema,
+  StatementSchema,
 } from './model';
 import type {
   Apartment,
@@ -54,7 +56,11 @@ export interface PayableItem {
   paidOn?: ISODate;
   transactionId?: string;
   /** A debit is there but its amount does not check: the item stays unpaid (section 42). */
-  check?: Exclude<ImuRateStatus, 'attesa' | 'pagata'> | 'importo-diverso';
+  check?:
+    | Exclude<ImuRateStatus, 'attesa' | 'pagata'>
+    | 'importo-diverso'
+    /** Unpaid, and no statement of the paying account covers the due date (question 7: open). */
+    | 'periodo-senza-estratto';
   repeatYearly?: true;
   /** A live item was repeated from this one. */
   repeated?: true;
@@ -78,6 +84,8 @@ export interface ScadenzarioInput {
   matches: BillMatch[];
   payables: Payable[];
   contracts: Contract[];
+  /** The periods covered by the statements, by apartment (`statementPeriodsOf`). */
+  statementPeriods: { apartmentId: string; from: ISODate; to: ISODate }[];
 }
 
 /**
@@ -157,6 +165,13 @@ export function scadenzario(input: ScadenzarioInput): {
     // A shared notice: its share was checked by `validateMatches` when confirmed (R125).
     const paid = own.length > 0 && (i.shared !== undefined || debited === expected);
     const [paidOn] = own.map((m) => m.transactionDate).sort((a, b) => compareText(b, a));
+    const payer = i.paidFromApartmentId ?? i.apartmentId;
+    // Only shown: whether such an item is paid or late is question 7, not decided here.
+    const uncovered =
+      own.length === 0 &&
+      !input.statementPeriods.some(
+        (p) => p.apartmentId === payer && p.from <= i.dueDate && i.dueDate <= p.to,
+      );
     return item(
       {
         source: 'instalment',
@@ -167,6 +182,7 @@ export function scadenzario(input: ScadenzarioInput): {
         expected: cents(expected),
         ...(paid && paidOn !== undefined ? { paidOn } : {}),
         ...(own.length > 0 && !paid ? { check: 'importo-diverso' as const } : {}),
+        ...(uncovered ? { check: 'periodo-senza-estratto' as const } : {}),
       },
       paid,
     );
@@ -239,6 +255,10 @@ export async function loadScadenzario(
       matches: (await loadAll(store, 'match', BillMatchSchema)).records,
       payables: (await loadAll(store, 'payable', PayableSchema)).records,
       contracts: (await loadAll(store, 'contract', ContractSchema)).records,
+      statementPeriods: statementPeriodsOf(
+        (await loadAll(store, 'account', AccountSchema)).records,
+        (await loadAll(store, 'statement', StatementSchema)).records,
+      ),
     }),
   };
 }

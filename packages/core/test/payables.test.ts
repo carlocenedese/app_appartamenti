@@ -119,6 +119,7 @@ const empty: ScadenzarioInput = {
   matches: [],
   payables: [],
   contracts: [],
+  statementPeriods: [],
 };
 
 describe('payableState (plan 9, decision 1 of user1)', () => {
@@ -128,6 +129,13 @@ describe('payableState (plan 9, decision 1 of user1)', () => {
     expect(payableState(due, false, isoDate('2026-11-17'))).toBe('in-ritardo');
     expect(payableState(due, true, isoDate('2027-01-01'))).toBe('pagata');
     expect(payableState(undefined, false, isoDate('2027-01-01'))).toBe('da-pagare');
+  });
+
+  it('counts whole days across a leap February', () => {
+    const leap = isoDate('2028-02-29');
+    expect(payableState(leap, false, isoDate('2028-02-29'))).toBe('da-pagare');
+    expect(payableState(leap, false, isoDate('2028-03-01'))).toBe('in-ritardo');
+    expect(payableState(isoDate('2026-02-28'), false, isoDate('2026-03-01'))).toBe('in-ritardo');
   });
 
   it('is in-scadenza only with an explicit window', () => {
@@ -156,8 +164,15 @@ describe('scadenzario (plan 9, task 2)', () => {
         ]),
         imuYear('pulci', [{ index: 1 }]),
       ],
-      transactions: [tx('t1', -100000), tx('t2', -150000)],
-      classes: [f24Class('t1', 1), f24Class('t2', 2)],
+      transactions: [tx('t1', -100000), tx('t2', -150000), tx('t3', -5000)],
+      classes: [
+        f24Class('t1', 1),
+        f24Class('t2', 2),
+        f24Class('t3', 1, {
+          apartmentId: 'pulci',
+          imu: { f24Group: 'pulci', year: '2026', rateIndex: 1 },
+        }),
+      ],
     });
     expect(items).toEqual([
       {
@@ -191,6 +206,8 @@ describe('scadenzario (plan 9, task 2)', () => {
         apartmentIds: ['pulci'],
         taxpayers: ['Locatore Due'],
         state: 'da-pagare',
+        check: 'importo-mancante',
+        transactionId: 't3',
       },
     ]);
   });
@@ -215,7 +232,26 @@ describe('scadenzario (plan 9, task 2)', () => {
     expect(items.map((i) => [i.id, i.kind, i.state, i.check, i.paidOn, i.expected])).toEqual([
       ['i-paid', 'condominio', 'pagata', undefined, '2026-04-02', 30000],
       ['i-diff', 'condominio', 'in-ritardo', 'importo-diverso', undefined, 30000],
-      ['i-assumed', 'tari', 'in-ritardo', undefined, undefined, 30000],
+      ['i-assumed', 'tari', 'in-ritardo', 'periodo-senza-estratto', undefined, 30000],
+    ]);
+  });
+
+  it('flags an unpaid instalment whose due date no statement covers, leaving its state (question 7)', () => {
+    const { items } = scadenzario({
+      ...empty,
+      instalments: [
+        instalment('i-in', { dueDate: '2026-03-31' }),
+        instalment('i-out', { dueDate: '2026-06-30' }),
+        instalment('i-other', { dueDate: '2026-03-31', paidFromApartmentId: 'berchet' }),
+      ],
+      statementPeriods: [
+        { apartmentId: 'lovarini', from: isoDate('2026-01-01'), to: isoDate('2026-03-31') },
+      ],
+    });
+    expect(items.map((i) => [i.id, i.state, i.check])).toEqual([
+      ['i-in', 'in-ritardo', undefined],
+      ['i-other', 'in-ritardo', 'periodo-senza-estratto'],
+      ['i-out', 'in-ritardo', 'periodo-senza-estratto'],
     ]);
   });
 
@@ -232,12 +268,31 @@ describe('scadenzario (plan 9, task 2)', () => {
   it('pays a payable by hand, or by a movement only while it and its class are live', () => {
     const { items } = scadenzario({
       ...empty,
-      transactions: [tx('t1', -6700, '2026-11-10'), tx('t2', -1600, '2026-11-11')],
+      transactions: [
+        tx('t1', -6700, '2026-11-10'),
+        tx('t2', -1600, '2026-11-11'),
+        tx('t-out', -1600, '2026-11-12'),
+      ],
       classes: [
         recordSchemas.movementClass.parse({
           ...base,
           id: 'mc-t1',
           transactionId: 't1',
+          kind: 'tasse',
+          apartmentId: 'pulci',
+        }),
+        recordSchemas.movementClass.parse({
+          ...base,
+          id: 'mc-t-out',
+          transactionId: 't-out',
+          kind: 'escluso',
+          excludeReason: 'doppione',
+        }),
+        // A class left on a movement that is gone.
+        recordSchemas.movementClass.parse({
+          ...base,
+          id: 'mc-t-missing',
+          transactionId: 't-missing',
           kind: 'tasse',
           apartmentId: 'pulci',
         }),
@@ -248,6 +303,8 @@ describe('scadenzario (plan 9, task 2)', () => {
         payable('scad-c', { paid: { date: '2026-11-11', transactionId: 't2' } }),
         payable('scad-d', { previousId: 'scad-b', dueDate: '2027-11-16', kind: 'bollo' }),
         payable('scad-e', { deleted: true }),
+        payable('scad-f', { paid: { date: '2026-11-12', transactionId: 't-out' } }),
+        payable('scad-g', { paid: { date: '2026-11-12', transactionId: 't-missing' } }),
       ],
     });
     expect(items).toEqual([
@@ -268,6 +325,8 @@ describe('scadenzario (plan 9, task 2)', () => {
       }),
       // The movement has no class any more: not a proof of payment.
       expect.objectContaining({ id: 'scad-c', state: 'da-pagare' }),
+      expect.objectContaining({ id: 'scad-f', state: 'da-pagare' }),
+      expect.objectContaining({ id: 'scad-g', state: 'da-pagare' }),
       expect.objectContaining({ id: 'scad-d', kind: 'bollo', state: 'da-pagare' }),
     ]);
     expect(items[2]).not.toHaveProperty('paidOn');

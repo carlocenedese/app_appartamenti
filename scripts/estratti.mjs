@@ -183,6 +183,7 @@ const MESSAGES = {
     'Rifiutato: il movimento non ha una classificazione confermata a mano (esclusioni escluse).',
   'payable-linked': 'Rifiutato: il movimento paga già una scadenza: annullare prima.',
   'bad-date': 'Rifiutato: serve la data del pagamento o il movimento.',
+  'date-and-transaction': 'Rifiutato: indicare la data o il movimento, non tutti e due.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',

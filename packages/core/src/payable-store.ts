@@ -53,6 +53,7 @@ export type SetPayablePaidResult =
       | 'transaction-not-classified'
       | 'transaction-used'
       | 'bad-date'
+      | 'date-and-transaction'
     >;
 
 const badAmount = (expected: number | undefined): boolean =>
@@ -192,7 +193,7 @@ export async function repeatPayable(
  * debit `transactionId` (its date) whose live class was confirmed by hand (not `escluso`, no
  * `ruleId`, no `imu`) and that no other live payable uses: its one use stays the class (un
  * movimento, un uso). Refused without writing, in this order: `inconsistent-store`,
- * `unknown-payable`, `already-paid` (undo first), `unknown-transaction` (absent, deleted or not a
+ * `unknown-payable`, `already-paid` (undo first), `date-and-transaction` (both given), `unknown-transaction` (absent, deleted or not a
  * debit), `transaction-not-classified`, `transaction-used`, `bad-date` (neither date nor movement).
  */
 export async function setPayablePaid(
@@ -210,6 +211,9 @@ export async function setPayablePaid(
   const before = payables.find((p) => p.id === input.payableId);
   if (before === undefined) return refuse('unknown-payable');
   if (before.paid !== undefined) return refuse('already-paid');
+  if (input.date !== undefined && input.transactionId !== undefined) {
+    return refuse('date-and-transaction');
+  }
   let date = input.date;
   if (input.transactionId !== undefined) {
     const tx = (await loadAll(store, 'transaction', BankTransactionSchema)).records.find(
@@ -242,6 +246,17 @@ export async function setPayablePaid(
     clock,
     newId,
   );
+}
+
+/** The live payables repeated from one of `payableIds`, ids sorted (undo of their creation). */
+export async function payablesRepeatedFrom(
+  store: Store,
+  payableIds: readonly string[],
+): Promise<string[]> {
+  return (await livePayables(store))
+    .filter((p) => p.previousId !== undefined && payableIds.includes(p.previousId))
+    .map((p) => p.id)
+    .sort(compareText);
 }
 
 /** The live payables paid by one of `transactionIds`, ids sorted (for the guards of other writes). */
