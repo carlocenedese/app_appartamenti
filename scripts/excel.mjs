@@ -12,17 +12,8 @@
 // Exit codes (R107): 0 written, 1 refused, 2 arguments not valid, 3 an unexpected failure.
 
 import { randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  linkSync,
-  lstatSync,
-  mkdirSync,
-  realpathSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { basename, dirname, join, relative, sep } from 'node:path';
+import { existsSync, linkSync, mkdirSync, realpathSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
@@ -32,7 +23,6 @@ import {
   ExcelRecoveriesError,
   SettlementInputError,
   YearSchema,
-  assertSafeRelPath,
   buildConguaglioWorkbook,
   buildOwnersWorkbook,
   buildTaxWorkbook,
@@ -46,6 +36,14 @@ import {
   taxFilePath,
   writeXlsx,
 } from '../packages/core/src/index.ts';
+import {
+  Stop,
+  checkDefaultFolders,
+  invalid,
+  outputPath,
+  rejected,
+  writeNew,
+} from './output-file.mjs';
 
 const MESSAGES = {
   'bad-arguments':
@@ -69,75 +67,6 @@ const MESSAGES = {
   'settlement-input': 'Rifiutato: le presenze o le rate non permettono il conguaglio.',
   failed: 'Operazione non riuscita: ripetere il comando.',
 };
-
-class Stop extends Error {
-  constructor(status, reason, extra = {}) {
-    super(reason);
-    this.status = status;
-    this.reason = reason;
-    this.extra = extra;
-  }
-}
-const invalid = (reason) => new Stop('invalid', reason);
-const rejected = (reason, extra) => new Stop('rejected', reason, extra);
-
-/** Checks the output path; returns it with the file name in NFC. */
-function outputPath(raw) {
-  const name = basename(raw).normalize('NFC');
-  const folder = dirname(raw);
-  try {
-    if (raw.endsWith('/') || raw.endsWith(sep)) throw new Error('a folder');
-    if (!name.toLowerCase().endsWith('.xlsx') || name.length === '.xlsx'.length) {
-      throw new Error('not a name');
-    }
-    assertSafeRelPath(name);
-    if (!statSync(folder).isDirectory()) throw new Error('not a folder');
-  } catch {
-    throw invalid('bad-output');
-  }
-  return { file: join(folder, name), folder };
-}
-
-/**
- * The folders of the default path under `root` must be real folders or missing: a link could send
- * the file outside the shared folder, a file in their place would make the write fail (R176).
- */
-function checkDefaultFolders(root, file) {
-  let path = root;
-  for (const part of relative(root, dirname(file)).split(sep)) {
-    path = join(path, part);
-    let stats;
-    try {
-      stats = lstatSync(path);
-    } catch (error) {
-      if (error?.code === 'ENOENT') return;
-      throw error;
-    }
-    if (stats.isSymbolicLink() || !stats.isDirectory()) throw rejected('bad-default-folder');
-  }
-}
-
-/** Errors of a folder (or disk) that has no hard links: refused, never a plain overwrite. */
-const NO_LINK = ['EPERM', 'ENOTSUP', 'EXDEV', 'EOPNOTSUPP'];
-
-/** Writes `bytes` to `file` only if it does not exist: a temporary file, then a hard link. */
-function writeNew(file, folder, bytes, { newId, link }) {
-  const temporary = join(folder, `.tmp-${newId()}.xlsx`);
-  try {
-    writeFileSync(temporary, bytes, { flag: 'wx' });
-    link(temporary, file);
-  } catch (error) {
-    if (error?.code === 'EEXIST' && existsSync(file)) throw rejected('file-exists');
-    if (NO_LINK.includes(error?.code)) throw rejected('link-unsupported');
-    throw error;
-  } finally {
-    try {
-      unlinkSync(temporary);
-    } catch {
-      // Nothing was written.
-    }
-  }
-}
 
 /**
  * Runs one command line; returns the exit code and the JSON line. `io.newId` names the temporary
@@ -176,7 +105,7 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     } catch {
       throw invalid('bad-folder');
     }
-    let target = values.uscita === undefined ? undefined : outputPath(values.uscita);
+    let target = values.uscita === undefined ? undefined : outputPath(values.uscita, '.xlsx');
     if (target !== undefined && existsSync(target.file)) throw rejected('file-exists');
 
     if (taxes) {
