@@ -2220,6 +2220,47 @@ describe('pnpm estratti IMU (piano 3d)', () => {
   );
 
   it(
+    'imu-atteso e annulla-riconciliazione rifiutano di cambiare il gruppo sotto un F24 assegnato',
+    async () => {
+      const outs = [];
+      const s = await imuSetup(outs);
+      const lovarini = (group) =>
+        atteso(s, 'lovarini', '--rata', '1:400,00', '--rata', '2:400,00').map((a) =>
+          a === '2026' ? '2027' : a === 'berchet-lovarini' ? group : a,
+        );
+      expect(s.run(lovarini('solo-lovarini')).code).toBe(0);
+      const back = s.run(lovarini('berchet-lovarini'));
+      expect(back.code).toBe(0);
+      expect(s.run(f24(s, s.first, '1')).code).toBe(0);
+      const snap = snapshot(s.dir);
+      const message =
+        'Rifiutato: un F24 è assegnato a una rata IMU che cambierebbe: annullare prima l’assegnazione.';
+      const changed = s.run(lovarini('altro'));
+      expect([
+        changed.code,
+        changed.json.reason,
+        changed.json.message,
+        changed.json.recordIds,
+      ]).toEqual([1, 'has-dependents', message, [`mc-${s.first}`]]);
+      const undo = s.run([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        back.json.operationId,
+      ]);
+      expect([undo.code, undo.json.reason, undo.json.message, undo.json.recordIds]).toEqual([
+        1,
+        'has-dependents',
+        message,
+        [`mc-${s.first}`],
+      ]);
+      expect(snapshot(s.dir)).toEqual(snap);
+      noAmounts(outs.join(''));
+    },
+    TIMEOUT,
+  );
+
+  it(
     'imu-f24: la regola appresa suggerisce gruppo, anno e rata in riconcilia; --solo-questa-volta nessuna',
     async () => {
       const outs = [];

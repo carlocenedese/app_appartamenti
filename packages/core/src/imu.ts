@@ -169,6 +169,34 @@ export function imuShares(
   }));
 }
 
+/**
+ * The live classes assigned to a rate of the group and year of `current` that a change of
+ * `current` into `next` would alter (answer of user1, 16 November 2026): `next` absent or
+ * deleted, in another group or year, or with another number of rates. Sorted ids; empty when
+ * `current` is absent or deleted, or only amounts or dates change. Undo the assignment first.
+ */
+export function imuDependents(
+  classes: MovementClass[],
+  current: ImuYear | undefined,
+  next: Pick<ImuYear, 'f24Group' | 'year' | 'rates' | 'deleted'> | undefined,
+): string[] {
+  if (current === undefined || current.deleted === true) return [];
+  const same =
+    next !== undefined &&
+    next.deleted !== true &&
+    next.f24Group === current.f24Group &&
+    next.year === current.year &&
+    next.rates.length === current.rates.length;
+  if (same) return [];
+  return classes
+    .filter(
+      (c) =>
+        c.deleted !== true && c.imu?.f24Group === current.f24Group && c.imu.year === current.year,
+    )
+    .map((c) => c.id)
+    .sort(compareText);
+}
+
 export type LoadImuRatesResult =
   { status: 'computed'; rates: ImuRate[] } | { status: 'refused'; reason: 'inconsistent-store' };
 

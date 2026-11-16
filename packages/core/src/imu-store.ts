@@ -3,6 +3,7 @@
  * assignment of an F24 to a rate by hand (`assignImuF24`), each write one operation of the journal, nothing written while `checkConsistency` reports a problem
  * (R113), and nothing for the same request on the same state. No amount or name in a summary.
  */
+import { imuDependents } from './imu';
 import { checkConsistency, commitChange } from './journal';
 import {
   AccountSchema,
@@ -37,7 +38,8 @@ export type SetImuYearResult =
   | {
       status: 'refused';
       reason: 'inconsistent-store' | 'unknown-apartment' | 'bad-rates' | 'rates-mismatch';
-    };
+    }
+  | { status: 'refused'; reason: 'has-dependents'; recordIds: string[] };
 
 /**
  * Creates or updates `imu-<apartmentId>-<year>` (a new `rev`; a deleted one comes back) in one
@@ -45,7 +47,8 @@ export type SetImuYearResult =
  * (`unknown-apartment`); the indices are not 1 to n or an amount is not positive (`bad-rates`);
  * another live year of the same `f24Group` and `year` has another number of rates
  * (`rates-mismatch`: one F24 pays the same rate of all of them). The same content already
- * stored is `unchanged`.
+ * stored is `unchanged`. A live record whose group and year have an assigned F24 changes group or
+ * number of rates only after that assignment is undone (`has-dependents`, `imuDependents`).
  */
 export async function setImuYear(
   store: Store,
@@ -54,8 +57,9 @@ export async function setImuYear(
   clock: () => string,
   newId: () => string,
 ): Promise<SetImuYearResult> {
-  const refuse = (reason: Extract<SetImuYearResult, { status: 'refused' }>['reason']) =>
-    ({ status: 'refused', reason }) as const;
+  const refuse = (
+    reason: Exclude<Extract<SetImuYearResult, { status: 'refused' }>['reason'], 'has-dependents'>,
+  ) => ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
@@ -76,6 +80,11 @@ export async function setImuYear(
   if (others.some((y) => y.rates.length !== rates.length)) return refuse('rates-mismatch');
 
   const before = years.find((y) => y.id === id);
+  const classes = (
+    await loadAll(store, 'movementClass', MovementClassSchema, { includeDeleted: true })
+  ).records;
+  const recordIds = imuDependents(classes, before, input);
+  if (recordIds.length > 0) return { status: 'refused', reason: 'has-dependents', recordIds };
   const record = (rev: number) =>
     parseOrThrow(
       ImuYearSchema,

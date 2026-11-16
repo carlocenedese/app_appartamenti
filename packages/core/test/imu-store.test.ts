@@ -13,6 +13,7 @@ import {
   recordSchemas,
   runReconciliation,
   setImuYear,
+  undoBlockedBy,
   undoOperation,
 } from '../src/index';
 import type { RecordKind, SetImuYearInput } from '../src/index';
@@ -485,6 +486,67 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
       ]);
       // The older F24 still falls under the older rule.
       expect(await suggestionOf(store, 'g')).toMatchObject({ f24Group: 'berchet-lovarini' });
+    });
+  });
+
+  describe('the expected under an assignment (answer of user1, 16 Nov 2026, R136 question (a))', () => {
+    const lovarini = (extra: Partial<SetImuYearInput> = {}): SetImuYearInput => ({
+      ...berchet(),
+      apartmentId: 'lovarini',
+      ...extra,
+    });
+    const blocked = { status: 'refused', reason: 'has-dependents', recordIds: ['mc-f'] };
+
+    it('setImuYear refuses another group or number of rates of a year with an assigned F24', async () => {
+      const store = await f24Store();
+      await assign(store);
+      const before = await snapshot(store);
+      expect(await save(store, lovarini({ f24Group: 'altro' }))).toEqual(blocked);
+      expect(await save(store, berchet({ f24Group: 'altro' }))).toEqual(blocked);
+      await put(store, 'imuYear', [{ ...imuYear('lovarini'), deleted: true }]);
+      const alone = await snapshot(store);
+      expect(await save(store, berchet({ rates: [{ index: 1 }] }))).toEqual(blocked);
+      expect(await snapshot(store)).toEqual(alone);
+      await put(store, 'imuYear', [{ ...imuYear('lovarini'), rev: 1 }]);
+      expect(await snapshot(store)).toEqual(before);
+      // The amounts only: saved; another year or group: not concerned.
+      expect(
+        await save(
+          store,
+          lovarini({ rates: [{ index: 1, expected: cents(40000) }, { index: 2 }] }),
+        ),
+      ).toMatchObject({ status: 'saved' });
+      expect(await save(store, lovarini({ year: '2027', f24Group: 'altro' }), 'k')).toMatchObject({
+        status: 'saved',
+      });
+    });
+
+    it('undoBlockedBy names the assignments an undo of imu.expected would change', async () => {
+      const store = await f24Store();
+      // Lovarini leaves and comes back with amounts: two imu.expected on its year.
+      expect(await save(store, lovarini({ f24Group: 'solo-lovarini' }), 'x')).toMatchObject({
+        operationId: 'x-1',
+      });
+      expect(
+        await save(
+          store,
+          lovarini({ rates: [{ index: 1, expected: cents(40000) }, { index: 2 }] }),
+          'y',
+        ),
+      ).toMatchObject({ operationId: 'y-1' });
+      const created = await save(
+        store,
+        { ...berchet({ year: '2027', rates: [{ index: 1 }] }) },
+        'z',
+      );
+      expect(created).toMatchObject({ operationId: 'z-1' });
+      await assign(store);
+      // Back to solo-lovarini: the rate of the F24 loses an apartment.
+      expect(await undoBlockedBy(store, 'y-1')).toEqual(['mc-f']);
+      // Another year: nothing assigned there.
+      expect(await undoBlockedBy(store, 'z-1')).toEqual([]);
+      await undoOperation(store, 'a-1', 'p1', clock, ids('u'));
+      expect(await undoBlockedBy(store, 'y-1')).toEqual([]);
     });
   });
 });
