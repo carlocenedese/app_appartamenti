@@ -165,7 +165,8 @@ export function buildOwnersWorkbook(input: ConguaglioInput): XlsxWorkbook {
     sum((i) => i.conguaglioPrec),
     sum((i) => i.ownerShare),
     sum((i) => i.expected),
-    sum((i) => i.debited),
+    // Empty, not 0, when nothing is debited: as in the rows.
+    items.some((i) => i.debited !== undefined) ? sum((i) => i.debited) : null,
     sum((i) => i.commission),
   ]);
   const header = OWNERS_HEADERS.map((value): XlsxCell => ({ kind: 'text', value }));

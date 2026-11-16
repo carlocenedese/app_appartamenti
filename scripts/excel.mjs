@@ -13,13 +13,14 @@ import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   realpathSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, sep } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
@@ -45,6 +46,8 @@ const MESSAGES = {
   'bad-output':
     'Il file di uscita non è valido: serve un nome .xlsx ammesso, in una cartella che esiste.',
   'file-exists': 'Rifiutato: il file di uscita esiste già e non si sovrascrive.',
+  'bad-default-folder':
+    'Rifiutato: nel percorso predefinito c’è un collegamento o un file al posto di una cartella: usare --uscita.',
   'link-unsupported':
     'Rifiutato: la cartella di uscita non permette di scrivere il file senza rischiare di sovrascriverlo.',
   'inconsistent-store':
@@ -83,6 +86,25 @@ function outputPath(raw) {
     throw invalid('bad-output');
   }
   return { file: join(folder, name), folder };
+}
+
+/**
+ * The folders of the default path under `root` must be real folders or missing: a link could send
+ * the file outside the shared folder, a file in their place would make the write fail (R176).
+ */
+function checkDefaultFolders(root, file) {
+  let path = root;
+  for (const part of relative(root, dirname(file)).split(sep)) {
+    path = join(path, part);
+    let stats;
+    try {
+      stats = lstatSync(path);
+    } catch (error) {
+      if (error?.code === 'ENOENT') return;
+      throw error;
+    }
+    if (stats.isSymbolicLink() || !stats.isDirectory()) throw rejected('bad-default-folder');
+  }
 }
 
 /** Errors of a folder (or disk) that has no hard links: refused, never a plain overwrite. */
@@ -158,6 +180,7 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
         ...excelFilePath(loaded.input.apartment, loaded.input.period).split('/'),
       );
       target = { file, folder: dirname(file) };
+      checkDefaultFolders(values.cartella, file);
       if (existsSync(file)) throw rejected('file-exists');
     }
     const { file, folder } = target;

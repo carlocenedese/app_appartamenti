@@ -295,6 +295,20 @@ fuori (o com'è indicato) e il resto procede.
 12. **(Nuova, aperta.) Stato con versato oltre il dovuto.** Conguaglio 100,00 €, versati 120,00 €
     dal CSV: residuo −20,00 €. La sezione 27 ha solo «saldato, parziale, da pagare»: oggi scrivo
     «parziale» (R172). Vuoi un'altra parola (per esempio «versato in più») o un'altra regola?
+13. **(Nuova, dalla revisione.) Periodi che si sovrappongono.** Il periodo successivo è il primo
+    che inizia dopo la fine di questo; un contratto che inizia prima della fine (per esempio un
+    3+2 da 2027-03 accanto all'annualità 2026-27) non chiude la finestra, quindi un bonifico senza
+    mese del 10/05/2027 di 80,00 € conta nel 2026-27 e anche nel periodo del nuovo contratto. Come
+    vanno scelti i periodi in questo caso?
+14. **(Nuova, dalla revisione.) Casi strani dello stato.** Oggi: conguaglio 0,00 € e nessun
+    versamento → «saldato»; conguaglio 100,00 €, bonifici +50,00 € e −50,00 € → versato 0 → «da
+    pagare»; credito dell'inquilino −40,00 € e nessuna restituzione → «da pagare» (ma siamo noi a
+    dover pagare). Vanno bene queste parole?
+15. **(Nuova, dalla revisione.) Voci pagate elencate come «in attesa».** L'elenco in fondo al foglio
+    Bollette riporta tutte le voci che `calcConguaglio` tiene fuori, anche quelle con l'addebito nel
+    CSV ma ferme per un altro motivo (importo diverso, quota della proprietà più grande della rata).
+    Esempio: rata di condominio 300,00 € addebitata, ma la quota della proprietà è 320,00 € → è
+    elencata come «in attesa di pagamento». Serve un'altra intestazione o un motivo?
 
 ## Mie scelte (da controllare)
 

@@ -1,5 +1,15 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -207,6 +217,38 @@ describe('pnpm excel', () => {
     expect(noOutput.code).toBe(2);
     expect(JSON.parse(noOutput.output)).toMatchObject({ reason: 'bad-arguments' });
     rmSync(file);
+  });
+
+  it('refuses a default folder that is a link or a file, writing nothing', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'excel-default-'));
+    try {
+      for (const kind of ['link', 'file']) {
+        const root = join(base, kind);
+        cpSync(data, root, { recursive: true });
+        rmSync(join(root, 'Nord'), { recursive: true, force: true });
+        if (kind === 'link') {
+          mkdirSync(join(base, 'altrove'), { recursive: true });
+          symlinkSync(join(base, 'altrove'), join(root, 'Nord'));
+        } else {
+          mkdirSync(join(root, 'Nord'));
+          writeFileSync(join(root, 'Nord', '2026-27'), '');
+        }
+        const run = await main([
+          '--cartella',
+          root,
+          '--appartamento',
+          'apt-nord',
+          '--periodo',
+          '2026-27',
+        ]);
+        outputs.push(run.output);
+        expect(run.code).toBe(1);
+        expect(JSON.parse(run.output)).toMatchObject({ reason: 'bad-default-folder' });
+      }
+      expect(readdirSync(join(base, 'altrove'))).toEqual([]);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   it('never prints names, amounts, IBANs or paths', () => {

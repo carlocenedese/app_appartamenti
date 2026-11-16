@@ -22,6 +22,20 @@ const plain = (cell: XlsxCell | null | undefined): Plain => cell?.value ?? null;
 const rowsOf = (sheet: XlsxSheet | undefined): Plain[][] =>
   (sheet?.rows ?? []).map((row) => row.map(plain));
 
+const creditMatch = (itemId: string, amount: number): ExcelInput['matches'][number] => ({
+  id: `m-${itemId}`,
+  v: 1,
+  rev: 1,
+  itemType: 'bill',
+  itemId,
+  transactionId: `tx-${itemId}`,
+  transactionDate: isoDate('2027-02-02'),
+  amount: cents(amount),
+  part: 'amount',
+  confirmed: true,
+  by: 'auto',
+});
+
 function sheets(input: ExcelInput = fixtureInput()) {
   const book = buildConguaglioWorkbook(input);
   const get = (name: string) => book.sheets.find((s) => s.name === name);
@@ -136,6 +150,62 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     ]);
   });
 
+  const reconcile = (input: ExcelInput) => {
+    const { get: of } = sheets(input);
+    const billTotal = rowsOf(of('Bollette')).find((r) => r[0] === 'Totale');
+    const totale = rowsOf(of('Conguagli')).find((r) => r[0] === 'Totale');
+    return [Number(totale?.[4]) + Number(totale?.[5]), billTotal?.[9]];
+  };
+  const variants: [string, () => ExcelInput][] = [
+    [
+      'no empty bed',
+      () => {
+        const input = fixtureInput();
+        const d = input.tenancies.find((t) => t.id === 'tcy-d') as ExcelInput['tenancies'][number];
+        input.tenancies.push({
+          ...d,
+          id: 'tcy-f',
+          tenantId: 'ten-f',
+          from: yearMonth('2026-10'),
+          to: yearMonth('2026-12'),
+        });
+        input.tenants.push({
+          ...(input.tenants[0] as ExcelInput['tenants'][number]),
+          id: 'ten-f',
+          name: 'Fabio Prova',
+        });
+        expect(calcConguaglio(input).unassigned).toBe(0);
+        return input;
+      },
+    ],
+    [
+      'a credit note',
+      () => {
+        const input = fixtureInput();
+        input.bills.push(
+          bill('bill-nota', '2026-12-01', '2027-01-31', -2000, { apartmentId: 'apt-nord' }),
+        );
+        input.matches.push(creditMatch('bill-nota', -2000));
+        return input;
+      },
+    ],
+    [
+      'a bill of 14 months',
+      () => {
+        const input = fixtureInput();
+        input.bills.push(
+          bill('bill-lunga', '2026-09-01', '2027-10-31', 14003, { apartmentId: 'apt-nord' }),
+        );
+        input.matches.push(creditMatch('bill-lunga', 14003));
+        return input;
+      },
+    ],
+  ];
+  it.each(variants)('reconciles the two totals: %s', (_, build) => {
+    const [conguagli, bollette] = reconcile(build());
+    expect(conguagli).toBe(bollette);
+  });
+
   it('makes Spese + Condominio of the total equal to the total of the bills (question 4)', () => {
     const bills = rowsOf(get('Bollette'));
     const billTotal = bills.find((r) => r[0] === 'Totale');
@@ -199,13 +269,13 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     const cells = book.sheets.flatMap((s) => s.rows.flat());
     const texts = cells.flatMap((c) => (c?.kind === 'text' ? [c.value] : []));
     expect(texts.filter((t) => t.startsWith('='))).toEqual([]);
+    // Bollette and Conguagli have the provisional line on top, then the headers.
     const headers = book.sheets
-      .flatMap((s) => rowsOf(s)[0] ?? [])
+      .flatMap((s) => rowsOf(s)[s.name === 'Bollette' || s.name === 'Conguagli' ? 1 : 0] ?? [])
       .join(' | ')
       .toLowerCase();
-    for (const word of ['caparra']) {
-      expect(headers).not.toContain(word);
-    }
+    expect(headers).toContain('quota nel periodo');
+    expect(headers).not.toContain('caparra');
     // The bill waiting for its debit is only listed, with no amount and no file.
     expect(texts.filter((t) => t.includes('Acqua'))).toEqual(['Acqua', 'Acqua Esempio']);
     expect(texts.some((t) => t.includes('acqua-2027'))).toBe(false);

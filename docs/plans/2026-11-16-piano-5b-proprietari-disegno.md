@@ -94,6 +94,11 @@ Non le decido io: finché manca la risposta il punto resta fuori (o com'è indic
 6. **Quale periodo.** Oggi il file segue il periodo di conguaglio (per il 3+2 l'intero contratto),
    non l'esercizio del condominio. Va bene, o preferisci un file per esercizio condominiale?
 
+7. **(Dalla revisione.) Rate a cavallo di due periodi.** Una rata che copre mesi di due annualità
+   (per esempio luglio-ottobre con annualità da ottobre) compare intera nei file di tutte e due,
+   così la somma dei totali di due anni conta due volte la rata (300,00 € in ciascuno). Va bene
+   (il file è un elenco di rate da pagare), o la rata va in un solo file, o divisa per mesi?
+
 ## Mie scelte (da controllare)
 
 1. Stesso criterio di scelta delle rate del foglio Bollette (R153), senza escludere straordinarie e

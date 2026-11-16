@@ -139,6 +139,15 @@ describe('buildOwnersWorkbook', () => {
     expect(rows.at(-1)?.slice(6)).toEqual([140000, 4000, 62000, 144000, 86000, 80]);
   });
 
+  it('leaves the total debited empty when nothing is debited', () => {
+    const input = fixtureInput();
+    input.matches = input.matches.filter((m) => m.itemId !== 'inst-cond-1');
+    const totale = rowsOf(input).at(-1);
+    expect(totale?.[0]).toBe('Totale');
+    expect(totale?.[9]).toBe(36000);
+    expect(totale?.[10]).toBeNull();
+  });
+
   it('leaves out the TARI, other apartments and deleted instalments', () => {
     const input = fixtureInput();
     input.instalments.push(
