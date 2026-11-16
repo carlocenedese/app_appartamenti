@@ -192,6 +192,12 @@ mostrarli (domanda 10); la riga di comando `condominio` li elenca con lo stato.
 13. **File dei proprietari e recupero.** La «Quota proprietà» di una straordinaria con recupero deve
     scendere della parte da recuperare? Oggi resta l'intero addebito.
 
+14. **Recupero e R2.** Il piano fa entrare la quota di un recupero solo quando la spesa straordinaria
+    è addebitata nel CSV (o assunta, R2); prima la rata resta «recupero in attesa del pagamento». Va
+    bene, o il recupero entra anche prima del pagamento?
+15. **Due recuperi sulla stessa spesa.** Il piano somma tutti i recuperi vivi di una rata e rifiuta se
+    superano la spesa. Va bene?
+
 ## Mie scelte (da controllare)
 
 1. Nessun record «piano rate»: sono le `Instalment` con lo stesso `apartmentId` ed `esercizio`.
