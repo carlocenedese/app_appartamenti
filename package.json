@@ -23,7 +23,8 @@
     "schemas:export": "tsx scripts/export-schemas.mjs",
     "golden:report": "tsx scripts/golden-report.mjs",
     "estratti": "tsx scripts/estratti.mjs",
-    "excel": "tsx scripts/excel.mjs"
+    "excel": "tsx scripts/excel.mjs",
+    "moduli": "tsx scripts/moduli.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

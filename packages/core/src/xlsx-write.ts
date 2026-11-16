@@ -35,7 +35,7 @@ const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships
 const PKG_REL = 'http://schemas.openxmlformats.org/package/2006/relationships';
 const CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml';
 // Characters XML 1.0 does not allow, and surrogates without their pair.
-const NOT_XML =
+export const NOT_XML =
   // eslint-disable-next-line no-control-regex -- the control characters are what it looks for
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const BAD_SHEET_NAME = /[[\]:*?/\\]/;
@@ -67,7 +67,7 @@ export function excelSerial(date: ISODate): number {
   return serial;
 }
 
-function escapeXml(text: string): string {
+export function escapeXml(text: string): string {
   return text
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
