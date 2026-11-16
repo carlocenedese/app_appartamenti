@@ -7,11 +7,14 @@ import {
   CATEGORY_ORDER,
   allocateBillToMonths,
   allocateInstalment,
+  RECOVERY_WAITING,
   calcConguaglio,
   isPresent,
+  previousToTenants,
 } from './conguaglio';
 import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguaglio';
 import { apartmentFolder } from './accounts';
+import type { FreeDebit } from './condominio';
 import { safeWord } from './proposal';
 import type { Apartment, Bill, BillMatch, Instalment, Payment, Tenancy, Tenant } from './model';
 import { cents, formatEuro, splitCents } from './money';
@@ -136,7 +139,12 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
   const instalmentItem = (instalment: Instalment): ExcelItem => {
     const { amount: paid, commission, debitDates, assumed } = debits('instalment', instalment.id);
     const covered = monthRange(instalment.coversFrom, instalment.coversTo);
-    const parts = allocateInstalment(instalment, paid, esercizioOf(instalment));
+    const parts = allocateInstalment(
+      instalment,
+      paid,
+      esercizioOf(instalment),
+      previousToTenants(apartment),
+    );
     const commissions = splitCents(
       commission,
       covered.map(() => 1),
@@ -177,7 +185,10 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
     if (pending.has(`instalment\u0000${instalment.id}`)) return false;
     const esercizio = esercizioOf(instalment);
     const previousYear =
-      esercizio !== undefined && instalment.kind === 'condominio' && instalment.conguaglioPrec !== 0
+      esercizio !== undefined &&
+      instalment.kind === 'condominio' &&
+      instalment.conguaglioPrec !== 0 &&
+      previousToTenants(apartment)
         ? monthsInPeriod(esercizio.from, esercizio.to)
         : [];
     return inPeriod([...monthRange(instalment.coversFrom, instalment.coversTo), ...previousYear]);
@@ -199,6 +210,8 @@ export interface ExcelInput extends ConguaglioInput {
    * without `forMonth` to one period only (R177); without it, only `period` is known.
    */
   periods?: { from: YearMonth; to: YearMonth }[];
+  /** The free outgoing movements, for the «duplicato» of the owners' file (R198). */
+  freeDebits?: FreeDebit[];
 }
 
 type Span = { from: YearMonth; to: YearMonth };
@@ -334,6 +347,21 @@ export class ExcelInputError extends Error {
   }
 }
 
+/**
+ * A period with a recovery from tenants (plan 8, R197): how it shows in the tenants' file is not
+ * decided yet (question 10 of the plan 8 design), so the file is refused rather than wrong.
+ */
+export class ExcelRecoveriesError extends Error {
+  readonly code = 'recoveries-not-supported';
+
+  constructor() {
+    super(
+      "Il periodo ha un recupero da un inquilino: l'Excel degli inquilini non lo mostra ancora.",
+    );
+    this.name = 'ExcelRecoveriesError';
+  }
+}
+
 const text = (value: string | undefined): XlsxCell | null =>
   value === undefined || value === '' ? null : { kind: 'text', value };
 const euro = (value: Cents): XlsxCell => ({ kind: 'euro', value });
@@ -356,6 +384,12 @@ const dayMonthYear = (day: ISODate): string =>
  */
 export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const result = calcConguaglio(input);
+  if (
+    result.tenants.some((t) => t.recupero !== undefined) ||
+    result.pending.some((p) => p.reason === RECOVERY_WAITING)
+  ) {
+    throw new ExcelRecoveriesError();
+  }
   const { apartment, period } = input;
   const names = new Map(live(input.tenants).map((t) => [t.id, t.name]));
   const missing = result.tenants.map((t) => t.tenantId).filter((id) => !names.has(id));

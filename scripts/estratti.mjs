@@ -18,6 +18,10 @@
 // included, removes it), contratto-canone (an entry of its rent history) and contratti (the contracts
 // and their read-only checks); affitti-anno saves the rents of an apartment and year typed by
 // user1, shown by contratti --dettagli with the cedolare estimate to be confirmed (R182).
+// Plan 8 adds appartamento (creates an apartment, asking who bears the condominium difference,
+// or updates the fields given), condominio-documento (preventivo or consuntivo of a fiscal year),
+// condominio (the owners' check of the condominium expenses, the differences and the recoveries)
+// and recupero (part of an extraordinary expense to recover from tenants chosen by user1).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -56,6 +60,7 @@ import {
   loadRentYears,
   loadAccountBalances,
   loadImuRates,
+  loadCondo,
   loadAll,
   parseCsv,
   parseEuro,
@@ -66,6 +71,10 @@ import {
   runReconciliation,
   saveAccount,
   saveBankProfile,
+  saveApartment,
+  saveCondoDocument,
+  saveTenantRecovery,
+  equalShares,
   saveContract,
   setContractRent,
   saveTenant,
@@ -168,6 +177,20 @@ const MESSAGES = {
   'cedolare-estimate': 'Cedolare stimata: da confermare, non è un pagamento.',
   'contract-overlap':
     'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
+  'missing-fields':
+    'Rifiutato: per un appartamento nuovo servono nome, locatore, posti, annualità e differenza del condominio.',
+  'invalid-document': 'Rifiutato: i dati del documento del condominio non sono validi.',
+  'not-extraordinary':
+    'Rifiutato: la voce non è una spesa condominiale straordinaria viva di questo appartamento.',
+  'amount-too-high': 'Rifiutato: da recuperare più della spesa anticipata.',
+  'bad-shares':
+    'Rifiutato: quote non valide (inquilino ripetuto o senza presenza, quota non positiva, somma diversa).',
+  'recovery-above-expense':
+    'Avviso: i recuperi superano la spesa straordinaria, corretta dopo: controllare i recuperi.',
+  'invalid-recovery': 'Rifiutato: i dati del recupero non sono validi.',
+  'needs-confirmation':
+    'Rifiutato: posti e inizio dell’annualità cambiano ogni conguaglio: ripetere con --modifica.',
+  'invalid-apartment': 'Rifiutato: i dati dell’appartamento non sono validi.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -243,6 +266,19 @@ const OPTIONS = {
   contratto: { type: 'string' },
   canone: { type: 'string' },
   acconto: { type: 'string' },
+  locatore: { type: 'string' },
+  posti: { type: 'string' },
+  annualita: { type: 'string' },
+  'esercizio-condominio': { type: 'string' },
+  'differenza-condominio': { type: 'string' },
+  modifica: { type: 'boolean' },
+  esercizio: { type: 'string' },
+  'quota-conduttore': { type: 'string' },
+  voce: { type: 'string' },
+  inquilini: { type: 'string' },
+  quote: { type: 'string' },
+  periodo: { type: 'string' },
+  stato: { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -266,6 +302,9 @@ const RECONCILE_KINDS = [
   'imu.assign',
   'contract.save',
   'contract.rent',
+  'apartment.save',
+  'condo.document',
+  'recovery.save',
   'rent.year',
 ];
 
@@ -348,6 +387,14 @@ const day = (text) => {
   if (!parsed.success) throw invalid('bad-arguments');
   return parsed.data;
 };
+/** `MM-GG` as the start of a year (`annualitaStart`, `condominioStart`); the schema checks the day. */
+const yearStart = (text) => {
+  const found = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.exec(text);
+  if (found === null) throw invalid('bad-arguments');
+  return { month: Number(found[1]), day: Number(found[2]) };
+};
+const DIFFERENCE_TO = { inquilini: 'tenants', proprietario: 'owner' };
+
 const optional = (key, value) => (value === undefined ? {} : { [key]: value });
 
 /** An amount as `parseEuro` reads it; anything else is a bad argument. */
@@ -924,6 +971,177 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  // appartamento creates (every field and --differenza-condominio, the question at creation) or
+  // updates the fields given (plan 8, task 2).
+  if (name === 'appartamento') {
+    need(values, 'id');
+    const v = values;
+    const to = v['differenza-condominio'];
+    if (
+      positionals.length > 0 ||
+      !/^[A-Za-z0-9_-]{1,64}$/.test(v.id) ||
+      (v.posti !== undefined && !/^[1-9][0-9]{0,1}$/.test(v.posti)) ||
+      (to !== undefined && !Object.hasOwn(DIFFERENCE_TO, to))
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await saveApartment(
+      store,
+      {
+        id: v.id,
+        ...optional('name', v.nome),
+        ...optional('locatore', v.locatore),
+        ...optional('posti', v.posti === undefined ? undefined : Number(v.posti)),
+        ...optional(
+          'annualitaStart',
+          v.annualita === undefined ? undefined : yearStart(v.annualita),
+        ),
+        ...optional(
+          'condominioStart',
+          v['esercizio-condominio'] === undefined
+            ? undefined
+            : yearStart(v['esercizio-condominio']),
+        ),
+        ...optional('condoDifferenceTo', to === undefined ? undefined : DIFFERENCE_TO[to]),
+      },
+      who,
+      clock,
+      newId,
+      { confirmed: v.modifica === true },
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      apartmentId: result.apartmentId,
+      ...(result.status === 'unchanged' ? {} : { operationId: result.operationId }),
+    };
+  }
+
+  if (name === 'condominio-documento') {
+    need(values, 'appartamento', 'esercizio', 'tipo', 'totale');
+    if (positionals.length > 0 || !['preventivo', 'consuntivo'].includes(values.tipo)) {
+      throw invalid('bad-arguments');
+    }
+    const quota = values['quota-conduttore'];
+    const result = await saveCondoDocument(
+      store,
+      {
+        apartmentId: values.appartamento,
+        esercizio: values.esercizio,
+        kind: values.tipo,
+        total: euro(values.totale),
+        ...optional('quotaConduttore', quota === undefined ? undefined : euro(quota)),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      documentId: result.documentId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  // recupero: the part of an extraordinary expense to recover from tenants chosen by user1, with
+  // their shares (equal when --quote is absent); --stato set by user1 (plan 8, group B).
+  if (name === 'recupero') {
+    need(values, 'id', 'appartamento', 'voce', 'importo', 'inquilini');
+    const tenants = idList(values.inquilini);
+    const stato = values.stato ?? 'da-recuperare';
+    if (
+      positionals.length > 0 ||
+      !['da-recuperare', 'recuperata', 'non-recuperabile'].includes(stato) ||
+      values.periodo === ''
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const amount = euro(values.importo);
+    const quotes = values.quote?.split(';').map(euro);
+    if (quotes !== undefined && quotes.length !== tenants.length) throw invalid('bad-arguments');
+    const result = await saveTenantRecovery(
+      store,
+      {
+        id: values.id,
+        apartmentId: values.appartamento,
+        instalmentId: values.voce,
+        amount,
+        shares:
+          quotes === undefined
+            ? equalShares(amount, tenants)
+            : tenants.map((tenantId, i) => ({ tenantId, amount: quotes[i] })),
+        status: stato,
+        ...optional('periodLabel', values.periodo),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      recoveryId: result.recoveryId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  // The owners' check of the condominium expenses (section 12) and the differences consuntivo −
+  // preventivo; amounts and dates only with --dettagli (R107, R194).
+  if (name === 'condominio') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await loadCondo(store, {
+      asOf: day(clock().slice(0, 10)),
+      ...optional('apartmentId', values.appartamento),
+      ...optional('esercizio', values.esercizio),
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const details = values.dettagli === true;
+    const rates = result.rates.map((r) => ({
+      instalmentId: r.instalmentId,
+      apartmentId: r.apartmentId,
+      esercizio: r.esercizio,
+      rateIndex: r.rateIndex,
+      rateCount: r.rateCount,
+      straordinaria: r.straordinaria,
+      status: r.status,
+      ...(details
+        ? { expected: r.expected, debited: r.debited, dueDate: r.dueDate, debitDates: r.debitDates }
+        : {}),
+    }));
+    return {
+      status: 'ok',
+      rates,
+      anomalies: rates.filter((r) =>
+        ['senza-addebito', 'importo-diverso', 'duplicato'].includes(r.status),
+      ).length,
+      differences: result.differences.map((d) => ({
+        apartmentId: d.apartmentId,
+        esercizio: d.esercizio,
+        to: d.to,
+        conduttore: d.conduttore === undefined ? 0 : 1,
+        ...(details
+          ? {
+              preventivo: d.preventivo,
+              consuntivo: d.consuntivo,
+              difference: d.difference,
+              ...optional('conduttoreDetails', d.conduttore),
+            }
+          : {}),
+      })),
+      recoveries: result.recoveries.map((r) => ({
+        recoveryId: r.id,
+        apartmentId: r.apartmentId,
+        instalmentId: r.instalmentId,
+        status: r.status,
+        ...optional('periodLabel', r.periodLabel),
+        tenants: r.shares.length,
+        ...(details ? { amount: r.amount, shares: r.shares } : {}),
+      })),
+      warnings: result.warnings.map((w) => ({ ...w, message: MESSAGES[w.code] })),
+    };
+  }
+
   if (name === 'imu') {
     if (
       positionals.length > 0 ||
@@ -1328,6 +1546,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contratto-canone',
         'contratti',
         'affitti-anno',
+        'appartamento',
+        'condominio-documento',
+        'condominio',
+        'recupero',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1342,7 +1564,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti'],
+      dettagli: ['riconcilia', 'importa', 'saldi', 'imu', 'contratti', 'condominio'],
       parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
       pagamento: ['annulla-pagamento'],
@@ -1350,21 +1572,38 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
-      appartamento: ['conto', 'uscita', 'imu-atteso', 'contratto', 'contratti', 'affitti-anno'],
+      appartamento: [
+        'conto',
+        'uscita',
+        'imu-atteso',
+        'contratto',
+        'contratti',
+        'affitti-anno',
+        'condominio-documento',
+        'condominio',
+        'recupero',
+      ],
+      voce: ['recupero'],
+      inquilini: ['recupero'],
+      quote: ['recupero'],
+      periodo: ['recupero'],
+      stato: ['recupero'],
+      esercizio: ['condominio-documento', 'condominio'],
+      'quota-conduttore': ['condominio-documento'],
       anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno'],
       gruppo: ['imu-atteso', 'imu-f24'],
-      totale: ['imu-atteso', 'affitti-anno'],
+      totale: ['imu-atteso', 'affitti-anno', 'condominio-documento'],
       rata: ['imu-atteso', 'imu-f24'],
       categoria: ['uscita'],
       f24: ['uscita'],
-      tipo: ['uscita-inquilino', 'contratto'],
+      tipo: ['uscita-inquilino', 'contratto', 'condominio-documento'],
       mese: ['uscita-inquilino'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],
       gambe: ['giroconto'],
       da: ['giroconto-manuale'],
       a: ['giroconto-manuale'],
-      importo: ['giroconto-manuale'],
+      importo: ['giroconto-manuale', 'recupero'],
       data: ['giroconto-manuale'],
       dal: ['importa', 'contratto-canone'],
       al: ['importa'],
@@ -1384,6 +1623,16 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
           'presenze',
           'caparre',
         ].map((option) => [option, ['contratto']]),
+      ),
+      ...Object.fromEntries(
+        [
+          'locatore',
+          'posti',
+          'annualita',
+          'esercizio-condominio',
+          'differenza-condominio',
+          'modifica',
+        ].map((option) => [option, ['appartamento']]),
       ),
       contratto: ['contratto-canone'],
       canone: ['contratto-canone'],
