@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "deleted": {
+      "type": "boolean"
+    },
+    "transactionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parts": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "voce": {
+            "type": "string",
+            "enum": [
+              "cedolare",
+              "registro"
+            ]
+          },
+          "year": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          },
+          "amount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "voce",
+          "year",
+          "amount"
+        ]
+      }
+    }
+  },
+  "required": [
+    "id",
+    "v",
+    "rev",
+    "transactionId",
+    "parts"
+  ],
+  "description": "id is taxp-<transactionId>; parts: at least one, amounts positive cents, each voce and year once."
+}
