@@ -160,6 +160,8 @@ const MESSAGES = {
   'bad-amount': 'Rifiutato: il canone deve essere positivo e l’acconto non negativo.',
   'rent-differs':
     'Canone del contratto diverso dal totale delle presenze: controllare il contratto o le presenze.',
+  'contract-overlap':
+    'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -1061,9 +1063,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
       checks: result.checks.map((c) => ({
         code: c.code,
         contractId: c.contractId,
+        otherContractId: c.otherContractId,
         from: c.from,
         to: c.to,
-        ...(c.code === 'rent-differs' ? { message: MESSAGES['rent-differs'] } : {}),
+        ...(['rent-differs', 'contract-overlap'].includes(c.code)
+          ? { message: MESSAGES[c.code] }
+          : {}),
         ...(details
           ? {
               tenancyId: c.tenancyId,

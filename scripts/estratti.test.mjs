@@ -2620,6 +2620,27 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     ]);
   });
 
+  it('contratti: due contratti vivi sovrapposti danno contract-overlap con i mesi (R181)', async () => {
+    const s = await contractSetup();
+    expect((await run(contratto(s))).code).toBe(0);
+    const renewal = contratto(s, '--inizio', '2026-10', '--fine', '2028-09').map((a) =>
+      a === 'ctr-berchet' ? 'ctr-berchet-2' : a,
+    );
+    expect((await run(renewal)).code).toBe(0);
+    const list = await run(['contratti', ...s.common]);
+    expect(list.json.checks).toEqual([
+      {
+        code: 'contract-overlap',
+        contractId: 'ctr-berchet',
+        otherContractId: 'ctr-berchet-2',
+        from: '2026-10',
+        to: '2027-09',
+        message:
+          'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
+      },
+    ]);
+  });
+
   it('un errore inatteso dà 3', async () => {
     const s = await contractSetup();
     const failed = await main(contratto(s), {

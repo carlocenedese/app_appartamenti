@@ -139,6 +139,14 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
         [tenancy],
       ),
     ).toEqual([
+      // Two live contracts on the same months also overlap (R181).
+      {
+        code: 'contract-overlap',
+        contractId: 'ctr-1',
+        otherContractId: 'ctr-2',
+        from: '2025-10',
+        to: '2026-09',
+      },
       { code: 'tenancy-linked-twice', contractId: 'ctr-1', tenancyId: 'tcy-a' },
       { code: 'tenancy-linked-twice', contractId: 'ctr-2', tenancyId: 'tcy-a' },
     ]);
@@ -169,7 +177,16 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
         ],
         [makeTenancy('tcy-a')],
       ),
-    ).toEqual([{ code: 'unlinked-tenancy', contractId: 'ctr-a', tenancyId: 'tcy-a' }]);
+    ).toEqual([
+      {
+        code: 'contract-overlap',
+        contractId: 'ctr-a',
+        otherContractId: 'ctr-b',
+        from: '2025-10',
+        to: '2026-09',
+      },
+      { code: 'unlinked-tenancy', contractId: 'ctr-a', tenancyId: 'tcy-a' },
+    ]);
   });
 
   it.each([
@@ -243,6 +260,7 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
     );
     expect(backward).toEqual(forward);
     expect(forward.map((c) => [c.contractId, c.code])).toEqual([
+      ['ctr-2', 'contract-overlap'],
       ['ctr-2', 'tenancy-linked-twice'],
       ['ctr-2', 'unlinked-tenancy'], // the first contract by id
       ['ctr-berchet', 'deposit-other-tenant'],
@@ -338,5 +356,34 @@ describe('contractChecks: rent-differs (plan 7, task 4)', () => {
     });
     const gone = makeTenancy('tcy-gone', { deleted: true });
     expect(rentChecks(exact, [...year, gone])).toEqual([]);
+  });
+});
+
+describe('contractChecks: contract-overlap (user1, question 9 of plan 7, R181)', () => {
+  it('the example: a renewal saved as a new contract, months in common 2026-10 – 2027-09', () => {
+    const renewal = makeContract('ctr-berchet-2', { start: '2026-10', end: '2028-09' });
+    expect(checks([renewal, makeContract('ctr-berchet')])).toEqual([
+      {
+        code: 'contract-overlap',
+        contractId: 'ctr-berchet',
+        otherContractId: 'ctr-berchet-2',
+        from: '2026-10',
+        to: '2027-09',
+      },
+    ]);
+  });
+
+  it('one entry per pair; none for contracts that touch, other apartments or deleted ones', () => {
+    const contracts = [
+      makeContract('ctr-a', { start: '2025-10', end: '2026-09' }),
+      makeContract('ctr-b', { start: '2026-10', end: '2027-09' }),
+      makeContract('ctr-c', { start: '2026-09', end: '2026-10' }),
+      makeContract('ctr-l', { apartmentId: 'lovarini' }),
+      makeContract('ctr-gone', { deleted: true }),
+    ];
+    expect(checks(contracts).map((c) => [c.contractId, c.otherContractId, c.from, c.to])).toEqual([
+      ['ctr-a', 'ctr-c', '2026-09', '2026-09'],
+      ['ctr-b', 'ctr-c', '2026-10', '2026-10'],
+    ]);
   });
 });
