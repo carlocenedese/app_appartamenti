@@ -68,6 +68,11 @@
       "required": [
         "date"
       ]
+    },
+    "taxYear": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9999
     }
   },
   "required": [
@@ -78,5 +83,5 @@
     "kind",
     "dueDate"
   ],
-  "description": "id starts with scad-; expected is positive cents."
+  "description": "id starts with scad-; expected is positive cents; taxYear 1-9999."
 }

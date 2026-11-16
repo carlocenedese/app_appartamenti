@@ -95,7 +95,7 @@ function input(changes: Partial<Record<keyof TaxTableInput, unknown>> = {}): Tax
       ...estimates('nord', {
         cedolare: 50000,
         imu: 60000,
-        registro: 0,
+        registro: 500,
         tari: 20005,
         condominio: 1,
       }),
@@ -172,8 +172,9 @@ function input(changes: Partial<Record<keyof TaxTableInput, unknown>> = {}): Tax
       { id: 'rent-nord-2026', apartmentId: 'nord', year: '2026', totalRent: 1000000 },
     ]),
     expectedItems: [
-      { apartmentId: 'nord', voce: 'cedolare', year: '2026', amount: cents(40000) },
+      { apartmentId: 'est', voce: 'cedolare', year: '2026', amount: cents(40000) },
       { apartmentId: 'sud', voce: 'cedolare', year: '2026', amount: cents(5) },
+      { apartmentId: 'nord', voce: 'registro', year: '2026', amount: cents(500) },
       { apartmentId: 'est', voce: 'registro', year: '2027', amount: cents(5) },
     ],
     ...changes,
@@ -215,19 +216,20 @@ describe('taxTable (plan 10, task 3)', () => {
         voce: 'registro',
         state: 'in-linea',
         reasons: [],
-        estimate: 0,
+        estimate: 500,
         paid: 0,
-        expected: 0,
+        expected: 500,
         difference: 0,
       },
-      // The year and the amounts of the TARI are not decided by user1: shown, da verificare.
+      // The TARI of the esercizio 2026 (answer of user1): checked as the other voci.
       {
         voce: 'tari',
-        state: 'da-verificare',
-        reasons: ['rule-undecided'],
+        state: 'in-linea',
+        reasons: [],
         estimate: 20005,
         paid: 10000,
         expected: 10000,
+        difference: -5,
       },
       { voce: 'condominio', state: 'da-verificare', reasons: ['rule-undecided'], estimate: 3 },
     ]);
@@ -273,6 +275,144 @@ describe('taxTable (plan 10, task 3)', () => {
       expect(rowOf(tables, 'user1', voce)).not.toHaveProperty('difference');
     }
     expect(rowOf(tables, 'user1', 'imu')).toMatchObject({ state: 'in-linea' });
+  });
+
+  it('a payable without reference year or without amount never counts as zero (plan 13)', () => {
+    const tables = taxTable(
+      input({
+        expectedItems: [
+          { apartmentId: 'est', voce: 'cedolare', year: '2026', amount: cents(40000) },
+          // No year: it could be of any year, so every year is da verificare.
+          { apartmentId: 'est', voce: 'cedolare' },
+          { apartmentId: 'nord', voce: 'registro', year: '2026' },
+          { apartmentId: 'nord', voce: 'registro', year: '2025' },
+        ],
+      }),
+    );
+    expect(rowOf(tables, 'user1', 'cedolare')).toMatchObject({
+      state: 'da-verificare',
+      reasons: ['no-expected-source'],
+      paid: 40000,
+    });
+    expect(rowOf(tables, 'user1', 'cedolare')).not.toHaveProperty('expected');
+    expect(rowOf(tables, 'user1', 'registro')).toEqual({
+      voce: 'registro',
+      state: 'da-verificare',
+      reasons: ['expected-amount-missing'],
+      estimate: 500,
+      paid: 0,
+      expected: 0,
+    });
+    // No payable of user2 for the voce and year: the expected is not known, never zero.
+    expect(rowOf(tables, 'user2', 'registro')?.reasons).toEqual([
+      'missing-estimate',
+      'no-expected-source',
+    ]);
+    expect(rowOf(tables, 'user2', 'registro')).not.toHaveProperty('expected');
+    expect(rowOf(taxTable(input({ expectedItems: [] })), 'user1', 'cedolare')).toMatchObject({
+      state: 'da-verificare',
+      reasons: ['no-expected-source'],
+    });
+    expect(
+      rowOf(
+        taxTable(
+          input({ year: '2030', expectedItems: [{ apartmentId: 'est', voce: 'cedolare' }] }),
+        ),
+        'user1',
+        'cedolare',
+      )?.reasons,
+    ).toEqual(['missing-estimate', 'no-expected-source']);
+  });
+
+  it('a payable paid outside the paid of the table is da verificare, unless its F24 is assigned', () => {
+    const at = (paid: { transactionId?: string }, changes: Record<string, unknown> = {}) =>
+      rowOf(
+        taxTable(
+          input({
+            expectedItems: [
+              { apartmentId: 'est', voce: 'cedolare', year: '2026', amount: cents(40000) },
+              { apartmentId: 'nord', voce: 'registro', year: '2026', amount: cents(500), paid },
+            ],
+            ...changes,
+          }),
+        ),
+        'user1',
+        'registro',
+      );
+    // A: paid by hand, no movement. B: paid by a movement without tasse-assegna.
+    expect(at({})?.reasons).toEqual(['payable-paid-outside']);
+    expect(at({ transactionId: 'tx-ced' })?.reasons).toEqual(['payable-paid-outside']);
+    // The movement is assigned to the registro of the year: in the paid, nothing to check.
+    const assigned = parse('taxPayment', [
+      {
+        id: 'taxp-tx-ced',
+        transactionId: 'tx-ced',
+        parts: [
+          { voce: 'cedolare', year: '2026', amount: 40000 },
+          { voce: 'registro', year: '2026', amount: 60000 },
+        ],
+      },
+    ]);
+    expect(at({ transactionId: 'tx-ced' }, { taxPayments: assigned })).toMatchObject({
+      reasons: [],
+      paid: 60000,
+      expected: 0,
+    });
+    // Assigned to another year: still outside.
+    expect(
+      at(
+        { transactionId: 'tx-ced' },
+        {
+          taxPayments: parse('taxPayment', [
+            {
+              id: 'taxp-tx-ced',
+              transactionId: 'tx-ced',
+              parts: [{ voce: 'registro', year: '2025', amount: 100000 }],
+            },
+          ]),
+        },
+      )?.reasons,
+    ).toEqual(['payable-paid-outside']);
+    // C: a movement not booked is not paid from the CSV (R2).
+    expect(
+      at(
+        { transactionId: 'tx-ced' },
+        {
+          taxPayments: assigned,
+          transactions: parse('transaction', [
+            tx('tx-imu1', -50000),
+            tx('tx-ced', -100000, { booked: false }),
+          ]),
+        },
+      )?.reasons,
+    ).toEqual(['payable-paid-outside', 'stale-assignment']);
+  });
+
+  it('a payable still to pay beside an assigned payment of the same voce, year and apartment is da verificare', () => {
+    const tables = taxTable(
+      input({
+        expectedItems: [
+          { apartmentId: 'nord', voce: 'cedolare', year: '2026', amount: cents(40000) },
+          { apartmentId: 'nord', voce: 'registro', year: '2026', amount: cents(500) },
+        ],
+      }),
+    );
+    // tx-ced pays 400,00 € of the cedolare 2026 of nord, and the payable of nord still expects it.
+    expect(rowOf(tables, 'user1', 'cedolare')).toMatchObject({
+      state: 'da-verificare',
+      reasons: ['payable-and-payment'],
+      paid: 40000,
+      expected: 40000,
+    });
+    const other = taxTable(
+      input({
+        expectedItems: [
+          { apartmentId: 'est', voce: 'cedolare', year: '2026', amount: cents(40000) },
+          { apartmentId: 'nord', voce: 'registro', year: '2026', amount: cents(500) },
+        ],
+      }),
+    );
+    expect(rowOf(other, 'user1', 'cedolare')?.reasons).toEqual([]);
   });
 
   it('an estimate missing for one apartment of the taxpayer is da verificare, never a partial sum', () => {
@@ -338,7 +478,7 @@ describe('taxTable (plan 10, task 3)', () => {
     expect(rowOf(tables, 'user1', 'tari')).toEqual({
       voce: 'tari',
       state: 'da-verificare',
-      reasons: ['assumed-payment', 'rule-undecided'],
+      reasons: ['assumed-payment'],
       estimate: 20005,
       paid: 0,
       expected: 10000,
@@ -367,7 +507,7 @@ describe('taxTable (plan 10, task 3)', () => {
     for (const voce of ['cedolare', 'imu', 'registro']) {
       expect(rowOf(tables, 'user1', voce)?.reasons).toEqual(['unassigned-tax-movement']);
     }
-    expect(rowOf(tables, 'user1', 'tari')?.reasons).toEqual(['rule-undecided']);
+    expect(rowOf(tables, 'user1', 'tari')?.reasons).toEqual([]);
     expect(rowOf(tables, 'user2', 'cedolare')?.reasons).toEqual(['missing-estimate']);
   });
 
@@ -386,6 +526,102 @@ describe('taxTable (plan 10, task 3)', () => {
       paid: 0,
     });
     expect(rowOf(tables, 'user1', 'registro')?.state).toBe('in-linea');
+  });
+
+  it('IMU with only the annual total: paid as it is, checked on the year once every rate has an F24 (plan 13)', () => {
+    const annualOnly = (apartmentId: string, annualTotal: number) => ({
+      id: `imu-${apartmentId}-2026`,
+      apartmentId,
+      year: '2026',
+      f24Group: 'g1',
+      annualTotal,
+      rates: [{ index: 1 }, { index: 2 }],
+    });
+    const at = (second: number | undefined, extra: Record<string, unknown> = {}) =>
+      rowOf(
+        taxTable(
+          input({
+            imuYears: parse('imuYear', [annualOnly('nord', 60000), annualOnly('est', 40000)]),
+            transactions: parse('transaction', [
+              tx('tx-imu1', -50000),
+              tx('tx-ced', -100000),
+              ...(second === undefined ? [] : [tx('tx-imu2', -second, extra)]),
+            ]),
+            classes: parse('movementClass', [
+              tasse('tx-imu1', { imu: { f24Group: 'g1', year: '2026', rateIndex: 1 } }),
+              tasse('tx-ced'),
+              ...(second === undefined
+                ? []
+                : [tasse('tx-imu2', { imu: { f24Group: 'g1', year: '2026', rateIndex: 2 } })]),
+            ]),
+          }),
+        ),
+        'user1',
+        'imu',
+      );
+    // Before the last rate: the paid as it is, no expected missing, no comparison yet.
+    expect(at(undefined)).toEqual({
+      voce: 'imu',
+      state: 'da-verificare',
+      reasons: ['imu-year-open'],
+      estimate: 100000,
+      paid: 50000,
+      expected: 0,
+    });
+    expect(at(50000)).toEqual({
+      voce: 'imu',
+      state: 'in-linea',
+      reasons: [],
+      estimate: 100000,
+      paid: 100000,
+      expected: 0,
+      difference: 0,
+      annualDifference: 0,
+    });
+    // 0,10 € off the annual total is in line, 0,11 € is not (the threshold of the table, not 1%).
+    expect(at(50010)).toMatchObject({ state: 'in-linea', annualDifference: 10 });
+    expect(at(50011)).toMatchObject({ state: 'discrepanza', reasons: [], annualDifference: 11 });
+    // Out of the 1% of imu.ts: still the paid as it is, a discrepancy, never imu-to-check.
+    expect(at(70000)).toMatchObject({
+      state: 'discrepanza',
+      reasons: [],
+      paid: 120000,
+      annualDifference: 20000,
+    });
+    // An F24 not booked is not paid from the CSV (R2): to be checked.
+    expect(at(50000, { booked: false })).toMatchObject({
+      state: 'da-verificare',
+      reasons: ['imu-to-check'],
+      paid: 50000,
+    });
+  });
+
+  it('IMU: the annual total is checked even when the estimate agrees with the paid', () => {
+    const tables = taxTable(
+      input({
+        estimates: parse('taxEstimate', [
+          ...estimates('nord', { imu: 60000 }),
+          ...estimates('est', { imu: 40011 }),
+        ]),
+        imuYears: parse('imuYear', [
+          {
+            id: 'imu-nord-2026',
+            apartmentId: 'nord',
+            year: '2026',
+            f24Group: 'g1',
+            annualTotal: 100000,
+            rates: [{ index: 1 }],
+          },
+        ]),
+        apartments: parse('apartment', [apartment('nord', 'user1'), apartment('est', 'user1')]),
+        transactions: parse('transaction', [tx('tx-imu1', -100011), tx('tx-ced', -100000)]),
+      }),
+    );
+    expect(rowOf(tables, 'user1', 'imu')).toMatchObject({
+      state: 'discrepanza',
+      difference: 0,
+      annualDifference: 11,
+    });
   });
 
   it('IMU: an F24 not yet booked is not paid and is to be checked', () => {

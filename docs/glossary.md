@@ -123,13 +123,13 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | copia in conflitto       | conflict copy             | copia di Dropbox: segnalata, mai caricata |
 | scrittura obsoleta       | stale write               | da una `rev` vecchia: rifiutata           |
 
-## Tasse e stime (piano 10)
+## Tasse e stime (piani 10 e 13)
 
 | Italiano                                 | Inglese                                      | Note                                                          |
 | ---------------------------------------- | -------------------------------------------- | ------------------------------------------------------------- |
 | stima di inizio anno                     | tax estimate (`TaxEstimate`)                 | scritta da user1 per appartamento, anno e voce; mai calcolata |
 | voce (delle tasse)                       | voce (`TaxVoice`)                            | cedolare, imu, registro, tari, condominio                     |
-| contribuente                             | taxpayer                                     | il `locatore` dell'appartamento (dato personale)              |
+| contribuente                             | taxpayer                                     | il `locatore` dell'appartamento (dato personale), confermato  |
 | pagato finora                            | paid                                         | solo addebiti veri del CSV (R2)                               |
 | ancora previsto                          | expected                                     | da Scadenze e pagamenti; mai una stima                        |
 | differenza                               | difference                                   | pagato + ancora previsto − stima                              |
@@ -137,6 +137,8 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | assegnazione di un movimento a una tassa | tax payment (`TaxPayment`)                   | un addebito «tasse» diviso tra cedolare o registro e anni     |
 | copia dell'anno precedente               | copy of the previous year                    | solo a comando, mai sopra stime esistenti                     |
 | file per il commercialista               | tax export (`buildTaxWorkbook`)              | immobili, contratti, canoni in `Riservato_proprietari/Tasse`  |
+| anno di riferimento (di una scadenza)    | tax year (`Payable.taxYear`)                 | scelto da user1, mai calcolato (piano 13)                     |
+| differenza sul totale annuo IMU          | annual difference (`annualDifference`)       | F24 dell'anno − totale annuo atteso, a fine anno (piano 13)   |
 
 ## Moduli e documenti (piano 12)
 
