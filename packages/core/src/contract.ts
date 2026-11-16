@@ -2,8 +2,11 @@
  * Lease contracts (plan 7): the rent of a month from the contract's history, and the read-only
  * checks between contracts, tenancies and deposits. Pure: nothing here writes or corrects data.
  */
+import { isPresent } from './conguaglio';
 import type { Contract, ContractRent, Payment, Tenancy } from './model';
+import { cents } from './money';
 import type { Cents } from './money';
+import { addMonths } from './period';
 import type { YearMonth } from './period';
 
 /** The entry of `rent` with the largest `from` not after `month`; none before the first entry. */
@@ -102,6 +105,9 @@ export function contractChecks(input: {
     }
   }
 
+  for (const contract of contracts)
+    out.push(...rentDiffers(contract, [...tenancies.values()], input.asOf));
+
   // Only where the apartment uses links, so apartments without them give no warning per tenancy.
   const linking = contracts
     .filter((c) => c.tenancyIds !== undefined)
@@ -124,4 +130,43 @@ export function contractChecks(input: {
       compare(a.paymentId, b.paymentId) ||
       compare(a.from, b.from),
   );
+}
+
+/**
+ * R4 on the rent history: for each month from `start` to `min(end, asOf)` with a known rent, the
+ * contract's rent plus advance against the rent plus flat charge of every live tenancy of the
+ * apartment present in the month (linked or not). Equal consecutive months form one interval.
+ */
+function rentDiffers(
+  contract: Contract,
+  tenancies: readonly Tenancy[],
+  asOf: YearMonth,
+): ContractCheck[] {
+  const own = tenancies.filter((t) => t.apartmentId === contract.apartmentId);
+  const last = contract.end < asOf ? contract.end : asOf;
+  const out: ContractCheck[] = [];
+  let open: ContractCheck | undefined;
+  for (let month = contract.start; month <= last; month = addMonths(month, 1)) {
+    const rent = rentForMonth(contract, month);
+    const expected = rent === undefined ? undefined : rent.monthlyRent + rent.monthlyAdvance;
+    const actual = own
+      .filter((t) => isPresent(t, month))
+      .reduce((sum, t) => sum + t.monthlyRent + t.monthlyForfait, 0);
+    if (expected === undefined || expected === actual) {
+      open = undefined;
+    } else if (open?.expected === expected && open.actual === actual) {
+      open.to = month;
+    } else {
+      open = {
+        code: 'rent-differs',
+        contractId: contract.id,
+        from: month,
+        to: month,
+        expected: cents(expected),
+        actual: cents(actual),
+      };
+      out.push(open);
+    }
+  }
+  return out;
 }

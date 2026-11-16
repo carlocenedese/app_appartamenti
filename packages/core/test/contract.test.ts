@@ -236,3 +236,91 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
     ]);
   });
 });
+
+// --- R4 on the rent history (plan 7, task 4): the example of the design, section 3.
+
+describe('contractChecks: rent-differs (plan 7, task 4)', () => {
+  const initial = { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 };
+  const renewal = { from: '2026-10', monthlyRent: 165000, monthlyAdvance: 15000 };
+  const berchet = (rent?: unknown[]) =>
+    makeContract('ctr-berchet', rent === undefined ? {} : { rent });
+  // Anna Prova, Bruno Esempio, Carla Finta, Dario Inventato 350 + 30; Elena Fittizia 330 + 30.
+  const year = [
+    ...['anna', 'bruno', 'carla', 'dario'].map((n) => makeTenancy(`tcy-${n}`, { tenantId: n })),
+    makeTenancy('tcy-elena', { tenantId: 'elena', monthlyRent: 33000 }),
+  ];
+  const rentChecks = (contract: Contract, tenancies: Tenancy[], month: string = asOf) =>
+    checks([contract], tenancies, [], yearMonth(month)).filter((c) => c.code === 'rent-differs');
+
+  it('the example: one interval per equal months, the month of asOf included', () => {
+    expect(rentChecks(berchet([initial]), year)).toEqual([
+      {
+        code: 'rent-differs',
+        contractId: 'ctr-berchet',
+        from: '2025-10',
+        to: '2026-09',
+        expected: 175000,
+        actual: 188000,
+      },
+      {
+        code: 'rent-differs',
+        contractId: 'ctr-berchet',
+        from: '2026-10',
+        to: '2026-11',
+        expected: 175000,
+        actual: 0,
+      },
+    ]);
+  });
+
+  it('the renewal with new tenancies that add up: nothing from 2026-10', () => {
+    const next = ['anna', 'bruno', 'carla', 'dario'].map((n) =>
+      makeTenancy(`tcy-${n}-2`, {
+        tenantId: n,
+        from: '2026-10',
+        to: '2027-09',
+        monthlyRent: 33000,
+        monthlyForfait: 3000,
+      }),
+    );
+    const extra = makeTenancy('tcy-elena-2', {
+      tenantId: 'elena',
+      from: '2026-10',
+      to: '2027-09',
+      monthlyRent: 33000,
+      monthlyForfait: 3000,
+    });
+    expect(rentChecks(berchet([initial, renewal]), [...year, ...next, extra])).toEqual([
+      expect.objectContaining({ from: '2025-10', to: '2026-09' }),
+    ]);
+  });
+
+  it('no month after asOf, none before the first entry, none without rent', () => {
+    expect(rentChecks(berchet([initial]), year, '2026-09').map((c) => c.to)).toEqual(['2026-09']);
+    const late = makeContract('ctr-berchet', { rent: [{ ...initial, from: '2026-01' }] });
+    expect(rentChecks(late, year).map((c) => c.from)).toEqual(['2026-01', '2026-10']);
+    expect(rentChecks(berchet(), year)).toEqual([]);
+    expect(rentChecks(berchet([initial]), year, '2025-09')).toEqual([]);
+  });
+
+  it('a tenancy that leaves in 2026-03 opens a new interval from 2026-04', () => {
+    const leaving = year.map((t) =>
+      t.id === 'tcy-elena' ? { ...t, to: yearMonth('2026-03') } : t,
+    );
+    expect(
+      rentChecks(berchet([initial]), leaving, '2026-09').map((c) => [c.from, c.to, c.actual]),
+    ).toEqual([
+      ['2025-10', '2026-03', 188000],
+      ['2026-04', '2026-09', 152000],
+    ]);
+  });
+
+  it('months that add up exactly give nothing, deleted tenancies do not count', () => {
+    const exact = makeContract('ctr-berchet', {
+      end: '2026-09',
+      rent: [{ from: '2025-10', monthlyRent: 172000, monthlyAdvance: 16000 }],
+    });
+    const gone = makeTenancy('tcy-gone', { deleted: true });
+    expect(rentChecks(exact, [...year, gone])).toEqual([]);
+  });
+});

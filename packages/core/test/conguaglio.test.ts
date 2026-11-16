@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CORE_VERSION,
+  ContractSchema,
   InstalmentSchema,
   SettlementInputError,
   allocateBillToMonths,
@@ -17,6 +18,7 @@ import {
   cents,
   isoDate,
   rateCoverage,
+  settlementPeriods,
   yearMonth,
 } from '../src/index';
 import type { Bill, BillMatch, Instalment, Payment, Tenancy } from '../src/index';
@@ -983,5 +985,40 @@ describe('Step 3e: closing the period and commission', () => {
     });
     expect(result.tenants.every((t) => t.commissione === 0)).toBe(true);
     expect(result.pending).toEqual([{ itemType: 'bill', itemId: 'luce' }]);
+  });
+});
+
+describe('the contract data of plan 7 leaves the settlement unchanged (Review Focus 4)', () => {
+  it('same periods and same result with and without the new contract fields', () => {
+    const plain = ContractSchema.parse({
+      id: 'ctr',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt',
+      type: '1+1',
+      start: '2026-10',
+      end: '2027-09',
+      settlement: 'annuale',
+    });
+    const full = ContractSchema.parse({
+      ...plain,
+      agreedRent: true,
+      forStudents: true,
+      durationMonths: 12,
+      taxRegime: 'cedolare',
+      cedolareRateBp: 1000,
+      tenancyIds: ['a'],
+      rent: [{ from: '2026-10', monthlyRent: 999000, monthlyAdvance: 1000 }],
+    });
+    const settle = (contract: typeof plain) =>
+      settlementPeriods(contract, apartment().annualitaStart).map((p) =>
+        calc({
+          period: period(p.from, p.to, p.label),
+          bills: [bill('luce', '2026-10-01', '2027-09-30', 40000)],
+          tenancies: FOUR_FULL_YEAR,
+          apartment: apartment({ contrattoMensile: cents(160000) }),
+        }),
+      );
+    expect(settle(full)).toEqual(settle(plain));
   });
 });
