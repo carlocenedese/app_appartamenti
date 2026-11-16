@@ -5,6 +5,8 @@
  * No write ever touches a tenancy, a payment or another contract; no amount, code or name in a
  * summary.
  */
+import { contractChecks } from './contract';
+import type { ContractCheck } from './contract';
 import { checkConsistency, commitChange } from './journal';
 import {
   ApartmentSchema,
@@ -179,4 +181,36 @@ export async function setContractRent(
     clock,
     newId,
   );
+}
+
+export type LoadContractChecksResult =
+  | { status: 'computed'; contracts: Contract[]; checks: ContractCheck[] }
+  | { status: 'refused'; reason: 'inconsistent-store' };
+
+/**
+ * The live contracts (by `id`) and their checks (`contractChecks`); with `apartmentId` only the
+ * contracts of that apartment and their checks. Read only: the checks are not part of
+ * `checkConsistency`, which would block every write.
+ */
+export async function loadContractChecks(
+  store: Store,
+  options: { asOf: YearMonth; apartmentId?: string },
+): Promise<LoadContractChecksResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  const all = (await loadAll(store, 'contract', ContractSchema)).records.sort((a, b) =>
+    a.id < b.id ? -1 : 1,
+  );
+  const checks = contractChecks({
+    contracts: all,
+    tenancies: (await loadAll(store, 'tenancy', TenancySchema)).records,
+    payments: (await loadAll(store, 'payment', PaymentSchema)).records,
+    asOf: options.asOf,
+  });
+  const contracts = all.filter(
+    (c) => options.apartmentId === undefined || c.apartmentId === options.apartmentId,
+  );
+  const ids = new Set(contracts.map((c) => c.id));
+  return { status: 'computed', contracts, checks: checks.filter((c) => ids.has(c.contractId)) };
 }

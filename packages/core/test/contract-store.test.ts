@@ -4,6 +4,7 @@ import {
   commitChange,
   isoDate,
   loadAll,
+  loadContractChecks,
   readJournal,
   recordPath,
   recordSchemas,
@@ -321,5 +322,57 @@ describe('undoing the contract operations (plan 7, task 2)', () => {
     await undoOperation(store, 'd-1', 'p1', clock, ids('u'));
     const [back] = await contracts(store);
     expect({ ...back, rev: 1 }).toEqual(first);
+  });
+});
+
+describe('loadContractChecks (plan 7, task 3)', () => {
+  const asOf = yearMonth('2026-11');
+
+  it('computes the checks of the live records and writes nothing', async () => {
+    const store = await fixtureStore();
+    await save(store, contract({ tenancyIds: ['tcy-a', 'tcy-early'] }));
+    await seed(
+      store,
+      'contract',
+      [
+        {
+          ...contract({
+            id: 'ctr-lov',
+            apartmentId: 'lovarini',
+            tenancyIds: [],
+            depositPaymentIds: [],
+          }),
+          v: 1,
+          rev: 1,
+        },
+      ],
+      's4',
+    );
+    const before = await snapshot(store);
+    const result = await loadContractChecks(store, { asOf });
+    expect(await snapshot(store)).toEqual(before);
+    expect(result.status).toBe('computed');
+    if (result.status !== 'computed') return;
+    expect(result.contracts.map((c) => c.id)).toEqual(['ctr-berchet', 'ctr-lov']);
+    expect(result.checks).toEqual([
+      { code: 'tenancy-outside-contract', contractId: 'ctr-berchet', tenancyId: 'tcy-early' },
+      { code: 'unlinked-tenancy', contractId: 'ctr-berchet', tenancyId: 'tcy-b' },
+      { code: 'unlinked-tenancy', contractId: 'ctr-lov', tenancyId: 'tcy-lov' },
+    ]);
+    const lovarini = await loadContractChecks(store, { asOf, apartmentId: 'lovarini' });
+    expect(lovarini).toEqual({
+      status: 'computed',
+      contracts: [expect.objectContaining({ id: 'ctr-lov' })],
+      checks: [{ code: 'unlinked-tenancy', contractId: 'ctr-lov', tenancyId: 'tcy-lov' }],
+    });
+  });
+
+  it('a diverged store is inconsistent-store', async () => {
+    const store = await fixtureStore();
+    const path = recordPath('tenancy', 'tcy-a');
+    store.putRaw(path, (store.getRaw(path) ?? '').replace('ten-anna', 'ten-altro'));
+    const before = await snapshot(store);
+    expect(await loadContractChecks(store, { asOf })).toEqual(refused('inconsistent-store'));
+    expect(await snapshot(store)).toEqual(before);
   });
 });
