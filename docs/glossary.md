@@ -136,3 +136,15 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | assegnazione di un movimento a una tassa | tax payment (`TaxPayment`)                   | un addebito «tasse» diviso tra cedolare o registro e anni     |
 | copia dell'anno precedente               | copy of the previous year                    | solo a comando, mai sopra stime esistenti                     |
 | file per il commercialista               | tax export (`buildTaxWorkbook`)              | immobili, contratti, canoni in `Riservato_proprietari/Tasse`  |
+
+## Moduli e documenti (piano 12)
+
+| Italiano           | Inglese                                  | Note                                                                   |
+| ------------------ | ---------------------------------------- | ---------------------------------------------------------------------- |
+| modulo             | module (`ModuleKind`, `MODULE_KINDS`)    | uno degli otto documenti della sezione 26                              |
+| modello            | template                                 | il `.docx` dei proprietari con i segnaposto; il testo lo scrivono loro |
+| segnaposto         | placeholder (`{{campo}}`)                | minuscole, cifre e `_`; anche spezzato in più run di Word              |
+| campo dalla scheda | app field (`APP_FIELDS`, `moduleValues`) | riempito dai record; non si dà nel file dei valori                     |
+| campo richiesto    | asked field (`ASKED_FIELDS`)             | testo libero dal file dei valori, mai controllato                      |
+| modello di prova   | starter template (`starterDocx`)         | titolo, testo inventato, elenco dei campi; nessun testo legale         |
+| file dei valori    | values file (`--valori`)                 | JSON di testi; i dati personali restano lì, non nella riga di comando  |
