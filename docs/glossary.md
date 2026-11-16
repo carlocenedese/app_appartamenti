@@ -19,7 +19,9 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | data di firma                        | signing date (`signedOn`)                    | separata dalla data di registrazione                                         |
 | registrazione, codice identificativo | registration (`registration`), code (`code`) | il codice è un dato personale: solo con `--dettagli`                         |
 | regime fiscale                       | tax regime (`taxRegime`)                     | `cedolare` od `ordinario`, solo dato                                         |
-| cedolare secca                       | flat-rate tax (`cedolare`)                   | mai calcolata nell'app (domanda 1 del piano 7)                               |
+| cedolare secca                       | flat-rate tax (`cedolare`)                   | solo stimata, da confermare (`cedolareExpected`, R182)                       |
+| affitti dell'anno                    | annual rents (`rentYear`, `totalRent`)       | totale inserito a mano da user1, base della stima della cedolare             |
+| contratti sovrapposti                | contract overlap (`contract-overlap`)        | due contratti vivi dello stesso appartamento con mesi in comune: avviso      |
 | aliquota                             | rate (`cedolareRateBp`)                      | punti base inseriti dall'utente, mai una costante                            |
 | storico del canone                   | rent history (`rent`)                        | voci `from`, `monthlyRent`, `monthlyAdvance`                                 |
 | acconto spese                        | expense advance (`monthlyAdvance`)           | parte del contratto confrontata da R4                                        |
