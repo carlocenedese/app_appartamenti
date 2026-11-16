@@ -11,7 +11,9 @@
 // 3c adds escludi (excludes one movement written by an import), abbina (confirms a match of bills
 // and instalments by hand) and annulla-riconciliazione (undoes one operation of the
 // reconciliation; annulla-incassi is its synonym, R116); riconcilia runs every phase (R126);
-// uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132).
+// uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132);
+// plan 3d adds imu-atteso (the expected IMU of an apartment and year), imu-f24 (an F24
+// assigned to an IMU rate by hand) and imu (the check of the rates).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -35,6 +37,7 @@ import {
   TransferPurposeSchema,
   TimestampSchema,
   YearMonthSchema,
+  YearSchema,
   cancelAutomaticClass,
   cancelAutomaticPayment,
   checkConsistency,
@@ -46,6 +49,7 @@ import {
   excludeMovement,
   importStatement,
   loadAccountBalances,
+  loadImuRates,
   loadAll,
   parseCsv,
   parseEuro,
@@ -57,6 +61,8 @@ import {
   saveAccount,
   saveBankProfile,
   saveTenant,
+  setImuYear,
+  assignImuF24,
   undoBlockedBy,
   undoImport,
   undoOperation,
@@ -106,7 +112,7 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti).',
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -128,6 +134,15 @@ const MESSAGES = {
   'leg-not-allowed': 'Rifiutato: il movimento indicato non è una gamba di questo giroconto.',
   'same-account': 'Rifiutato: i due conti sono lo stesso conto.',
   'invalid-amount': 'Rifiutato: l’importo deve essere positivo.',
+  'bad-rates': 'Rifiutato: le rate vanno numerate da 1 senza buchi, con importi positivi.',
+  'rates-mismatch':
+    'Rifiutato: un altro appartamento dello stesso gruppo e anno ha un altro numero di rate.',
+  'not-imu-candidate':
+    'Rifiutato: il movimento non è un F24 da assegnare (proposta F24 o F24 da ripartire del conto).',
+  'unknown-rate': 'Rifiutato: nessun appartamento del gruppo ha questa rata in questo anno.',
+  'payer-not-in-group': 'Rifiutato: l’appartamento del conto non è nel gruppo in questo anno.',
+  'rate-already-paid': 'Rifiutato: un altro F24 è già assegnato a questa rata.',
+  'imu-to-reconcile': 'Rata IMU da riconciliare: controllare gli importi attesi (imu-atteso).',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -183,6 +198,10 @@ const OPTIONS = {
   a: { type: 'string' },
   importo: { type: 'string' },
   data: { type: 'string' },
+  anno: { type: 'string' },
+  gruppo: { type: 'string' },
+  totale: { type: 'string' },
+  rata: { type: 'string', multiple: true },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -202,6 +221,8 @@ const RECONCILE_KINDS = [
   'transfer.reconcile',
   'transfer.confirm',
   'transfer.manual',
+  'imu.expected',
+  'imu.assign',
 ];
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
@@ -235,6 +256,29 @@ function parsePart(text) {
   }
   try {
     return { kind: pieces[0], forMonth: forMonth.data, amount: parseEuro(pieces[2]) };
+  } catch {
+    throw invalid('bad-arguments');
+  }
+}
+
+/** `<n>[:<importo>][:<AAAA-MM-GG>]`: an empty or missing field is not known (plan 3d). */
+function parseRate(text) {
+  const [index, amount = '', dueDate = '', ...rest] = text.split(':');
+  const date = ISODateSchema.safeParse(dueDate);
+  if (!/^[1-9][0-9]{0,2}$/.test(index) || rest.length > 0 || (dueDate !== '' && !date.success)) {
+    throw invalid('bad-arguments');
+  }
+  return {
+    index: Number(index),
+    ...(amount === '' ? {} : { expected: euro(amount) }),
+    ...(dueDate === '' ? {} : { dueDate: date.data }),
+  };
+}
+
+/** An amount as `parseEuro` reads it; anything else is a bad argument. */
+function euro(text) {
+  try {
+    return parseEuro(text);
   } catch {
     throw invalid('bad-arguments');
   }
@@ -710,11 +754,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const result = await loadAccountBalances(store);
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     // Without --dettagli only the apartments of each pair and counts: no amount, no date (R132).
+    const toSplitImu = result.toSplit.filter((t) => t.imu !== undefined).length;
     if (values.dettagli === true) {
       return {
         status: 'ok',
         pairs: result.pairs,
         toSplit: result.toSplit,
+        toSplitImu,
         unverified: result.unverified,
       };
     }
@@ -726,7 +772,104 @@ async function command(name, values, positionals, store, who, clock, newId) {
         items: p.items.length,
       })),
       toSplit: result.toSplit.length,
+      toSplitImu,
       unverified: result.unverified.length,
+    };
+  }
+
+  if (name === 'imu-atteso') {
+    need(values, 'appartamento', 'anno', 'gruppo');
+    if (
+      positionals.length > 0 ||
+      values.rata === undefined ||
+      !YearSchema.safeParse(values.anno).success
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await setImuYear(
+      store,
+      {
+        apartmentId: values.appartamento,
+        year: values.anno,
+        f24Group: values.gruppo,
+        ...(values.totale === undefined ? {} : { annualTotal: euro(values.totale) }),
+        rates: values.rata.map(parseRate),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      imuYearId: result.imuYearId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  if (name === 'imu-f24') {
+    need(values, 'movimento', 'gruppo', 'anno');
+    const [rata, ...more] = values.rata ?? [];
+    if (
+      positionals.length > 0 ||
+      more.length > 0 ||
+      !/^[1-9][0-9]{0,2}$/.test(rata ?? '') ||
+      !YearSchema.safeParse(values.anno).success
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await assignImuF24(
+      store,
+      {
+        transactionId: values.movimento,
+        f24Group: values.gruppo,
+        year: values.anno,
+        rateIndex: Number(rata),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    if (result.status === 'unchanged') return { status: 'unchanged', classId: result.classId };
+    return { status: 'assigned', operationId: result.operationId, classId: result.classId };
+  }
+
+  if (name === 'imu') {
+    if (
+      positionals.length > 0 ||
+      (values.anno !== undefined && !YearSchema.safeParse(values.anno).success)
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await loadImuRates(
+      store,
+      values.anno === undefined ? {} : { year: values.anno },
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    // Group, year, index and state only; amounts, dates and the movement with --dettagli (R107).
+    const rates = result.rates.map((r) => ({
+      f24Group: r.f24Group,
+      year: r.year,
+      rateIndex: r.rateIndex,
+      status: r.status,
+      f24: r.transactionId === undefined ? 0 : 1,
+      ...(r.status === 'da-riconciliare' ? { message: MESSAGES['imu-to-reconcile'] } : {}),
+      ...(values.dettagli === true
+        ? {
+            expected: r.expected,
+            paid: r.paid,
+            difference:
+              r.paid === undefined || r.expected === undefined ? undefined : r.paid - r.expected,
+            dueDate: r.dueDate,
+            transactionId: r.transactionId,
+          }
+        : {}),
+    }));
+    return {
+      status: 'ok',
+      rates,
+      toReconcile: rates.filter((r) => r.status === 'da-riconciliare').length,
     };
   }
 
@@ -905,6 +1048,9 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'giroconto',
         'giroconto-manuale',
         'saldi',
+        'imu-atteso',
+        'imu-f24',
+        'imu',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -919,15 +1065,19 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa', 'saldi'],
+      dettagli: ['riconcilia', 'importa', 'saldi', 'imu'],
       parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto'],
       pagamento: ['annulla-pagamento'],
-      movimento: ['escludi', 'annulla-uscita'],
+      movimento: ['escludi', 'annulla-uscita', 'imu-f24'],
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
-      appartamento: ['conto', 'uscita'],
+      appartamento: ['conto', 'uscita', 'imu-atteso'],
+      anno: ['imu-atteso', 'imu-f24', 'imu'],
+      gruppo: ['imu-atteso', 'imu-f24'],
+      totale: ['imu-atteso'],
+      rata: ['imu-atteso', 'imu-f24'],
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino'],

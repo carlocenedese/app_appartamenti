@@ -9,13 +9,16 @@
  *   commission follows it (R7, question 10);
  * - `uscita` / `f24`: a class that passes `inBalance` on a movement of an account of X with an
  *   `apartmentId` Y ≠ X, for `-tx.amount` (a refund lowers the debt); an F24 of X itself is
- *   listed in `toSplit`, with no amount (decision 9, question 5);
+ *   listed in `toSplit`, with no amount (decision 9, question 5), and with the reason of its IMU
+ *   rate when it has one (plan 3d, task 3: the split waits for the answers of user1);
  * - `giroconto`: a live «saldo» transfer from an account of F to one of T, for `-amount` owed by F
  *   to T, dated on the record (the first leg), never computed again from the legs.
  *
  * Items taken as paid with no statement (`assumed`) are listed in `unverified`, never in the net
  * (question 11); the income of the tenants never counts. Nothing depends on the input order.
  */
+import { imuRateKey, imuRates } from './imu';
+import type { ImuRateStatus } from './imu';
 import type { MatchItemRef, MatchItemType } from './match';
 import { checkConsistency } from './journal';
 import { planMatch } from './match-store';
@@ -24,6 +27,7 @@ import {
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
+  ImuYearSchema,
   InstalmentSchema,
   MovementClassSchema,
   TransferSchema,
@@ -33,6 +37,7 @@ import type {
   BankTransaction,
   Bill,
   BillMatch,
+  ImuYear,
   Instalment,
   MovementClass,
   Transfer,
@@ -72,11 +77,22 @@ export interface BalanceInput {
   transactions: BankTransaction[];
   classes: MovementClass[];
   transfers: Transfer[];
+  imuYears: ImuYear[];
+}
+
+export type ImuSplitReason = 'imu-da-ripartire' | 'imu-importo-mancante' | 'imu-da-riconciliare';
+
+export interface ToSplit {
+  transactionId: string;
+  apartmentId: string;
+  date: ISODate;
+  /** An F24 assigned to an IMU rate: the rate and why it is not split yet. */
+  imu?: { f24Group: string; year: string; rateIndex: number; reason: ImuSplitReason };
 }
 
 export interface AccountBalances {
   pairs: BalancePair[];
-  toSplit: { transactionId: string; apartmentId: string; date: ISODate }[];
+  toSplit: ToSplit[];
   unverified: {
     itemType: MatchItemType;
     itemId: string;
@@ -106,7 +122,21 @@ export function accountBalances(input: BalanceInput): AccountBalances {
     (tx.accountId === undefined ? undefined : apartmentOfAccount.get(tx.accountId)) ??
     tx.apartmentId;
   const items: BalanceItem[] = [];
-  const toSplit: AccountBalances['toSplit'] = [];
+  const toSplit: ToSplit[] = [];
+  const rateStatus = new Map<string, ImuRateStatus>(
+    imuRates({
+      years: input.imuYears,
+      classes: input.classes,
+      transactions: input.transactions,
+    }).map((r) => [imuRateKey(r), r.status]),
+  );
+  /** A rate gone (its year undone) has no expected either. */
+  const reasonOf = (status: ImuRateStatus | undefined): ImuSplitReason =>
+    status === 'pagata'
+      ? 'imu-da-ripartire'
+      : status === 'da-riconciliare'
+        ? 'imu-da-riconciliare'
+        : 'imu-importo-mancante';
 
   // By match id first: two parts of one instalment on the same day then follow their movement.
   for (const m of live(input.matches).sort((a, b) => compareText(a.id, b.id))) {
@@ -131,7 +161,12 @@ export function accountBalances(input: BalanceInput): AccountBalances {
     if (tx === undefined || c.apartmentId === undefined) continue;
     const payer = payerOf(tx);
     if (c.apartmentId === payer) {
-      if (c.f24 === true) toSplit.push({ transactionId: tx.id, apartmentId: payer, date: tx.date });
+      if (c.f24 !== true) continue;
+      const imu =
+        c.imu === undefined
+          ? {}
+          : { imu: { ...c.imu, reason: reasonOf(rateStatus.get(imuRateKey(c.imu))) } };
+      toSplit.push({ transactionId: tx.id, apartmentId: payer, date: tx.date, ...imu });
       continue;
     }
     items.push({
@@ -241,6 +276,7 @@ export async function loadAccountBalances(store: Store): Promise<LoadAccountBala
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
     transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,
+    imuYears: (await loadAll(store, 'imuYear', ImuYearSchema, all)).records,
   });
   return { status: 'computed', ...balances };
 }
