@@ -170,6 +170,7 @@ describe('loadCondo (plan 8, task 5)', () => {
       // No statement covers the period: the instalment is assumed paid (R2, `planMatch`).
       rates: [{ instalmentId: 'r1', status: 'assunta' }],
       differences: [{ apartmentId: 'apt', difference: 6000 }],
+      recoveries: [],
     });
   });
 

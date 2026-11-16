@@ -18,6 +18,10 @@
 // included, removes it), contratto-canone (an entry of its rent history) and contratti (the contracts
 // and their read-only checks); affitti-anno saves the rents of an apartment and year typed by
 // user1, shown by contratti --dettagli with the cedolare estimate to be confirmed (R182).
+// Plan 8 adds appartamento (creates an apartment, asking who bears the condominium difference,
+// or updates the fields given), condominio-documento (preventivo or consuntivo of a fiscal year),
+// condominio (the owners' check of the condominium expenses, the differences and the recoveries)
+// and recupero (part of an extraordinary expense to recover from tenants chosen by user1).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -1118,6 +1122,15 @@ async function command(name, values, positionals, store, who, clock, newId) {
               ...optional('conduttoreDetails', d.conduttore),
             }
           : {}),
+      })),
+      recoveries: result.recoveries.map((r) => ({
+        recoveryId: r.id,
+        apartmentId: r.apartmentId,
+        instalmentId: r.instalmentId,
+        status: r.status,
+        ...optional('periodLabel', r.periodLabel),
+        tenants: r.shares.length,
+        ...(details ? { amount: r.amount, shares: r.shares } : {}),
       })),
     };
   }

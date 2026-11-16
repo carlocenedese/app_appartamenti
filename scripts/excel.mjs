@@ -27,6 +27,7 @@ import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   EXCEL_SHEETS,
   ExcelInputError,
+  ExcelRecoveriesError,
   SettlementInputError,
   assertSafeRelPath,
   buildConguaglioWorkbook,
@@ -51,6 +52,8 @@ const MESSAGES = {
     'Rifiutato: nel percorso predefinito c’è un collegamento o un file al posto di una cartella: usare --uscita.',
   'link-unsupported':
     'Rifiutato: la cartella di uscita non permette di scrivere il file senza rischiare di sovrascriverlo.',
+  'recoveries-not-supported':
+    'Rifiutato: il periodo ha un recupero da un inquilino, che l’Excel degli inquilini non mostra ancora.',
   'inconsistent-store':
     'Rifiutato: i dati non sono come li lascia il registro: eseguire «pnpm estratti ripara».',
   'unknown-apartment': 'Rifiutato: appartamento sconosciuto.',
@@ -195,8 +198,9 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
         period: loaded.input.period.label,
         sheets: owners.sheets.length,
         items: items.length,
-        pending: items.filter((i) => i.status === 'in-attesa' || i.status === 'importo-diverso')
-          .length,
+        pending: items.filter((i) =>
+          ['in-attesa', 'importo-diverso', 'duplicato'].includes(i.status),
+        ).length,
       });
     }
     let workbook;
@@ -208,6 +212,7 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
       if (error instanceof ExcelInputError) {
         throw rejected('missing-tenant', { tenantIds: error.tenantIds });
       }
+      if (error instanceof ExcelRecoveriesError) throw rejected('recoveries-not-supported');
       if (error instanceof SettlementInputError) {
         throw rejected('settlement-input', { code: error.code });
       }

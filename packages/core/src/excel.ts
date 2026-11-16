@@ -7,6 +7,7 @@ import {
   CATEGORY_ORDER,
   allocateBillToMonths,
   allocateInstalment,
+  RECOVERY_WAITING,
   calcConguaglio,
   isPresent,
   previousToTenants,
@@ -343,6 +344,21 @@ export class ExcelInputError extends Error {
   }
 }
 
+/**
+ * A period with a recovery from tenants (plan 8, R197): how it shows in the tenants' file is not
+ * decided yet (question 10 of the plan 8 design), so the file is refused rather than wrong.
+ */
+export class ExcelRecoveriesError extends Error {
+  readonly code = 'recoveries-not-supported';
+
+  constructor() {
+    super(
+      "Il periodo ha un recupero da un inquilino: l'Excel degli inquilini non lo mostra ancora.",
+    );
+    this.name = 'ExcelRecoveriesError';
+  }
+}
+
 const text = (value: string | undefined): XlsxCell | null =>
   value === undefined || value === '' ? null : { kind: 'text', value };
 const euro = (value: Cents): XlsxCell => ({ kind: 'euro', value });
@@ -365,6 +381,12 @@ const dayMonthYear = (day: ISODate): string =>
  */
 export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const result = calcConguaglio(input);
+  if (
+    result.tenants.some((t) => t.recupero !== undefined) ||
+    result.pending.some((p) => p.reason === RECOVERY_WAITING)
+  ) {
+    throw new ExcelRecoveriesError();
+  }
   const { apartment, period } = input;
   const names = new Map(live(input.tenants).map((t) => [t.id, t.name]));
   const missing = result.tenants.map((t) => t.tenantId).filter((id) => !names.has(id));

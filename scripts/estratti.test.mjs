@@ -3329,6 +3329,20 @@ describe('pnpm estratti condominio (piano 8)', () => {
     expect([tooMuch.code, tooMuch.json.reason]).toEqual([1, 'amount-too-high']);
     expect((await run([...rec, '--quote', '1,00'])).code).toBe(2);
     expect((await run([...rec, '--stato', 'pagata'])).code).toBe(2);
+    const listed = await run(['condominio', ...s.common]);
+    expect(listed.json.recoveries).toEqual([
+      {
+        recoveryId: 'rec-1',
+        apartmentId: 'apt-a',
+        instalmentId: 'str-1',
+        status: 'non-recuperabile',
+        periodLabel: '2026-27',
+        tenants: 2,
+      },
+    ]);
+    expect(listed.out).not.toMatch(/10001|ten-/);
+    const detailed = await run(['condominio', ...s.common, '--dettagli']);
+    expect(detailed.json.recoveries[0]).toMatchObject({ amount: 15001 });
     const undo = await run([
       'annulla-riconciliazione',
       ...s.common,

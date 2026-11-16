@@ -31,7 +31,16 @@
  */
 import { rentForMonth } from './contract';
 import { expectedDebit } from './match';
-import type { Apartment, Bill, BillMatch, Contract, Instalment, Payment, Tenancy } from './model';
+import type {
+  Apartment,
+  Bill,
+  BillMatch,
+  Contract,
+  Instalment,
+  Payment,
+  Tenancy,
+  TenantRecovery,
+} from './model';
 import { cents, splitCents } from './money';
 import type { Cents } from './money';
 import { annualitaRange, isoDate, monthsInPeriod } from './period';
@@ -76,6 +85,8 @@ export interface ConguaglioInput {
   payments: Payment[];
   /** Only for the R34 check: the rent of the month from the contract covering it, if any. */
   contracts?: Contract[];
+  /** Recoveries from tenants chosen by user1 (plan 8, R197); none when absent. */
+  recoveries?: TenantRecovery[];
 }
 
 export interface TenantSettlement {
@@ -85,7 +96,9 @@ export interface TenantSettlement {
   condominio: { rata: Cents; conguaglioPrec: Cents };
   commissione: Cents;
   forfaitIncassato: Cents;
-  /** `spese + condominio.rata + condominio.conguaglioPrec + commissione - forfaitIncassato`. */
+  /** What this tenant owes for an intervention they caused (plan 8, R197); only when not 0. */
+  recupero?: Cents;
+  /** `spese + condominio.rata + condominio.conguaglioPrec + commissione + recupero - forfaitIncassato`. */
   due: Cents;
   /** Costs by category, commission excluded; only the categories with an amount. */
   byCategory: Partial<Record<CostCategory, Cents>>;
@@ -122,6 +135,9 @@ export interface ConguaglioResult {
   warnings: ConguaglioWarning[];
 }
 
+/** The reason of a pending extraordinary expense with a recovery not yet debited (R197). */
+export const RECOVERY_WAITING = 'recupero in attesa del pagamento';
+
 export const CATEGORY_ORDER: readonly CostCategory[] = [
   'elettricita',
   'gas',
@@ -157,7 +173,8 @@ export type SettlementInputErrorCode =
   | 'room-overlap'
   | 'unknown-room'
   | 'too-many-tenants'
-  | 'missing-condominio-start';
+  | 'missing-condominio-start'
+  | 'recovery-tenant-absent';
 
 /**
  * Input that cannot be settled: tenancies that do not fit the beds, or a condominium instalment
@@ -517,6 +534,32 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   }
   const pending: PendingItem[] = [];
 
+  // Plan 8, R197: the recoveries user1 put in this period, on a live extraordinary expense.
+  const extraordinary = new Set(
+    own(input.instalments)
+      .filter((i) => i.kind === 'condominio' && i.straordinaria === true)
+      .map((i) => i.id),
+  );
+  const recoveries = own(input.recoveries ?? [])
+    .filter(
+      (r) =>
+        r.periodLabel === period.label &&
+        r.status !== 'non-recuperabile' &&
+        extraordinary.has(r.instalmentId),
+    )
+    .sort((a, b) => compareText(a.id, b.id));
+  for (const recovery of recoveries) {
+    const absent = recovery.shares.find((share) => !tallies.has(share.tenantId));
+    if (absent !== undefined) {
+      throw new SettlementInputError(
+        'recovery-tenant-absent',
+        `Il recupero ${recovery.id} è a carico di un inquilino che non c'è nel periodo ` +
+          `${period.label}: scegli un altro periodo o un altro inquilino.`,
+        { tenantId: absent.tenantId },
+      );
+    }
+  }
+
   for (const bill of [...own(input.bills)].sort((a, b) => compareText(a.id, b.id))) {
     if (!bill.includedInConguaglio || !bill.sharedWithTenants) continue;
     if (!touchesPeriod(monthsInPeriod(bill.periodStart, bill.periodEnd))) continue;
@@ -574,6 +617,22 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     });
   }
 
+  // R2: a recovery counts once the expense it recovers is debited.
+  const recovered = new Map<string, number>();
+  const waiting = new Set<string>();
+  for (const recovery of recoveries) {
+    if (matched.get(`instalment\u0000${recovery.instalmentId}`)?.hasAmount !== true) {
+      waiting.add(recovery.instalmentId);
+      continue;
+    }
+    for (const share of recovery.shares) {
+      recovered.set(share.tenantId, (recovered.get(share.tenantId) ?? 0) + share.amount);
+    }
+  }
+  for (const itemId of waiting) {
+    pending.push({ itemType: 'instalment', itemId, reason: RECOVERY_WAITING });
+  }
+
   const forfait = new Map<string, number>();
   for (const row of collectedForfait({
     tenancies,
@@ -585,6 +644,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
 
   const tenants = [...tallies.entries()].map(([tenantId, tally]): TenantSettlement => {
     const forfaitIncassato = cents(forfait.get(tenantId) ?? 0);
+    const recupero = recovered.get(tenantId) ?? 0;
     const byCategory: Partial<Record<CostCategory, Cents>> = {};
     for (const category of CATEGORY_ORDER) {
       const amount = tally.byCategory.get(category) ?? 0;
@@ -596,8 +656,14 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
       condominio: { rata: cents(tally.rata), conguaglioPrec: cents(tally.conguaglioPrec) },
       commissione: cents(tally.commissione),
       forfaitIncassato,
+      ...(recupero === 0 ? {} : { recupero: cents(recupero) }),
       due: cents(
-        tally.spese + tally.rata + tally.conguaglioPrec + tally.commissione - forfaitIncassato,
+        tally.spese +
+          tally.rata +
+          tally.conguaglioPrec +
+          tally.commissione +
+          recupero -
+          forfaitIncassato,
       ),
       byCategory,
     };

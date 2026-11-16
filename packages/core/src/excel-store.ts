@@ -16,6 +16,7 @@ import {
   InstalmentSchema,
   PaymentSchema,
   TenancySchema,
+  TenantRecoverySchema,
   TenantSchema,
 } from './model';
 import { settlementPeriods } from './period';
@@ -79,6 +80,7 @@ export async function loadExcelInput(
       instalments: own(await records('instalment', InstalmentSchema)),
       payments: own(await records('payment', PaymentSchema)),
       contracts,
+      recoveries: own(await records('tenantRecovery', TenantRecoverySchema)),
       matches: [
         ...(await records('match', BillMatchSchema)),
         ...(await planMatch(store)).assumedMatches,

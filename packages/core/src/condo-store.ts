@@ -23,6 +23,7 @@ import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
+import { compareText } from './text';
 
 export type SaveCondoDocumentInput = Omit<CondoDocument, 'id' | 'v' | 'rev' | 'deleted'>;
 
@@ -81,7 +82,13 @@ export async function saveCondoDocument(
 }
 
 export type LoadCondoResult =
-  | { status: 'computed'; rates: CondoCheckRow[]; differences: CondoDifference[] }
+  | {
+      status: 'computed';
+      rates: CondoCheckRow[];
+      differences: CondoDifference[];
+      /** The live recoveries on the instalments read, sorted by id. */
+      recoveries: TenantRecovery[];
+    }
   | { status: 'refused'; reason: 'inconsistent-store' };
 
 /**
@@ -100,6 +107,10 @@ export async function loadCondo(
     (query.apartmentId === undefined || r.apartmentId === query.apartmentId) &&
     (query.esercizio === undefined || r.esercizio === query.esercizio);
   const instalments = (await loadAll(store, 'instalment', InstalmentSchema)).records.filter(wanted);
+  const ids = new Set(instalments.map((i) => i.id));
+  const recoveries = (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records
+    .filter((r) => ids.has(r.instalmentId))
+    .sort((a, b) => compareText(a.id, b.id));
   const matches = [
     ...(await loadAll(store, 'match', BillMatchSchema)).records,
     ...(await planMatch(store)).assumedMatches,
@@ -112,6 +123,7 @@ export async function loadCondo(
     status: 'computed',
     rates: condoCheck({ instalments, matches, asOf: query.asOf }),
     differences: condoDifferences(apartments, documents),
+    recoveries,
   };
 }
 
