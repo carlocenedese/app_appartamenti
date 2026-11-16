@@ -24,6 +24,8 @@
 // or updates the fields given), condominio-documento (preventivo or consuntivo of a fiscal year),
 // condominio (the owners' check of the condominium expenses, the differences and the recoveries)
 // and recupero (part of an extraordinary expense to recover from tenants chosen by user1).
+// Plan 14 adds condominio-stima (the condominium estimate of a fiscal year: its own document, or a
+// copy of the nearest earlier one, never written; amounts only with --dettagli).
 // Plan 11 adds presenza (the arrival of a tenant, optionally in a contract), fine-presenza (the last
 // month of a stay), subentro (a takeover inside a contract), stato-contratti (tenancies, takeovers,
 // deposits and checks of each contract) and caparra-restituzione (the return statement of a deposit,
@@ -72,6 +74,7 @@ import {
   loadAccountBalances,
   loadImuRates,
   loadCondo,
+  loadCondoEstimate,
   loadAll,
   parseCsv,
   parseEuro,
@@ -258,6 +261,8 @@ const MESSAGES = {
   'imu-assigned': 'Rifiutato: il movimento paga una rata IMU: annullare prima l’assegnazione.',
   'tax-assigned':
     'Rifiutato: il movimento è assegnato a cedolare o registro: annullare prima l’assegnazione.',
+  'condo-estimate-copied':
+    'Stima copiata da un esercizio precedente: non è un documento del condominio e non si salva.',
   'tax-year-empty':
     'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
   'tax-discrepancy':
@@ -1263,6 +1268,33 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  // The estimate of a fiscal year (plan 14, R250): source always, amounts only with --dettagli.
+  if (name === 'condominio-stima') {
+    need(values, 'appartamento', 'esercizio');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await loadCondoEstimate(store, {
+      apartmentId: values.appartamento,
+      esercizio: values.esercizio,
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const e = result.estimate;
+    if (e === undefined) return { status: 'ok' };
+    return {
+      status: 'ok',
+      estimate: {
+        apartmentId: e.apartmentId,
+        esercizio: e.esercizio,
+        source: e.source,
+        fromEsercizio: e.fromEsercizio,
+        fromKind: e.fromKind,
+        ...(e.source === 'copiata' ? { message: MESSAGES['condo-estimate-copied'] } : {}),
+        ...(values.dettagli === true
+          ? { total: e.total, quotaConduttore: e.quotaConduttore, lines: e.lines }
+          : {}),
+      },
+    };
+  }
+
   if (name === 'imu') {
     if (
       positionals.length > 0 ||
@@ -2086,6 +2118,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'appartamento',
         'condominio-documento',
         'condominio',
+        'condominio-stima',
         'recupero',
         'presenza',
         'fine-presenza',
@@ -2118,6 +2151,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contratti',
         'scadenze',
         'condominio',
+        'condominio-stima',
         'stato-contratti',
         'caparra-restituzione',
         'tasse',
@@ -2139,6 +2173,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'scadenza-nuova',
         'condominio-documento',
         'condominio',
+        'condominio-stima',
         'recupero',
         'presenza',
         'stato-contratti',
@@ -2151,7 +2186,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       quote: ['recupero'],
       periodo: ['recupero'],
       stato: ['scadenze', 'recupero'],
-      esercizio: ['condominio-documento', 'condominio'],
+      esercizio: ['condominio-documento', 'condominio', 'condominio-stima'],
       'quota-conduttore': ['condominio-documento'],
       anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno', 'tasse-stima', 'tasse-copia', 'tasse'],
       gruppo: ['imu-atteso', 'imu-f24'],

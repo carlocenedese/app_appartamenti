@@ -5,8 +5,8 @@
  * `checkConsistency` reports a problem, nothing for the same request on the same state. No amount
  * or name in a summary.
  */
-import { condoCheck, condoDifferences, freeDebits } from './condominio';
-import type { CondoCheckRow, CondoDifference, FreeDebit } from './condominio';
+import { condoCheck, condoDifferences, condoEstimate, freeDebits } from './condominio';
+import type { CondoCheckRow, CondoDifference, CondoEstimate, FreeDebit } from './condominio';
 import type { ZodType } from 'zod';
 import { checkConsistency, commitChange } from './journal';
 import { planMatch } from './match-store';
@@ -162,6 +162,27 @@ export async function loadCondo(
     recoveries,
     warnings,
   };
+}
+
+export type LoadCondoEstimateResult =
+  | { status: 'computed'; estimate?: CondoEstimate }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-apartment' };
+
+/** `condoEstimate` on the live documents of the store (plan 14, R250). Writes nothing. */
+export async function loadCondoEstimate(
+  store: Store,
+  query: { apartmentId: string; esercizio: string },
+): Promise<LoadCondoEstimateResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+  if (!apartments.some((a) => a.id === query.apartmentId)) {
+    return { status: 'refused', reason: 'unknown-apartment' };
+  }
+  const documents = (await loadAll(store, 'condoDocument', CondoDocumentSchema)).records;
+  const estimate = condoEstimate(documents, query.apartmentId, query.esercizio);
+  return { status: 'computed', ...(estimate === undefined ? {} : { estimate }) };
 }
 
 /** `freeDebits` on the live records of the store, with `matches` (saved and assumed). */

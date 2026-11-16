@@ -3356,6 +3356,47 @@ describe('pnpm estratti condominio (piano 8)', () => {
     ]);
     expect(undo.code).toBe(0);
   });
+
+  it('condominio-stima: copiata dall’esercizio prima, importi solo con --dettagli (R250)', async () => {
+    const s = await setup([
+      ['apartment', apartment({ id: 'apt-a' })],
+      [
+        'condoDocument',
+        {
+          id: 'condoc-apt-a-2025-26-consuntivo',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-a',
+          esercizio: '2025-26',
+          kind: 'consuntivo',
+          total: 123456,
+        },
+      ],
+    ]);
+    const ask = ['condominio-stima', ...s.common, '--appartamento', 'apt-a', '--esercizio'];
+    const copied = await run([...ask, '2026-27']);
+    expect([copied.code, copied.json]).toEqual([
+      0,
+      {
+        status: 'ok',
+        estimate: {
+          apartmentId: 'apt-a',
+          esercizio: '2026-27',
+          source: 'copiata',
+          fromEsercizio: '2025-26',
+          fromKind: 'consuntivo',
+          message: expect.stringContaining('copiata'),
+        },
+      },
+    ]);
+    expect(copied.out).not.toContain('123456');
+    const details = await run([...ask, '2026-27', '--dettagli']);
+    expect(details.json.estimate).toMatchObject({ total: 123456 });
+    expect((await run([...ask, '2024-25'])).json).toEqual({ status: 'ok' });
+    const wrong = await run(ask.map((a) => (a === 'apt-a' ? 'apt-x' : a)).concat('2026-27'));
+    expect([wrong.code, wrong.json.reason]).toEqual([1, 'unknown-apartment']);
+    expect((await run(['condominio-stima', ...s.common, '--appartamento', 'apt-a'])).code).toBe(2);
+  });
 });
 
 describe('pnpm estratti scadenze (piano 9, task 4)', () => {
