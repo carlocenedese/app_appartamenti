@@ -163,7 +163,7 @@ describe('importBill', () => {
     });
     const result = await importBill(
       store,
-      { ...input, result: doubtful, knownCodes: ['IT001E99999999'] },
+      { ...input, result: doubtful, knownCodes: ['CODICE-INVENTATO-ALTRO'] },
       'user1',
       clock,
       ids('a'),

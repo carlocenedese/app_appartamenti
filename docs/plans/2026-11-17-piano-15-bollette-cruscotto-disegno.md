@@ -1,6 +1,6 @@
 # Piano 15: flusso di importazione di una bolletta e cruscotto, parte di calcolo (disegno)
 
-Stato: **disegno** (17 novembre 2026). Piano: `docs/plans/2026-11-17-piano-15-bollette-cruscotto.md`.
+Stato: **implementato; regole non decise in «Domande per user1» e R265** (17 novembre 2026). Piano: `docs/plans/2026-11-17-piano-15-bollette-cruscotto.md`.
 Solo core (`packages/core`) e riga di comando (`pnpm estratti`); **niente schermate, niente Python
 nuovo**. Riferimenti: `docs/spec.md` sezioni 10, 21 (allarme consumi), 22, 30 e 42 (prevale);
 `docs/progress.md` R73, R107, R204. Codice letto: `proposal.ts`, `confirmation.ts`, `dedupe.ts`,
@@ -44,7 +44,9 @@ coerenza prima di scrivere, un annullamento che non lasci abbinamenti appesi, la
    controlli dei contratti, caparre non `versata`, rate di condominio per stato, righe delle tasse
    `discrepanza` o `da-verificare`, voci in attesa e quota dei posti vuoti dei periodi di conguaglio
    indicati dal chiamante. Niente semaforo, niente righe d'interfaccia.
-6. **Riga di comando**: `bolletta <pdf>`, `annulla-bolletta <pdf>`, `cruscotto`. Senza `--dettagli`
+6. **Riga di comando**: `bolletta <pdf> --lettura <json>` (la lettura è quella già stampata da
+   `python -I -m bollette_pdf extract`: la riga di comando non lancia Python), `annulla-bolletta <pdf>`,
+   `cruscotto`. Senza `--dettagli`
    solo stati, codici, conteggi e id.
 
 ## Non obiettivi
