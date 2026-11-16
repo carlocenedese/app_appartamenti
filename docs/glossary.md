@@ -85,6 +85,7 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | rata IMU              | IMU instalment (`rates`)         | una rata di un anno IMU di un gruppo F24: `(f24Group, year, rateIndex)`                               |
 | gruppo F24            | F24 group (`f24Group`)           | gli appartamenti pagati dallo stesso F24 in un anno (testo negli `imuYear`)                           |
 | importo atteso        | expected amount (`expected`)     | quanto si prevede di pagare per una rata, dal prospetto: un dato, mai calcolato                       |
+| quota IMU             | IMU share (`imuShares`)          | la parte di un appartamento nell'addebito di un F24 IMU, in proporzione agli importi attesi           |
 
 ## Dati e registro
 

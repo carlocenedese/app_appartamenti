@@ -581,15 +581,32 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
     { transactionId: 't-f24', apartmentId: 'berchet', date: '2027-06-16' },
   ];
 
-  it('an assigned F24 stays in toSplit with the reason of its rate, never in the net', () => {
-    const paid = run(100000);
-    expect(paid.toSplit).toEqual(split('imu-da-ripartire'));
-    expect(paid.pairs).toEqual(accountBalances(example).pairs);
+  it('an F24 out of the 1% or without the expected stays in toSplit, never in the net', () => {
     expect(run(101001).toSplit).toEqual(split('imu-da-riconciliare'));
+    expect(run(101001).pairs).toEqual(accountBalances(example).pairs);
     expect(run(100000, 2).toSplit).toEqual(split('imu-importo-mancante', 2));
     // Its rate gone (the expected undone): no expected known.
     expect(run(100000, 1, []).toSplit).toEqual(split('imu-importo-mancante'));
     expect(run(100000, 1, []).pairs).toEqual(accountBalances(example).pairs);
+  });
+
+  it('a paid rate is split: the share of the other apartment is an imu item (task 4)', () => {
+    const paid = run(100500);
+    expect(paid.toSplit).toEqual(split('imu-da-ripartire').slice(1));
+    const [pair] = paid.pairs;
+    const [before] = accountBalances(example).pairs;
+    expect(pair?.amount).toBe((before?.amount ?? 0) + 40200);
+    expect(pair?.items).toContainEqual({
+      date: '2027-06-14',
+      kind: 'imu',
+      payerApartmentId: 'berchet',
+      forApartmentId: 'lovarini',
+      amount: 40200,
+      refId: 't-imu',
+    });
+    // The payer outside the group of the rate (possible only by hand-edited data): no split.
+    const others = [imuYear('lovarini', 60000), imuYear('pulci', 40000)];
+    expect(run(100000, 1, others).toSplit).toEqual(split('imu-da-ripartire'));
   });
 });
 

@@ -1,13 +1,14 @@
 /**
  * The check of the IMU rates (plan 3d, task 3): for each rate of a group of apartments, what the
  * assigned F24 paid against the sum of the expected amounts of the group (the F24 does not
- * separate the apartments, «Mie scelte» 2). Pure; nothing here splits an F24 between apartments
- * (task 4, after the answers of user1).
+ * separate the apartments, «Mie scelte» 2), and the split of a paid F24 between them (task 4,
+ * answers of user1 of 16 November 2026). Pure.
  */
 import { checkConsistency } from './journal';
 import { BankTransactionSchema, ImuYearSchema, MovementClassSchema } from './model';
 import type { BankTransaction, ImuYear, MovementClass } from './model';
 import { cents } from './money';
+import { splitSharedDebit } from './split';
 import type { Cents } from './money';
 import type { ISODate } from './period';
 import { loadAll } from './store/load';
@@ -33,7 +34,16 @@ export interface ImuRate {
   transactionId?: string;
   /** Only when the same in every year of the rate; shown, never used for a state (question 6). */
   dueDate?: ISODate;
+  /**
+   * Only annual totals in the group and year (question 10): their sum, and the sum of the F24s
+   * of the year once every rate has one; the 1% is then checked on the year.
+   */
+  annual?: { expected: Cents; paid?: Cents };
 }
+
+/** Integers only; the expected is the base, 1.00% exactly included (question 11). */
+const withinTolerance = (paid: number, expected: number): boolean =>
+  100 * Math.abs(paid - expected) <= IMU_TOLERANCE_PERCENT * expected;
 
 /** The key of a rate, as in `MovementClass.imu`. */
 export const imuRateKey = (r: { f24Group: string; year: string; rateIndex: number }): string =>
@@ -70,6 +80,20 @@ export function imuRates(input: {
     const [{ f24Group, year }] = group as [ImuYear];
     const apartmentIds = group.map((y) => y.apartmentId).sort(compareText);
     const indices = [...new Set(group.flatMap((y) => y.rates.map((r) => r.index)))];
+    const f24Of = (rateIndex: number) => f24s.get(imuRateKey({ f24Group, year, rateIndex }));
+    const totals = group.map((y) => y.annualTotal);
+    const annualOnly =
+      group.every((y) => y.rates.every((r) => r.expected === undefined)) &&
+      totals.every((t) => t !== undefined);
+    const annualPaid = indices.every((i) => f24Of(i) !== undefined)
+      ? cents(indices.reduce((sum, i) => sum - (f24Of(i)?.amount ?? 0), 0))
+      : undefined;
+    const annual = annualOnly
+      ? {
+          expected: cents(totals.reduce((sum: number, t) => sum + (t ?? 0), 0)),
+          ...(annualPaid === undefined ? {} : { paid: annualPaid }),
+        }
+      : undefined;
     for (const rateIndex of indices) {
       const entries = group.map((y) => y.rates.find((r) => r.index === rateIndex));
       const amounts = entries.map((r) => r?.expected);
@@ -78,14 +102,16 @@ export function imuRates(input: {
         : undefined;
       const dates = new Set(entries.map((r) => r?.dueDate));
       const [dueDate] = dates;
-      const tx = f24s.get(imuRateKey({ f24Group, year, rateIndex }));
+      const tx = f24Of(rateIndex);
       const paid = tx === undefined ? undefined : cents(-tx.amount);
+      const [checkPaid, checkExpected] =
+        annual === undefined ? [paid, expected] : [annual.paid, annual.expected];
       const status: ImuRateStatus =
         paid === undefined
           ? 'attesa'
-          : expected === undefined
+          : checkPaid === undefined || checkExpected === undefined
             ? 'importo-mancante'
-            : 100 * Math.abs(paid - expected) <= IMU_TOLERANCE_PERCENT * expected
+            : withinTolerance(checkPaid, checkExpected)
               ? 'pagata'
               : 'da-riconciliare';
       rates.push({
@@ -97,6 +123,7 @@ export function imuRates(input: {
         ...(expected === undefined ? {} : { expected }),
         ...(paid === undefined ? {} : { paid, transactionId: tx?.id }),
         ...(dates.size === 1 && dueDate !== undefined ? { dueDate } : {}),
+        ...(annual === undefined ? {} : { annual }),
       });
     }
   }
@@ -106,6 +133,40 @@ export function imuRates(input: {
       compareText(a.year, b.year) ||
       a.rateIndex - b.rateIndex,
   );
+}
+
+/**
+ * The shares of the apartments of a `pagata` rate in the debit of its F24 (answers of user1,
+ * 16 November 2026): the actual debit (question 3), in proportion to the expected of the same
+ * rate (question 1), or to the annual totals when the year has only those (question 10), with
+ * the leftover cents to the largest remainders and on a tie to the first apartment, as the
+ * shared TARI (question 2); they always sum to `-debit`. None for any other state: out of the
+ * 1% or without every expected it is not split (questions 4 and 5). Apartments sorted.
+ */
+export function imuShares(
+  rate: ImuRate,
+  years: ImuYear[],
+  debit: Cents,
+): { apartmentId: string; amount: Cents }[] | undefined {
+  if (rate.status !== 'pagata') return undefined;
+  const weights = rate.apartmentIds.map((apartmentId) => {
+    const y = years.find(
+      (x) =>
+        x.deleted !== true &&
+        x.apartmentId === apartmentId &&
+        x.f24Group === rate.f24Group &&
+        x.year === rate.year,
+    );
+    const weight =
+      rate.annual === undefined
+        ? y?.rates.find((r) => r.index === rate.rateIndex)?.expected
+        : y?.annualTotal;
+    return { itemId: apartmentId, weight: weight ?? cents(0) };
+  });
+  return splitSharedDebit(debit, weights).map((s) => ({
+    apartmentId: s.itemId,
+    amount: s.amount,
+  }));
 }
 
 export type LoadImuRatesResult =

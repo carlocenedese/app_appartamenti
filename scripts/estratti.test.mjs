@@ -2219,7 +2219,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
   );
 
   it(
-    'imu: una rata pagata e una da riconciliare, importi solo con --dettagli; saldi con toSplitImu',
+    'imu: una rata pagata e una da riconciliare, importi solo con --dettagli; saldi con la voce imu',
     async () => {
       const outs = [];
       const s = await imuSetup(outs);
@@ -2254,7 +2254,13 @@ describe('pnpm estratti IMU (piano 3d)', () => {
         expect([bad, s.run(bad).code]).toEqual([bad, 2]);
       }
       const saldi = s.run(['saldi', ...s.common]);
-      expect(saldi.json).toMatchObject({ status: 'ok', toSplit: 2, toSplitImu: 2 });
+      // The paid rate is split (task 4): one imu item; the other stays in toSplit.
+      expect(saldi.json).toMatchObject({
+        status: 'ok',
+        pairs: [{ creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', items: 1 }],
+        toSplit: 1,
+        toSplitImu: 1,
+      });
       noAmounts(outs.join(''));
 
       const details = cli(['imu', ...s.common, '--dettagli']);
@@ -2274,21 +2280,28 @@ describe('pnpm estratti IMU (piano 3d)', () => {
           transactionId: s.second,
         },
       ]);
-      const reasons = cli(['saldi', ...s.common, '--dettagli']).json.toSplit.map((t) => [
+      const saldiDetails = cli(['saldi', ...s.common, '--dettagli']).json;
+      const reasons = saldiDetails.toSplit.map((t) => [
         t.transactionId,
         t.imu.rateIndex,
         t.imu.reason,
       ]);
-      expect(reasons).toEqual([
-        [s.first, 1, 'imu-da-ripartire'],
-        [s.second, 2, 'imu-da-riconciliare'],
-      ]);
+      expect(reasons).toEqual([[s.second, 2, 'imu-da-riconciliare']]);
+      expect(saldiDetails.pairs[0]).toMatchObject({
+        amount: 40000,
+        items: [{ kind: 'imu', forApartmentId: 'lovarini', amount: 40000, refId: s.first }],
+      });
       // The expected corrected: both paid.
       const fixed = atteso(s, 'lovarini', '--rata', '1:400,00', '--rata', '2:410,01').map((a) =>
         a === '2026' ? '2027' : a,
       );
       expect(cli(fixed).code).toBe(0);
       expect(cli(['imu', ...s.common]).json.toReconcile).toBe(0);
+      // 1.010,01 € on 600,00 € and 410,01 €: Lovarini owes 400,00 € + 410,01 €.
+      expect(cli(['saldi', ...s.common, '--dettagli']).json).toMatchObject({
+        pairs: [{ amount: 81001 }],
+        toSplit: [],
+      });
       // The whole path again: nothing written.
       const settled = snapshot(s.dir);
       expect(cli(fixed).json.status).toBe('unchanged');

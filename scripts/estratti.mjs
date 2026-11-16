@@ -929,6 +929,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
               r.paid === undefined || r.expected === undefined ? undefined : r.paid - r.expected,
             dueDate: r.dueDate,
             transactionId: r.transactionId,
+            annual: r.annual,
           }
         : {}),
     }));
