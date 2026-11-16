@@ -1,11 +1,25 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
-import { commitChange, recordPath, recordSchemas } from '../packages/core/src/index.ts';
+import {
+  ContractSchema,
+  commitChange,
+  recordPath,
+  recordSchemas,
+  settlementPeriods,
+} from '../packages/core/src/index.ts';
 import { apartment } from '../packages/core/test/helpers/conguaglio-builders.ts';
 import {
   pythonAvailability,
@@ -14,6 +28,7 @@ import {
 import { scanText } from './check-personal-data.mjs';
 import { ibanEndingWith } from '../packages/core/test/helpers/iban-build.ts';
 import { main } from './estratti.mjs';
+import { main as excelMain } from './excel.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FIXTURE = JSON.parse(
@@ -2612,5 +2627,220 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     });
     expect(failed.code).toBe(3);
     expect(failed.output).not.toMatch(/segreto/);
+  });
+});
+
+describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, task 6)', () => {
+  const FIXTURE_CONTRACTS = JSON.parse(
+    readFileSync(join(ROOT, 'fixtures', 'contracts', 'due-appartamenti.json'), 'utf8'),
+  );
+  let n = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `f6-${String((n += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+
+  /** A data folder with the records of the fixture, written through the journal. */
+  async function fixtureFolder(extra = []) {
+    const dir = join(root, `f6-${String((counter += 1))}`);
+    mkdirSync(dir);
+    const records = [
+      ...Object.entries(FIXTURE_CONTRACTS.records).flatMap(([kind, list]) =>
+        list.map((r) => [kind, r]),
+      ),
+      ...extra,
+    ];
+    let k = 0;
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      () => `seed-${String((k += 1))}`,
+    );
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+  const base = {
+    berchet: ['--id', 'ctr-berchet', '--appartamento', 'berchet', '--tipo', '1+1'],
+    lovarini: ['--id', 'ctr-lovarini', '--appartamento', 'lovarini', '--tipo', '3+2'],
+  };
+  const commands = (s) => [
+    [
+      'contratto',
+      ...s.common,
+      ...base.berchet,
+      '--inizio',
+      '2025-10',
+      '--fine',
+      '2027-09',
+      '--conguaglio',
+      'annuale',
+      '--concordato',
+      '--studenti',
+      '--regime',
+      'cedolare',
+      '--aliquota-cedolare',
+      '10',
+      '--codice-registrazione',
+      'CODICE-PROVA-0001',
+      '--firmato',
+      '2025-09-20',
+      '--registrato',
+      '2025-10-10',
+      '--presenze',
+      'tcy-anna,tcy-bruno,tcy-carla,tcy-dario,tcy-elena',
+      '--caparre',
+      'pay-franco',
+    ],
+    [
+      'contratto',
+      ...s.common,
+      ...base.lovarini,
+      '--inizio',
+      '2025-10',
+      '--fine',
+      '2030-09',
+      '--conguaglio',
+      'intero-contratto',
+      '--concordato',
+      '--regime',
+      'ordinario',
+      '--codice-registrazione',
+      'CODICE-PROVA-0002',
+    ],
+    [
+      'contratto-canone',
+      ...s.common,
+      '--contratto',
+      'ctr-berchet',
+      '--dal',
+      '2025-10',
+      '--canone',
+      '1600,00',
+      '--acconto',
+      '150,00',
+    ],
+    [
+      'contratto-canone',
+      ...s.common,
+      '--contratto',
+      'ctr-berchet',
+      '--dal',
+      '2026-10',
+      '--canone',
+      '1730,00',
+      '--acconto',
+      '150,00',
+    ],
+  ];
+  const message =
+    'Canone del contratto diverso dal totale delle presenze: controllare il contratto o le presenze.';
+
+  it('il percorso completo: controlli, seconda esecuzione, annullamento, Excel invariato', async () => {
+    const s = await fixtureFolder();
+    const outs = [];
+    const results = [];
+    for (const args of commands(s)) {
+      const r = await run(args);
+      outs.push(r.out);
+      results.push(r);
+      expect([args[0], r.code, r.json.status]).toEqual([args[0], 0, 'saved']);
+    }
+    const list = await run(['contratti', ...s.common]);
+    outs.push(list.out);
+    expect(list.json.checks).toEqual([
+      { code: 'deposit-other-tenant', contractId: 'ctr-berchet' },
+      { code: 'rent-differs', contractId: 'ctr-berchet', from: '2025-10', to: '2026-09', message },
+      { code: 'tenancy-outside-contract', contractId: 'ctr-berchet' },
+    ]);
+    expect(list.json.contracts.map((c) => [c.id, c.type, c.settlement, c.taxRegime])).toEqual([
+      ['ctr-berchet', '1+1', 'annuale', 'cedolare'],
+      ['ctr-lovarini', '3+2', 'intero-contratto', 'ordinario'],
+    ]);
+    const details = await run(['contratti', ...s.common, '--dettagli']);
+    expect(details.json.checks).toEqual([
+      expect.objectContaining({ code: 'deposit-other-tenant', paymentId: 'pay-franco' }),
+      expect.objectContaining({ code: 'rent-differs', expected: 175000, actual: 188000 }),
+      expect.objectContaining({ code: 'tenancy-outside-contract', tenancyId: 'tcy-elena' }),
+    ]);
+
+    // The same commands again: nothing written.
+    const settled = snapshot(s.dir);
+    for (const args of commands(s)) {
+      const r = await run(args);
+      outs.push(r.out);
+      expect([args[0], r.code, r.json.status]).toEqual([args[0], 0, 'unchanged']);
+    }
+    expect(snapshot(s.dir)).toEqual(settled);
+
+    // Without --dettagli no personal data (R107).
+    const text = outs.join('');
+    expect(scanText(text)).toEqual([]);
+    expect(text).not.toMatch(/CODICE-PROVA|tcy-|pay-|ten-|Prova|Esempio|2025-09-20|2025-10-10/);
+    expect(text).not.toMatch(/175000|188000|160000|173000|15000|1000\b/);
+
+    // Undoing the renewal: the interval goes on to the month of the clock.
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      results[3].json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    const after = await run(['contratti', ...s.common]);
+    expect(after.json.checks.filter((c) => c.code === 'rent-differs')).toEqual([
+      { code: 'rent-differs', contractId: 'ctr-berchet', from: '2025-10', to: '2026-11', message },
+    ]);
+
+    // The Excel and the settlement periods as with a contract of the fields of before.
+    const plain = await fixtureFolder([
+      [
+        'contract',
+        {
+          id: 'ctr-berchet',
+          v: 1,
+          rev: 1,
+          apartmentId: 'berchet',
+          type: '1+1',
+          start: '2025-10',
+          end: '2027-09',
+          settlement: 'annuale',
+        },
+      ],
+    ]);
+    const stored = (dir) =>
+      ContractSchema.parse(
+        JSON.parse(readFileSync(join(dir, '_app', 'dati', 'contract', 'ctr-berchet.json'), 'utf8')),
+      );
+    const annualita = FIXTURE_CONTRACTS.records.apartment[0].annualitaStart;
+    expect(settlementPeriods(stored(s.dir), annualita)).toEqual(
+      settlementPeriods(stored(plain.dir), annualita),
+    );
+    const excelOf = async (dir) => {
+      const target = join(dir, 'berchet.xlsx');
+      const r = await excelMain(
+        [
+          '--cartella',
+          dir,
+          '--appartamento',
+          'berchet',
+          '--periodo',
+          '2025-26',
+          '--uscita',
+          target,
+        ],
+        { newId: () => 'tmp-excel', link: linkSync },
+      );
+      expect(r.code).toBe(0);
+      return readFileSync(target);
+    };
+    expect((await excelOf(s.dir)).equals(await excelOf(plain.dir))).toBe(true);
   });
 });

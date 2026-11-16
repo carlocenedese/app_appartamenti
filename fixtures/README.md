@@ -36,21 +36,23 @@ Sono gli unici codici con forma di IBAN, codice fiscale, POD, PDR o codice di re
 documentazione; non appartengono a nessuna persona o utenza. Per ammetterne un altro, aggiungerlo
 qui tra apici inversi, con una nota: la revisione deve verificare che sia davvero inventato.
 
-| Tipo                        | Codice                              |
-| --------------------------- | ----------------------------------- |
-| IBAN (esempio pubblico)     | `IT60 X054 2811 1010 0000 0123 456` |
-| IBAN di prova (inventato)   | `IT52A9999999999000000000001`       |
-| IBAN di prova (inventato)   | `IT29B9999999999000000000002`       |
-| IBAN di prova (inventato)   | `IT85X0542811101000000000301`       |
-| IBAN di prova (inventato)   | `IT58X0542811101000000000302`       |
-| IBAN di prova (inventato)   | `IT09X0542811101000000000311`       |
-| IBAN di prova (inventato)   | `IT79X0542811101000000000312`       |
-| IBAN di prova (inventato)   | `IT52X0542811101000000000313`       |
-| IBAN di prova (inventato)   | `IT04X0542811101000000000401`       |
-| Codice fiscale (esempio)    | `RSSMRA80A01H501U`                  |
-| POD                         | `IT001E12345678`                    |
-| PDR                         | `12345678901234`                    |
-| Codice di registrazione RLI | `TXX24T123456000AA`                 |
+| Tipo                                | Codice                              |
+| ----------------------------------- | ----------------------------------- |
+| IBAN (esempio pubblico)             | `IT60 X054 2811 1010 0000 0123 456` |
+| IBAN di prova (inventato)           | `IT52A9999999999000000000001`       |
+| IBAN di prova (inventato)           | `IT29B9999999999000000000002`       |
+| IBAN di prova (inventato)           | `IT85X0542811101000000000301`       |
+| IBAN di prova (inventato)           | `IT58X0542811101000000000302`       |
+| IBAN di prova (inventato)           | `IT09X0542811101000000000311`       |
+| IBAN di prova (inventato)           | `IT79X0542811101000000000312`       |
+| IBAN di prova (inventato)           | `IT52X0542811101000000000313`       |
+| IBAN di prova (inventato)           | `IT04X0542811101000000000401`       |
+| Codice fiscale (esempio)            | `RSSMRA80A01H501U`                  |
+| POD                                 | `IT001E12345678`                    |
+| PDR                                 | `12345678901234`                    |
+| Codice di registrazione RLI         | `TXX24T123456000AA`                 |
+| Codice di registrazione (inventato) | `CODICE-PROVA-0001`                 |
+| Codice di registrazione (inventato) | `CODICE-PROVA-0002`                 |
 
 ## Come si usano
 
@@ -104,3 +106,11 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
   posto vuoto per tre mesi, un cambio di inquilino nello stesso posto, canoni, un conguaglio versato
   e uno restituito, una caparra restituita. Inquilini con nomi inventati («Anna Prova», …), nessun
   IBAN. La leggono `packages/core/test/helpers/excel-fixture.ts` e i test dell'Excel.
+
+## Contratti (piano 7)
+
+- `fixtures/contracts/due-appartamenti.json`: Berchet e Lovarini inventati, sei inquilini con nomi
+  inventati, cinque presenze a Berchet (quella di Elena Fittizia da 2025-09, prima del contratto) e
+  la caparra di Franco Immaginario, che non ha presenze; nessun contratto: li scrivono i comandi
+  `contratto` e `contratto-canone` nel test della riga di comando. I codici di registrazione
+  `CODICE-PROVA-0001` e `CODICE-PROVA-0002` sono inventati; importi e aliquota sono inventati.
