@@ -53,3 +53,4 @@ export * from './excel-store';
 export * from './imu-store';
 export * from './imu';
 export * from './contract';
+export * from './contract-store';
