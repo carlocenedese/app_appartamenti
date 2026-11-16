@@ -2566,6 +2566,7 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
           message,
         },
       ],
+      rentYears: [],
     });
     const text = outs.join('');
     expect(scanText(text)).toEqual([]);
@@ -2577,6 +2578,7 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
       status: 'ok',
       contracts: [],
       checks: [],
+      rentYears: [],
     });
 
     const details = await run(['contratti', ...s.common, '--dettagli']);
@@ -2639,6 +2641,77 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
           'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
       },
     ]);
+  });
+
+  it('affitti-anno: totale a mano, stima della cedolare solo con --dettagli, annullamento (R182)', async () => {
+    const s = await contractSetup();
+    expect(
+      (await run(contratto(s, '--regime', 'cedolare', '--aliquota-cedolare', '10'))).code,
+    ).toBe(0);
+    const affitti = (...extra) => [
+      'affitti-anno',
+      ...s.common,
+      '--appartamento',
+      'berchet',
+      ...extra,
+    ];
+    const saved = await run(affitti('--anno', '2026', '--totale', '19350,00'));
+    expect([saved.code, saved.json]).toEqual([
+      0,
+      { status: 'saved', rentYearId: 'rent-berchet-2026', operationId: saved.json.operationId },
+    ]);
+    expect((await run(affitti('--anno', '2026', '--totale', '19350,00'))).json).toEqual({
+      status: 'unchanged',
+      rentYearId: 'rent-berchet-2026',
+    });
+    const snap = snapshot(s.dir);
+    for (const bad of [
+      affitti('--anno', '26', '--totale', '19350,00'),
+      affitti('--anno', '2026', '--totale', '0'),
+      affitti('--anno', '2026', '--totale', 'abc'),
+      affitti('--anno', '2026'),
+      affitti('--anno', '2026', '--totale', '1,00', 'x'),
+      ['affitti-anno', ...s.common, '--anno', '2026', '--totale', '1,00'],
+      ['contratti', ...s.common, '--totale', '1,00'],
+      ['imu', ...s.common, '--anno', '2026', '--totale', '1,00'],
+    ]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]);
+    }
+    const nobody = await run([
+      'affitti-anno',
+      ...s.common,
+      '--appartamento',
+      'nessuno',
+      '--anno',
+      '2026',
+      '--totale',
+      '1,00',
+    ]);
+    expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-apartment']);
+    expect(snapshot(s.dir)).toEqual(snap);
+
+    const list = await run(['contratti', ...s.common]);
+    expect(list.json.rentYears).toEqual([{ apartmentId: 'berchet', year: '2026' }]);
+    expect(list.out).not.toMatch(/1935000|193500/);
+    const details = await run(['contratti', ...s.common, '--dettagli']);
+    expect(details.json.rentYears).toEqual([
+      {
+        apartmentId: 'berchet',
+        year: '2026',
+        totalRent: 1935000,
+        cedolareRateBp: 1000,
+        cedolareExpected: 193500,
+        message: 'Cedolare stimata: da confermare, non è un pagamento.',
+      },
+    ]);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      saved.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect((await run(['contratti', ...s.common])).json.rentYears).toEqual([]);
   });
 
   it('un errore inatteso dà 3', async () => {

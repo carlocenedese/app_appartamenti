@@ -16,7 +16,8 @@
 // assigned to an IMU rate by hand) and imu (the check of the rates); plan 7 adds contratto (a
 // lease contract; it replaces every field, so an option left out, --presenze and --caparre
 // included, removes it), contratto-canone (an entry of its rent history) and contratti (the contracts
-// and their read-only checks).
+// and their read-only checks); affitti-anno saves the rents of an apartment and year typed by
+// user1, shown by contratti --dettagli with the cedolare estimate to be confirmed (R182).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -52,6 +53,7 @@ import {
   excludeMovement,
   importStatement,
   loadContractChecks,
+  loadRentYears,
   loadAccountBalances,
   loadImuRates,
   loadAll,
@@ -68,6 +70,7 @@ import {
   setContractRent,
   saveTenant,
   setImuYear,
+  setRentYear,
   assignImuF24,
   undoBlockedBy,
   undoImport,
@@ -160,6 +163,7 @@ const MESSAGES = {
   'bad-amount': 'Rifiutato: il canone deve essere positivo e l’acconto non negativo.',
   'rent-differs':
     'Canone del contratto diverso dal totale delle presenze: controllare il contratto o le presenze.',
+  'cedolare-estimate': 'Cedolare stimata: da confermare, non è un pagamento.',
   'contract-overlap':
     'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
   'f24-pattern-missing':
@@ -260,6 +264,7 @@ const RECONCILE_KINDS = [
   'imu.assign',
   'contract.save',
   'contract.rent',
+  'rent.year',
 ];
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
@@ -1023,6 +1028,28 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'affitti-anno') {
+    need(values, 'appartamento', 'anno', 'totale');
+    if (positionals.length > 0 || !YearSchema.safeParse(values.anno).success) {
+      throw invalid('bad-arguments');
+    }
+    const totalRent = euro(values.totale);
+    if (totalRent <= 0) throw invalid('bad-arguments');
+    const result = await setRentYear(
+      store,
+      { apartmentId: values.appartamento, year: values.anno, totalRent },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      rentYearId: result.rentYearId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
   if (name === 'contratti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const result = await loadContractChecks(store, {
@@ -1031,6 +1058,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ...optional('apartmentId', values.appartamento),
     });
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const years = await loadRentYears(store, optional('apartmentId', values.appartamento));
+    if (years.status === 'refused') throw new Stop('rejected', years.reason);
     const details = values.dettagli === true;
     // Codes, ids and months only; amounts, codes, dates and linked ids with --dettagli (R107).
     return {
@@ -1075,6 +1104,21 @@ async function command(name, values, positionals, store, who, clock, newId) {
               paymentId: c.paymentId,
               expected: c.expected,
               actual: c.actual,
+            }
+          : {}),
+      })),
+      // The rents of the year and the estimate are amounts: only with --dettagli (R107, R182).
+      rentYears: years.rentYears.map((y) => ({
+        apartmentId: y.apartmentId,
+        year: y.year,
+        ...(details
+          ? {
+              totalRent: y.totalRent,
+              cedolareRateBp: y.cedolareRateBp,
+              cedolareExpected: y.cedolareExpected,
+              ...(y.cedolareExpected === undefined
+                ? {}
+                : { message: MESSAGES['cedolare-estimate'] }),
             }
           : {}),
       })),
@@ -1262,6 +1306,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contratto',
         'contratto-canone',
         'contratti',
+        'affitti-anno',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1284,10 +1329,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
-      appartamento: ['conto', 'uscita', 'imu-atteso', 'contratto', 'contratti'],
-      anno: ['imu-atteso', 'imu-f24', 'imu'],
+      appartamento: ['conto', 'uscita', 'imu-atteso', 'contratto', 'contratti', 'affitti-anno'],
+      anno: ['imu-atteso', 'imu-f24', 'imu', 'affitti-anno'],
       gruppo: ['imu-atteso', 'imu-f24'],
-      totale: ['imu-atteso'],
+      totale: ['imu-atteso', 'affitti-anno'],
       rata: ['imu-atteso', 'imu-f24'],
       categoria: ['uscita'],
       f24: ['uscita'],
