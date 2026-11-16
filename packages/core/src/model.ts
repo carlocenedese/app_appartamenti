@@ -94,6 +94,9 @@ export const TimestampSchema = checkedString(
 
 const NonEmptyString = z.string().min(1);
 
+/** A year as four digits, `AAAA` (text, as in the ids). */
+export const YearSchema = z.string().regex(/^[0-9]{4}$/);
+
 /** A day and month that exist every year, so February 29 is not allowed. */
 const AnnualitaStartSchema = z
   .object({
@@ -470,6 +473,14 @@ export const MovementClassSchema = RecordBaseSchema.extend({
   f24: z.literal(true).optional(),
   /** The rule that produced it, for an automatic one. */
   ruleId: NonEmptyString.optional(),
+  /** The IMU rate this F24 pays, assigned by hand (plan 3d, task 2). */
+  imu: z
+    .object({
+      f24Group: NonEmptyString,
+      year: YearSchema,
+      rateIndex: z.int().min(1),
+    })
+    .optional(),
 })
   .refine((c) => c.id === `mc-${c.transactionId}`, {
     message: 'The id must be mc-<transactionId>',
@@ -491,10 +502,15 @@ export const MovementClassSchema = RecordBaseSchema.extend({
     message: 'An exclusion never comes from a rule',
     path: ['ruleId'],
   })
+  .refine((c) => c.imu === undefined || c.f24 === true, {
+    message: 'imu only with f24',
+    path: ['imu'],
+  })
   .meta({
     description:
       'id is mc-<transactionId>. excludeReason is present if and only if kind is escluso; ' +
-      'apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with escluso.',
+      'apartmentId if and only if kind is not escluso; f24 only with tasse; ruleId never with ' +
+      'escluso; imu only with f24.',
   });
 export type MovementClass = z.infer<typeof MovementClassSchema>;
 
@@ -986,8 +1002,6 @@ export type Transfer = z.infer<typeof TransferSchema>;
 
 // --- IMU (plan 3d) ---------------------------------------------------------------------------
 
-/** A year as four digits, `AAAA` (text, as in the ids). */
-export const YearSchema = z.string().regex(/^[0-9]{4}$/);
 const PositiveCentsSchema = z
   .int()
   .min(1)

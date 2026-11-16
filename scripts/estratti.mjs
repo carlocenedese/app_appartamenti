@@ -12,7 +12,8 @@
 // and instalments by hand) and annulla-riconciliazione (undoes one operation of the
 // reconciliation; annulla-incassi is its synonym, R116); riconcilia runs every phase (R126);
 // uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132);
-// plan 3d adds imu-atteso (the expected IMU of an apartment and year).
+// plan 3d adds imu-atteso (the expected IMU of an apartment and year) and imu-f24 (an F24
+// assigned to an IMU rate by hand).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -60,6 +61,7 @@ import {
   saveBankProfile,
   saveTenant,
   setImuYear,
+  assignImuF24,
   undoBlockedBy,
   undoImport,
   undoOperation,
@@ -134,6 +136,11 @@ const MESSAGES = {
   'bad-rates': 'Rifiutato: le rate vanno numerate da 1 senza buchi, con importi positivi.',
   'rates-mismatch':
     'Rifiutato: un altro appartamento dello stesso gruppo e anno ha un altro numero di rate.',
+  'not-imu-candidate':
+    'Rifiutato: il movimento non è un F24 da assegnare (proposta F24 o F24 da ripartire del conto).',
+  'unknown-rate': 'Rifiutato: nessun appartamento del gruppo ha questa rata in questo anno.',
+  'payer-not-in-group': 'Rifiutato: l’appartamento del conto non è nel gruppo in questo anno.',
+  'rate-already-paid': 'Rifiutato: un altro F24 è già assegnato a questa rata.',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -213,6 +220,7 @@ const RECONCILE_KINDS = [
   'transfer.confirm',
   'transfer.manual',
   'imu.expected',
+  'imu.assign',
 ];
 
 const PART_KINDS = ['canone', 'conguaglio', 'caparra', 'altro'];
@@ -794,6 +802,33 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'imu-f24') {
+    need(values, 'movimento', 'gruppo', 'anno');
+    const [rata, ...more] = values.rata ?? [];
+    if (
+      positionals.length > 0 ||
+      more.length > 0 ||
+      !/^[1-9][0-9]{0,2}$/.test(rata ?? '') ||
+      !YearSchema.safeParse(values.anno).success
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await assignImuF24(
+      store,
+      {
+        transactionId: values.movimento,
+        f24Group: values.gruppo,
+        year: values.anno,
+        rateIndex: Number(rata),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return { status: 'assigned', operationId: result.operationId, classId: result.classId };
+  }
+
   if (name === 'abbina') {
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
     const result = await confirmMatch(
@@ -970,6 +1005,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'giroconto-manuale',
         'saldi',
         'imu-atteso',
+        'imu-f24',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -988,15 +1024,15 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto'],
       pagamento: ['annulla-pagamento'],
-      movimento: ['escludi', 'annulla-uscita'],
+      movimento: ['escludi', 'annulla-uscita', 'imu-f24'],
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
       appartamento: ['conto', 'uscita', 'imu-atteso'],
-      anno: ['imu-atteso'],
-      gruppo: ['imu-atteso'],
+      anno: ['imu-atteso', 'imu-f24'],
+      gruppo: ['imu-atteso', 'imu-f24'],
       totale: ['imu-atteso'],
-      rata: ['imu-atteso'],
+      rata: ['imu-atteso', 'imu-f24'],
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino'],

@@ -2086,4 +2086,109 @@ describe('pnpm estratti IMU (piano 3d)', () => {
     },
     TIMEOUT,
   );
+
+  /** treConti with the F24 pattern, the IMU of 2027 for Berchet and Lovarini, two F24 in June. */
+  async function imuSetup(outs) {
+    const s = await treConti({ f24Pattern: '^PAGAMENTO F24\\b' });
+    const run = (args) => {
+      const r = cli(args);
+      outs.push(r.out);
+      return r;
+    };
+    const rates = ['--rata', '1:600,00', '--rata', '2:600,00'];
+    for (const [apartmentId, amounts] of [
+      ['berchet', rates],
+      ['lovarini', ['--rata', '1:400,00', '--rata', '2:400,00']],
+    ]) {
+      const args = atteso(s, apartmentId, ...amounts).map((a) => (a === '2026' ? '2027' : a));
+      expect(run(args).code).toBe(0);
+    }
+    const csv = [
+      incomeHeader,
+      '14/06/2027;PAGAMENTO F24 DELEGA 0001;;1.000,00;D;;',
+      '20/06/2027;PAGAMENTO F24 DELEGA 0002;;1.010,01;D;;',
+    ].join('\n');
+    const imported = run([
+      'importa',
+      ...s.common,
+      '--conto',
+      'acc-berchet',
+      '--dal',
+      '2027-06-01',
+      '--al',
+      '2027-06-30',
+      write('giugno.csv', `${csv}\n`),
+    ]);
+    expect(imported.code).toBe(0);
+    const proposals = run(['riconcilia', ...s.common]).json.outgoing.proposals.filter(
+      (p) => p.step === 'f24',
+    );
+    expect(proposals.map((p) => p.reason)).toEqual(['f24', 'f24']);
+    const [first, second] = proposals.map((p) => p.id.replace(/^p-f24-/, ''));
+    return { ...s, run, first, second, statementId: imported.json.statementId };
+  }
+  const f24 = (s, movement, rata, ...extra) => [
+    'imu-f24',
+    ...s.common,
+    '--movimento',
+    movement,
+    '--gruppo',
+    'berchet-lovarini',
+    '--anno',
+    '2027',
+    '--rata',
+    rata,
+    ...extra,
+  ];
+
+  it(
+    'imu-f24: assegna, rifiuti 1, argomenti 2, annulla dell’estratto rifiutato, annullabile',
+    async () => {
+      const outs = [];
+      const s = await imuSetup(outs);
+      const snap = snapshot(s.dir);
+      for (const bad of [
+        f24(s, s.first, 'x'),
+        f24(s, s.first, '0'),
+        f24(s, s.first, '1', '--rata', '2'),
+        f24(s, s.first, '1', 'x'),
+        f24(s, s.first, '1', '--totale', '1,00'),
+        f24(s, s.first, '1').filter((a) => a !== '--gruppo' && a !== 'berchet-lovarini'),
+        f24(s, s.first, '1').map((a) => (a === '2027' ? '27' : a)),
+      ]) {
+        expect([bad, s.run(bad).code]).toEqual([bad, 2]);
+      }
+      const unknown = s.run(f24(s, s.first, '3'));
+      expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-rate']);
+      const none = s.run(f24(s, 'tx-nessuno', '1'));
+      expect([none.code, none.json.reason]).toEqual([1, 'not-imu-candidate']);
+      expect(snapshot(s.dir)).toEqual(snap);
+
+      const assigned = s.run(f24(s, s.first, '1'));
+      expect(assigned.code).toBe(0);
+      expect(assigned.json).toEqual({
+        status: 'assigned',
+        operationId: assigned.json.operationId,
+        classId: `mc-${s.first}`,
+      });
+      const twice = s.run(f24(s, s.second, '1'));
+      expect([twice.code, twice.json.reason]).toEqual([1, 'rate-already-paid']);
+      const undoImport = s.run(['annulla', ...s.common, '--estratto', s.statementId]);
+      expect([undoImport.code, undoImport.json.reason, undoImport.json.recordIds]).toEqual([
+        1,
+        'dependent-records',
+        [`mc-${s.first}`],
+      ]);
+      const undo = s.run([
+        'annulla-riconciliazione',
+        ...s.common,
+        '--operazione',
+        assigned.json.operationId,
+      ]);
+      expect(undo.code).toBe(0);
+      expect(s.run(f24(s, s.second, '1')).code).toBe(0);
+      noAmounts(outs.join(''));
+    },
+    TIMEOUT,
+  );
 });

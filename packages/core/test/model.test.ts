@@ -1401,6 +1401,16 @@ describe('MovementClassSchema (plan 3c, task 1)', () => {
     expect(ok({ id: 'mc-t2' })).toBe(false);
     expect(ok({ excludeReason: 'altro' })).toBe(false);
   });
+
+  it('an IMU rate only on an F24 (plan 3d, task 2)', () => {
+    const imu = { f24Group: 'g', year: '2026', rateIndex: 1 };
+    const tasse = { kind: 'tasse', excludeReason: undefined, apartmentId: 'a' };
+    expect(ok({ ...tasse, f24: true, imu })).toBe(true);
+    expect(ok({ ...tasse, imu })).toBe(false);
+    expect(ok({ ...tasse, f24: true, imu: { ...imu, year: '26' } })).toBe(false);
+    expect(ok({ ...tasse, f24: true, imu: { ...imu, rateIndex: 0 } })).toBe(false);
+    expect(ok({ ...tasse, f24: true, imu: { ...imu, f24Group: '' } })).toBe(false);
+  });
 });
 
 describe('ImuYearSchema (plan 3d, task 1)', () => {

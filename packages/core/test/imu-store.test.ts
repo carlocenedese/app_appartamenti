@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   ImuYearSchema,
+  MovementClassSchema,
+  assignImuF24,
+  confirmOutgoing,
+  excludeMovement,
   loadAll,
+  planOutgoing,
   readJournal,
   recordPath,
   recordSchemas,
+  runReconciliation,
   setImuYear,
+  undoOperation,
 } from '../src/index';
 import type { RecordKind, SetImuYearInput } from '../src/index';
 import { cents } from '../src/money';
@@ -164,5 +171,219 @@ describe('setImuYear (plan 3d, task 1)', () => {
       reason: 'inconsistent-store',
     });
     expect(await snapshot(store)).toEqual(before);
+  });
+});
+
+describe('assignImuF24 (plan 3d, task 2)', () => {
+  // Own accounts of fixtures/README.md; an invented F24 description and invented amounts.
+  const account = (id: string, iban: string) => ({
+    ...base,
+    id: `acc-${id}`,
+    apartmentId: id,
+    label: 'Conto',
+    bankProfileId: 'bp',
+    iban,
+  });
+  const profile = {
+    ...base,
+    id: 'bp',
+    bank: 'Banca inventata',
+    validFrom: '2020-01-01',
+    container: 'csv',
+    header: { allOf: ['Data'] },
+    columns: { date: 'Data', description: ['Descrizione'], amount: 'Importo' },
+    dateFormat: 'DD/MM/YYYY',
+    f24Pattern: '^PAGAMENTO F24\\b',
+  };
+  const f24 = (id: string, date: string, amount: number, where = 'berchet') => ({
+    ...base,
+    id,
+    apartmentId: where,
+    accountId: `acc-${where}`,
+    date,
+    amount,
+    description: 'PAGAMENTO F24 DELEGA 0001',
+    statementHash: 's',
+  });
+  const imuYear = (apartmentId: string, f24Group = 'berchet-lovarini') => ({
+    ...base,
+    id: `imu-${apartmentId}-2026`,
+    apartmentId,
+    year: '2026',
+    f24Group,
+    rates: [{ index: 1 }, { index: 2 }],
+  });
+  async function f24Store() {
+    const store = new MemoryStore();
+    await put(store, 'apartment', ['berchet', 'lovarini', 'pulci'].map(apartment));
+    await put(store, 'account', [
+      account('berchet', 'IT85X0542811101000000000301'),
+      account('lovarini', 'IT09X0542811101000000000311'),
+    ]);
+    await put(store, 'bankProfile', [profile]);
+    await put(store, 'imuYear', [
+      imuYear('berchet'),
+      imuYear('lovarini'),
+      imuYear('pulci', 'pulci'),
+    ]);
+    await put(store, 'transaction', [
+      f24('f', '2026-06-14', -100000),
+      f24('g', '2026-06-20', -100000),
+    ]);
+    return store;
+  }
+  const rate1 = { f24Group: 'berchet-lovarini', year: '2026', rateIndex: 1 };
+  const assign = (
+    store: MemoryStore,
+    extra: Partial<typeof rate1> & { transactionId?: string } = {},
+    prefix = 'a',
+  ) => assignImuF24(store, { transactionId: 'f', ...rate1, ...extra }, 'p1', clock, ids(prefix));
+  const classes = async (store: MemoryStore) =>
+    (await loadAll(store, 'movementClass', MovementClassSchema, { includeDeleted: true })).records;
+  const proposalIds = async (store: MemoryStore) =>
+    (await planOutgoing(store)).proposals.map((p) => p.id);
+  const confirmF24 = (store: MemoryStore, apartmentId: string, transactionId = 'f') =>
+    confirmOutgoing(
+      store,
+      {
+        proposalId: `p-f24-${transactionId}`,
+        kind: 'tasse',
+        apartmentId,
+        rememberRule: true,
+        f24: true,
+      },
+      'p1',
+      clock,
+      ids('c'),
+    );
+  const refused = (reason: string) => ({ status: 'refused', reason });
+
+  it('from the p-f24- proposal: the class tasse, f24, the apartment of the account, the rate', async () => {
+    const store = await f24Store();
+    expect(await proposalIds(store)).toEqual(['p-f24-f', 'p-f24-g']);
+    expect(await assign(store)).toEqual({
+      status: 'assigned',
+      operationId: 'a-1',
+      classId: 'mc-f',
+    });
+    expect(await classes(store)).toEqual([
+      {
+        ...base,
+        id: 'mc-f',
+        transactionId: 'f',
+        kind: 'tasse',
+        apartmentId: 'berchet',
+        f24: true,
+        imu: rate1,
+      },
+    ]);
+    const [op] = (await readJournal(store)).operations;
+    expect(op).toMatchObject({
+      kind: 'imu.assign',
+      apartmentId: 'berchet',
+      summary: 'Assegnato un F24 a una rata IMU.',
+    });
+    expect(await proposalIds(store)).toEqual(['p-f24-g']);
+
+    // Undone: the class is deleted and the proposal comes back.
+    await undoOperation(store, 'a-1', 'p1', clock, ids('u'));
+    expect(await classes(store)).toMatchObject([{ id: 'mc-f', deleted: true }]);
+    expect(await proposalIds(store)).toEqual(['p-f24-f', 'p-f24-g']);
+  });
+
+  it('from an F24 confirmed «da ripartire»: the same class with rev + 1; undone, without imu', async () => {
+    const store = await f24Store();
+    expect(await confirmF24(store, 'berchet')).toMatchObject({ status: 'confirmed' });
+    expect(await assign(store)).toEqual({
+      status: 'assigned',
+      operationId: 'a-1',
+      classId: 'mc-f',
+    });
+    expect(await classes(store)).toEqual([
+      expect.objectContaining({
+        id: 'mc-f',
+        rev: 2,
+        f24: true,
+        apartmentId: 'berchet',
+        imu: rate1,
+      }),
+    ]);
+    // The confirmation under the assignment is not undone without cascade (same path).
+    await expect(undoOperation(store, 'c-1', 'p1', clock, ids('u'))).rejects.toThrow(
+      /depend on it/,
+    );
+    await undoOperation(store, 'a-1', 'p1', clock, ids('v'));
+    const [back] = await classes(store);
+    expect(back).toMatchObject({ id: 'mc-f', rev: 3, f24: true, apartmentId: 'berchet' });
+    expect(back).not.toHaveProperty('imu');
+  });
+
+  it('refusals write nothing (Review Focus 2)', async () => {
+    const store = await f24Store();
+    // F24 confirmed in full for Lovarini (question 5 of 3c): no IMU candidate.
+    await confirmF24(store, 'lovarini', 'g');
+    await put(store, 'transaction', [
+      { ...f24('gone', '2026-06-21', -100000), deleted: true },
+      { ...f24('plain', '2026-06-22', -100000), description: 'BONIFICO INVENTATO' },
+    ]);
+    const before = await snapshot(store);
+    for (const transactionId of ['g', 'gone', 'plain', 'nessuno']) {
+      expect([transactionId, await assign(store, { transactionId })]).toEqual([
+        transactionId,
+        refused('not-imu-candidate'),
+      ]);
+    }
+    expect(await assign(store, { rateIndex: 3 })).toEqual(refused('unknown-rate'));
+    expect(await assign(store, { year: '2027' })).toEqual(refused('unknown-rate'));
+    expect(await assign(store, { f24Group: 'pulci' })).toEqual(refused('payer-not-in-group'));
+    expect(await snapshot(store)).toEqual(before);
+
+    // A second F24 on the same rate (question 9), and one already assigned.
+    await assign(store, {}, 'b');
+    await put(store, 'transaction', [f24('h', '2026-06-25', -100000)]);
+    const after = await snapshot(store);
+    expect(await assign(store, { transactionId: 'h' })).toEqual(refused('rate-already-paid'));
+    expect(await assign(store, { rateIndex: 2 })).toEqual(refused('not-imu-candidate'));
+    expect(await snapshot(store)).toEqual(after);
+  });
+
+  it('an excluded movement is no candidate; an assigned one is not excluded', async () => {
+    const store = await f24Store();
+    await excludeMovement(store, { transactionId: 'g', reason: 'doppione' }, 'p1', clock, ids('x'));
+    expect(await assign(store, { transactionId: 'g' })).toEqual(refused('not-imu-candidate'));
+    await assign(store);
+    expect(
+      await excludeMovement(
+        store,
+        { transactionId: 'f', reason: 'doppione' },
+        'p1',
+        clock,
+        ids('y'),
+      ),
+    ).toEqual(refused('already-classified'));
+  });
+
+  it('a diverged store is inconsistent-store, nothing written', async () => {
+    const store = await f24Store();
+    await confirmF24(store, 'berchet', 'g');
+    const path = recordPath('movementClass', 'mc-g');
+    store.putRaw(path, (store.getRaw(path) ?? '').replace('berchet', 'lovarini'));
+    const before = await snapshot(store);
+    expect(await assign(store)).toEqual(refused('inconsistent-store'));
+    expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('no run of the reconciliation writes an IMU rate (decision 6)', async () => {
+    const store = await f24Store();
+    await assign(store);
+    await runReconciliation(store, 'p1', clock, ids('r'));
+    const withImu = (await classes(store)).filter((c) => c.imu !== undefined);
+    expect(withImu.map((c) => c.id)).toEqual(['mc-f']);
+    expect(
+      (await readJournal(store)).operations
+        .filter((o) => o.kind !== 'imu.assign')
+        .flatMap((o) => o.changes)
+        .some((c) => JSON.stringify(c.after).includes('"imu"')),
+    ).toBe(false);
   });
 });
