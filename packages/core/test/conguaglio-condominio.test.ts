@@ -252,3 +252,47 @@ describe('Step 3: condominium instalments (R3)', () => {
     expect(shared(expected)).toBe(4 * 15000 - 2400 + 4800);
   });
 });
+
+describe('condoDifferenceTo: who bears last year settlement (plan 8, task 4, R193)', () => {
+  const first = rata(1);
+  const calcWith = (to: 'tenants' | 'owner' | undefined, withStart = true) =>
+    calcConguaglio({
+      apartment: apartment({
+        posti: 4,
+        ...(withStart ? { condominioStart: CONDOMINIO_START } : {}),
+        ...(to === undefined ? {} : { condoDifferenceTo: to }),
+      }),
+      period: period('2026-05', '2027-04', '2026-27'),
+      bills: [],
+      instalments: [first],
+      matches: [match(first, 19800)],
+      tenancies: TENANCIES,
+      payments: [],
+    });
+
+  it('tenants and no setting give the same result as today', () => {
+    expect(calcWith('tenants')).toEqual(calcWith(undefined));
+    expect(calcWith(undefined)).toEqual(calc([first], [match(first, 19800)]));
+  });
+
+  it('owner: the debit still must be rata + conguaglioPrec, the settlement reaches nobody', () => {
+    const result = calcWith('owner');
+    expect(view(result)).toEqual([
+      ['a', 3600, 0, 3600],
+      ['b', 3600, 0, 3600],
+      ['c', 3600, 0, 3600],
+      ['d', 0, 0, 0],
+      ['e', 3600, 0, 3600],
+    ]);
+    expect(result.unassignedByBucket.conguaglioPrec).toBe(0);
+    expect(shared(result)).toBe(14400);
+  });
+
+  it('owner: allocateInstalment leaves the settlement out and needs no fiscal year', () => {
+    const parts = allocateInstalment(first, cents(19800), undefined, false);
+    expect(parts).toHaveLength(3);
+    expect(parts.every((p) => p.rata === 4800 && p.conguaglioPrec === 0)).toBe(true);
+    expect(() => calcWith('owner', false)).not.toThrow();
+    expect(() => calcWith('tenants', false)).toThrow(SettlementInputError);
+  });
+});

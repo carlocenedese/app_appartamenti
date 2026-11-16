@@ -35,30 +35,36 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 
 ## Spese e conguaglio
 
-| Italiano                 | Inglese                                               | Note                                                                      |
-| ------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------- |
-| bolletta                 | bill                                                  | luce, gas, acqua, internet, TARI, condominio                              |
-| utenza                   | utility, supply                                       | contratto di fornitura (luce, gas, acqua)                                 |
-| fornitore                | supplier                                              |                                                                           |
-| competenza               | accrual period                                        | periodo a cui una bolletta appartiene, non la data di arrivo              |
-| ripartizione, riparto    | split, allocation                                     | divisione di una spesa tra gli inquilini a mesi interi                    |
-| quota                    | share                                                 |                                                                           |
-| conguaglio               | settlement                                            | saldo tra spese ripartite e forfait versato                               |
-| forfait                  | flat service charge                                   | quota mensile a persona versata insieme al canone                         |
-| acconto                  | advance payment                                       |                                                                           |
-| rata                     | instalment                                            | rata del condominio o del conguaglio                                      |
-| preventivo               | budget                                                | preventivo del condominio                                                 |
-| consuntivo, bilancio     | final accounts                                        | bilancio del condominio                                                   |
-| esercizio condominiale   | condominium fiscal year                               | Berchet e Pulci da ottobre, Lovarini da maggio                            |
-| TARI                     | waste tax (TARI)                                      | anno solare                                                               |
-| quota di proprietà       | owner's share                                         | parte delle spese condominiali a carico del proprietario                  |
-| straordinaria            | extraordinary                                         | spesa condominiale straordinaria                                          |
-| commissione              | bank fee                                              | 0,80 euro su alcuni addebiti                                              |
-| versato, residuo         | paid (`versato`), residual                            | colonne del foglio Conguagli (R172)                                       |
-| stato del conguaglio     | settlement status (`settlementStatus`)                | saldato, parziale, da pagare, da restituire, versato in più (R178)        |
-| periodo di un versamento | settlement period of a payment (`settlementPeriodOf`) | senza mese indicato: fino alla fine del periodo successivo (R177)         |
-| motivo dell'attesa       | pending reason (`reason`)                             | in attesa di pagamento, importo diverso, quota maggiore della rata (R179) |
-| Excel dei proprietari    | owners' file (`buildOwnersWorkbook`)                  | riservato, mai agli inquilini (sezione 12, R174)                          |
+| Italiano                           | Inglese                                                          | Note                                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| bolletta                           | bill                                                             | luce, gas, acqua, internet, TARI, condominio                                         |
+| utenza                             | utility, supply                                                  | contratto di fornitura (luce, gas, acqua)                                            |
+| fornitore                          | supplier                                                         |                                                                                      |
+| competenza                         | accrual period                                                   | periodo a cui una bolletta appartiene, non la data di arrivo                         |
+| ripartizione, riparto              | split, allocation                                                | divisione di una spesa tra gli inquilini a mesi interi                               |
+| quota                              | share                                                            |                                                                                      |
+| conguaglio                         | settlement                                                       | saldo tra spese ripartite e forfait versato                                          |
+| forfait                            | flat service charge                                              | quota mensile a persona versata insieme al canone                                    |
+| acconto                            | advance payment                                                  |                                                                                      |
+| rata                               | instalment                                                       | rata del condominio o del conguaglio                                                 |
+| preventivo                         | budget                                                           | preventivo del condominio                                                            |
+| consuntivo, bilancio               | final accounts                                                   | bilancio del condominio                                                              |
+| esercizio condominiale             | condominium fiscal year                                          | Berchet e Pulci da ottobre, Lovarini da maggio                                       |
+| TARI                               | waste tax (TARI)                                                 | anno solare                                                                          |
+| quota di proprietà                 | owner's share                                                    | parte delle spese condominiali a carico del proprietario                             |
+| straordinaria                      | extraordinary                                                    | spesa condominiale straordinaria                                                     |
+| commissione                        | bank fee                                                         | 0,80 euro su alcuni addebiti                                                         |
+| versato, residuo                   | paid (`versato`), residual                                       | colonne del foglio Conguagli (R172)                                                  |
+| stato del conguaglio               | settlement status (`settlementStatus`)                           | saldato, parziale, da pagare, da restituire, versato in più (R178)                   |
+| periodo di un versamento           | settlement period of a payment (`settlementPeriodOf`)            | senza mese indicato: fino alla fine del periodo successivo (R177)                    |
+| motivo dell'attesa                 | pending reason (`reason`)                                        | in attesa di pagamento, importo diverso, quota maggiore della rata (R179)            |
+| Excel dei proprietari              | owners' file (`buildOwnersWorkbook`)                             | riservato, mai agli inquilini (sezione 12, R174)                                     |
+| preventivo, consuntivo             | condominium budget, final account (`condoDocument`)              | documenti dell'esercizio; consuntivo = rendiconto (R190)                             |
+| piano rate                         | instalment plan                                                  | le `Instalment` dello stesso appartamento ed esercizio (R190)                        |
+| quota conduttore                   | tenants' share (`quotaConduttore`)                               | dal documento dell'amministratore, che vince (R192)                                  |
+| differenza di consuntivo           | condominium difference (`condoDifferenceTo`, `condoDifferences`) | consuntivo − preventivo: agli inquilini (predefinito) o al proprietario (R193, R194) |
+| controllo delle spese condominiali | owners' condominium check (`condoCheck`)                         | pagata, senza addebito, importo diverso, duplicato, in programma, assunta (R194)     |
+| recupero da un inquilino           | tenant recovery (`tenantRecovery`)                               | spesa straordinaria causata da inquilini, nel loro conguaglio (R196, R197)           |
 
 ## Banca e pagamenti
 

@@ -3030,6 +3030,334 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
   });
 });
 
+describe('pnpm estratti condominio (piano 8)', () => {
+  // Invented apartments, tenants and amounts; main() in process.
+  let n8 = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `p8-${String((n8 += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+  async function setup(records = []) {
+    const dir = join(root, `p8-${String((counter += 1))}`);
+    mkdirSync(dir);
+    if (records.length > 0) {
+      let n = 0;
+      await commitChange(
+        new FsStore(dir),
+        {
+          profileId: 'p1',
+          kind: 'test.seed',
+          summary: 'x',
+          changes: records.map(([kind, r]) => ({
+            path: recordPath(kind, r.id),
+            after: recordSchemas[kind].parse(r),
+          })),
+        },
+        () => ORA,
+        () => `seed-${String((n += 1))}`,
+      );
+    }
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+  const stored = (s, kind, id) =>
+    JSON.parse(readFileSync(join(s.dir, '_app', 'dati', kind, `${id}.json`), 'utf8'));
+
+  it('appartamento: crea con la differenza, aggiorna, rifiuta senza, annulla', async () => {
+    const s = await setup();
+    const base = ['appartamento', ...s.common, '--id', 'apt-a'];
+    const create = [
+      '--nome',
+      'Appartamento A',
+      '--locatore',
+      'user1',
+      '--posti',
+      '4',
+      '--annualita',
+      '10-01',
+      '--esercizio-condominio',
+      '05-01',
+    ];
+    expect((await run([...base, ...create])).json).toMatchObject({
+      status: 'rejected',
+      reason: 'missing-fields',
+    });
+    const saved = await run([...base, ...create, '--differenza-condominio', 'proprietario']);
+    expect([saved.code, saved.json.status]).toEqual([0, 'created']);
+    expect(stored(s, 'apartment', 'apt-a')).toMatchObject({
+      posti: 4,
+      annualitaStart: { month: 10, day: 1 },
+      condominioStart: { month: 5, day: 1 },
+      condoDifferenceTo: 'owner',
+    });
+    const update = await run([...base, '--differenza-condominio', 'inquilini']);
+    expect(update.json.status).toBe('updated');
+    expect(stored(s, 'apartment', 'apt-a')).toMatchObject({
+      posti: 4,
+      condoDifferenceTo: 'tenants',
+    });
+    expect((await run([...base, '--differenza-condominio', 'inquilini'])).json.status).toBe(
+      'unchanged',
+    );
+    expect((await run([...base, '--differenza-condominio', 'altro'])).code).toBe(2);
+    expect((await run([...base, '--annualita', '13-01'])).code).toBe(2);
+    expect((await run([...base, '--posti', '0'])).code).toBe(2);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      update.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect(stored(s, 'apartment', 'apt-a').condoDifferenceTo).toBe('owner');
+    const beds = await run([...base, '--posti', '5']);
+    expect([beds.code, beds.json.reason]).toEqual([1, 'needs-confirmation']);
+    expect((await run([...base, '--posti', '5', '--modifica'])).json.status).toBe('updated');
+    expect((await run([...base, '--posti', '4', '--modifica'])).json.status).toBe('updated');
+  });
+
+  it('condominio-documento: salva, non riscrive, rifiuta, annulla', async () => {
+    const s = await setup([['apartment', apartment({ id: 'apt-a' })]]);
+    const doc = [
+      'condominio-documento',
+      ...s.common,
+      '--appartamento',
+      'apt-a',
+      '--esercizio',
+      '2026-27',
+      '--tipo',
+      'consuntivo',
+      '--totale',
+      '1.250,00',
+      '--quota-conduttore',
+      '900,00',
+    ];
+    const saved = await run(doc);
+    expect([saved.code, saved.json.status, saved.json.documentId]).toEqual([
+      0,
+      'saved',
+      'condoc-apt-a-2026-27-consuntivo',
+    ]);
+    expect(saved.out).not.toContain('1250');
+    expect(stored(s, 'condoDocument', 'condoc-apt-a-2026-27-consuntivo')).toMatchObject({
+      total: 125000,
+      quotaConduttore: 90000,
+    });
+    expect((await run(doc)).json.status).toBe('unchanged');
+    expect(
+      (await run([...doc.slice(0, -2)].map((a) => (a === 'consuntivo' ? 'bilancio' : a)))).code,
+    ).toBe(2);
+    const wrong = await run(doc.map((a) => (a === 'apt-a' ? 'apt-x' : a)));
+    expect([wrong.code, wrong.json.reason]).toEqual([1, 'unknown-apartment']);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      saved.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+  });
+
+  it('condominio: stati delle rate e differenze, importi solo con --dettagli', async () => {
+    const base = { v: 1, rev: 1, apartmentId: 'apt-a', kind: 'condominio', esercizio: '2026-27' };
+    const rate = (id, extra) => ({
+      ...base,
+      id,
+      rateIndex: 1,
+      rateCount: 3,
+      dueDate: '2026-11-13',
+      rata: 31415,
+      quotaProprieta: 0,
+      conguaglioPrec: 0,
+      coversFrom: '2026-10',
+      coversTo: '2027-01',
+      ...extra,
+    });
+    const s = await setup([
+      ['apartment', apartment({ id: 'apt-a', condoDifferenceTo: 'owner' })],
+      ['instalment', rate('r-late')],
+      ['instalment', rate('r-next', { rateIndex: 2, dueDate: '2026-11-14' })],
+      ['instalment', rate('r-str', { straordinaria: true, rateCount: 1 })],
+      [
+        'condoDocument',
+        {
+          v: 1,
+          rev: 1,
+          id: 'condoc-apt-a-2026-27-preventivo',
+          apartmentId: 'apt-a',
+          esercizio: '2026-27',
+          kind: 'preventivo',
+          total: 94245,
+        },
+      ],
+      [
+        'condoDocument',
+        {
+          v: 1,
+          rev: 1,
+          id: 'condoc-apt-a-2026-27-consuntivo',
+          apartmentId: 'apt-a',
+          esercizio: '2026-27',
+          kind: 'consuntivo',
+          total: 97245,
+        },
+      ],
+    ]);
+    // A statement covering the months, so that nothing is assumed paid (R2).
+    await commitChange(
+      new FsStore(s.dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('account', 'acc-a'),
+            after: recordSchemas.account.parse({
+              id: 'acc-a',
+              v: 1,
+              rev: 1,
+              apartmentId: 'apt-a',
+              label: 'Conto',
+              bankProfileId: 'bp',
+            }),
+          },
+          {
+            path: recordPath('statement', 'st-a'),
+            after: recordSchemas.statement.parse({
+              id: 'st-a',
+              v: 1,
+              rev: 1,
+              accountId: 'acc-a',
+              bankProfileId: 'bp',
+              fileName: 'estratto.csv',
+              suggestedPath: 'estratto.csv',
+              from: '2026-01-01',
+              to: '2026-12-31',
+              periodSource: 'manual',
+              rowCount: 0,
+              transactionIds: [],
+              held: [],
+            }),
+          },
+        ],
+      },
+      () => ORA,
+      () => 'seed-st',
+    );
+    const out = await run(['condominio', ...s.common]);
+    expect(out.code).toBe(0);
+    expect(out.json.rates.map((r) => [r.instalmentId, r.straordinaria, r.status])).toEqual([
+      ['r-late', false, 'senza-addebito'],
+      ['r-next', false, 'in-programma'],
+      ['r-str', true, 'senza-addebito'],
+    ]);
+    expect(out.json.anomalies).toBe(2);
+    expect(out.json.warnings).toEqual([]);
+    expect(out.json.differences).toEqual([
+      { apartmentId: 'apt-a', esercizio: '2026-27', to: 'owner', conduttore: 0 },
+    ]);
+    expect(out.out).not.toMatch(/31415|94245|3000|2026-11-1/);
+    const details = await run(['condominio', ...s.common, '--dettagli', '--esercizio', '2026-27']);
+    expect(details.json.rates[0]).toMatchObject({ expected: 31415, dueDate: '2026-11-13' });
+    expect(details.json.differences[0]).toMatchObject({ difference: 3000 });
+    expect((await run(['condominio', ...s.common, '--tipo', 'x'])).code).toBe(2);
+  });
+
+  it('recupero: quote uguali di default, stato di user1, rifiuti, nessun importo in uscita', async () => {
+    const tenancy = (id, tenantId) => ({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt-a',
+      tenantId,
+      from: '2026-10',
+      monthlyRent: 30000,
+      monthlyForfait: 3000,
+    });
+    const s = await setup([
+      ['apartment', apartment({ id: 'apt-a' })],
+      [
+        'instalment',
+        {
+          id: 'str-1',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-a',
+          kind: 'condominio',
+          esercizio: '2026-27',
+          rateIndex: 1,
+          rateCount: 1,
+          dueDate: '2026-11-30',
+          rata: 27183,
+          quotaProprieta: 0,
+          conguaglioPrec: 0,
+          straordinaria: true,
+          coversFrom: '2026-11',
+          coversTo: '2026-11',
+        },
+      ],
+      ['tenancy', tenancy('tcy-1', 'ten-1')],
+      ['tenancy', tenancy('tcy-2', 'ten-2')],
+    ]);
+    const rec = [
+      'recupero',
+      ...s.common,
+      '--id',
+      'rec-1',
+      '--appartamento',
+      'apt-a',
+      '--voce',
+      'str-1',
+      '--importo',
+      '150,01',
+      '--inquilini',
+      'ten-2,ten-1',
+      '--periodo',
+      '2026-27',
+    ];
+    const saved = await run(rec);
+    expect([saved.code, saved.json.status, saved.json.recoveryId]).toEqual([0, 'saved', 'rec-1']);
+    expect(saved.out).not.toMatch(/15001|7501|ten-/);
+    expect(stored(s, 'tenantRecovery', 'rec-1')).toMatchObject({
+      amount: 15001,
+      shares: [
+        { tenantId: 'ten-2', amount: 7501 },
+        { tenantId: 'ten-1', amount: 7500 },
+      ],
+      status: 'da-recuperare',
+      periodLabel: '2026-27',
+    });
+    const manual = await run([...rec, '--quote', '100,01;50,00', '--stato', 'non-recuperabile']);
+    expect(manual.json.status).toBe('saved');
+    expect(stored(s, 'tenantRecovery', 'rec-1').shares[0].amount).toBe(10001);
+    const tooMuch = await run(rec.map((a) => (a === '150,01' ? '271,84' : a)));
+    expect([tooMuch.code, tooMuch.json.reason]).toEqual([1, 'amount-too-high']);
+    expect((await run([...rec, '--quote', '1,00'])).code).toBe(2);
+    expect((await run([...rec, '--stato', 'pagata'])).code).toBe(2);
+    const listed = await run(['condominio', ...s.common]);
+    expect(listed.json.recoveries).toEqual([
+      {
+        recoveryId: 'rec-1',
+        apartmentId: 'apt-a',
+        instalmentId: 'str-1',
+        status: 'non-recuperabile',
+        periodLabel: '2026-27',
+        tenants: 2,
+      },
+    ]);
+    expect(listed.out).not.toMatch(/10001|ten-/);
+    const detailed = await run(['condominio', ...s.common, '--dettagli']);
+    expect(detailed.json.recoveries[0]).toMatchObject({ amount: 15001 });
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      manual.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+  });
+});
+
 describe('pnpm estratti scadenze (piano 9, task 4)', () => {
   // Invented apartments, landlords, amounts and dates (fixtures/README.md); main() in process.
   let n = 0;
