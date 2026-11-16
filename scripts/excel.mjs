@@ -2,7 +2,9 @@
 // tasks 7 and 11): `pnpm excel --cartella <dir> --appartamento <id> --periodo <etichetta>
 // [--uscita <file.xlsx>] [--proprietari]`; without `--uscita` the file goes to `excelFilePath`
 // under `--cartella` (question 7, R173). `--proprietari` writes the owners' file instead (plan 5b,
-// R175), by default to `ownersFilePath` (R184). The core builds the file; this script opens the data folder with FsStore and
+// R175), by default to `ownersFilePath` (R184). `--tasse <anno>` writes the file for the
+// commercialista instead (plan 10, R215), by default to `taxFilePath`, with no apartment or
+// period. The core builds the file; this script opens the data folder with FsStore and
 // writes the bytes through a temporary file in the same folder, linked to the output so that an
 // existing file is never overwritten (section 6, R156).
 //
@@ -29,21 +31,25 @@ import {
   ExcelInputError,
   ExcelRecoveriesError,
   SettlementInputError,
+  YearSchema,
   assertSafeRelPath,
   buildConguaglioWorkbook,
   buildOwnersWorkbook,
+  buildTaxWorkbook,
   calcConguaglio,
   excelFilePath,
   excelItems,
   loadExcelInput,
+  loadTaxExport,
   ownersFilePath,
   ownersItems,
+  taxFilePath,
   writeXlsx,
 } from '../packages/core/src/index.ts';
 
 const MESSAGES = {
   'bad-arguments':
-    'Argomenti non validi: servono --cartella, --appartamento e --periodo (--uscita facoltativo).',
+    'Argomenti non validi: servono --cartella, --appartamento e --periodo, oppure --cartella e --tasse <anno> (--uscita facoltativo).',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
   'bad-output':
     'Il file di uscita non è valido: serve un nome .xlsx ammesso, in una cartella che esiste.',
@@ -150,6 +156,7 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
           periodo: { type: 'string' },
           uscita: { type: 'string' },
           proprietari: { type: 'boolean' },
+          tasse: { type: 'string' },
         },
         allowPositionals: false,
         strict: true,
@@ -157,9 +164,13 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     } catch {
       throw invalid('bad-arguments');
     }
-    if (['cartella', 'appartamento', 'periodo'].some((k) => !values[k]) || values.uscita === '') {
-      throw invalid('bad-arguments');
-    }
+    const taxes = values.tasse !== undefined;
+    const argumentsValid = taxes
+      ? Boolean(values.cartella) &&
+        YearSchema.safeParse(values.tasse).success &&
+        ['appartamento', 'periodo', 'proprietari'].every((k) => values[k] === undefined)
+      : ['cartella', 'appartamento', 'periodo'].every((k) => values[k]);
+    if (!argumentsValid || values.uscita === '') throw invalid('bad-arguments');
     try {
       if (!statSync(values.cartella).isDirectory()) throw new Error('not a folder');
     } catch {
@@ -167,6 +178,28 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     }
     let target = values.uscita === undefined ? undefined : outputPath(values.uscita);
     if (target !== undefined && existsSync(target.file)) throw rejected('file-exists');
+
+    if (taxes) {
+      // Plan 10, R215: every live apartment and contract; names and codes stay in the file.
+      const loaded = await loadTaxExport(new FsStore(values.cartella));
+      if (loaded.status !== 'ok') throw rejected(loaded.reason);
+      if (target === undefined) {
+        const file = join(values.cartella, ...taxFilePath(values.tasse).split('/'));
+        target = { file, folder: dirname(file) };
+        checkDefaultFolders(values.cartella, file);
+        if (existsSync(file)) throw rejected('file-exists');
+      }
+      const workbook = buildTaxWorkbook(loaded);
+      if (values.uscita === undefined) mkdirSync(target.folder, { recursive: true });
+      writeNew(target.file, target.folder, writeXlsx(workbook), io);
+      return done(0, {
+        status: 'written',
+        year: values.tasse,
+        sheets: workbook.sheets.length,
+        apartments: loaded.apartments.length,
+        contracts: loaded.contracts.length,
+      });
+    }
 
     const loaded = await loadExcelInput(new FsStore(values.cartella), {
       apartmentId: values.appartamento,

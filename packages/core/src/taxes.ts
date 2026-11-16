@@ -7,7 +7,7 @@
 import { cedolareExpected, cedolareRateForYear } from './contract';
 import { imuRates } from './imu';
 import { expectedDebit } from './match';
-import { TAX_VOICES } from './model';
+import { TAX_VOICES, YearSchema } from './model';
 import type {
   Apartment,
   BankTransaction,
@@ -25,6 +25,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import type { ISODate } from './period';
 import { compareText } from './text';
+import type { XlsxCell, XlsxWorkbook } from './xlsx-write';
 
 /** Answer 7 of user1 (14 November 2026): confirm discrepancies above 0,10 €. A threshold, not a rate. */
 export const TAX_DISCREPANCY_TOLERANCE: Cents = cents(10);
@@ -275,4 +276,124 @@ export function taxYearWarnings(input: {
     .sort(compareText)
     .filter((id) => !has(id, year))
     .map((apartmentId) => ({ apartmentId, year, canCopy: has(apartmentId, previous) }));
+}
+
+const TAX_EXPORT_HEADERS = {
+  Immobili: ['Appartamento', 'Nome', 'Locatore', 'Indirizzo', 'Dati catastali'],
+  Contratti: [
+    'Appartamento',
+    'Contratto',
+    'Tipo',
+    'Inizio',
+    'Fine',
+    'Durata (mesi)',
+    'Firmato il',
+    'Codice di registrazione',
+    'Registrato il',
+    'Canone concordato',
+    'Per studenti',
+    'Regime',
+    'Aliquota cedolare (%)',
+  ],
+  Canoni: ['Contratto', 'Dal', 'Canone mensile', 'Acconto mensile'],
+} as const;
+
+const text = (value: string | undefined): XlsxCell | null =>
+  value === undefined ? null : { kind: 'text', value };
+const date = (value: ISODate | undefined): XlsxCell | null =>
+  value === undefined ? null : { kind: 'date', value };
+/** `2025-10` → `10/2025`. */
+const monthText = (month: string): XlsxCell => ({
+  kind: 'text',
+  value: `${month.slice(5, 7)}/${month.slice(0, 4)}`,
+});
+const yesNo = (flag: true | undefined): XlsxCell => ({ kind: 'text', value: flag ? 'sì' : 'no' });
+/** Basis points as written by user1: `1050` → `10,50`. */
+const percent = (bp: number | undefined): XlsxCell | null =>
+  bp === undefined
+    ? null
+    : {
+        kind: 'text',
+        value: `${String(Math.floor(bp / 100))},${String(bp % 100).padStart(2, '0')}`,
+      };
+
+/**
+ * The file for the commercialista (section 34, R215): every live apartment (`Immobili`), every live
+ * contract (`Contratti`) and its rent entries (`Canoni`), as data; by apartment and id. No amount is
+ * computed. The registration code and the cadastre are personal data: the file goes only to
+ * `Riservato_proprietari`.
+ */
+export function buildTaxWorkbook(input: {
+  apartments: Apartment[];
+  contracts: Contract[];
+}): XlsxWorkbook {
+  const header = (names: readonly string[]) => names.map((n) => text(n));
+  const apartments = live(input.apartments).sort((a, b) => compareText(a.id, b.id));
+  const contracts = live(input.contracts).sort(
+    (a, b) => compareText(a.apartmentId, b.apartmentId) || compareText(a.id, b.id),
+  );
+  return {
+    sheets: [
+      {
+        name: 'Immobili',
+        rows: [
+          header(TAX_EXPORT_HEADERS.Immobili),
+          ...apartments.map((a) => [
+            text(a.id),
+            text(a.name),
+            text(a.locatore),
+            text(a.address),
+            text(
+              a.cadastre
+                ?.map((c) => `foglio ${c.sheet}, particella ${c.parcel}, sub ${c.sub}`)
+                .join('; '),
+            ),
+          ]),
+        ],
+      },
+      {
+        name: 'Contratti',
+        rows: [
+          header(TAX_EXPORT_HEADERS.Contratti),
+          ...contracts.map((c) => [
+            text(c.apartmentId),
+            text(c.id),
+            text(c.type),
+            monthText(c.start),
+            monthText(c.end),
+            c.durationMonths === undefined
+              ? null
+              : ({ kind: 'int', value: c.durationMonths } as const),
+            date(c.signedOn),
+            text(c.registration?.code),
+            date(c.registration?.date),
+            yesNo(c.agreedRent),
+            yesNo(c.forStudents),
+            text(c.taxRegime),
+            percent(c.cedolareRateBp),
+          ]),
+        ],
+      },
+      {
+        name: 'Canoni',
+        rows: [
+          header(TAX_EXPORT_HEADERS.Canoni),
+          ...contracts.flatMap((c) =>
+            (c.rent ?? []).map((r) => [
+              text(c.id),
+              monthText(r.from),
+              { kind: 'euro', value: r.monthlyRent } as const,
+              { kind: 'euro', value: r.monthlyAdvance } as const,
+            ]),
+          ),
+        ],
+      },
+    ],
+  };
+}
+
+/** `Riservato_proprietari/Tasse/<anno>/Tasse_<anno>.xlsx` (section 34); `year` must be `AAAA`. */
+export function taxFilePath(year: string): string {
+  if (!YearSchema.safeParse(year).success) throw new RangeError('The year must be AAAA');
+  return `Riservato_proprietari/Tasse/${year}/Tasse_${year}.xlsx`;
 }

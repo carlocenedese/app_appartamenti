@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   TAX_DISCREPANCY_TOLERANCE,
+  buildTaxWorkbook,
   isoDate,
+  taxFilePath,
   recordSchemas,
   taxTable,
   taxYearWarnings,
@@ -416,5 +418,146 @@ describe('taxYearWarnings (plan 10, task 3)', () => {
     for (const today of ['2027-02-01', '2026-12-31']) {
       expect(taxYearWarnings({ today: isoDate(today), apartments, estimates: list })).toEqual([]);
     }
+  });
+});
+
+describe('buildTaxWorkbook and taxFilePath (plan 10, task 5)', () => {
+  const apartments = parse('apartment', [
+    {
+      ...apartment('nord', 'user1'),
+      address: 'Via Inventata 1',
+      cadastre: [
+        { sheet: '1', parcel: '2', sub: '3' },
+        { sheet: '1', parcel: '2', sub: '4' },
+      ],
+    },
+    apartment('sud', 'user2'),
+    { ...apartment('vecchio', 'user1'), deleted: true },
+  ]);
+  const contracts = parse('contract', [
+    {
+      id: 'ctr-sud',
+      apartmentId: 'sud',
+      type: '3+2',
+      start: '2024-04',
+      end: '2029-03',
+      settlement: 'intero-contratto',
+      taxRegime: 'ordinario',
+    },
+    {
+      id: 'ctr-nord',
+      apartmentId: 'nord',
+      type: '1+1',
+      start: '2025-10',
+      end: '2027-09',
+      settlement: 'annuale',
+      agreedRent: true,
+      forStudents: true,
+      durationMonths: 12,
+      signedOn: '2025-09-20',
+      registration: { code: 'CODICE-INVENTATO', date: '2025-10-05' },
+      taxRegime: 'cedolare',
+      cedolareRateBp: 1050,
+      rent: [
+        { from: '2025-10', monthlyRent: 150000, monthlyAdvance: 20000 },
+        { from: '2026-10', monthlyRent: 155000, monthlyAdvance: 20000 },
+      ],
+    },
+    {
+      id: 'ctr-del',
+      apartmentId: 'nord',
+      type: 'altro',
+      start: '2020-01',
+      end: '2020-12',
+      settlement: 'annuale',
+      deleted: true,
+    },
+  ]);
+  const text = (value: string) => ({ kind: 'text', value });
+
+  it('lists every live property, contract and rent entry, as data', () => {
+    const workbook = buildTaxWorkbook({ apartments, contracts });
+    expect(workbook.sheets.map((s) => s.name)).toEqual(['Immobili', 'Contratti', 'Canoni']);
+    const [immobili, contratti, canoni] = workbook.sheets;
+    expect(immobili?.rows).toEqual([
+      ['Appartamento', 'Nome', 'Locatore', 'Indirizzo', 'Dati catastali'].map(text),
+      [
+        text('nord'),
+        text('nord'),
+        text('user1'),
+        text('Via Inventata 1'),
+        text('foglio 1, particella 2, sub 3; foglio 1, particella 2, sub 4'),
+      ],
+      [text('sud'), text('sud'), text('user2'), null, null],
+    ]);
+    expect(contratti?.rows[0]).toEqual(
+      [
+        'Appartamento',
+        'Contratto',
+        'Tipo',
+        'Inizio',
+        'Fine',
+        'Durata (mesi)',
+        'Firmato il',
+        'Codice di registrazione',
+        'Registrato il',
+        'Canone concordato',
+        'Per studenti',
+        'Regime',
+        'Aliquota cedolare (%)',
+      ].map(text),
+    );
+    expect(contratti?.rows.slice(1)).toEqual([
+      [
+        text('nord'),
+        text('ctr-nord'),
+        text('1+1'),
+        text('10/2025'),
+        text('09/2027'),
+        { kind: 'int', value: 12 },
+        { kind: 'date', value: '2025-09-20' },
+        text('CODICE-INVENTATO'),
+        { kind: 'date', value: '2025-10-05' },
+        text('sì'),
+        text('sì'),
+        text('cedolare'),
+        text('10,50'),
+      ],
+      [
+        text('sud'),
+        text('ctr-sud'),
+        text('3+2'),
+        text('04/2024'),
+        text('03/2029'),
+        null,
+        null,
+        null,
+        null,
+        text('no'),
+        text('no'),
+        text('ordinario'),
+        null,
+      ],
+    ]);
+    expect(canoni?.rows).toEqual([
+      ['Contratto', 'Dal', 'Canone mensile', 'Acconto mensile'].map(text),
+      [
+        text('ctr-nord'),
+        text('10/2025'),
+        { kind: 'euro', value: 150000 },
+        { kind: 'euro', value: 20000 },
+      ],
+      [
+        text('ctr-nord'),
+        text('10/2026'),
+        { kind: 'euro', value: 155000 },
+        { kind: 'euro', value: 20000 },
+      ],
+    ]);
+  });
+
+  it('goes to Riservato_proprietari/Tasse/<anno>', () => {
+    expect(taxFilePath('2026')).toBe('Riservato_proprietari/Tasse/2026/Tasse_2026.xlsx');
+    expect(() => taxFilePath('26')).toThrow(RangeError);
   });
 });

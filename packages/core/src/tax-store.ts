@@ -22,7 +22,7 @@ import {
   TaxVoiceSchema,
   YearSchema,
 } from './model';
-import type { TaxPayment, TaxVoice } from './model';
+import type { Apartment, Contract, TaxPayment, TaxVoice } from './model';
 import type { Cents } from './money';
 import { parseOrThrow } from './parse';
 import type { ISODate } from './period';
@@ -292,4 +292,20 @@ export async function loadTaxTable(
   });
   const warnings = taxYearWarnings({ today: options.today, apartments, estimates });
   return { status: 'computed', tables, warnings };
+}
+
+export type LoadTaxExportResult =
+  | { status: 'ok'; apartments: Apartment[]; contracts: Contract[] }
+  | { status: 'refused'; reason: 'inconsistent-store' };
+
+/** The live apartments and contracts of `buildTaxWorkbook` (R215). Read only. */
+export async function loadTaxExport(store: Store): Promise<LoadTaxExportResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  return {
+    status: 'ok',
+    apartments: (await loadAll(store, 'apartment', ApartmentSchema)).records,
+    contracts: (await loadAll(store, 'contract', ContractSchema)).records,
+  };
 }

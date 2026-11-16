@@ -18,7 +18,9 @@ import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   buildConguaglioWorkbook,
   buildOwnersWorkbook,
+  buildTaxWorkbook,
   loadExcelInput,
+  loadTaxExport,
   recordPath,
   writeRecord,
   writeXlsx,
@@ -256,6 +258,47 @@ describe('pnpm excel', () => {
       rmSync(base, { recursive: true, force: true });
     }
   });
+
+  it(
+    'writes the file for the commercialista with --tasse, once, to the default path (plan 10)',
+    async () => {
+      const tasse = (...extra) => {
+        const run = cli(['--cartella', data, ...extra]);
+        outputs.push(run.out);
+        return run;
+      };
+      const first = tasse('--tasse', '2026');
+      const store = new FsStore(data);
+      const loaded = await loadTaxExport(store);
+      expect([first.code, first.json]).toEqual([
+        0,
+        {
+          status: 'written',
+          year: '2026',
+          sheets: 3,
+          apartments: loaded.apartments.length,
+          contracts: loaded.contracts.length,
+        },
+      ]);
+      const file = join(data, 'Riservato_proprietari', 'Tasse', '2026', 'Tasse_2026.xlsx');
+      expect(new Uint8Array(readFileSync(file))).toEqual(writeXlsx(buildTaxWorkbook(loaded)));
+      const again = tasse('--tasse', '2026');
+      expect([again.code, again.json.reason]).toEqual([1, 'file-exists']);
+      const other = join(out, 'Tasse-altro.xlsx');
+      expect(tasse('--tasse', '2026', '--uscita', other).code).toBe(0);
+      expect(existsSync(other)).toBe(true);
+      for (const bad of [
+        ['--tasse', '26'],
+        ['--tasse', '2026', '--appartamento', 'apt-nord'],
+        ['--tasse', '2026', '--periodo', '2026-27'],
+        ['--tasse', '2026', '--proprietari'],
+        ['--tasse', '2026', '--uscita', ''],
+      ]) {
+        expect([bad, tasse(...bad).code]).toEqual([bad, 2]);
+      }
+    },
+    TIMEOUT,
+  );
 
   it('never prints names, amounts, IBANs or paths', () => {
     const all = outputs.join('');
