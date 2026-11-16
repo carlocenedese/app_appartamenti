@@ -3621,6 +3621,246 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
   });
 });
 
+describe('pnpm estratti tasse (piano 10)', () => {
+  // Invented apartments, taxpayers and amounts; main() in process.
+  let n10 = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `p10-${String((n10 += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+  const SECRET = 'Contribuente-inventato';
+  async function setup() {
+    const dir = join(root, `p10-${String((counter += 1))}`);
+    mkdirSync(dir);
+    const base = { v: 1, rev: 1 };
+    const records = [
+      ['apartment', { ...apartment(), id: 'nord', locatore: SECRET }],
+      [
+        'transaction',
+        {
+          ...base,
+          id: 'tx-ced',
+          apartmentId: 'nord',
+          date: '2026-06-16',
+          amount: -123457,
+          description: 'F24',
+          statementHash: 'h1',
+        },
+      ],
+      [
+        'movementClass',
+        {
+          ...base,
+          id: 'mc-tx-ced',
+          transactionId: 'tx-ced',
+          kind: 'tasse',
+          apartmentId: 'nord',
+          f24: true,
+        },
+      ],
+    ];
+    let n = 0;
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      () => `seed-${String((n += 1))}`,
+    );
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+
+  it('tasse-stima, tasse-assegna, tasse: importi e contribuente solo con --dettagli; annullamento', async () => {
+    const s = await setup();
+    const stima = (...extra) => ['tasse-stima', ...s.common, '--appartamento', 'nord', ...extra];
+    const saved = await run(stima('--anno', '2026', '--voce', 'cedolare', '--importo', '1234,57'));
+    expect([saved.code, saved.json]).toEqual([
+      0,
+      {
+        status: 'saved',
+        estimateId: 'tax-nord-2026-cedolare',
+        operationId: saved.json.operationId,
+      },
+    ]);
+    expect(
+      (await run(stima('--anno', '2026', '--voce', 'cedolare', '--importo', '1234,57'))).json,
+    ).toEqual({ status: 'unchanged', estimateId: 'tax-nord-2026-cedolare' });
+    expect(
+      (await run(stima('--anno', '2026', '--voce', 'registro', '--importo', '0'))).json.status,
+    ).toBe('saved');
+    const snap = snapshot(s.dir);
+    for (const bad of [
+      stima('--anno', '26', '--voce', 'cedolare', '--importo', '1,00'),
+      stima('--anno', '2026', '--voce', 'irpef', '--importo', '1,00'),
+      stima('--anno', '2026', '--voce', 'cedolare', '--importo', '-1,00'),
+      stima('--anno', '2026', '--voce', 'cedolare'),
+      stima('--anno', '2026', '--voce', 'cedolare', '--importo', '1,00', 'x'),
+      ['tasse', ...s.common, '--anno', '2026', '--voce', 'cedolare'],
+      ['tasse', ...s.common],
+      ['tasse-assegna', ...s.common, '--movimento', 'tx-ced', '--parte', 'imu:2026:1,00'],
+      ['tasse-assegna', ...s.common, '--movimento', 'tx-ced', '--parte', 'cedolare:2026'],
+      ['tasse-assegna', ...s.common, '--movimento', 'tx-ced'],
+      ['tasse-copia', ...s.common, '--anno', '2027', '--importo', '1,00'],
+    ]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]);
+    }
+    const nobody = await run([
+      'tasse-stima',
+      ...s.common,
+      '--appartamento',
+      'nessuno',
+      '--anno',
+      '2026',
+      '--voce',
+      'imu',
+      '--importo',
+      '1,00',
+    ]);
+    expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-apartment']);
+    const assegna = (...parts) => [
+      'tasse-assegna',
+      ...s.common,
+      '--movimento',
+      'tx-ced',
+      ...parts.flatMap((p) => ['--parte', p]),
+    ];
+    for (const bad of [assegna('cedolare:2026:0'), assegna('cedolare:2026:-1,00')]) {
+      expect([bad, (await run(bad)).code]).toEqual([bad, 2]); // R214: an amount not positive
+    }
+    const twice = await run(assegna('cedolare:2026:1,00', 'cedolare:2026:1,00'));
+    expect([twice.code, twice.json.reason, twice.json.message]).toEqual([
+      1,
+      'bad-parts',
+      'Rifiutato: parti non valide (importo non positivo, voce e anno ripetuti, voce non ammessa).',
+    ]);
+    const mismatch = await run(assegna('cedolare:2026:1,00'));
+    expect([mismatch.code, mismatch.json.reason]).toEqual([1, 'sum-mismatch']);
+    expect(snapshot(s.dir)).toEqual(snap);
+    const assigned = await run(assegna('cedolare:2025:234,57', 'cedolare:2026:1000,00'));
+    expect([assigned.code, assigned.json]).toEqual([
+      0,
+      {
+        status: 'assigned',
+        taxPaymentId: 'taxp-tx-ced',
+        operationId: assigned.json.operationId,
+      },
+    ]);
+
+    const list = await run(['tasse', ...s.common, '--anno', '2026']);
+    expect(list.code).toBe(0);
+    expect(list.json).toMatchObject({ status: 'ok', year: '2026', warnings: [] });
+    expect(list.json.tables).toHaveLength(1);
+    expect(list.json.tables[0].apartmentIds).toEqual(['nord']);
+    expect(list.json.tables[0].rows[0]).toEqual({
+      voce: 'cedolare',
+      state: 'da-verificare',
+      reasons: ['no-expected-source'],
+    });
+    expect(list.out).not.toMatch(new RegExp(`${SECRET}|123457|100000|23457`));
+    expect(scanText(list.out)).toEqual([]);
+    const details = await run(['tasse', ...s.common, '--anno', '2026', '--dettagli']);
+    expect(details.json.tables[0].taxpayer).toBe(SECRET);
+    expect(details.json.tables[0].rows[0]).toMatchObject({ estimate: 123457, paid: 100000 });
+
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      assigned.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    const after = await run(['tasse', ...s.common, '--anno', '2026', '--dettagli']);
+    expect(after.json.tables[0].rows[0].reasons).toEqual([
+      'no-expected-source',
+      'unassigned-tax-movement',
+    ]);
+  });
+
+  it('tasse a gennaio avvisa dell’anno vuoto; tasse-copia copia l’anno prima solo a comando', async () => {
+    const s = await setup();
+    const january = ['--cartella', s.dir, '--ora', '2027-01-10T09:00:00.000Z'];
+    await run([
+      'tasse-stima',
+      ...s.common,
+      '--appartamento',
+      'nord',
+      '--anno',
+      '2026',
+      '--voce',
+      'imu',
+      '--importo',
+      '500,00',
+    ]);
+    const warned = await run(['tasse', ...january, '--anno', '2027']);
+    expect(warned.json.warnings).toEqual([
+      {
+        apartmentId: 'nord',
+        year: '2027',
+        canCopy: true,
+        message:
+          'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
+      },
+    ]);
+    // The warning writes nothing.
+    expect(warned.json.tables[0].rows[1].reasons).toContain('missing-estimate');
+    const copied = await run(['tasse-copia', ...january, '--anno', '2027']);
+    expect([copied.code, copied.json]).toEqual([
+      0,
+      {
+        status: 'copied',
+        estimateIds: ['tax-nord-2027-imu'],
+        operationId: copied.json.operationId,
+      },
+    ]);
+    const again = await run([
+      'tasse-copia',
+      ...january,
+      '--anno',
+      '2027',
+      '--appartamento',
+      'nord',
+    ]);
+    expect([again.code, again.json]).toEqual([
+      0,
+      { status: 'unchanged', estimateIds: ['tax-nord-2027-imu'] },
+    ]);
+    const edited = await run([
+      'tasse-stima',
+      ...s.common,
+      '--appartamento',
+      'nord',
+      '--anno',
+      '2027',
+      '--voce',
+      'imu',
+      '--importo',
+      '600,00',
+    ]);
+    const changed = await run(['tasse-copia', ...january, '--anno', '2027']);
+    expect([changed.code, changed.json.reason]).toEqual([1, 'year-not-empty']);
+    expect((await run(['tasse', ...january, '--anno', '2027'])).json.warnings).toEqual([]);
+    // --oggi gives the day instead of the clock (as scadenze).
+    const byDay = await run(['tasse', ...s.common, '--anno', '2028', '--oggi', '2028-01-02']);
+    expect(byDay.json.warnings).toMatchObject([
+      { apartmentId: 'nord', year: '2028', canCopy: true },
+    ]);
+    expect((await run(['tasse', ...s.common, '--anno', '2028', '--oggi', '2028-13-01'])).code).toBe(
+      2,
+    );
+    for (const operation of [edited.json.operationId, copied.json.operationId]) {
+      const undo = await run(['annulla-riconciliazione', ...s.common, '--operazione', operation]);
+      expect(undo.code).toBe(0);
+    }
+  });
+});
+
 describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => {
   // Invented tenants and amounts only; main() in process.
   let idCounter = 0;

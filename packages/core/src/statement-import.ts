@@ -19,6 +19,7 @@ import {
   MovementClassSchema,
   PaymentSchema,
   StatementSchema,
+  TaxPaymentSchema,
   TransferSchema,
 } from './model';
 import type { BankTransaction, Statement } from './model';
@@ -330,7 +331,8 @@ export async function resolveHeld(
  * another statement that is not deleted lists one of the movements that would be deleted, or
  * (`dependent-payments`, with the ids) when a live payment of any source points to one of them:
  * the payments are undone first (R114); then (`dependent-records`) for the live confirmed matches,
- * the live classes other than an exclusion and the live transfers on them (R126, plan 3c task 5).
+ * the live classes other than an exclusion, the live transfers and the live tax payments on them
+ * (R126, plan 3c task 5; plan 10).
  */
 export async function undoImport(
   store: Store,
@@ -396,6 +398,8 @@ export async function undoImport(
     ...(await loadAll(store, 'transfer', TransferSchema)).records.filter((t) =>
       legsOf(t).some((transactionId) => goes({ transactionId })),
     ),
+    // Plan 10: a live assignment of the movement to a tax.
+    ...(await loadAll(store, 'taxPayment', TaxPaymentSchema)).records.filter(goes),
   ]
     .map((r) => r.id)
     .sort(compareText);
