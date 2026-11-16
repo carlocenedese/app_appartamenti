@@ -24,6 +24,7 @@ import type {
   Statement,
   Transfer,
 } from './model';
+import { payablesUsing } from './payable-store';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -105,7 +106,8 @@ const CANCEL_KINDS = ['income.cancel-payment', 'outgoing.cancel-auto'];
  * for an unknown operation (`undoOperation` says so). The journal only sees paths, so these
  * records on other paths are no dependents of it: every undo of such an operation asks here.
  * For an `imu.expected` (plan 3d), the live classes assigned to a rate of its year that the undo
- * would take away or change in group or number of rates (`imuDependents`).
+ * would take away or change in group or number of rates (`imuDependents`). For any operation
+ * that wrote a live class (plan 9), the live payables paid by its movement.
  */
 export async function undoBlockedBy(store: Store, operationId: string): Promise<string[]> {
   const operation = (await readJournal(store)).operations.find((o) => o.id === operationId);
@@ -117,6 +119,17 @@ export async function undoBlockedBy(store: Store, operationId: string): Promise<
       .flatMap((c) => imuDependents(classes, year(c.after), year(c.before)))
       .sort(compareText);
   }
+  // Plan 9: an undo that would take away or change a class whose movement pays a payable.
+  const classed = (operation?.changes ?? []).flatMap(({ path, after }) => {
+    const parsed = path.includes('/movementClass/')
+      ? MovementClassSchema.safeParse(after)
+      : undefined;
+    return parsed?.success === true && parsed.data.deleted !== true
+      ? [parsed.data.transactionId]
+      : [];
+  });
+  const linked = await payablesUsing(store, classed);
+  if (linked.length > 0) return linked;
   if (operation === undefined || !CANCEL_KINDS.includes(operation.kind)) return [];
   const movements = operation.changes.flatMap(({ before }) =>
     typeof before === 'object' &&
