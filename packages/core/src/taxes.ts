@@ -1,6 +1,6 @@
 /**
- * «Tasse e stime» (plan 10, section 34): one table per taxpayer (the `locatore` of the apartments,
- * data) with, for each voce, the estimate typed by user1, what the CSV shows as paid, what is still
+ * «Tasse e stime» (plans 10 and 13, section 34): one table per taxpayer (the `locatore` of the
+ * apartments, data, also for a co-ownership: R240) with, for each voce, the estimate typed by user1, what the CSV shows as paid, what is still
  * expected, the difference and a state; the January warning on a year without estimates. Pure: no
  * tax is computed here (no rate in the code); the cedolare estimate of R182 is only shown beside.
  */
@@ -102,7 +102,7 @@ const live = <T extends { deleted?: boolean }>(records: readonly T[]): T[] =>
 const isDebit = (tx: BankTransaction | undefined): tx is BankTransaction =>
   tx !== undefined && tx.booked !== false && tx.amount < 0;
 
-/** The tables of `input.year`, by taxpayer; see the file comment and R212. */
+/** The tables of `input.year`, by taxpayer (the `locatore`, confirmed by user1: R240); R212. */
 export function taxTable(input: TaxTableInput): TaxpayerTable[] {
   const { year, tolerance } = input;
   if (!Number.isSafeInteger(tolerance) || tolerance < 0) {
@@ -156,10 +156,8 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       }
     }
 
-    // TARI: the esercizio of a TARI instalment taken as its year, the commission left out and no
-    // check of the amount: not decided by user1 (design, question 10), so the row stays
-    // `rule-undecided` (da verificare) with the amounts shown.
-    flag('tari', 'rule-undecided');
+    // TARI: the tax year is the esercizio of the instalment (answer of user1, plan 13); the
+    // commission stays out and the paid is not checked against the instalment (R241).
     for (const instalment of live(input.instalments)) {
       if (instalment.kind !== 'tari' || instalment.esercizio !== year) continue;
       if (!mine.has(instalment.apartmentId)) continue;

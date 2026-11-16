@@ -220,14 +220,15 @@ describe('taxTable (plan 10, task 3)', () => {
         expected: 0,
         difference: 0,
       },
-      // The year and the amounts of the TARI are not decided by user1: shown, da verificare.
+      // The TARI of the esercizio 2026 (answer of user1): checked as the other voci.
       {
         voce: 'tari',
-        state: 'da-verificare',
-        reasons: ['rule-undecided'],
+        state: 'in-linea',
+        reasons: [],
         estimate: 20005,
         paid: 10000,
         expected: 10000,
+        difference: -5,
       },
       { voce: 'condominio', state: 'da-verificare', reasons: ['rule-undecided'], estimate: 3 },
     ]);
@@ -338,7 +339,7 @@ describe('taxTable (plan 10, task 3)', () => {
     expect(rowOf(tables, 'user1', 'tari')).toEqual({
       voce: 'tari',
       state: 'da-verificare',
-      reasons: ['assumed-payment', 'rule-undecided'],
+      reasons: ['assumed-payment'],
       estimate: 20005,
       paid: 0,
       expected: 10000,
@@ -367,7 +368,7 @@ describe('taxTable (plan 10, task 3)', () => {
     for (const voce of ['cedolare', 'imu', 'registro']) {
       expect(rowOf(tables, 'user1', voce)?.reasons).toEqual(['unassigned-tax-movement']);
     }
-    expect(rowOf(tables, 'user1', 'tari')?.reasons).toEqual(['rule-undecided']);
+    expect(rowOf(tables, 'user1', 'tari')?.reasons).toEqual([]);
     expect(rowOf(tables, 'user2', 'cedolare')?.reasons).toEqual(['missing-estimate']);
   });
 
