@@ -1643,6 +1643,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         status: 'ok',
         pairs: [{ creditorApartmentId: 'lovarini', debtorApartmentId: 'berchet', items: 2 }],
         toSplit: 0,
+        toSplitImu: 0,
         unverified: 0,
       });
 
@@ -1772,6 +1773,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         status: 'ok',
         pairs: [{ creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', items: 4 }],
         toSplit: 0,
+        toSplitImu: 0,
         unverified: 0,
       });
       noData(plain.out);
@@ -2188,6 +2190,81 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       expect(undo.code).toBe(0);
       expect(s.run(f24(s, s.second, '1')).code).toBe(0);
       noAmounts(outs.join(''));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'imu: una rata pagata e una da riconciliare, importi solo con --dettagli; saldi con toSplitImu',
+    async () => {
+      const outs = [];
+      const s = await imuSetup(outs);
+      expect(s.run(f24(s, s.first, '1')).code).toBe(0);
+      expect(s.run(f24(s, s.second, '2')).code).toBe(0);
+      const message = 'Rata IMU da riconciliare: controllare gli importi attesi (imu-atteso).';
+      const rate = (rateIndex, status, f24Count = 1) => ({
+        f24Group: 'berchet-lovarini',
+        year: '2027',
+        rateIndex,
+        status,
+        f24: f24Count,
+        ...(status === 'da-riconciliare' ? { message } : {}),
+      });
+      const plain = s.run(['imu', ...s.common]);
+      expect(plain.code).toBe(0);
+      expect(plain.json).toEqual({
+        status: 'ok',
+        rates: [rate(1, 'pagata'), rate(2, 'da-riconciliare')],
+        toReconcile: 1,
+      });
+      expect(s.run(['imu', ...s.common, '--anno', '2026']).json).toEqual({
+        status: 'ok',
+        rates: [],
+        toReconcile: 0,
+      });
+      for (const bad of [
+        ['imu', ...s.common, '--anno', '26'],
+        ['imu', ...s.common, 'x'],
+        ['imu', ...s.common, '--rata', '1'],
+      ]) {
+        expect([bad, s.run(bad).code]).toEqual([bad, 2]);
+      }
+      const saldi = s.run(['saldi', ...s.common]);
+      expect(saldi.json).toMatchObject({ status: 'ok', toSplit: 2, toSplitImu: 2 });
+      noAmounts(outs.join(''));
+
+      const details = cli(['imu', ...s.common, '--dettagli']);
+      expect(details.json.rates).toEqual([
+        {
+          ...rate(1, 'pagata'),
+          expected: 100000,
+          paid: 100000,
+          difference: 0,
+          transactionId: s.first,
+        },
+        {
+          ...rate(2, 'da-riconciliare'),
+          expected: 100000,
+          paid: 101001,
+          difference: 1001,
+          transactionId: s.second,
+        },
+      ]);
+      const reasons = cli(['saldi', ...s.common, '--dettagli']).json.toSplit.map((t) => [
+        t.transactionId,
+        t.imu.rateIndex,
+        t.imu.reason,
+      ]);
+      expect(reasons).toEqual([
+        [s.first, 1, 'imu-da-ripartire'],
+        [s.second, 2, 'imu-da-riconciliare'],
+      ]);
+      // The expected corrected: both paid.
+      const fixed = atteso(s, 'lovarini', '--rata', '1:400,00', '--rata', '2:410,01').map((a) =>
+        a === '2026' ? '2027' : a,
+      );
+      expect(cli(fixed).code).toBe(0);
+      expect(cli(['imu', ...s.common]).json.toReconcile).toBe(0);
     },
     TIMEOUT,
   );

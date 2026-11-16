@@ -12,8 +12,8 @@
 // and instalments by hand) and annulla-riconciliazione (undoes one operation of the
 // reconciliation; annulla-incassi is its synonym, R116); riconcilia runs every phase (R126);
 // uscita, annulla-uscita, uscita-inquilino, giroconto, giroconto-manuale and saldi (R132);
-// plan 3d adds imu-atteso (the expected IMU of an apartment and year) and imu-f24 (an F24
-// assigned to an IMU rate by hand).
+// plan 3d adds imu-atteso (the expected IMU of an apartment and year), imu-f24 (an F24
+// assigned to an IMU rate by hand) and imu (the check of the rates).
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -49,6 +49,7 @@ import {
   excludeMovement,
   importStatement,
   loadAccountBalances,
+  loadImuRates,
   loadAll,
   parseCsv,
   parseEuro,
@@ -141,6 +142,7 @@ const MESSAGES = {
   'unknown-rate': 'Rifiutato: nessun appartamento del gruppo ha questa rata in questo anno.',
   'payer-not-in-group': 'Rifiutato: l’appartamento del conto non è nel gruppo in questo anno.',
   'rate-already-paid': 'Rifiutato: un altro F24 è già assegnato a questa rata.',
+  'imu-to-reconcile': 'Rata IMU da riconciliare: controllare gli importi attesi (imu-atteso).',
   'f24-pattern-missing':
     'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -752,11 +754,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const result = await loadAccountBalances(store);
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     // Without --dettagli only the apartments of each pair and counts: no amount, no date (R132).
+    const toSplitImu = result.toSplit.filter((t) => t.imu !== undefined).length;
     if (values.dettagli === true) {
       return {
         status: 'ok',
         pairs: result.pairs,
         toSplit: result.toSplit,
+        toSplitImu,
         unverified: result.unverified,
       };
     }
@@ -768,6 +772,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         items: p.items.length,
       })),
       toSplit: result.toSplit.length,
+      toSplitImu,
       unverified: result.unverified.length,
     };
   }
@@ -827,6 +832,44 @@ async function command(name, values, positionals, store, who, clock, newId) {
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     return { status: 'assigned', operationId: result.operationId, classId: result.classId };
+  }
+
+  if (name === 'imu') {
+    if (
+      positionals.length > 0 ||
+      (values.anno !== undefined && !YearSchema.safeParse(values.anno).success)
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await loadImuRates(
+      store,
+      values.anno === undefined ? {} : { year: values.anno },
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    // Group, year, index and state only; amounts, dates and the movement with --dettagli (R107).
+    const rates = result.rates.map((r) => ({
+      f24Group: r.f24Group,
+      year: r.year,
+      rateIndex: r.rateIndex,
+      status: r.status,
+      f24: r.transactionId === undefined ? 0 : 1,
+      ...(r.status === 'da-riconciliare' ? { message: MESSAGES['imu-to-reconcile'] } : {}),
+      ...(values.dettagli === true
+        ? {
+            expected: r.expected,
+            paid: r.paid,
+            difference:
+              r.paid === undefined || r.expected === undefined ? undefined : r.paid - r.expected,
+            dueDate: r.dueDate,
+            transactionId: r.transactionId,
+          }
+        : {}),
+    }));
+    return {
+      status: 'ok',
+      rates,
+      toReconcile: rates.filter((r) => r.status === 'da-riconciliare').length,
+    };
   }
 
   if (name === 'abbina') {
@@ -1006,6 +1049,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'saldi',
         'imu-atteso',
         'imu-f24',
+        'imu',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -1020,7 +1064,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     // An option of another command would be ignored in silence (`conferma --prova` would write).
     const only = {
       prova: ['riconcilia'],
-      dettagli: ['riconcilia', 'importa', 'saldi'],
+      dettagli: ['riconcilia', 'importa', 'saldi', 'imu'],
       parte: ['conferma', 'abbina'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto'],
       pagamento: ['annulla-pagamento'],
@@ -1029,7 +1073,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino'],
       appartamento: ['conto', 'uscita', 'imu-atteso'],
-      anno: ['imu-atteso', 'imu-f24'],
+      anno: ['imu-atteso', 'imu-f24', 'imu'],
       gruppo: ['imu-atteso', 'imu-f24'],
       totale: ['imu-atteso'],
       rata: ['imu-atteso', 'imu-f24'],

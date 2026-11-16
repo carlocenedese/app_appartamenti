@@ -47,3 +47,4 @@ export * from './outgoing';
 export * from './outgoing-store';
 export * from './balances';
 export * from './imu-store';
+export * from './imu';
