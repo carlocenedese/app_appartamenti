@@ -207,6 +207,8 @@ export async function planMatch(store: Store) {
       .map((m) => proposal(m, 'classified')),
   ].sort((a, b) => compareText(a.id, b.id));
   const { yielded, changes, where } = changesOf(state, written);
+  // The assumed matches themselves, for the readers that settle with them (R2, plan 5).
+  const assumedMatches = fresh.filter((m) => m.by === 'assumed');
   const run = {
     status: 'matched' as const,
     written: written.length,
@@ -214,10 +216,10 @@ export async function planMatch(store: Store) {
     proposals,
     pending: result.pending,
     ambiguous: result.ambiguous,
-    assumed: fresh.filter((m) => m.by === 'assumed').map(ref),
+    assumed: assumedMatches.map(ref),
     invalidGroups: result.invalidGroups,
   };
-  return { run, written, changes, where };
+  return { run, written, changes, where, assumedMatches };
 }
 
 export interface ConfirmMatchInput {
