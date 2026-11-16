@@ -1,6 +1,6 @@
 # Piano 3d: IMU, rate attese, F24 assegnato alla rata e ripartizione nel saldo (disegno)
 
-Stato: **bozza da approvare da user1** (16 novembre 2026). Solo disegno; il piano di implementazione è
+Stato: **approvato; domande risposte da user1** (16 novembre 2026). Solo disegno; il piano di implementazione è
 `docs/plans/2026-11-16-piano-3d-imu.md`. Il piano copre il core (`packages/core`) e la riga di comando
 (`pnpm estratti`); **niente schermate e niente veste grafica**. Riferimenti: disegno e piano del 3c
 (`docs/plans/2026-11-15-piano-3c-uscite-disegno.md`, decisioni 5 e 9, domanda 5, «Cosa resta fuori»;
@@ -129,25 +129,23 @@ solo con interi: con atteso 1.000,00 € un F24 di 1.010,00 € è `pagata`, di 
 o assegnando un altro F24 (annullando l'assegnazione); se si possa accettare la differenza senza
 modificare nulla è la domanda 5.
 
-## 4. Ripartizione nel saldo tra conti (dopo le domande 1-5)
+## 4. Ripartizione nel saldo tra conti (domande 1-5 e 10, risposte)
 
 R3 e la decisione 5 fissano: dal conto di Berchet, in parti proporzionali, tra i due appartamenti.
-Restano aperte la base della proporzione, l'arrotondamento, l'importo da ripartire e i casi senza
-atteso completo o fuori tolleranza. **Finché user1 non risponde la ripartizione non si calcola:** un
-F24 assegnato resta in `toSplit` del saldo come oggi, con in più il motivo e la rata
-(`imu-da-ripartire`, `imu-importo-mancante`, `imu-da-riconciliare`), mai con un importo nel netto.
-
-Con le raccomandazioni delle domande 1-3 la voce del saldo sarebbe `kind: 'imu'`, una per ogni
-appartamento del gruppo diverso da quello del conto, con la sua quota dell'addebito. **Esempio
+Con le risposte di user1 (domande 1-5 e 10, R164) un F24 di una rata `pagata` dà una voce
+`kind: 'imu'` per ogni appartamento del gruppo diverso da quello del conto, con la sua quota
+dell'addebito effettivo; una rata non `pagata` resta in `toSplit` con il motivo
+(`imu-importo-mancante`, `imu-da-riconciliare`), mai con un importo nel netto. **Esempio
 (importi inventati):** rata 1 attesa Berchet 600,00 €, Lovarini 400,00 €; F24 di 1.005,00 € dal conto
 di Berchet (dentro l'1%): quote 603,00 € e 402,00 €, «Lovarini deve a Berchet 402,00 €».
 
-## 5. Regola appresa e suggerimento (dopo le domande 7 e 8)
+## 5. Regola appresa e suggerimento (domande 7 e 8, risposte)
 
 Alla prima assegnazione (salvo «solo questa volta») si salva un `imuRule`; per un F24 nuovo che la
 regola copre la proposta `p-f24-` porta un suggerimento (`imuSuggestion`: il gruppo e, con la domanda
 7, la rata). Il suggerimento non scrive nulla: l'assegnazione resta `assignImuF24` (decisione 6).
-Finché le domande 7 e 8 sono aperte, ogni F24 si assegna con gruppo, anno e rata indicati a mano.
+La regola è per conto e chiave della controparte, suggerisce il gruppo; anno e rata vengono dalla
+data dell'F24 (la rata aperta con l'indice più basso). R165.
 
 ## Riga di comando
 
@@ -172,57 +170,34 @@ Finché le domande 7 e 8 sono aperte, ogni F24 si assegna con gruppo, anno e rat
 
 ## Domande per user1
 
-Regole di calcolo o di fiducia non decise: non le decido io. Finché sono aperte, il punto resta fuori o
-dietro un rifiuto esplicito (indicato per ognuna). Per ognuna la mia raccomandazione e un esempio con
-importi inventati.
+**Tutte risposte da user1 il 16 novembre 2026** (vincolanti; `docs/progress.md` R164 e R165). Le
+decisioni, al posto delle domande:
 
-1. **Base della proporzione.** Importi attesi della **stessa rata** o totali annui? Raccomando: la
-   stessa rata (l'F24 paga quella); il totale annuo solo se nessuna rata ha importi (domanda 10).
-   Esempio: rata 1 attesa 600,00 e 400,00 €, totali annui 1.300,00 e 700,00 €: con la rata il 60%/40%,
-   con l'anno il 65%/35%. *Finché è aperta: nessuna ripartizione, F24 in `toSplit`.*
-2. **Arrotondamento delle quote.** Raccomando: come la TARI comune (R3, `splitSharedDebit`), resti ai
-   resti maggiori, a parità al primo appartamento; la somma è sempre l'addebito. Esempio: 1.000,01 €
-   al 50%/50%: 500,01 € e 500,00 €. *Aperta: nessuna ripartizione.*
-3. **Che cosa si ripartisce:** l'addebito effettivo o gli importi attesi? Raccomando: l'addebito
-   effettivo (è il denaro uscito dal conto) nella proporzione degli attesi. Esempio della sezione 4:
-   1.005,00 € → 603,00 e 402,00 €, non 600,00 e 400,00 €. *Aperta: nessuna ripartizione.*
-4. **Atteso noto per un solo appartamento** (per esempio il prospetto di Lovarini non c'è ancora).
-   Raccomando: nessuna ripartizione e nessun controllo dell'1%; la rata è `importo-mancante` e l'F24
-   resta in `toSplit` finché non si inseriscono tutti gli attesi. Esempio: Berchet 600,00 €, Lovarini
-   senza importo, F24 1.000,00 €: niente «Lovarini deve 400,00 €» dedotto per differenza. *Già così nel
-   piano, come rifiuto.*
-5. **F24 fuori tolleranza:** entra nel saldo? E si può **accettare la differenza** (per esempio
-   interessi di un ravvedimento) senza modificare gli attesi? Raccomando: non entra finché la rata è
-   `da-riconciliare` (come R2 per l'F24 con importo diverso); nessuna accettazione: si modificano gli
-   attesi. Esempio: atteso 1.000,00 €, F24 1.030,00 €: resta fuori dal saldo finché user1 non porta
-   l'atteso a 1.030,00 € (o lo corregge). *Già così nel piano.*
-6. **Scadenze per rata.** La data di scadenza è un dato inserito (`dueDate`) o la si ricava? E quando
-   una rata è «in ritardo»? Raccomando: solo dato inserito, nessuna data di legge nel codice; gli stati
-   «in scadenza» e «in ritardo» nel piano di Scadenze e pagamenti. Esempio: rata 2 2026 con scadenza
-   inserita 2026-12-16 e nessun F24 al 2026-12-20: «in ritardo» solo lì. *Aperta: `dueDate` si salva e
-   si mostra, nessuno stato dalla data.*
-7. **Dalla data dell'F24 alla rata:** l'app suggerisce anno e rata? Raccomando: suggerisce l'anno della
-   data dell'F24 e la rata aperta (senza F24) con l'indice più basso, sempre da confermare. Esempio:
-   F24 del 2026-06-14 → 2026 rata 1; F24 del 2026-12-10 con la rata 1 già pagata → 2026 rata 2. *Aperta:
-   nessun suggerimento di rata.*
-8. **Criteri della regola appresa.** Un F24 spesso non ha controparte (IBAN o nome). Raccomando: regola
-   per **conto** (`accountId`) e chiave della controparte se c'è, che suggerisce solo il gruppo;
-   termina con una nuova assegnazione diversa (come le regole del 3c). Esempio: assegni il primo F24
-   del conto di Berchet al gruppo `berchet-lovarini`; il successivo F24 dallo stesso conto propone
-   quel gruppo; un F24 di registro di 67,00 € dallo stesso conto avrebbe lo stesso suggerimento, ma
-   resta una proposta e lo assegni a «tasse» senza rata. *Aperta: nessuna regola salvata.*
-9. **Un F24 per due rate o due F24 per una rata** (unica soluzione a giugno, integrazione, ravvedimento).
-   Raccomando: per ora rifiuto (`rate-already-paid`, una rata per F24); da riprendere se capita.
-   Esempio: F24 di 2.000,00 € a giugno che paga rata 1 e 2: oggi non si assegna. *Già così nel piano.*
-10. **Anno 2025 con i soli totali annui.** Raccomando: user1 inserisce le due rate dal prospetto 2025 se
-    ce l'ha; altrimenti `annualTotal` e un controllo **annuo** (somma dei due F24 contro il totale,
-    stesso 1%) e la proporzione sui totali. Esempio: totali 1.300,00 e 700,00 €, F24 di 1.000,00 € e
-    1.000,00 €: somma 2.000,00 € in linea; ogni F24 al 65%/35%. *Aperta: con il solo totale annuo la
-    rata è `importo-mancante`.*
-11. **Base dell'1%.** La decisione dice «differisce dall'atteso»: raccomando l'atteso come base
-    (`100 × |pagato − atteso| > atteso`), sulla rata del gruppo. Esempio: atteso 1.000,00 €, F24
-    989,99 € → avviso; 990,00 € → in linea. *Usata così nel piano (è la lettura letterale); da
-    confermare.*
+1. **Base della proporzione:** gli importi attesi della **stessa rata**; con i soli totali annui
+   (domanda 10) i totali annui.
+2. **Arrotondamento delle quote:** come la TARI comune (`splitSharedDebit`/`splitCents`): resti
+   maggiori, a parità il primo appartamento; la somma è sempre l'addebito.
+3. **Che cosa si ripartisce:** l'**addebito effettivo** dell'F24, nella proporzione degli attesi
+   (esempio della sezione 4: 1.005,00 € → 603,00 e 402,00 €).
+4. **Atteso noto per un solo appartamento:** nessuna ripartizione e nessun controllo dell'1%; rata
+   `importo-mancante`, F24 in `toSplit`; mai un atteso dedotto per differenza.
+5. **F24 fuori tolleranza:** resta fuori dal saldo (`toSplit`, `imu-da-riconciliare`) finché non si
+   correggono gli attesi; **nessuna** accettazione della differenza.
+6. **Scadenze per rata:** solo dato inserito (`dueDate`), nessuno stato dalla data (gli stati «in
+   scadenza» e «in ritardo» restano al piano di Scadenze e pagamenti).
+7. **Dalla data dell'F24 alla rata:** l'app suggerisce l'anno della data dell'F24 e la rata aperta
+   con l'indice più basso, **sempre da confermare**, mai assegnata da sola.
+8. **Criteri della regola appresa:** per conto (`accountId`) e chiave della controparte se c'è;
+   suggerisce solo il gruppo sulla proposta `p-f24-`; termina quando user1 assegna diversamente
+   (come le regole del 3c); sempre confermata.
+9. **Un F24 per due rate o due F24 per una rata:** per ora rifiuto (`rate-already-paid`, una rata
+   per F24).
+10. **Anno con i soli totali annui:** proporzione sui totali annui e controllo dell'1% **annuo**,
+    sulla somma degli F24 dell'anno contro il totale.
+11. **Base dell'1%:** l'atteso; esattamente l'1,00% è incluso (`pagata`).
+12. **Annullamenti e assegnazioni** (R136, domanda (a)): annullare o cambiare un `imu.expected`
+    (`setImuYear` o `annulla-riconciliazione`) quando un F24 è assegnato a una rata che sparirebbe
+    o cambierebbe gruppo o numero di rate è **rifiutato**: prima si annulla l'assegnazione.
 
 ## Mie scelte (da controllare)
 

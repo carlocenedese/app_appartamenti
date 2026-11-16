@@ -2,11 +2,13 @@
  * The class of a movement (plan 3c): its exclusion, by hand and with a confirmation only (the
  * call is the confirmation: no exclusion is born anywhere else), undone with `undoOperation`.
  */
+import { imuDependents } from './imu';
 import { checkConsistency, commitChange, readJournal } from './journal';
 import {
   AccountSchema,
   BankTransactionSchema,
   BillMatchSchema,
+  ImuYearSchema,
   MovementClassSchema,
   PaymentSchema,
   StatementSchema,
@@ -102,9 +104,19 @@ const CANCEL_KINDS = ['income.cancel-payment', 'outgoing.cancel-auto'];
  * another use since (sorted ids: undo those first, as `has-dependents`); empty otherwise, and
  * for an unknown operation (`undoOperation` says so). The journal only sees paths, so these
  * records on other paths are no dependents of it: every undo of such an operation asks here.
+ * For an `imu.expected` (plan 3d), the live classes assigned to a rate of its year that the undo
+ * would take away or change in group or number of rates (`imuDependents`).
  */
 export async function undoBlockedBy(store: Store, operationId: string): Promise<string[]> {
   const operation = (await readJournal(store)).operations.find((o) => o.id === operationId);
+  if (operation?.kind === 'imu.expected') {
+    // The undo puts `before` back in place of `after` (plan 3d, answer of user1, 16 Nov 2026).
+    const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
+    const year = (r: unknown) => (r === undefined ? undefined : ImuYearSchema.parse(r));
+    return operation.changes
+      .flatMap((c) => imuDependents(classes, year(c.after), year(c.before)))
+      .sort(compareText);
+  }
   if (operation === undefined || !CANCEL_KINDS.includes(operation.kind)) return [];
   const movements = operation.changes.flatMap(({ before }) =>
     typeof before === 'object' &&

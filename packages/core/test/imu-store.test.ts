@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ImuRuleSchema,
   ImuYearSchema,
   MovementClassSchema,
   assignImuF24,
@@ -12,6 +13,7 @@ import {
   recordSchemas,
   runReconciliation,
   setImuYear,
+  undoBlockedBy,
   undoOperation,
 } from '../src/index';
 import type { RecordKind, SetImuYearInput } from '../src/index';
@@ -387,5 +389,186 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
         .flatMap((o) => o.changes)
         .some((c) => JSON.stringify(c.after).includes('"imu"')),
     ).toBe(false);
+  });
+
+  describe('the learnt rule (plan 3d, task 5; answers of user1 to questions 7 and 8)', () => {
+    const rules = async (store: MemoryStore) =>
+      (await loadAll(store, 'imuRule', ImuRuleSchema, { includeDeleted: true })).records;
+    const remember = (
+      store: MemoryStore,
+      extra: Partial<typeof rate1> & { transactionId?: string } = {},
+      prefix = 'a',
+    ) =>
+      assignImuF24(
+        store,
+        { transactionId: 'f', ...rate1, ...extra, rememberRule: true },
+        'p1',
+        clock,
+        ids(prefix),
+      );
+    const suggestionOf = async (store: MemoryStore, transactionId: string) =>
+      (await planOutgoing(store)).proposals.find((p) => p.transactionId === transactionId)
+        ?.imuSuggestion;
+
+    it('saves the rule last in the same operation; it suggests, never writes; undone with it', async () => {
+      const store = await f24Store();
+      expect(await remember(store)).toEqual({
+        status: 'assigned',
+        operationId: 'a-1',
+        classId: 'mc-f',
+        ruleId: 'imur-f',
+      });
+      expect(await rules(store)).toEqual([
+        { ...base, id: 'imur-f', accountId: 'acc-berchet', f24Group: 'berchet-lovarini' },
+      ]);
+      const [op] = (await readJournal(store)).operations;
+      expect(op?.changes.map((c) => c.path)).toEqual([
+        recordPath('movementClass', 'mc-f'),
+        recordPath('imuRule', 'imur-f'),
+      ]);
+      // The second F24 of the account: the group, its year, the lowest open rate.
+      expect(await suggestionOf(store, 'g')).toEqual({
+        f24Group: 'berchet-lovarini',
+        year: '2026',
+        rateIndex: 2,
+      });
+      await runReconciliation(store, 'p1', clock, ids('r'));
+      expect((await classes(store)).map((c) => c.id)).toEqual(['mc-f']);
+      // The same group again: no second rule.
+      expect(await remember(store, { transactionId: 'g', rateIndex: 2 }, 'b')).toEqual({
+        status: 'assigned',
+        operationId: 'b-1',
+        classId: 'mc-g',
+      });
+      expect((await rules(store)).map((r) => r.id)).toEqual(['imur-f']);
+      await undoOperation(store, 'b-1', 'p1', clock, ids('u'));
+      await undoOperation(store, 'a-1', 'p1', clock, ids('v'));
+      expect(await rules(store)).toMatchObject([{ id: 'imur-f', deleted: true }]);
+      expect(await suggestionOf(store, 'g')).toBeUndefined();
+    });
+
+    it('«solo questa volta» saves none; another group ends the rule the day before', async () => {
+      const store = await f24Store();
+      expect(await assign(store)).toEqual({
+        status: 'assigned',
+        operationId: 'a-1',
+        classId: 'mc-f',
+      });
+      expect(await rules(store)).toEqual([]);
+      await undoOperation(store, 'a-1', 'p1', clock, ids('u'));
+      await remember(store, {}, 'b');
+      await put(store, 'imuYear', [
+        { ...imuYear('berchet', 'berchet-solo'), id: 'imu-berchet-2027', year: '2027' },
+      ]);
+      await put(store, 'transaction', [f24('k', '2027-06-14', -50000)]);
+      expect(await suggestionOf(store, 'k')).toEqual({
+        f24Group: 'berchet-lovarini',
+      });
+      expect(
+        await remember(store, { transactionId: 'k', f24Group: 'berchet-solo', year: '2027' }, 'c'),
+      ).toMatchObject({ status: 'assigned', ruleId: 'imur-k' });
+      expect(await rules(store)).toEqual([
+        {
+          ...base,
+          rev: 2,
+          id: 'imur-f',
+          accountId: 'acc-berchet',
+          f24Group: 'berchet-lovarini',
+          validTo: '2027-06-13',
+        },
+        {
+          ...base,
+          id: 'imur-k',
+          accountId: 'acc-berchet',
+          f24Group: 'berchet-solo',
+          validFrom: '2027-06-14',
+        },
+      ]);
+      // The older F24 still falls under the older rule.
+      expect(await suggestionOf(store, 'g')).toMatchObject({ f24Group: 'berchet-lovarini' });
+      // The first assignment is undone only after the later one that closed its rule.
+      await expect(undoOperation(store, 'b-1', 'p1', clock, ids('u'))).rejects.toThrow(
+        /depend on it/,
+      );
+    });
+
+    it('a rule of another group starting on the movement is rule-conflict-dates, nothing written', async () => {
+      const store = await f24Store();
+      await put(store, 'imuRule', [
+        {
+          ...base,
+          id: 'imur-old',
+          accountId: 'acc-berchet',
+          f24Group: 'pulci',
+          validFrom: '2026-06-14',
+        },
+      ]);
+      const before = await snapshot(store);
+      expect(await remember(store)).toEqual(refused('rule-conflict-dates'));
+      expect(await snapshot(store)).toEqual(before);
+      // «solo questa volta»: no rule, so no conflict.
+      expect(await assign(store)).toMatchObject({ status: 'assigned' });
+    });
+  });
+
+  describe('the expected under an assignment (answer of user1, 16 Nov 2026, R136 question (a))', () => {
+    const lovarini = (extra: Partial<SetImuYearInput> = {}): SetImuYearInput => ({
+      ...berchet(),
+      apartmentId: 'lovarini',
+      ...extra,
+    });
+    const blocked = { status: 'refused', reason: 'has-dependents', recordIds: ['mc-f'] };
+
+    it('setImuYear refuses another group or number of rates of a year with an assigned F24', async () => {
+      const store = await f24Store();
+      await assign(store);
+      const before = await snapshot(store);
+      expect(await save(store, lovarini({ f24Group: 'altro' }))).toEqual(blocked);
+      expect(await save(store, berchet({ f24Group: 'altro' }))).toEqual(blocked);
+      await put(store, 'imuYear', [{ ...imuYear('lovarini'), deleted: true }]);
+      const alone = await snapshot(store);
+      expect(await save(store, berchet({ rates: [{ index: 1 }] }))).toEqual(blocked);
+      expect(await snapshot(store)).toEqual(alone);
+      await put(store, 'imuYear', [{ ...imuYear('lovarini'), rev: 1 }]);
+      expect(await snapshot(store)).toEqual(before);
+      // The amounts only: saved; another year or group: not concerned.
+      expect(
+        await save(
+          store,
+          lovarini({ rates: [{ index: 1, expected: cents(40000) }, { index: 2 }] }),
+        ),
+      ).toMatchObject({ status: 'saved' });
+      expect(await save(store, lovarini({ year: '2027', f24Group: 'altro' }), 'k')).toMatchObject({
+        status: 'saved',
+      });
+    });
+
+    it('undoBlockedBy names the assignments an undo of imu.expected would change', async () => {
+      const store = await f24Store();
+      // Lovarini leaves and comes back with amounts: two imu.expected on its year.
+      expect(await save(store, lovarini({ f24Group: 'solo-lovarini' }), 'x')).toMatchObject({
+        operationId: 'x-1',
+      });
+      expect(
+        await save(
+          store,
+          lovarini({ rates: [{ index: 1, expected: cents(40000) }, { index: 2 }] }),
+          'y',
+        ),
+      ).toMatchObject({ operationId: 'y-1' });
+      const created = await save(
+        store,
+        { ...berchet({ year: '2027', rates: [{ index: 1 }] }) },
+        'z',
+      );
+      expect(created).toMatchObject({ operationId: 'z-1' });
+      await assign(store);
+      // Back to solo-lovarini: the rate of the F24 loses an apartment.
+      expect(await undoBlockedBy(store, 'y-1')).toEqual(['mc-f']);
+      // Another year: nothing assigned there.
+      expect(await undoBlockedBy(store, 'z-1')).toEqual([]);
+      await undoOperation(store, 'a-1', 'p1', clock, ids('u'));
+      expect(await undoBlockedBy(store, 'y-1')).toEqual([]);
+    });
   });
 });
