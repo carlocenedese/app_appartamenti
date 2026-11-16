@@ -2,6 +2,7 @@
  * The class of a movement (plan 3c): its exclusion, by hand and with a confirmation only (the
  * call is the confirmation: no exclusion is born anywhere else), undone with `undoOperation`.
  */
+import { tenancyUndoBlockers } from './tenancy-store';
 import { imuDependents } from './imu';
 import { checkConsistency, commitChange, readJournal } from './journal';
 import {
@@ -109,10 +110,14 @@ const CANCEL_KINDS = ['income.cancel-payment', 'outgoing.cancel-auto'];
  * For an `imu.expected` (plan 3d), the live classes assigned to a rate of its year that the undo
  * would take away or change in group or number of rates (`imuDependents`). For any operation
  * that wrote a live class (plan 9), the live payables paid by its movement; for one that created a
- * payable, the live payables repeated from it.
+ * payable, the live payables repeated from it. For one that created a tenancy (plan 11),
+ * `tenancyUndoBlockers`.
  */
 export async function undoBlockedBy(store: Store, operationId: string): Promise<string[]> {
   const operation = (await readJournal(store)).operations.find((o) => o.id === operationId);
+  // Plan 11: an undo that would take away the only stay of a tenant with payments or recoveries.
+  const stays = await tenancyUndoBlockers(store, operation?.changes ?? []);
+  if (stays.length > 0) return stays;
   if (operation?.kind === 'imu.expected') {
     // The undo puts `before` back in place of `after` (plan 3d, answer of user1, 16 Nov 2026).
     const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
