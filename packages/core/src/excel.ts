@@ -282,7 +282,7 @@ const dayMonthYear = (day: ISODate): string =>
  * The Excel of the settlement of `input.period` for `input.apartment` (plan 5): the sheets of
  * `EXCEL_SHEETS`, values only. A `SettlementInputError` of `calcConguaglio` goes through as it
  * is; a tenant of the period without a live `Tenant` throws `ExcelInputError`. No paid, residual
- * or status column, no deposit, no row of the empty beds, no pending item (questions 1, 3, 4, 6).
+ * or status column, no deposit, no pending item (questions 1, 3, 6).
  */
 export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const result = calcConguaglio(input);
@@ -332,6 +332,13 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     text(item.fileName),
     text(item.note),
   ]);
+  bollette.push([
+    text('Totale'),
+    ...Array<null>(6).fill(null),
+    ...(['amount', 'commission', 'inPeriod'] as const).map((k) =>
+      euro(total(items.map((item) => item[k]))),
+    ),
+  ]);
 
   const label = (m: YearMonth) => (longPeriod ? monthWithYear(m) : shortMonth(m));
   const settlements = [...result.tenants].sort((a, b) =>
@@ -360,12 +367,24 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
       ...(columns[i] ?? []).map((v) => euro(cents(v))),
     ];
   });
+  // The empty beds (question 4): with them Spese + Condominio of the total is the bills' total.
+  const empty = result.unassignedByBucket;
+  const emptyBeds = [empty.spese + empty.commissione, empty.rata + empty.conguaglioPrec];
+  conguagli.push([
+    text('Posti vuoti (proprietà)'),
+    null,
+    null,
+    null,
+    ...emptyBeds.map((v) => euro(cents(v))),
+  ]);
   conguagli.push([
     text('Totale'),
     null,
     null,
     null,
-    ...[0, 1, 2, 3].map((c) => euro(total(columns.map((col) => col[c] ?? 0)))),
+    ...[0, 1, 2, 3].map((c) =>
+      euro(total([...columns.map((col) => col[c] ?? 0), emptyBeds[c] ?? 0])),
+    ),
   ]);
 
   const payments = live(input.payments).filter(

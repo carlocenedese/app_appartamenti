@@ -81,6 +81,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       'TARI',
       'Condominio',
       'Gas',
+      'Totale',
     ]);
     expect(rows.find((r) => r[0] === 'Gas')?.[6]).toBe('assunta, non verificata');
     expect(rows.find((r) => r[0] === 'Elettricità')?.[11]).toBe(
@@ -101,6 +102,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       ['C', 'Elena Prova', 'ott – feb', 5],
       ['C', 'Carla Prova', 'mar – set', 7],
       ['D', 'Dario Prova', 'gen – set', 9],
+      ['Posti vuoti (proprietà)', null, null, null],
       ['Totale', null, null, null],
     ]);
     const order = ['ten-a', 'ten-b', 'ten-e', 'ten-c', 'ten-d'];
@@ -115,8 +117,29 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       ];
     });
     expect(rows.slice(0, 5).map((r) => r.slice(4))).toEqual(expected);
+    const empty = result.unassignedByBucket;
+    expect(rows[5]?.slice(4)).toEqual([
+      empty.spese + empty.commissione,
+      empty.rata + empty.conguaglioPrec,
+    ]);
     const sums = [0, 1, 2, 3].map((i) => expected.reduce((s, e) => s + (e[i] ?? 0), 0));
-    expect(rows[5]?.slice(4)).toEqual(sums);
+    expect(rows[6]?.slice(4, 8)).toEqual([
+      (sums[0] ?? 0) + empty.spese + empty.commissione,
+      (sums[1] ?? 0) + empty.rata + empty.conguaglioPrec,
+      sums[2],
+      sums[3],
+    ]);
+  });
+
+  it('makes Spese + Condominio of the total equal to the total of the bills (question 4)', () => {
+    const bills = rowsOf(get('Bollette'));
+    const billTotal = bills.find((r) => r[0] === 'Totale');
+    const items = bills.slice(1, bills.indexOf(billTotal as Plain[]));
+    const column = (i: number) => items.reduce((s, r) => s + Number(r[i] ?? 0), 0);
+    expect(billTotal?.slice(7, 10)).toEqual([column(7), column(8), column(9)]);
+    const totale = rowsOf(get('Conguagli')).find((r) => r[0] === 'Totale');
+    expect(Number(totale?.[4]) + Number(totale?.[5])).toBe(billTotal?.[9]);
+    expect(Number(totale?.[4]) + Number(totale?.[5])).not.toBe(0);
   });
 
   it('writes the dates of the rent payments of each month of presence', () => {
@@ -143,7 +166,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     ]);
   });
 
-  it('writes only what is decided (questions 1, 3, 4, 6)', () => {
+  it('writes only what is decided (questions 1, 3, 6)', () => {
     const cells = book.sheets.flatMap((s) => s.rows.flat());
     const texts = cells.flatMap((c) => (c?.kind === 'text' ? [c.value] : []));
     expect(texts.filter((t) => t.startsWith('='))).toEqual([]);
@@ -154,7 +177,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     for (const word of ['versato', 'residuo', 'stato', 'caparra', 'posti vuoti']) {
       expect(headers).not.toContain(word);
     }
-    expect(texts.some((t) => /posti vuoti|provvisorio/i.test(t))).toBe(false);
+    expect(texts.some((t) => /provvisorio/i.test(t))).toBe(false);
     // The bill waiting for its debit is in no sheet.
     expect(texts.some((t) => t.includes('Acqua') || t.includes('acqua-2027'))).toBe(false);
     expect(cells.some((c) => c?.kind === 'euro' && c.value === -53840)).toBe(false);
@@ -269,7 +292,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      'f83322578d3d9e2e8d4c769b6f05ea0809a17d4ab8fe7288e8f6b1c31d7c5b09',
+      '0975bc1cfb7a070061c81b5023cd6c6f4df2cb7592a8e320e5f74fb93e177532',
     );
   });
 });
