@@ -242,6 +242,13 @@ export function billsForAnnualita(
 }
 
 /**
+ * Whether last year's condominium settlement (`conguaglioPrec`, the difference consuntivo −
+ * preventivo) goes to the tenants (R3): yes unless the apartment says `owner` (plan 8, R193).
+ */
+export const previousToTenants = (apartment: Apartment): boolean =>
+  apartment.condoDifferenceTo !== 'owner';
+
+/**
  * This instalment's part of the owner's yearly condominium share, split equally among the rates.
  * A record with `rata` 0 (last year's settlement paid on its own) carries no owner share, whatever
  * its `quotaProprieta` says (R-C8): the yearly share comes off the ordinary instalments only.
@@ -259,11 +266,14 @@ export function instalmentOwnerShare(instalment: Instalment): Cents {
  * months of `esercizioRange`, the current fiscal year (required when it is not 0). An
  * extraordinary instalment gives nothing to the tenants. An owner's share larger than the rata
  * would give the tenants a credit: `calcConguaglio` keeps such an instalment pending instead.
+ * With `previousToTenants` false (`condoDifferenceTo: 'owner'`, R193) last year's settlement stays
+ * with the owner: it comes off the debit and is shared with nobody.
  */
 export function allocateInstalment(
   instalment: Instalment,
   paid: Cents,
   esercizioRange?: { from: ISODate; to: ISODate },
+  previousToTenants = true,
 ): InstalmentMonth[] {
   if (instalment.straordinaria === true) return [];
   const rows = new Map<YearMonth, { rata: number; conguaglioPrec: number }>();
@@ -281,7 +291,7 @@ export function allocateInstalment(
   equalSplit(net, covered.length).forEach((amount, index) => {
     row(covered[index] as YearMonth).rata += amount;
   });
-  if (previous !== 0) {
+  if (previous !== 0 && previousToTenants) {
     if (esercizioRange === undefined) {
       throw new RangeError(
         `Instalment ${instalment.id} carries last year's settlement: the fiscal year is needed to split it`,
@@ -414,7 +424,8 @@ interface Tally {
  * records are ignored. Before computing anything it throws a `SettlementInputError` when the
  * tenancies do not fit the beds or overlap for one tenant, or when a condominium instalment
  * carries last year's settlement and the apartment has no `condominioStart` to place its fiscal
- * year (whatever its months: without the fiscal year they cannot be known).
+ * year (whatever its months: without the fiscal year they cannot be known), unless that settlement
+ * stays with the owner (`condoDifferenceTo: 'owner'`, R193).
  */
 export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   const { apartment, period } = input;
@@ -431,8 +442,10 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   const instalments = own(input.instalments)
     .filter((instalment) => instalment.straordinaria !== true)
     .sort((a, b) => compareText(a.id, b.id));
+  const toTenants = previousToTenants(apartment);
   for (const instalment of instalments) {
     if (
+      toTenants &&
       instalment.kind === 'condominio' &&
       instalment.conguaglioPrec !== 0 &&
       apartment.condominioStart === undefined
@@ -527,7 +540,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
         ? annualitaRange(instalment.esercizio, apartment.condominioStart)
         : undefined;
     const previousYear =
-      esercizio !== undefined && instalment.conguaglioPrec !== 0
+      toTenants && esercizio !== undefined && instalment.conguaglioPrec !== 0
         ? monthsInPeriod(esercizio.from, esercizio.to)
         : [];
     if (!touchesPeriod([...covered, ...previousYear])) continue;
@@ -548,7 +561,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
       });
       continue;
     }
-    for (const part of allocateInstalment(instalment, cents(paid.amount), esercizio)) {
+    for (const part of allocateInstalment(instalment, cents(paid.amount), esercizio, toTenants)) {
       if (instalment.kind === 'tari') {
         share(part.month, part.rata, 'spese', 'tari');
       } else {

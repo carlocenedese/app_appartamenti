@@ -4,7 +4,7 @@
  * settlement, owner share, expected and debited amount, debit dates and payment status in separate
  * columns. Never shared with the tenants: nothing about them goes in. Values only. Pure.
  */
-import { instalmentOwnerShare } from './conguaglio';
+import { instalmentOwnerShare, previousToTenants } from './conguaglio';
 import type { ConguaglioInput } from './conguaglio';
 import { expectedDebit } from './match';
 import { apartmentFolder } from './accounts';
@@ -85,6 +85,7 @@ export function ownersItems(input: ConguaglioInput): OwnersItem[] {
   const matches = input.matches.filter(
     (m) => m.deleted !== true && m.confirmed && m.itemType === 'instalment',
   );
+  const toTenants = previousToTenants(apartment);
   const esercizioMonths = (instalment: Instalment): YearMonth[] => {
     if (instalment.conguaglioPrec === 0 || apartment.condominioStart === undefined) return [];
     const range = annualitaRange(instalment.esercizio, apartment.condominioStart);
@@ -125,7 +126,10 @@ export function ownersItems(input: ConguaglioInput): OwnersItem[] {
         dueDate: i.dueDate,
         rata: i.rata,
         conguaglioPrec: i.conguaglioPrec,
-        ownerShare: straordinaria ? expected : instalmentOwnerShare(i),
+        // With `owner` (R193) last year's settlement is the owner's too.
+        ownerShare: straordinaria
+          ? expected
+          : cents(instalmentOwnerShare(i) + (toTenants ? 0 : i.conguaglioPrec)),
         expected,
         ...(real.length === 0 ? {} : { debited }),
         commission: total(own.filter((m) => m.part === 'commission').map((m) => m.amount)),

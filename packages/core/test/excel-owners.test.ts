@@ -69,6 +69,13 @@ describe('buildOwnersWorkbook', () => {
     ]);
   });
 
+  it("with condoDifferenceTo owner, adds last year's settlement to the owner share (R193)", () => {
+    const input = fixtureInput();
+    input.apartment = { ...input.apartment, condoDifferenceTo: 'owner' };
+    expect(rowsOf(input)[1]?.[8]).toBe(10000);
+    expect(rowsOf(fixtureInput())[1]?.[8]).toBe(4000);
+  });
+
   it('writes extraordinary, pending, assumed and settlement-only instalments', () => {
     const input = fixtureInput();
     input.instalments.push(

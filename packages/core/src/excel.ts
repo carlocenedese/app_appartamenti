@@ -9,6 +9,7 @@ import {
   allocateInstalment,
   calcConguaglio,
   isPresent,
+  previousToTenants,
 } from './conguaglio';
 import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguaglio';
 import { apartmentFolder } from './accounts';
@@ -136,7 +137,12 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
   const instalmentItem = (instalment: Instalment): ExcelItem => {
     const { amount: paid, commission, debitDates, assumed } = debits('instalment', instalment.id);
     const covered = monthRange(instalment.coversFrom, instalment.coversTo);
-    const parts = allocateInstalment(instalment, paid, esercizioOf(instalment));
+    const parts = allocateInstalment(
+      instalment,
+      paid,
+      esercizioOf(instalment),
+      previousToTenants(apartment),
+    );
     const commissions = splitCents(
       commission,
       covered.map(() => 1),
@@ -177,7 +183,10 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
     if (pending.has(`instalment\u0000${instalment.id}`)) return false;
     const esercizio = esercizioOf(instalment);
     const previousYear =
-      esercizio !== undefined && instalment.kind === 'condominio' && instalment.conguaglioPrec !== 0
+      esercizio !== undefined &&
+      instalment.kind === 'condominio' &&
+      instalment.conguaglioPrec !== 0 &&
+      previousToTenants(apartment)
         ? monthsInPeriod(esercizio.from, esercizio.to)
         : [];
     return inPeriod([...monthRange(instalment.coversFrom, instalment.coversTo), ...previousYear]);

@@ -183,3 +183,18 @@ describe('excelItems variants', () => {
     },
   );
 });
+
+describe('excelItems with condoDifferenceTo owner (plan 8, task 4, R193)', () => {
+  it("leaves last year's settlement out of the tenants' part, and the totals still add up", () => {
+    const input = fixtureInput();
+    input.apartment = { ...input.apartment, condoDifferenceTo: 'owner' };
+    const result = calcConguaglio(input);
+    const items = excelItems(input, result);
+    expect(byId(items, 'inst-cond-1')).toMatchObject({ amount: 26000, inPeriod: 26000 });
+    const shared = result.tenants.reduce<number>(
+      (sum, t) => sum + t.spese + t.condominio.rata + t.condominio.conguaglioPrec + t.commissione,
+      result.unassigned,
+    );
+    expect(items.reduce((sum, i) => sum + i.inPeriod, 0)).toBe(shared);
+  });
+});
