@@ -38,6 +38,7 @@ export type TaxReason =
   | 'imu-mixed-taxpayers'
   | 'imu-expected-missing'
   | 'imu-to-check'
+  | 'imu-year-open'
   | 'assumed-payment'
   | 'stale-assignment'
   | 'unassigned-tax-movement'
@@ -68,6 +69,11 @@ export interface TaxRow {
   expected?: Cents;
   /** paid + expected − estimate, only without reasons. */
   difference?: Cents;
+  /**
+   * IMU only, groups with only the annual total (R244): their F24s − their annual totals, once
+   * every rate has an F24 and only without reasons.
+   */
+  annualDifference?: Cents;
   /** The cedolare estimates of R182, to be confirmed: never in the other amounts. */
   cedolareProposals?: { apartmentId: string; amount: Cents }[];
 }
@@ -142,15 +148,23 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     const flag = (voce: TaxVoice, reason: TaxReason) => at(voce).reasons.add(reason);
 
     // IMU: the rates of the groups of this taxpayer only (the F24 does not separate apartments).
+    // With only the annual total (answer of user1, R244): each F24 counts as it is, a rate without
+    // one is neither expected nor missing, and the year is checked once every rate has an F24.
+    const annualGroups = new Map<string, { expected: number; paid?: number }>();
     for (const rate of rates.filter((r) => r.apartmentIds.some((id) => mine.has(id)))) {
       if (!rate.apartmentIds.every((id) => owner.get(id) === taxpayer)) {
         flag('imu', 'imu-mixed-taxpayers');
-      } else if (rate.paid !== undefined && !isDebit(transactions.get(rate.transactionId ?? ''))) {
+        continue;
+      }
+      if (rate.annual !== undefined) annualGroups.set(rate.f24Group, rate.annual);
+      if (rate.paid !== undefined && !isDebit(transactions.get(rate.transactionId ?? ''))) {
         // A pending (not booked) F24: not paid yet from the CSV (R2), to be checked.
         flag('imu', 'imu-to-check');
       } else if (rate.paid !== undefined) {
         at('imu').paid += rate.paid;
-        if (rate.status !== 'pagata') flag('imu', 'imu-to-check');
+        if (rate.annual === undefined && rate.status !== 'pagata') flag('imu', 'imu-to-check');
+      } else if (rate.annual !== undefined) {
+        continue;
       } else if (rate.expected !== undefined) {
         at('imu').expected += rate.expected;
       } else {
@@ -211,6 +225,12 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       }
     }
     flag('condominio', 'rule-undecided'); // question 1 of the design
+    const annual = [...annualGroups.values()];
+    if (annual.some((g) => g.paid === undefined)) flag('imu', 'imu-year-open');
+    const annualDifference =
+      annual.length === 0
+        ? undefined
+        : cents(annual.reduce((sum, g) => sum + (g.paid ?? 0) - g.expected, 0));
 
     const proposals = live(input.rentYears)
       .filter((r) => r.year === year && mine.has(r.apartmentId))
@@ -242,10 +262,11 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
         sorted.length === 0 && estimate !== undefined
           ? cents(paid + expected - estimate)
           : undefined;
+      const annualCheck = voce === 'imu' && difference !== undefined ? annualDifference : undefined;
       const state: TaxRowState =
         difference === undefined
           ? 'da-verificare'
-          : Math.abs(difference) > tolerance
+          : Math.abs(difference) > tolerance || Math.abs(annualCheck ?? 0) > tolerance
             ? 'discrepanza'
             : 'in-linea';
       return {
@@ -255,6 +276,7 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
         ...(estimate === undefined ? {} : { estimate }),
         ...amounts,
         ...(difference === undefined ? {} : { difference }),
+        ...(annualCheck === undefined ? {} : { annualDifference: annualCheck }),
         ...(voce === 'cedolare' && proposals.length > 0 ? { cedolareProposals: proposals } : {}),
       };
     });

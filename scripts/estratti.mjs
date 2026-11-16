@@ -1507,6 +1507,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
                 paid: r.paid,
                 expected: r.expected,
                 difference: r.difference,
+                ...(r.annualDifference === undefined
+                  ? {}
+                  : { annualDifference: r.annualDifference }),
                 ...(r.cedolareProposals === undefined
                   ? {}
                   : {

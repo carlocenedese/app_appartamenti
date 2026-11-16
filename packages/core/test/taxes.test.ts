@@ -427,6 +427,102 @@ describe('taxTable (plan 10, task 3)', () => {
     expect(rowOf(tables, 'user1', 'registro')?.state).toBe('in-linea');
   });
 
+  it('IMU with only the annual total: paid as it is, checked on the year once every rate has an F24 (plan 13)', () => {
+    const annualOnly = (apartmentId: string, annualTotal: number) => ({
+      id: `imu-${apartmentId}-2026`,
+      apartmentId,
+      year: '2026',
+      f24Group: 'g1',
+      annualTotal,
+      rates: [{ index: 1 }, { index: 2 }],
+    });
+    const at = (second: number | undefined, extra: Record<string, unknown> = {}) =>
+      rowOf(
+        taxTable(
+          input({
+            imuYears: parse('imuYear', [annualOnly('nord', 60000), annualOnly('est', 40000)]),
+            transactions: parse('transaction', [
+              tx('tx-imu1', -50000),
+              tx('tx-ced', -100000),
+              ...(second === undefined ? [] : [tx('tx-imu2', -second, extra)]),
+            ]),
+            classes: parse('movementClass', [
+              tasse('tx-imu1', { imu: { f24Group: 'g1', year: '2026', rateIndex: 1 } }),
+              tasse('tx-ced'),
+              ...(second === undefined
+                ? []
+                : [tasse('tx-imu2', { imu: { f24Group: 'g1', year: '2026', rateIndex: 2 } })]),
+            ]),
+          }),
+        ),
+        'user1',
+        'imu',
+      );
+    // Before the last rate: the paid as it is, no expected missing, no comparison yet.
+    expect(at(undefined)).toEqual({
+      voce: 'imu',
+      state: 'da-verificare',
+      reasons: ['imu-year-open'],
+      estimate: 100000,
+      paid: 50000,
+      expected: 0,
+    });
+    expect(at(50000)).toEqual({
+      voce: 'imu',
+      state: 'in-linea',
+      reasons: [],
+      estimate: 100000,
+      paid: 100000,
+      expected: 0,
+      difference: 0,
+      annualDifference: 0,
+    });
+    // 0,10 € off the annual total is in line, 0,11 € is not (the threshold of the table, not 1%).
+    expect(at(50010)).toMatchObject({ state: 'in-linea', annualDifference: 10 });
+    expect(at(50011)).toMatchObject({ state: 'discrepanza', reasons: [], annualDifference: 11 });
+    // Out of the 1% of imu.ts: still the paid as it is, a discrepancy, never imu-to-check.
+    expect(at(70000)).toMatchObject({
+      state: 'discrepanza',
+      reasons: [],
+      paid: 120000,
+      annualDifference: 20000,
+    });
+    // An F24 not booked is not paid from the CSV (R2): to be checked.
+    expect(at(50000, { booked: false })).toMatchObject({
+      state: 'da-verificare',
+      reasons: ['imu-to-check'],
+      paid: 50000,
+    });
+  });
+
+  it('IMU: the annual total is checked even when the estimate agrees with the paid', () => {
+    const tables = taxTable(
+      input({
+        estimates: parse('taxEstimate', [
+          ...estimates('nord', { imu: 60000 }),
+          ...estimates('est', { imu: 40011 }),
+        ]),
+        imuYears: parse('imuYear', [
+          {
+            id: 'imu-nord-2026',
+            apartmentId: 'nord',
+            year: '2026',
+            f24Group: 'g1',
+            annualTotal: 100000,
+            rates: [{ index: 1 }],
+          },
+        ]),
+        apartments: parse('apartment', [apartment('nord', 'user1'), apartment('est', 'user1')]),
+        transactions: parse('transaction', [tx('tx-imu1', -100011), tx('tx-ced', -100000)]),
+      }),
+    );
+    expect(rowOf(tables, 'user1', 'imu')).toMatchObject({
+      state: 'discrepanza',
+      difference: 0,
+      annualDifference: 11,
+    });
+  });
+
   it('IMU: an F24 not yet booked is not paid and is to be checked', () => {
     const tables = taxTable(
       input({
