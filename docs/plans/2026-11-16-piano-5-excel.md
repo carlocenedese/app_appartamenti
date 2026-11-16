@@ -8,14 +8,14 @@
 
 **Stack tecnologico:** TypeScript strict, Zod 4, Vitest; **nessuna dipendenza nuova** (disegno, «Libreria xlsx: nessuna», domanda 10); il lettore Python esistente (`python -I -m bollette_pdf table`) solo nei test.
 
-**Specifica:** il disegno `docs/plans/2026-11-16-piano-5-excel-disegno.md` (decisioni 1-11, «Il file generato», «Mie scelte» 1-6, domande 1-10 **ancora senza risposta**); `docs/spec.md` sezioni 6, 9, 12, 19, 20, 27 e 42 (R1-R8, che prevalgono); `docs/rules/conguaglio-rules.md` (colonne dei fogli R, C e AV); `docs/progress.md` R98, R103, R107, R130. Fuori dal piano 5: file riservato ai proprietari (5b), stato del conguaglio (R6), nota TARI, link alle cartelle, chiusura e versioni, interfaccia.
+**Specifica:** il disegno `docs/plans/2026-11-16-piano-5-excel-disegno.md` (decisioni 1-11, «Il file generato», «Mie scelte» 1-6, domande 1, 3-10 **con la risposta di user1 del 16 novembre 2026**, aperte la 2, la 11 e la 12); `docs/spec.md` sezioni 6, 9, 12, 19, 20, 27 e 42 (R1-R8, che prevalgono); `docs/rules/conguaglio-rules.md` (colonne dei fogli R, C e AV); `docs/progress.md` R98, R103, R107, R130. Fuori dal piano 5: file riservato ai proprietari (5b), nota TARI, link alle cartelle, chiusura e versioni, interfaccia.
 
 ## Metodo di esecuzione
 
 - Un ramo (`feat/piano-5-excel`), mai su `main`. Per ogni task: test che falliscono, codice, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `TZ=Pacific/Auckland pnpm test`, `TZ=America/Los_Angeles pnpm test`, `pnpm data:check`, `pnpm licenses:check`, commit. Un revisore distinto per task (piano, disegno, qualità), fino a 5 giri; poi una revisione finale e la PR.
 - **Un task = un gate di revisione.** Dipendenze: 2 ← 1; 3 ← 2; 4 —; 5 ← 2, 4; 6 ← 5; 7 ← 3, 6.
 - Le regole nuove vanno in `docs/progress.md` dalla **prossima R libera** (`grep -n '^- \*\*R[0-9]' docs/progress.md | tail -1`; al 16 novembre 2026 l'ultima su `main` è R132, il piano 3d può averne prese altre). Ogni task scrive la sua R nel passo 3.
-- **Le domande 1-10 del disegno sono aperte.** Il piano implementa solo ciò che è deciso o proposto come «fino alla risposta»; nessun task decide al posto di user1. Una risposta che cambia un punto diventa un task in più dopo il 7 (sotto, «Dopo le risposte»).
+- **Le domande 1-10 del disegno avevano risposta aperta durante i task 1-7.** user1 ha risposto il 16 novembre 2026 (disegno, «Domande per user1»): le risposte 3-7 sono i task 8-11 (ramo `feat/piano-5-bis`, regole da R170). Restano aperte la 2 (formato dell'esempio) e le nuove 11 e 12; nessun task le decide.
 
 ## Vincoli globali
 
@@ -31,7 +31,7 @@
 ## Revisione mirata (Review Focus)
 
 1. **Le due tabelle non divergono (Task 4, 5).** Somma della colonna «Quota nel periodo» del foglio Bollette = somma di `spese + commissione + condominio.rata + condominio.conguaglioPrec` degli inquilini + `unassigned` di `calcConguaglio`, sulla fixture e su varianti (condominio con esercizio maggio-aprile in un'annualità ottobre-settembre, bolletta di 14 mesi, nota di credito negativa).
-2. **Solo ciò che è deciso (tutti).** Nessuna colonna versato/residuo/stato, nessuna caparra, nessuna riga dei posti vuoti, nessuna formula, nessuna voce in attesa nel file (domande 1, 3, 4, 6). Un test per ciascuna assenza.
+2. **Solo ciò che è deciso (tutti).** Nessuna formula e nessuna caparra (risposte 1 e 3); fino al task 7 nessuna colonna versato/residuo/stato, riga dei posti vuoti o voce in attesa, che i task 8-10 aggiungono con le risposte 3, 4, 6. Un test per ciascuna.
 3. **Byte uguali (Task 1, 2, 5).** Stesso file con l'ingresso mescolato, con i due `TZ`, in due corse.
 4. **Validità del file (Task 2, 3).** Il lettore Python, che è stretto (R103: righe e celle in ordine, membri unici, niente DOCTYPE), lo legge; ogni foglio, intestazione, importo e data torna com'era.
 5. **Uscita della riga di comando (Task 7).** `scanText` non trova nomi, importi, IBAN né percorsi; un file esistente non si sovrascrive mai.
@@ -218,18 +218,74 @@
 - [ ] Generare con `pnpm excel` il file della fixture `anno-esempio` in una cartella temporanea e chiedere a user1 di aprirlo in Excel (Mac) e, se può, in Numbers: è il «Non verificato» del disegno. Se Excel rifiuta lo zip senza compressione, fermarsi: il ripiego `fflate` è la domanda 10.
 - [ ] Elencare a user1 le domande 1-10 ancora aperte nella descrizione della PR.
 
-## Dopo le risposte (task in più, solo se servono)
+## Dopo le risposte di user1 (16 novembre 2026): task 8-11
 
-| Risposta | Task |
-| --- | --- |
-| 1 «formule» | formule nelle sole righe `Totale` (`XlsxCell` `{ kind: 'formula' }` con il valore in cache) |
-| 2 formato dell'esempio | intestazioni, ordine, righe di titolo in `EXCEL_HEADERS` e `buildConguaglioWorkbook` |
-| 3 versato e stato | colonne versato, residuo e stato nel foglio Conguagli con la regola decisa; caparre solo se sì |
-| 4 sì | riga `Posti vuoti (proprietà)` con `unassignedByBucket` |
-| 5 sì | riga «Conguaglio provvisorio» in cima |
-| 6 sì | elenco delle voci in attesa in fondo al foglio Bollette |
-| 7 nome | `--uscita` facoltativo, percorso predefinito `<Appartamento>/<periodo>/Excel/` con `safeWord` |
-| 9 sì | piano 5b, file riservato ai proprietari, stesso scrittore |
+Risposte del disegno: 1 valori (nulla da fare), 2 aperta, 8 rifiuto (già fatto), 9 piano 5b
+(`2026-11-16-piano-5b-proprietari.md`), 10 nessuna libreria (già fatto). Le altre sono i task sotto,
+sul ramo `feat/piano-5-bis`, con le regole da R170 (gli altri rami prendono R1xx in parallelo).
+Ogni task: test rosso, codice, lint, typecheck, test toccati, `TZ=Pacific/Auckland`, commit. Lo
+SHA-256 del file della fixture cambia a ogni task che cambia il file: si aggiorna nel test.
+
+### Task 8: riga dei posti vuoti e totale del foglio Bollette (risposta 4)
+
+**Files:** Modify `packages/core/src/excel.ts`, `packages/core/test/excel.test.ts`, `docs/progress.md`.
+
+- Conguagli: prima del `Totale` la riga `Posti vuoti (proprietà)` con Spese =
+  `unassignedByBucket.spese + commissione`, Condominio = `rata + conguaglioPrec`, le altre celle
+  vuote; il `Totale` somma tutte le righe, quella compresa.
+- Bollette: dopo le voci la riga `Totale` con Importo, Commissione e Quota nel periodo.
+- Test: Spese + Condominio del `Totale` di Conguagli = Quota nel periodo del `Totale` di Bollette
+  (fixture e variante senza posti vuoti, dove la riga vale 0).
+
+### Task 9: versato, residuo e stato (risposta 3)
+
+**Files:** Modify `packages/core/src/excel.ts`, `packages/core/src/excel-store.ts`,
+`packages/core/test/excel.test.ts`, `packages/core/test/excel-store.test.ts`, `docs/progress.md`.
+
+- `ExcelInput.nextPeriodFrom?: YearMonth`: il primo mese del periodo di conguaglio successivo (il
+  più piccolo `from` maggiore di `period.to` tra i `settlementPeriods` dei contratti vivi
+  dell'appartamento); il caricamento lo calcola.
+- Versamenti che contano per un inquilino: `Payment` vivi, confermati, `kind: 'conguaglio'`,
+  dell'appartamento e di quell'inquilino; con `forMonth` se è nel periodo; senza, se la data è dal
+  primo giorno del periodo al giorno prima di `nextPeriodFrom` (senza periodo successivo, nessuna
+  fine). Mai `caparra`, mai `caparraReturn`.
+- Colonne in fondo a Conguagli: Versato (somma col segno), Residuo (`due − versato`), Stato:
+  `saldato` se il residuo è 0 e ogni versamento contato ha origine `csv` (anche nessun versamento con
+  `due` 0); `da pagare` se il versato è 0 e il residuo no; altrimenti `parziale`. Totale: Versato e
+  Residuo sommati, Stato vuoto; posti vuoti: vuote.
+- Test: l'esempio della domanda 3 (50,00 CSV + 70,00 a mano su 120,00 → versato 120,00, residuo 0,
+  `parziale`); tutto CSV → `saldato`; nessun versamento → `da pagare`; restituzione negativa (R130);
+  `forMonth` fuori dal periodo, data prima del periodo, data nel periodo successivo → non contano;
+  caparra non conta; nessun periodo successivo → conta qualunque data dopo la fine.
+
+### Task 10: riga «provvisorio» e voci in attesa (risposte 5 e 6)
+
+**Files:** Modify `packages/core/src/excel.ts`, `packages/core/test/excel.test.ts`, `docs/progress.md`.
+
+- Prima riga di Bollette e Conguagli `Conguaglio provvisorio: voci in attesa N` (N = voci in attesa
+  di `calcConguaglio`): nel modello non c'è la chiusura (R5), quindi nessun periodo è chiuso e la riga
+  c'è sempre. Le intestazioni passano alla seconda riga.
+- In fondo a Bollette, se ci sono voci in attesa: una riga vuota, `Voci in attesa di pagamento`, poi
+  una riga per voce con Tipo, Fornitore, Periodo dal, Periodo al nelle loro colonne, nessun importo,
+  nell'ordine delle voci.
+- Test: la riga in cima con N; la bolletta dell'acqua in attesa elencata senza importo; senza voci in
+  attesa nessun elenco e N = 0.
+
+### Task 11: nome e cartella del file (risposta 7)
+
+**Files:** Modify `packages/core/src/accounts.ts` (esporta `apartmentFolder`), `packages/core/src/excel.ts`,
+`packages/core/src/index.ts`, `scripts/excel.mjs`, `scripts/excel.test.mjs`, test del core,
+`docs/progress.md`.
+
+- `excelFilePath(apartment, period)` →
+  `<apartmentFolder(name)>/<period.label>/Excel/Conguaglio_<apartmentFolder(name)>_<period.label>.xlsx`
+  (lettere ASCII, `_` e `-`, nessun nome riservato di Windows).
+- `pnpm excel`: `--uscita` facoltativo; senza, il percorso è `excelFilePath` sotto `--cartella`, le
+  cartelle mancanti si creano, il file esistente resta un rifiuto `file-exists`. L'uscita JSON non
+  scrive il percorso.
+- Test: nome con accenti e spazi, nome riservato; la riga di comando senza `--uscita` scrive nel
+  percorso atteso e la seconda volta rifiuta.
+
 
 ## Autoverifica
 
