@@ -6,20 +6,30 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 
 ## Contratti e periodi
 
-| Italiano              | Inglese            | Note                                                                         |
-| --------------------- | ------------------ | ---------------------------------------------------------------------------- |
-| appartamento          | apartment          |                                                                              |
-| inquilino             | tenant             |                                                                              |
-| locatore              | landlord           | chi intesta il contratto e gli adempimenti fiscali                           |
-| contratto             | contract           | transitorio 12 mesi, 3+2, ...                                                |
-| canone                | rent               | affitto mensile, senza forfait                                               |
-| annualità             | lease year         | periodo di conguaglio di un contratto transitorio (1 ottobre - 30 settembre) |
-| periodo di conguaglio | settlement period  | dipende dal contratto; impostazione dell'appartamento                        |
-| permanenza, presenza  | tenancy            | periodo in cui un inquilino occupa un posto, in mesi interi                  |
-| subentro              | takeover           | un inquilino ne sostituisce un altro a metà periodo                          |
-| posto                 | bed, place         | divisore delle spese: numero di posti dell'appartamento                      |
-| caparra               | security deposit   | restituita con gli interessi legali, meno conguaglio e addebiti extra        |
-| interessi legali      | statutory interest | calcolati sulla caparra per anno                                             |
+| Italiano                             | Inglese                                      | Note                                                                         |
+| ------------------------------------ | -------------------------------------------- | ---------------------------------------------------------------------------- |
+| appartamento                         | apartment                                    |                                                                              |
+| inquilino                            | tenant                                       |                                                                              |
+| locatore                             | landlord                                     | chi intesta il contratto e gli adempimenti fiscali                           |
+| contratto                            | contract                                     | transitorio 12 mesi, 3+2, ...                                                |
+| canone                               | rent                                         | affitto mensile, senza forfait                                               |
+| canone concordato                    | agreed rent (`agreedRent`)                   | dato del contratto                                                           |
+| contratto per studenti               | student contract (`forStudents`)             | dato del contratto                                                           |
+| durata                               | duration (`durationMonths`)                  | scritta nel contratto, non ricavata dalle date                               |
+| data di firma                        | signing date (`signedOn`)                    | separata dalla data di registrazione                                         |
+| registrazione, codice identificativo | registration (`registration`), code (`code`) | il codice è un dato personale: solo con `--dettagli`                         |
+| regime fiscale                       | tax regime (`taxRegime`)                     | `cedolare` od `ordinario`, solo dato                                         |
+| cedolare secca                       | flat-rate tax (`cedolare`)                   | mai calcolata nell'app (domanda 1 del piano 7)                               |
+| aliquota                             | rate (`cedolareRateBp`)                      | punti base inseriti dall'utente, mai una costante                            |
+| storico del canone                   | rent history (`rent`)                        | voci `from`, `monthlyRent`, `monthlyAdvance`                                 |
+| acconto spese                        | expense advance (`monthlyAdvance`)           | parte del contratto confrontata da R4                                        |
+| annualità                            | lease year                                   | periodo di conguaglio di un contratto transitorio (1 ottobre - 30 settembre) |
+| periodo di conguaglio                | settlement period                            | dipende dal contratto; impostazione dell'appartamento                        |
+| permanenza, presenza                 | tenancy                                      | periodo in cui un inquilino occupa un posto, in mesi interi                  |
+| subentro                             | takeover                                     | un inquilino ne sostituisce un altro a metà periodo                          |
+| posto                                | bed, place                                   | divisore delle spese: numero di posti dell'appartamento                      |
+| caparra                              | security deposit                             | restituita con gli interessi legali, meno conguaglio e addebiti extra        |
+| interessi legali                     | statutory interest                           | calcolati sulla caparra per anno                                             |
 
 ## Spese e conguaglio
 
