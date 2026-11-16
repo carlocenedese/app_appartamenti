@@ -19,6 +19,8 @@ import {
   ImuRuleSchema,
   ImuYearSchema,
   NoteSchema,
+  PayableKindSchema,
+  PayableSchema,
   PaymentSchema,
   SupplierProfileSchema,
   SupplySchema,
@@ -244,6 +246,13 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     f24Group: 'gruppo-1',
     rates: [{ index: 1 }, { index: 2, expected: 60000 }],
   },
+  payable: {
+    ...base,
+    id: 'scad-1',
+    apartmentId: 'apt-1',
+    kind: 'registro',
+    dueDate: '2026-12-01',
+  },
   rentYear: {
     ...base,
     id: 'rent-apt-1-2026',
@@ -351,6 +360,7 @@ describe('recordSchemas', () => {
         'imuYear',
         'rentYear',
         'imuRule',
+        'payable',
       ].sort(),
     );
   });
@@ -372,6 +382,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.movementRule).toBe(MovementRuleSchema);
     expect(recordSchemas.imuYear).toBe(ImuYearSchema);
     expect(recordSchemas.imuRule).toBe(ImuRuleSchema);
+    expect(recordSchemas.payable).toBe(PayableSchema);
   });
 });
 
@@ -1550,5 +1561,43 @@ describe('ImuRuleSchema (plan 3d, task 5)', () => {
     expect(ok({ validFrom: '2026-06-15', validTo: '2026-06-14' })).toBe(false);
     expect(ok({ f24Group: '' })).toBe(false);
     expect(ok({ key: 'nessuna' })).toBe(false);
+  });
+});
+
+describe('PayableSchema (plan 9, task 1)', () => {
+  const payable = {
+    ...base,
+    id: 'scad-a1',
+    apartmentId: 'pulci',
+    kind: 'f24',
+    dueDate: '2026-12-16',
+  };
+  const ok = (changes: Record<string, unknown>) =>
+    PayableSchema.safeParse(changed(payable, changes)).success;
+
+  it('accepts a bare item and one with amount, yearly flag, previous item and payment', () => {
+    expect(PayableSchema.parse(payable)).toEqual(payable);
+    expect(
+      ok({
+        expected: 6700,
+        repeatYearly: true,
+        previousId: 'scad-a0',
+        paid: { date: '2026-12-10', transactionId: 't1' },
+      }),
+    ).toBe(true);
+    expect(ok({ paid: { date: '2026-12-10' } })).toBe(true);
+  });
+
+  it('refuses another id, an amount not positive, a bad date or kind, a false flag', () => {
+    expect(ok({ id: 'a1' })).toBe(false);
+    expect(ok({ expected: 0 })).toBe(false);
+    expect(ok({ dueDate: '2026-02-30' })).toBe(false);
+    expect(ok({ kind: 'imu' })).toBe(false);
+    expect(ok({ repeatYearly: false })).toBe(false);
+    expect(ok({ paid: { transactionId: 't1' } })).toBe(false);
+  });
+
+  it('has the kinds typed by hand only: IMU, condominium and TARI come from their records', () => {
+    expect(PayableKindSchema.options).toEqual(['registro', 'bollo', 'cedolare', 'f24', 'altro']);
   });
 });

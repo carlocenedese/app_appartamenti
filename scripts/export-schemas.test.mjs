@@ -34,6 +34,7 @@ describe('writeJsonSchemas', () => {
       'movementRule',
       'note',
       'operation',
+      'payable',
       'payer',
       'payment',
       'rentYear',
