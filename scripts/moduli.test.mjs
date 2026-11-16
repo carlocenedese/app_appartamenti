@@ -174,6 +174,9 @@ describe('pnpm moduli', () => {
     const number = join(root, 'numero.json');
     writeFileSync(number, '{"codice_fiscale": 1}');
     expect((await generate(['--valori', number])).json.reason).toBe('bad-values');
+    const swapped = join(root, 'scambiati.json');
+    writeFileSync(swapped, JSON.stringify({ 'Anna Prova': 'inquilino' }));
+    expect((await generate(['--valori', swapped])).json.reason).toBe('bad-values');
     expect(
       (
         await run([

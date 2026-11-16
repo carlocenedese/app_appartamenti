@@ -40,7 +40,7 @@ const MESSAGES = {
     'Il file di uscita non è valido: serve un nome .docx ammesso, in una cartella che esiste.',
   'bad-template-file': 'Il modello non si legge: serve un file .docx che esiste.',
   'bad-values':
-    'Il file dei valori non è valido: serve un oggetto JSON con un testo per ogni campo.',
+    'Il file dei valori non è valido: serve un oggetto JSON con un testo per ogni campo (nomi in minuscole, cifre e _).',
   'file-exists': 'Rifiutato: il file di uscita esiste già e non si sovrascrive.',
   'bad-default-folder':
     'Rifiutato: nel percorso predefinito c’è un collegamento o un file al posto di una cartella: usare --uscita.',
@@ -78,7 +78,8 @@ function readValues(path) {
     typeof values === 'object' &&
     values !== null &&
     !Array.isArray(values) &&
-    Object.values(values).every((v) => typeof v === 'string');
+    // A key that is not a field name could be a value put in its place: never echoed back.
+    Object.entries(values).every(([k, v]) => /^[a-z0-9_]+$/.test(k) && typeof v === 'string');
   if (!ok) throw invalid('bad-values');
   return values;
 }

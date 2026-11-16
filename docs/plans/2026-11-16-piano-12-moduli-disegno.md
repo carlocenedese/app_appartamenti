@@ -1,6 +1,6 @@
 # Piano 12: moduli e documenti generati, core e riga di comando (disegno)
 
-Stato: **bozza da approvare da user1** (16 novembre 2026). Il piano di implementazione è
+Stato: **implementato; bozza da approvare da user1, regole non decise in «Domande per user1»** (16 novembre 2026). Il piano di implementazione è
 `docs/plans/2026-11-16-piano-12-moduli.md`. Il piano copre il core (`packages/core`) e la riga di
 comando (`pnpm moduli`); **niente schermate**. Riferimenti: `docs/spec.md` sezioni 17, 20, 26, 31 e
 42 (che prevale), `docs/progress.md` R107, R150-R156, R173, R176, R203. Codice letto: `zip.ts`,
@@ -66,7 +66,9 @@ cartella `Contratti` dell'appartamento, sottocartella dell'inquilino (sezione 20
   `word/footnotes.xml`, `word/endnotes.xml`. Tutte le altre voci passano intatte.
 - **Segnaposto:** testo dei `<w:t>` unito per parte, con un separatore a ogni fine paragrafo, così un
   segnaposto non attraversa due paragrafi. `{{…}}` con un nome non `[a-z0-9_]+` → `bad-placeholder`;
-  un `{{` rimasto dopo la sostituzione → `unclosed-placeholder`.
+  un `{{` senza `}}` nello stesso paragrafo → `unclosed-placeholder`; un valore che contiene `{{` →
+  `bad-value`. **Limite:** il testo di forme, caselle di testo disegnate, SmartArt e commenti non si
+  legge: un segnaposto lì resta com'è, senza rifiuto.
 - **Valori:** testo; entità XML codificate; un a capo diventa `<w:br/>`; un carattere non ammesso da
   XML → `bad-value` con il nome del campo. Un segnaposto senza valore → `missing-fields`.
 - **Scrittura:** `zipStored` (stesso ordine delle voci, date fisse): stessi byte per gli stessi
@@ -93,7 +95,7 @@ regola 4 della sezione 26).
 | `canone_camera` | affitto + forfait della presenza (sezione 26: il prezzo della camera comprende il forfait) |
 | `tipo_contratto`, `inizio_contratto`, `fine_contratto`, `durata_contratto_mesi` | il contratto vivo che collega la presenza (`tenancyIds`) |
 | `firmato_il`, `codice_registrazione`, `registrato_il`, `regime_fiscale` | stesso contratto |
-| `acconto_spese_mensile` | voce di `Contract.rent` in vigore nel mese di `today` |
+| `acconto_spese_mensile` | voce di `Contract.rent` in vigore nel mese di `today`: l'acconto del **contratto**, non della camera |
 | `durata_residua_mesi` | mesi interi dall'ingresso alla fine del contratto, compresi (sezione 26: 08/2026-09/2027 = 14) |
 
 Campi richiesti (`source: 'asked'`), dalla colonna «Dati richiesti» della sezione 26:
@@ -165,3 +167,7 @@ tenancy, contract?, ibans }`. Sola lettura: nessuna operazione nel registro (dom
 9. **Durata residua e date:** `durata_residua_mesi` conta i mesi interi dall'ingresso alla fine del
    contratto (esempio della sezione 26); `fine_contratto` è scritto come mese (`09/2027`) e non come
    ultimo giorno (`30/09/2027`): va bene?
+10. **Acconto e cartella dell'inquilino:** l'acconto spese è quello del contratto nel mese del
+   documento (va bene, o serve quello della camera o del mese di decorrenza?); la cartella
+   dell'inquilino è il nome con lettere ASCII e trattini (`Anna-Prova`): può non coincidere con una
+   cartella che esiste già, e due inquilini con lo stesso nome la condividono.

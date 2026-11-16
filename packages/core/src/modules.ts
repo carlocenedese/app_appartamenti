@@ -60,7 +60,7 @@ export const APP_FIELDS = {
   codice_registrazione: 'Codice di registrazione',
   registrato_il: 'Registrato il',
   regime_fiscale: 'Regime fiscale',
-  acconto_spese_mensile: 'Acconto spese mensile',
+  acconto_spese_mensile: 'Acconto spese mensile del contratto',
   durata_residua_mesi: 'Durata residua (mesi)',
 } as const;
 export type AppField = keyof typeof APP_FIELDS;
