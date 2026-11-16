@@ -3860,3 +3860,271 @@ describe('pnpm estratti tasse (piano 10)', () => {
     }
   });
 });
+
+describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => {
+  // Invented tenants and amounts only; main() in process.
+  let idCounter = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `p11-${String((idCounter += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+
+  async function setup() {
+    const dir = join(root, `p${String((counter += 1))}`);
+    mkdirSync(dir);
+    const records = [
+      ['apartment', apartment({ id: 'pulci', posti: 2, rooms: ['A', 'B'] })],
+      ['tenant', { id: 'ten-anna', v: 1, rev: 1, name: 'Anna Prova' }],
+      ['tenant', { id: 'ten-bruno', v: 1, rev: 1, name: 'Bruno Esempio' }],
+      [
+        'contract',
+        {
+          id: 'ctr-pulci',
+          v: 1,
+          rev: 1,
+          apartmentId: 'pulci',
+          type: '1+1',
+          start: '2025-10',
+          end: '2026-09',
+          settlement: 'annuale',
+        },
+      ],
+      [
+        'payment',
+        {
+          id: 'pay-c1',
+          v: 1,
+          rev: 1,
+          apartmentId: 'pulci',
+          tenantId: 'ten-anna',
+          date: '2025-09-25',
+          amount: 50000,
+          confirmed: true,
+          kind: 'caparra',
+          source: 'manual',
+        },
+      ],
+    ];
+    let n = 0;
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      () => `seed-${String((n += 1))}`,
+    );
+    return { dir, common: ['--cartella', dir, '--ora', ORA] };
+  }
+  const presenza = (s, ...extra) => [
+    'presenza',
+    ...s.common,
+    '--id',
+    'tcy-anna',
+    '--appartamento',
+    'pulci',
+    '--inquilino',
+    'ten-anna',
+    '--posto',
+    'A',
+    '--dal',
+    '2025-10',
+    '--al',
+    '2026-09',
+    '--affitto',
+    '350,00',
+    '--forfait',
+    '30,00',
+    '--caparra-attesa',
+    '500,00',
+    '--contratto',
+    'ctr-pulci',
+    ...extra,
+  ];
+  const subentro = (s, ...extra) => [
+    'subentro',
+    ...s.common,
+    '--presenza',
+    'tcy-anna',
+    '--mese',
+    '2026-02',
+    '--id',
+    'tcy-bruno',
+    '--inquilino',
+    'ten-bruno',
+    '--affitto',
+    '360,00',
+    '--forfait',
+    '30,00',
+    '--caparra-attesa',
+    '500,00',
+    ...extra,
+  ];
+  const restituzione = (s, ...extra) => [
+    'caparra-restituzione',
+    ...s.common,
+    '--appartamento',
+    'pulci',
+    '--inquilino',
+    'ten-anna',
+    '--dal',
+    '2025-09-25',
+    '--al',
+    '2026-02-28',
+    '--tasso',
+    '2025:2',
+    '--tasso',
+    '2026:2',
+    '--conguaglio',
+    '40,00',
+    '--addebito',
+    'Zanzariera:25,00',
+    ...extra,
+  ];
+
+  it('presenza, subentro, stato-contratti, caparra-restituzione e annullamento', async () => {
+    const s = await setup();
+    const outs = [];
+    const go = async (args) => {
+      const r = await run(args);
+      outs.push(r.out);
+      return r;
+    };
+    const saved = await go(presenza(s));
+    expect([saved.code, saved.json]).toEqual([
+      0,
+      { status: 'saved', tenancyId: 'tcy-anna', operationId: saved.json.operationId },
+    ]);
+    expect((await go(presenza(s))).json).toEqual({ status: 'unchanged', tenancyId: 'tcy-anna' });
+    const taken = await go(subentro(s));
+    expect([taken.code, taken.json.status]).toEqual([0, 'saved']);
+    expect((await go(subentro(s))).json.status).toBe('unchanged');
+
+    const status = await go(['stato-contratti', ...s.common]);
+    expect(status.json).toEqual({
+      status: 'ok',
+      contracts: [
+        {
+          contractId: 'ctr-pulci',
+          apartmentId: 'pulci',
+          tenancies: { futura: 0, 'in-corso': 0, uscita: 2 },
+          takeovers: 1,
+          deposits: { versata: 1, diversa: 0, mancante: 1, 'non-impostata': 0 },
+          message: 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
+          checks: [],
+        },
+      ],
+    });
+    const detailed = await run(['stato-contratti', ...s.common, '--dettagli']);
+    expect(detailed.json.contracts[0].takeoverList).toEqual([
+      { month: '2026-03', outTenancyId: 'tcy-anna', inTenancyId: 'tcy-bruno' },
+    ]);
+    expect(detailed.json.contracts[0].tenancyList[1]).toMatchObject({
+      tenancyId: 'tcy-bruno',
+      room: 'A',
+      from: '2026-03',
+      to: '2026-09',
+      monthlyRent: 36000,
+    });
+
+    const draft = await go(restituzione(s));
+    expect([draft.code, draft.json.status, draft.json.lines]).toEqual([0, 'ok', 4]);
+    const full = await run(restituzione(s, '--dettagli'));
+    expect(full.json.statement.total).toBe(50000 + 417 - 4000 - 2500);
+
+    const text = outs.join('');
+    expect(scanText(text)).toEqual([]);
+    // The writes echo the tenancy id typed by user1, as `contratto` echoes the contract id.
+    expect(text).not.toMatch(/ten-|pay-|Anna|Bruno|Zanzariera|50000|36000|417/);
+
+    // The takeover is undone in one step; the arrival of Anna is blocked by her deposit.
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      taken.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    const blocked = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      saved.json.operationId,
+    ]);
+    expect([blocked.code, blocked.json.reason, blocked.json.recordIds]).toEqual([
+      1,
+      'has-dependents',
+      ['pay-c1'],
+    ]);
+    expect(blocked.json.message).toMatch(/versamenti, recuperi o presenze/);
+  });
+
+  it('rifiuti 1 con messaggi costanti, argomenti 2', async () => {
+    const s = await setup();
+    await run(presenza(s));
+    const conflict = await run(presenza(s, '--id', 'tcy-altra', '--inquilino', 'ten-bruno'));
+    expect([conflict.code, conflict.json]).toMatchObject([
+      1,
+      { reason: 'beds-conflict', code: 'room-overlap', month: '2025-10' },
+    ]);
+    expect((await run(subentro(s, '--inquilino', 'ten-anna'))).json.reason).toBe('same-tenant');
+    expect((await run(restituzione(s, '--inquilino', 'ten-bruno'))).json.reason).toBe('no-deposit');
+    expect((await run(restituzione(s, '--al', '2027-01-31'))).json.reason).toBe('missing-rate');
+    for (const args of [
+      presenza(s, '--affitto', '-1,00'),
+      presenza(s, '--caparra-attesa', '0'),
+      presenza(s, '--dal', '2025-13'),
+      presenza(s, '--prova'),
+      ['fine-presenza', ...s.common, '--presenza', 'tcy-anna'],
+      ['subentro', ...s.common, '--presenza', 'tcy-anna', '--mese', '2026-02'],
+      restituzione(s, '--tasso', '2025'),
+      restituzione(s, '--tasso', '2025:3'),
+      restituzione(s, '--addebito', 'senza-importo'),
+      ['caparra-restituzione', ...s.common, '--appartamento', 'pulci'],
+      ['stato-contratti', ...s.common, '--posto', 'A'],
+    ]) {
+      expect((await run(args)).code).toBe(2);
+    }
+    const end = await run([
+      'fine-presenza',
+      ...s.common,
+      '--presenza',
+      'tcy-anna',
+      '--mese',
+      '2026-06',
+    ]);
+    expect([end.code, end.json.status]).toEqual([0, 'saved']);
+    // After a takeover, `contratto` without the tenancies of the takeover is refused.
+    expect((await run(subentro(s))).json.status).toBe('saved');
+    const contratto = (...extra) => [
+      'contratto',
+      ...s.common,
+      '--id',
+      'ctr-pulci',
+      '--appartamento',
+      'pulci',
+      '--tipo',
+      '1+1',
+      '--inizio',
+      '2025-10',
+      '--fine',
+      '2026-09',
+      '--conguaglio',
+      'annuale',
+      ...extra,
+    ];
+    const dropped = await run(contratto());
+    expect([dropped.code, dropped.json.reason, dropped.json.message]).toEqual([
+      1,
+      'takeover-unlinked',
+      'Rifiutato: il contratto ha un subentro: ripetere --presenze con le presenze del subentro.',
+    ]);
+    expect((await run(contratto('--presenze', 'tcy-anna,tcy-bruno'))).code).toBe(0);
+  });
+});
