@@ -19,8 +19,8 @@ import { PUBKEY_PLACEHOLDER } from './release.mjs';
 
 const BASE64 = /^[A-Za-z0-9+/]+=*$/;
 
-function runGh(command, args, input) {
-  const result = spawnSync(command, args, { input, stdio: ['pipe', 'inherit', 'inherit'] });
+function runGh(command, args, input, cwd) {
+  const result = spawnSync(command, args, { cwd, input, stdio: ['pipe', 'inherit', 'inherit'] });
   if (result.error !== undefined) throw new Error(`gh non si avvia: ${result.error.message}`);
   if (result.status !== 0) throw new Error(`gh è uscito con il codice ${result.status}.`);
 }
@@ -48,7 +48,7 @@ export function setupUpdater(root, folder, run = runGh) {
       "tauri.conf.json ha già un'altra chiave pubblica: le app installate non accetterebbero gli aggiornamenti firmati con questa.",
     );
   }
-  run('gh', ['secret', 'set', 'TAURI_SIGNING_PRIVATE_KEY'], privateKey);
+  run('gh', ['secret', 'set', 'TAURI_SIGNING_PRIVATE_KEY'], privateKey, root); // gh finds the repository from cwd
   writeFileSync(conf, text.replace(PUBKEY_PLACEHOLDER, publicKey));
 }
 

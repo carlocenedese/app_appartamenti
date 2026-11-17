@@ -28,8 +28,9 @@ afterEach(() => {
 
 function fakeGh(fail = false) {
   const calls = [];
-  const run = (command, args, input) => {
+  const run = (command, args, input, cwd) => {
     calls.push({ command, args, input });
+    expect(cwd).toBe(root);
     if (fail) throw new Error('gh: non autenticato');
   };
   return { calls, run };

@@ -2,7 +2,7 @@
 //
 //   node scripts/release.mjs preflight <tag>
 //     Before a tagged build: the tag is vX.Y.Z and equals the version of tauri.conf.json,
-//     Cargo.toml, package.json and apps/desktop/package.json; the updater public key is not the
+//     Cargo.toml, Cargo.lock, package.json and apps/desktop/package.json; the updater public key is not the
 //     placeholder; tauri-plugin-updater is in Cargo.toml; the signing key secret is there
 //     (HAS_SIGNING_KEY=true, set by build.yml from secrets). An installer without all of them
 //     could never update itself, and user2 would need a manual reinstall. Prints every problem.
@@ -37,10 +37,13 @@ const TAG = /^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/;
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
-/** The version in each of the four files that carry it, by file name. */
+/** The version in each of the five files that carry it, by file name. */
 export function readVersions(root) {
   const cargo = readFileSync(join(root, TAURI_DIR, 'Cargo.toml'), 'utf8');
+  const lock = readFileSync(join(root, TAURI_DIR, 'Cargo.lock'), 'utf8');
   return {
+    // `cargo --locked` refuses a lock whose app version differs from Cargo.toml.
+    'Cargo.lock': /^name = "app-bollette"\nversion = "([^"]*)"/m.exec(lock)?.[1],
     'tauri.conf.json': readJson(join(root, TAURI_DIR, 'tauri.conf.json')).version,
     // The first `version =` at the start of a line is the one of [package], the first section.
     'Cargo.toml': /^version\s*=\s*"([^"]*)"/m.exec(cargo)?.[1],

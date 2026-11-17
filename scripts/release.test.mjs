@@ -27,15 +27,20 @@ function fakeRoot({ version = '1.2.3', pubkey = 'dW50cnVzdGVkIGNvbW1lbnQ=', plug
     `[package]\nname = "x"\nversion = "${version}"\n\n[dependencies]\ntauri = { version = "=2.12.5" }\n` +
       (plugin ? 'tauri-plugin-updater = "=2.10.0"\n' : ''),
   );
+  writeFileSync(
+    join(tauri, 'Cargo.lock'),
+    `[[package]]\nname = "app-bollette"\nversion = "${version}"\n\n[[package]]\nname = "tauri"\nversion = "2.12.5"\n`,
+  );
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
   writeFileSync(join(dir, 'apps', 'desktop', 'package.json'), JSON.stringify({ version }));
   return dir;
 }
 
 describe('readVersions', () => {
-  it('reads the four versions of the repository, all equal today', () => {
+  it('reads the five versions of the repository, all equal today', () => {
     const versions = Object.values(readVersions(repoRoot));
-    expect(versions).toHaveLength(4);
+    expect(versions).toHaveLength(5);
+    expect(versions).not.toContain(undefined);
     expect(new Set(versions).size).toBe(1);
   });
 });
@@ -48,8 +53,11 @@ describe('preflightProblems', () => {
   it('lists every problem at once', () => {
     const root = fakeRoot({ pubkey: PUBKEY_PLACEHOLDER, plugin: false });
     writeFileSync(join(root, 'package.json'), JSON.stringify({ version: '1.2.2' }));
+    const lock = join(root, 'apps', 'desktop', 'src-tauri', 'Cargo.lock');
+    writeFileSync(lock, readFileSync(lock, 'utf8').replace('"1.2.3"', '"1.2.1"'));
     const problems = preflightProblems(root, 'v1.2.3', false);
-    expect(problems).toHaveLength(4);
+    expect(problems).toHaveLength(5);
+    expect(problems.join('\n')).toMatch(/Cargo\.lock.*1\.2\.1/);
     expect(problems.join('\n')).toMatch(/package\.json.*1\.2\.2/);
     expect(problems.join('\n')).toMatch(/segnaposto/);
     expect(problems.join('\n')).toMatch(/tauri-plugin-updater/);
@@ -62,13 +70,6 @@ describe('preflightProblems', () => {
         expect.stringMatching(/etichetta/),
       ]);
     }
-  });
-
-  it('stops today on the repository itself: placeholder key and no plugin yet', () => {
-    const version = readVersions(repoRoot)['tauri.conf.json'];
-    const problems = preflightProblems(repoRoot, `v${version}`, true);
-    expect(problems.join('\n')).toMatch(/segnaposto/);
-    expect(problems.join('\n')).toMatch(/tauri-plugin-updater/);
   });
 });
 

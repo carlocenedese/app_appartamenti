@@ -12,7 +12,7 @@
 
 ## Task 2: `scripts/release.mjs` (preflight, manifest, controllo del pacchetto)
 
-- [x] `preflight <etichetta>`: etichetta `vX.Y.Z` uguale alla versione di `tauri.conf.json`, `Cargo.toml`, `package.json`, `apps/desktop/package.json`; chiave pubblica non segnaposto; `tauri-plugin-updater` in `Cargo.toml`; secret di firma presente (`HAS_SIGNING_KEY=true`). Elenca tutti i problemi, esce con 1.
+- [x] `preflight <etichetta>`: etichetta `vX.Y.Z` uguale alla versione di `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `package.json`, `apps/desktop/package.json`; chiave pubblica non segnaposto; `tauri-plugin-updater` in `Cargo.toml`; secret di firma presente (`HAS_SIGNING_KEY=true`). Elenca tutti i problemi, esce con 1.
 - [x] `manifest <cartella> <etichetta> <indirizzo base>`: controlla che ci siano l'installer Windows e l'archivio macOS con le loro `.sig`, che nessun file superi il limite, scrive `latest.json` (piattaforme `windows-x86_64`, `darwin-aarch64`) e `SHA256SUMS`.
 - [x] Test in `scripts/release.test.mjs` con cartelle temporanee.
 
