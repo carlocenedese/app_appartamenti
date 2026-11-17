@@ -73,6 +73,12 @@ describe('preflightProblems', () => {
     expect(preflightProblems(fakeRoot(), 'v1.2.3')).toEqual([]);
   });
 
+  it('finds nothing missing in the repository except, until user1 writes it, the public key', () => {
+    const tag = `v${readVersions(repoRoot)['tauri.conf.json']}`;
+    const problems = preflightProblems(repoRoot, tag).filter((p) => !/segnaposto/.test(p));
+    expect(problems).toEqual([]);
+  });
+
   it('lists every problem at once', () => {
     const root = fakeRoot({
       pubkey: PUBKEY_PLACEHOLDER,
