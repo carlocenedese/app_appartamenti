@@ -48,8 +48,9 @@ della build Tauri. Senza la cartella `tauri build` e `tauri dev` si fermano, per
 La costruzione parte solo con un'etichetta di versione o a mano, mai a ogni push (i minuti macOS
 costano dieci volte quelli Linux):
 
-1. Etichetta: `git tag v0.1.0` e `git push origin v0.1.0` (per una prova va bene anche
-   `v0.0.1-prova`, da cancellare dopo), oppure su GitHub: Actions, Build, Run workflow.
+1. Per una prova: su GitHub, Actions, Build, Run workflow. Un'etichetta `vX.Y.Z` invece
+   **pubblica** una release con gli aggiornamenti firmati e parte solo quando tutto è pronto
+   (`scripts/release.mjs preflight`; passi in `docs/distribuzione.md`).
 2. La prima volta dura circa 20-30 minuti (poi la cache di Rust accorcia). Le due build, Windows e
    macOS, vanno in parallelo; se una fallisce l'altra continua. Test e controllo delle licenze
    (npm e `cargo deny`) girano solo nel job Windows: `ci.yml` prova già ogni sistema.
@@ -79,8 +80,9 @@ Gli installer non sono firmati:
   di Tauri). Con queste la prima build è passata; se una dipendenza nuova porta altre licenze, decide user1.
 - **Chiave di firma degli aggiornamenti**: generata l'11 novembre 2026, senza password, nella
   cartella iCloud di user1 `Personale/App_appartamenti/chiave-firma-aggiornamenti/` (con un
-  `LEGGIMI.txt`). Non entra mai nel repository; nel piano 6 la privata diventa un secret GitHub e la
-  pubblica va in `tauri.conf.json`. Conservarne una copia anche fuori da iCloud.
+  `LEGGIMI.txt`). Non entra mai nel repository; `node scripts/setup-updater.mjs <cartella>`, eseguito
+  da user1, ne fa il secret `TAURI_SIGNING_PRIVATE_KEY` e scrive la pubblica in `tauri.conf.json`
+  al posto del segnaposto (`docs/distribuzione.md`). Conservarne una copia anche fuori da iCloud.
 - **Firma del codice**: nessun certificato Windows; su Mac, se l'app si rifiuta di partire su
   Apple Silicon serve almeno la firma ad hoc (`bundle.macOS.signingIdentity` impostato a `-`).
 - **Versione**: `version` sta in `tauri.conf.json`, in `Cargo.toml` e in `package.json`, da
