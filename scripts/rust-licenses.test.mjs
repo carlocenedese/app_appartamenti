@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { disallowedCrates, newDisallowedCrates } from './rust-licenses.mjs';
+import { disallowedCrates, newDisallowedCrates, toSpdx } from './rust-licenses.mjs';
 
 const REGISTRY = 'registry+https://github.com/rust-lang/crates.io-index';
 const crate = (name, license, source = REGISTRY) => ({ name, version: '1.0.0', license, source });
@@ -19,6 +19,18 @@ const base = meta(
 describe('rust licences', { timeout: 30_000 }, () => {
   it('lists registry crates outside the allowed list, not the app itself', () => {
     expect([...disallowedCrates(base)]).toEqual([['cssparser', 'MPL-2.0']]);
+  });
+
+  it('reads the old cargo format with «/» as OR', () => {
+    const old = meta(
+      crate('filetime', 'MIT/Apache-2.0'),
+      crate('a', 'Apache-2.0/MIT'),
+      crate('b', 'MIT / Apache-2.0'),
+      crate('c', 'MIT/GPL-3.0'),
+      crate('d', 'GPL-3.0/LGPL-2.1'),
+    );
+    expect(toSpdx('MIT/Apache-2.0')).toBe('MIT OR Apache-2.0');
+    expect([...disallowedCrates(old)]).toEqual([['d', 'GPL-3.0/LGPL-2.1']]);
   });
 
   it('ignores crates outside the resolve of the filtered platforms', () => {

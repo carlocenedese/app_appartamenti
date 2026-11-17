@@ -15,6 +15,10 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { isLicenseAllowed } from './check-licenses.mjs';
 
+/** Cargo's old licence format uses «/» for OR («MIT/Apache-2.0»); SPDX needs « OR ». */
+export const toSpdx = (license) =>
+  typeof license === 'string' ? license.replace(/\s*\/\s*/g, ' OR ') : license;
+
 /** Name -> licence of the registry crates whose licence is not allowed (missing counts too). */
 export function disallowedCrates(metadata) {
   const out = new Map();
@@ -22,7 +26,7 @@ export function disallowedCrates(metadata) {
   for (const p of metadata.packages ?? []) {
     if (metadata.resolve && !resolved.has(p.id)) continue;
     // source null: the app's own crate, never published.
-    if (p.source !== null && !isLicenseAllowed(p.license))
+    if (p.source !== null && !isLicenseAllowed(toSpdx(p.license)))
       out.set(p.name, p.license ?? '(nessuna)');
   }
   return out;
