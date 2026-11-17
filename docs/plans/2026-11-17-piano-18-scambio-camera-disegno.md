@@ -67,3 +67,5 @@ nessun nome né importo.
 6. **Identificativi** derivati `<presenza>-<mese>`: va bene o preferisci scriverli tu (`--id-a`, `--id-b`)?
 7. **Contratto e registrazione.** Lo scambio non tocca `takeovers` né la registrazione: serve una
    comunicazione all'Agenzia o un'annotazione nel contratto?
+8. **Subentro già registrato.** Se una delle due presenze esce in un subentro già scritto, lo scambio è
+   rifiutato (`pending-takeover`): il subentro andrebbe riscritto sulla presenza nuova. Va fatto?

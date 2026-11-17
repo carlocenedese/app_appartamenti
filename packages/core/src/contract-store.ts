@@ -22,6 +22,7 @@ import { depositChecks } from './deposit';
 import type { DepositCheck } from './deposit';
 import type { Cents } from './money';
 import { parseOrThrow } from './parse';
+import { addMonths } from './period';
 import type { YearMonth } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -41,7 +42,8 @@ export type SaveContractResult =
         | 'unknown-tenancy'
         | 'unknown-deposit'
         | 'rent-outside-contract'
-        | 'takeover-unlinked';
+        | 'takeover-unlinked'
+        | 'swap-unlinked';
     };
 
 export interface SetContractRentInput {
@@ -107,7 +109,9 @@ async function write(
  * (absent or deleted); `unknown-tenancy` (a `tenancyIds` entry is not a live tenancy of the same
  * apartment); `unknown-deposit` (a `depositPaymentIds` entry is not a live `caparra` payment of
  * the same apartment); `rent-outside-contract` (the new dates leave a rent entry out);
- * `takeover-unlinked` (plan 11: a tenancy of a stored takeover is not in the new `tenancyIds`). The dates
+ * `takeover-unlinked` (plan 11: a tenancy of a stored takeover is not in the new `tenancyIds`);
+ * `swap-unlinked` (plan 18: a linked room change of a tenant, a stay ending the month before
+ * another in a different room, as a room swap writes it, loses one of its stays). The dates
  * of the tenancies are not checked here: a tenancy outside them is saved and shows in the checks.
  */
 export async function saveContract(
@@ -152,6 +156,23 @@ export async function saveContract(
     (takeovers ?? []).some((t) => !ids.has(t.outTenancyId) || !ids.has(t.inTenancyId))
   ) {
     return refuse('takeover-unlinked');
+  }
+  // Plan 18: a room change (a swap) keeps both its stays linked, like a takeover.
+  const was = new Set(before?.deleted === true ? [] : (before?.tenancyIds ?? []));
+  const linkedBefore = tenancies.filter((t) => was.has(t.id));
+  if (
+    linkedBefore.some((next) =>
+      linkedBefore.some(
+        (prev) =>
+          prev.tenantId === next.tenantId &&
+          prev.room !== next.room &&
+          prev.to !== undefined &&
+          addMonths(prev.to, 1) === next.from &&
+          (!ids.has(prev.id) || !ids.has(next.id)),
+      ),
+    )
+  ) {
+    return refuse('swap-unlinked');
   }
   const after = parseOrThrow(
     ContractSchema,

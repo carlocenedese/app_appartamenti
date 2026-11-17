@@ -29,6 +29,7 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | periodo di conguaglio                | settlement period                            | dipende dal contratto; impostazione dell'appartamento                        |
 | permanenza, presenza                 | tenancy                                      | periodo in cui un inquilino occupa un posto, in mesi interi                  |
 | subentro                             | takeover                                     | un inquilino ne sostituisce un altro a metà periodo                          |
+| scambio di posto, scambio camera     | room swap                                    | due inquilini dello stesso contratto si scambiano i posti dal mese M         |
 | posto                                | bed, place                                   | divisore delle spese: numero di posti dell'appartamento                      |
 | caparra                              | security deposit                             | restituita con gli interessi legali, meno conguaglio e addebiti extra        |
 | caparra attesa                       | expected deposit                             | caparra chiesta al nuovo inquilino, dato della presenza inserito da user1    |

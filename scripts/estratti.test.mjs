@@ -4459,6 +4459,8 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     ]) {
       expect((await run(args)).code).toBe(2);
     }
+    const long = await run(scambio('--mese', '2026-04', '--id-a', 'x'.repeat(65)));
+    expect([long.code, long.json.reason, long.json.part]).toEqual([1, 'id-too-long', 'a']);
     const undo = await run([
       'annulla-riconciliazione',
       ...s.common,
@@ -4466,6 +4468,10 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       saved.json.operationId,
     ]);
     expect(undo.code).toBe(0);
+    expect((await run(scambio('--mese', '2026-04', '--id-a', 'CON'))).code).toBe(2);
+    const named = await run(scambio('--mese', '2026-04', '--id-a', 'tcy-a2', '--id-b', 'tcy-b2'));
+    expect([named.code, named.json.tenancyIds]).toEqual([0, ['tcy-a2', 'tcy-b2']]);
+    await run(['annulla-riconciliazione', ...s.common, '--operazione', named.json.operationId]);
     const redo = await run(scambio('--canone-a', '360,00', '--canone-b', '350,00'));
     expect([redo.code, redo.json.status, redo.json.warnings]).toEqual([0, 'saved', undefined]);
   });

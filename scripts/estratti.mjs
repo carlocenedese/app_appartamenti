@@ -259,10 +259,16 @@ const MESSAGES = {
     'Rifiutato: il contratto ha un subentro: ripetere --presenze con le presenze del subentro.',
   'no-room': 'Rifiutato: una delle due presenze non ha un posto.',
   'same-room': 'Rifiutato: le due presenze sono nello stesso posto.',
-  'different-contract':
-    'Rifiutato: le due presenze sono in contratti diversi (domanda aperta del piano 18).',
+  'different-contract': 'Rifiutato: le due presenze sono in contratti diversi.',
+  'pending-takeover':
+    'Rifiutato: una delle due presenze ha già un subentro registrato: annullare prima il subentro.',
+  'id-too-long':
+    'Rifiutato: l’identificativo della presenza nuova supera 64 caratteri (vedi part): indicarlo con --id-a o --id-b.',
+  'swap-unlinked':
+    'Rifiutato: il contratto ha un cambio di posto: ripetere --presenze con entrambe le presenze di ciascun inquilino.',
   'swap-rent-unchanged':
     'Nota: i due posti hanno affitti diversi e almeno uno resta quello di prima: indicare --canone-a e --canone-b se cambiano.',
+  'swap-forfait-unchanged': 'Nota: i due forfait sono diversi e ciascuno tiene il proprio.',
   'has-recoveries':
     'Rifiutato: l’inquilino ha un recupero in un periodo in cui non sarebbe più presente: correggere prima il recupero.',
   'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
@@ -305,6 +311,14 @@ const MESSAGES = {
 };
 
 /** Thrown to stop with a status; `invalid` is exit 2, `rejected` exit 1. */
+// Plan 18: the refusals of scambio-camera whose general message speaks of a takeover or an arrival.
+const SWAP_MESSAGES = {
+  'same-tenant': 'Rifiutato: nello scambio le due presenze sono dello stesso inquilino.',
+  'no-contract': 'Rifiutato: una delle due presenze non è in esattamente un contratto vivo.',
+  'tenancy-exists':
+    'Rifiutato: una presenza nuova esiste già con altri dati: annullare lo scambio precedente (annulla-riconciliazione) o scegliere altri identificativi con --id-a e --id-b.',
+};
+
 class Stop extends Error {
   constructor(status, reason, extra = {}) {
     super(reason);
@@ -407,6 +421,8 @@ const OPTIONS = {
   'presenza-a': { type: 'string' },
   'presenza-b': { type: 'string' },
   'canone-a': { type: 'string' },
+  'id-a': { type: 'string' },
+  'id-b': { type: 'string' },
   'canone-b': { type: 'string' },
   tasso: { type: 'string', multiple: true },
   addebito: { type: 'string', multiple: true },
@@ -1842,25 +1858,33 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (amount < 0) throw invalid('bad-arguments');
       return amount;
     };
-    const result = await recordRoomSwap(
-      store,
-      {
-        apartmentId: v.appartamento,
-        tenancyIdA: v['presenza-a'],
-        tenancyIdB: v['presenza-b'],
-        month: month(v.mese),
-        ...optional('monthlyRentA', rent(v['canone-a'])),
-        ...optional('monthlyRentB', rent(v['canone-b'])),
-      },
-      who,
-      clock,
-      newId,
-    );
+    let result;
+    try {
+      result = await recordRoomSwap(
+        store,
+        {
+          apartmentId: v.appartamento,
+          tenancyIdA: v['presenza-a'],
+          tenancyIdB: v['presenza-b'],
+          month: month(v.mese),
+          ...optional('monthlyRentA', rent(v['canone-a'])),
+          ...optional('idA', v['id-a']),
+          ...optional('idB', v['id-b']),
+          ...optional('monthlyRentB', rent(v['canone-b'])),
+        },
+        who,
+        clock,
+        newId,
+      );
+    } catch (error) {
+      // An id the store refuses (a name reserved on Windows) is a bad argument.
+      if (error instanceof RangeError) throw invalid('bad-arguments');
+      throw error;
+    }
     if (result.status === 'refused') {
       throw new Stop('rejected', result.reason, {
-        ...(result.reason === 'same-tenant'
-          ? { message: 'Rifiutato: nello scambio le due presenze sono dello stesso inquilino.' }
-          : {}),
+        ...optional('message', SWAP_MESSAGES[result.reason]),
+        ...optional('part', result.part),
         ...optional('code', result.code),
         ...optional('month', result.month),
       });
@@ -1871,7 +1895,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
       ...(result.warnings === undefined
         ? {}
-        : { warnings: result.warnings, message: MESSAGES['swap-rent-unchanged'] }),
+        : {
+            warnings: result.warnings,
+            message: result.warnings.map((w) => MESSAGES[w]).join(' '),
+          }),
     };
   }
 
@@ -2579,7 +2606,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       'caparra-attesa': ['presenza', 'subentro'],
       presenza: ['fine-presenza', 'subentro'],
       ...Object.fromEntries(
-        ['presenza-a', 'presenza-b', 'canone-a', 'canone-b'].map((o) => [o, ['scambio-camera']]),
+        ['presenza-a', 'presenza-b', 'canone-a', 'canone-b', 'id-a', 'id-b'].map((o) => [
+          o,
+          ['scambio-camera'],
+        ]),
       ),
       tasso: ['caparra-restituzione'],
       addebito: ['caparra-restituzione'],
