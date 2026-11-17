@@ -4155,13 +4155,13 @@ describe('pnpm estratti tasse (piano 10)', () => {
       '--anno',
       '2026',
       '--voce',
-      'condominio',
+      'tari',
       '--importo',
       '50,00',
     ]);
     const row = async () =>
       (await run(['tasse', ...s.common, '--anno', '2026'])).json.tables[0].rows.find(
-        (r) => r.voce === 'condominio',
+        (r) => r.voce === 'tari',
       );
     expect((await row()).state).toBe('discrepanza');
     const confirm = [
@@ -4172,7 +4172,7 @@ describe('pnpm estratti tasse (piano 10)', () => {
       '--anno',
       '2026',
       '--voce',
-      'condominio',
+      'tari',
       '--note',
       'Nota di prova',
     ];
@@ -4180,11 +4180,11 @@ describe('pnpm estratti tasse (piano 10)', () => {
     expect([done.code, done.json.status, done.json.confirmationId]).toEqual([
       0,
       'confirmed',
-      'taxc-nord-2026-condominio',
+      'taxc-nord-2026-tari',
     ]);
     expect(done.out).not.toMatch(/Nota di prova|5000/);
     expect((await row()).state).toBe('confermata');
-    expect((await run(confirm.map((a) => (a === 'condominio' ? 'imu' : a)))).json.reason).toBe(
+    expect((await run(confirm.map((a) => (a === 'tari' ? 'imu' : a)))).json.reason).toBe(
       'no-discrepancy',
     );
     const undo = await run([

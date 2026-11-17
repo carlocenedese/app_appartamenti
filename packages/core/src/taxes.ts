@@ -206,6 +206,7 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
 
     // Condominio, the owners' part (R305): the tax year is the year of the debit (answer of
     // user1, 17 November 2026), the latest when in parts; not debited yet, the year of the due date.
+    // The amount (the «Quota proprietà» of the owners' file) is not decided: `rule-undecided`.
     const apartmentOf = new Map(apartments.map((a) => [a.id, a]));
     for (const instalment of live(input.instalments)) {
       const apartment = apartmentOf.get(instalment.apartmentId);
@@ -232,8 +233,13 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       const cls = classOf.get(payment.transactionId);
       const apartmentId = cls?.apartmentId ?? tx?.apartmentId;
       if (apartmentId === undefined || !mine.has(apartmentId)) continue;
-      // An F24 that also pays an IMU rate is split (plan 17, R307): its parts count here.
-      const valid = isDebit(tx) && cls?.kind === 'tasse';
+      // An F24 that also pays an IMU rate is split (plan 17, R307): its parts count here; parts
+      // that no longer make the whole debit without an IMU rate are stale.
+      const parts = payment.parts.reduce((sum, p) => sum + p.amount, 0);
+      const valid =
+        isDebit(tx) &&
+        cls?.kind === 'tasse' &&
+        (cls.imu !== undefined ? parts < -tx.amount : parts === -tx.amount);
       for (const part of payment.parts.filter((p) => p.year === year)) {
         if (valid) {
           at(part.voce).paid += part.amount;
@@ -294,6 +300,7 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
         else at(voce).expected += item.amount;
       }
     }
+    flag('condominio', 'rule-undecided');
     const annual = [...annualGroups.values()];
     if (annual.some((g) => g.paid === undefined)) flag('imu', 'imu-year-open');
     const annualDifference =

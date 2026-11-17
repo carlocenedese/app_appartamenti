@@ -248,7 +248,7 @@ export type SaveTenantRecoveryResult =
  * that is not a safe file name part, both an instalment and a movement, a positive amount without
  * either, a status the schema refuses); `unknown-apartment`; `not-extraordinary` (the instalment is
  * not a live extraordinary condominium instalment of the apartment); `unknown-expense` (the movement
- * is not a live outgoing movement classified to the apartment); `missing-date` (no expense, no
+ * is not a live booked outgoing movement classified to the apartment); `missing-date` (no expense, no
  * date and no period: it would never count); `bad-shares` (a tenant twice or without a live
  * tenancy in the apartment, a share zero or of the other sign, shares that do not add up);
  * `amount-too-high` (a positive recovery that, with the other live positive recoveries of the same
@@ -298,7 +298,13 @@ export async function saveTenantRecovery(
         c.kind !== 'escluso' &&
         c.apartmentId === input.apartmentId,
     );
-    if (transaction === undefined || transaction.amount >= 0 || !classified) {
+    // A pending row is not paid yet (R2): never an expense to recover.
+    if (
+      transaction === undefined ||
+      transaction.booked === false ||
+      transaction.amount >= 0 ||
+      !classified
+    ) {
       return refuse('unknown-expense');
     }
     expense = { amount: -transaction.amount, date: transaction.date };

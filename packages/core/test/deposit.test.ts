@@ -329,6 +329,12 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
     expect(await reason({ tenantId: 'ten-dario' })).toBe('missing-rate');
     await seed(store, [['legalRate', rate('2027')]]);
     expect(await reason({ tenantId: 'ten-dario' })).toBe('no-period');
+    // A conguaglio typed by user1 needs no settlement period.
+    const typed = await loadDepositReturn(
+      store,
+      returnInput({ tenantId: 'ten-dario', conguaglio: cents(0) }),
+    );
+    expect(typed.status).toBe('computed');
   });
 });
 

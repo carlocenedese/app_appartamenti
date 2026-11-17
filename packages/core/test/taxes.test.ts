@@ -232,15 +232,14 @@ describe('taxTable (plan 10, task 3)', () => {
         expected: 10000,
         difference: 75,
       },
-      // No condominium instalment: nothing paid or expected (R305).
+      // No condominium instalment: nothing paid or expected; the amount rule is not decided (R305).
       {
         voce: 'condominio',
-        state: 'in-linea',
-        reasons: [],
+        state: 'da-verificare',
+        reasons: ['rule-undecided'],
         estimate: 3,
         paid: 0,
         expected: 0,
-        difference: -3,
       },
     ]);
     // user2 typed nothing: every voce is missing its estimate.
@@ -751,7 +750,11 @@ describe('taxTable, answers of 17 November 2026 (plan 17)', () => {
       );
     // 2026: 100,00 € of c-paid (debited in January) + 250,00 € of the extraordinary less the
     // recovery; 100,00 € of c-due expected.
-    expect(row('2026')).toMatchObject({ reasons: [], paid: 35000, expected: 10000 });
+    expect(row('2026')).toMatchObject({
+      reasons: ['rule-undecided'],
+      paid: 35000,
+      expected: 10000,
+    });
     expect(row('2025')).toMatchObject({ paid: 0, expected: 0 });
   });
 
@@ -776,6 +779,32 @@ describe('taxTable, answers of 17 November 2026 (plan 17)', () => {
     });
     expect(row(-12)).toMatchObject({ state: 'discrepanza' });
     expect(row(-12)).not.toHaveProperty('confirmationId');
+  });
+
+  it('parts that no longer make the debit, once the IMU rate is gone, are stale (R307)', () => {
+    const row = rowOf(
+      taxTable(
+        input({
+          classes: parse('movementClass', [tasse('tx-imu1'), tasse('tx-ced'), tasse('tx-in')]),
+          taxPayments: parse('taxPayment', [
+            {
+              id: 'taxp-tx-ced',
+              transactionId: 'tx-ced',
+              parts: [{ voce: 'cedolare', year: '2026', amount: 100000 }],
+            },
+            {
+              id: 'taxp-tx-imu1',
+              transactionId: 'tx-imu1',
+              parts: [{ voce: 'cedolare', year: '2026', amount: 10000 }],
+            },
+          ]),
+        }),
+      ),
+      'user1',
+      'cedolare',
+    );
+    expect(row?.reasons).toContain('stale-assignment');
+    expect(row?.paid).toBe(100000);
   });
 
   it('a mixed F24: its cedolare part counts, the IMU rate gets the rest (R307)', () => {

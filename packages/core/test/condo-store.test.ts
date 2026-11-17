@@ -328,6 +328,21 @@ describe('recoveries of plan 17 (R300): sign, supplier expense, date of the expe
     await put('transaction', { ...tx, id: 'tx-1', date: '2026-12-03', amount: -12000 });
     await put('transaction', { ...tx, id: 'tx-in', date: '2026-12-04', amount: 12000 });
     await put('transaction', { ...tx, id: 'tx-free', date: '2026-12-05', amount: -9000 });
+    await put('transaction', {
+      ...tx,
+      id: 'tx-pend',
+      date: '2026-12-06',
+      amount: -9000,
+      booked: false,
+    });
+    await put('movementClass', {
+      id: 'mc-tx-pend',
+      v: 1,
+      rev: 1,
+      transactionId: 'tx-pend',
+      kind: 'altro',
+      apartmentId: 'apt-a',
+    });
     await put('movementClass', {
       id: 'mc-tx-1',
       v: 1,
@@ -386,6 +401,9 @@ describe('recoveries of plan 17 (R300): sign, supplier expense, date of the expe
       refused('unknown-expense'),
     );
     expect(await saveR(store, base({ transactionId: 'tx-free' }))).toEqual(
+      refused('unknown-expense'),
+    );
+    expect(await saveR(store, base({ transactionId: 'tx-pend' }))).toEqual(
       refused('unknown-expense'),
     );
     expect(await saveR(store, base({ transactionId: 'nessuno' }))).toEqual(

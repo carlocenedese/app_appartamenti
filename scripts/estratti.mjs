@@ -31,7 +31,7 @@
 // Plan 11 adds presenza (the arrival of a tenant, optionally in a contract), fine-presenza (the last
 // month of a stay), subentro (a takeover inside a contract), stato-contratti (tenancies, takeovers,
 // deposits and checks of each contract) and caparra-restituzione (the return statement of a deposit,
-// read only, every figure typed by user1).
+// read only).
 // Plan 10 adds tasse-stima (the start-of-year estimate of an apartment, year and voce typed by
 // user1), tasse-assegna (a «tasse» debit assigned to cedolare or registro and tax years),
 // tasse-copia (the estimates of the year before, copied only on this command) and tasse (the
@@ -39,6 +39,12 @@
 // Plan 15 adds bolletta (imports a PDF with its reading from `python -I -m bollette_pdf extract`:
 // registered by itself, confirmed with --conferma, or left «da rivedere»), annulla-bolletta (takes
 // back what a PDF created) and cruscotto (counts by code and apartment for the Home).
+// Plan 17 adds tasso-legale (the legal rate of a year), tasse-conferma (a tax discrepancy confirmed
+// with a note), scheda-inquilino (the personal data of a tenant card, never echoed), soglie-consumi
+// (the thresholds of the consumption alarm) and consumi (one bill against them); recupero takes
+// --movimento, --data and a negative amount, scadenza-nuova --voce, appartamento --codici;
+// caparra-restituzione takes the dates, rates and conguaglio from the store (--conguaglio to type
+// it); bolletta and annulla-bolletta move the PDF to Bollette and back to Da_smistare.
 // Exit codes: 0 done, 1 refused (or already imported), 2 arguments or files not valid, 3 an
 // unexpected failure (an interrupted import is resumed by repeating `importa`).
 
@@ -558,6 +564,15 @@ function basisPoints(text) {
   const bp = Number(found[1]) * 100 + Number((found[2] ?? '').padEnd(2, '0'));
   if (bp < 1 || bp > 10000) throw invalid('bad-arguments');
   return bp;
+}
+
+/** `moveFileNoOverwrite`, `move-failed` instead of an error: the records are already written. */
+async function moveSafely(root, from, to) {
+  try {
+    return await moveFileNoOverwrite(root, from, to);
+  } catch {
+    return 'move-failed';
+  }
 }
 
 /** `consumi:30,importo:20,prezzo:10` (percent) as basis points by metric (plan 17, R313). */
@@ -2177,11 +2192,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (inside.startsWith('..') || isAbsolute(inside)) file = 'outside-folder';
       else {
         const plan = billFileMove(apartment, bill.filePath);
-        file = await moveFileNoOverwrite(
-          values.cartella,
-          inside.split(/[\\/]/).join('/'),
-          plan.filed,
-        );
+        // The bill is registered whatever happens to the file: never «failed» for a move.
+        file = await moveSafely(values.cartella, inside.split(/[\\/]/).join('/'), plan.filed);
       }
     }
     return {
@@ -2249,7 +2261,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         .split(/[\\/]/)
         .join('/');
       if (inside === plan.filed) {
-        file = await moveFileNoOverwrite(values.cartella, plan.filed, plan.inbox);
+        file = await moveSafely(values.cartella, plan.filed, plan.inbox);
       }
     }
     return {

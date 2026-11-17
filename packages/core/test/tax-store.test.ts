@@ -426,12 +426,12 @@ describe('plan 17: confirmed discrepancies (R304) and mixed F24 (R307)', () => {
     const store = await fixtureStore();
     await setTaxEstimate(
       store,
-      { apartmentId: 'nord', year: '2026', voce: 'condominio', amount: cents(5000) },
+      { apartmentId: 'nord', year: '2026', voce: 'tari', amount: cents(5000) },
       'p1',
       clock,
       ids('e'),
     );
-    const confirm = (voce: string, note = 'Spesa del condominio già pagata nel 2025', p = 'c') =>
+    const confirm = (voce: string, note = 'Arrotondamento della TARI', p = 'c') =>
       confirmTaxDiscrepancy(
         store,
         { apartmentId: 'nord', year: '2026', voce, note },
@@ -440,29 +440,28 @@ describe('plan 17: confirmed discrepancies (R304) and mixed F24 (R307)', () => {
         ids(p),
       );
     expect(await confirm('imu')).toEqual(refused('no-discrepancy'));
-    expect(await confirm('condominio', '  ')).toEqual(refused('bad-note'));
+    expect(await confirm('tari', '  ')).toEqual(refused('bad-note'));
     expect(await confirm('altro')).toEqual(refused('bad-voce'));
-    const done = await confirm('condominio');
+    const done = await confirm('tari');
     expect(done).toEqual({
       status: 'confirmed',
       operationId: 'c-1',
-      confirmationId: 'taxc-nord-2026-condominio',
+      confirmationId: 'taxc-nord-2026-tari',
     });
-    expect(await confirm('condominio', 'Di nuovo', 'd')).toEqual({
+    expect(await confirm('tari', 'Di nuovo', 'd')).toEqual({
       status: 'unchanged',
-      confirmationId: 'taxc-nord-2026-condominio',
+      confirmationId: 'taxc-nord-2026-tari',
     });
     const table = await loadTaxTable(store, { year: '2026', today: isoDate('2026-03-01') });
     const row =
       table.status === 'computed'
-        ? table.tables[0]?.rows.find((r) => r.voce === 'condominio')
+        ? table.tables[0]?.rows.find((r) => r.voce === 'tari')
         : undefined;
     expect(row).toMatchObject({ state: 'confermata', difference: -5000 });
     await undoOperation(store, 'c-1', 'p1', clock, ids('u'));
     const after = await loadTaxTable(store, { year: '2026', today: isoDate('2026-03-01') });
     expect(
-      after.status === 'computed' &&
-        after.tables[0]?.rows.find((r) => r.voce === 'condominio')?.state,
+      after.status === 'computed' && after.tables[0]?.rows.find((r) => r.voce === 'tari')?.state,
     ).toBe('discrepanza');
   });
 

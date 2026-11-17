@@ -362,7 +362,7 @@ export const TenantSchema = RecordBaseSchema.extend({
   language: z.enum(['it', 'en']).optional(),
   /**
    * The personal data of the tenant's card (plan 17, R311), typed by user1: they fill the forms.
-   * Owners only: `_app/dati` is never shared with the tenants (section 7), never printed without
+   * Owners only: `_app/dati` is never shared with the tenants (section 11), never printed without
    * `--dettagli`.
    */
   personal: z

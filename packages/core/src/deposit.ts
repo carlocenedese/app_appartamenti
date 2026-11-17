@@ -10,13 +10,16 @@ import { SettlementInputError, calcConguaglio, isPresent } from './conguaglio';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
 import { legalInterest } from './interest';
+import { planMatch } from './match-store';
 import { checkConsistency, commitChange } from './journal';
 import {
   ApartmentSchema,
+  BillMatchSchema,
   ContractSchema,
   LegalRateSchema,
   PaymentSchema,
   TenancySchema,
+  TenantRecoverySchema,
 } from './model';
 import type { Payment, Tenancy, TenantRecovery } from './model';
 import { cents } from './money';
@@ -242,28 +245,35 @@ export async function loadDepositReturn(
   );
   const periods = (await loadAll(store, 'contract', ContractSchema)).records
     .filter((c) => c.apartmentId === input.apartmentId)
-    .flatMap((c) =>
-      apartment === undefined ? [] : settlementPeriods(c, apartment.annualitaStart),
-    );
-  const spans = new Map(periods.map((p) => [`${p.from}/${p.to}`, p]));
-  const holding = [...spans.values()].filter((p) => p.from <= exit && exit <= p.to);
-  if (holding.length === 0) return refuse('no-period');
-  if (holding.length > 1) return refuse('ambiguous-period');
-  const period = holding[0] as (typeof holding)[number];
-  const loaded = await loadExcelInput(store, {
-    apartmentId: input.apartmentId,
-    periodLabel: period.label,
-  });
-  if (loaded.status !== 'ok') return refuse('ambiguous-period');
+    .flatMap((c) => {
+      if (apartment === undefined) return [];
+      try {
+        return settlementPeriods(c, apartment.annualitaStart);
+      } catch {
+        return []; // a contract without settlement periods (its checks say so)
+      }
+    });
+  const spans = [...new Map(periods.map((p) => [`${p.from}/${p.to}`, p])).values()];
+
+  // The conguaglio of the exit period, unless user1 typed it.
   let conguaglio = input.conguaglio;
-  let settlement;
-  try {
-    settlement = calcConguaglio(loaded.input);
-  } catch (error) {
-    if (error instanceof SettlementInputError) return refuse('settlement-error');
-    throw error;
-  }
   if (conguaglio === undefined) {
+    const holding = spans.filter((p) => p.from <= exit && exit <= p.to);
+    if (holding.length === 0) return refuse('no-period');
+    if (holding.length > 1) return refuse('ambiguous-period');
+    const period = holding[0] as (typeof holding)[number];
+    const loaded = await loadExcelInput(store, {
+      apartmentId: input.apartmentId,
+      periodLabel: period.label,
+    });
+    if (loaded.status !== 'ok') return refuse('ambiguous-period');
+    let settlement;
+    try {
+      settlement = calcConguaglio(loaded.input);
+    } catch (error) {
+      if (error instanceof SettlementInputError) return refuse('settlement-error');
+      throw error;
+    }
     const due = settlement.tenants.find((t) => t.tenantId === input.tenantId)?.due ?? 0;
     const paid = loaded.input.payments
       .filter(
@@ -278,13 +288,19 @@ export async function loadDepositReturn(
     conguaglio = cents(due - paid);
   }
 
+  const matches = [
+    ...(await loadAll(store, 'match', BillMatchSchema)).records,
+    ...(await planMatch(store)).assumedMatches,
+  ];
   const recoveries = withheldRecoveries({
-    recoveries: loaded.input.recoveries ?? [],
+    recoveries: (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records.filter(
+      (r) => r.apartmentId === input.apartmentId,
+    ),
     tenantId: input.tenantId,
     tenancies,
-    periods: [...spans.values()],
+    periods: spans,
     paidInstalments: new Set(
-      loaded.input.matches
+      matches
         .filter((m) => m.deleted !== true && m.confirmed && m.part === 'amount')
         .map((m) => m.itemId),
     ),

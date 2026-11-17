@@ -121,5 +121,9 @@ agli inquilini (R193). Esempio numerico delle due letture possibili:
 4. Valori delle soglie dell'allarme consumi e livelli giallo/rosso (R265 domanda 1).
 5. Interessi «a giorni»: il calcolo resta a mesi interi (R7); le presenze sono a mesi interi.
 6. Come si restituisce un recupero negativo (dall'affitto del mese dopo o altro): solo il segno.
-7. Importo del condominio quota proprietario nella tabella delle tasse (R305 è un Ruling).
+7. Importo del condominio quota proprietario nella tabella delle tasse (R305: la riga resta
+   `rule-undecided`).
+9. Collegare il nuovo allarme consumi all'importazione della bolletta (R313).
+10. Capitale della caparra su tutta la storia e conguaglio dell'uscente al netto del già versato
+    (R302, Ruling).
 8. Stima del condominio quando l'ultimo anno con documenti ha il solo preventivo (R310).
