@@ -61,7 +61,7 @@ export type DashboardResult =
 
 // States that mean nothing is left to do, so they are not counted. `assunta` is counted: whether
 // an instalment without a statement is paid is open (R204, question 7).
-const DONE = new Set(['pagata', 'versata', 'in-linea']);
+const DONE = new Set(['pagata', 'versata', 'in-linea', 'confermata']);
 
 /**
  * The counts of every live apartment, by id (R264: any loader refused refuses it all):
@@ -159,7 +159,9 @@ export async function loadDashboard(
         for (const id of table.apartmentIds) add(id, `tasse:${row.state}`);
       }
     }
-    for (const w of taxes.warnings) add(w.apartmentId, 'tasse:stima-mancante');
+    for (const w of taxes.warnings) {
+      for (const id of w.apartmentIds) add(id, 'tasse:stima-mancante');
+    }
   }
 
   const settlements: SettlementStatusRow[] = [];

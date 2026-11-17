@@ -104,6 +104,7 @@ import {
   loadContractStatus,
   loadDepositReturn,
   saveLegalRate,
+  confirmTaxDiscrepancy,
   saveTenant,
   setImuYear,
   setRentYear,
@@ -293,6 +294,10 @@ const MESSAGES = {
     'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
   'tax-no-payable':
     'Da verificare: nessuna scadenza con anno di riferimento per questa voce e quest’anno; una scadenza senza anno va riscritta con «scadenza-nuova --id <id> --anno-riferimento <AAAA>».',
+  'no-discrepancy': 'Rifiutato: la voce di quest’anno non ha una discrepanza da confermare.',
+  'bad-note': 'Rifiutato: la nota è vuota.',
+  'bad-voce': 'Rifiutato: voce delle tasse non valida.',
+  'bad-voice': 'Rifiutato: una scadenza di cedolare o registro è già la sua voce: niente --voce.',
   'tax-discrepancy':
     'Discrepanza tra la stima e il pagato più l’ancora previsto: solo un avviso, non blocca nulla.',
   failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
@@ -452,6 +457,7 @@ const RECONCILE_KINDS = [
   'tax.assign',
   'contact.save',
   'legal-rate.save',
+  'tax.confirm',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -1631,6 +1637,26 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'tasse-conferma') {
+    // Plan 17, R304: a discrepancy confirmed with a note no longer warns (undone with
+    // annulla-riconciliazione). The note is not echoed: it is free text.
+    need(values, 'appartamento', 'anno', 'voce', 'note');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await confirmTaxDiscrepancy(
+      store,
+      { apartmentId: values.appartamento, year: values.anno, voce: values.voce, note: values.note },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      confirmationId: result.confirmationId,
+      ...(result.status === 'confirmed' ? { operationId: result.operationId } : {}),
+    };
+  }
+
   if (name === 'tasse') {
     need(values, 'anno');
     if (positionals.length > 0 || !YearSchema.safeParse(values.anno).success) {
@@ -2142,7 +2168,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'scadenza-nuova') {
     need(values, 'appartamento', 'tipo', 'scadenza');
-    if (positionals.length > 0 || !PayableKindSchema.safeParse(values.tipo).success) {
+    if (
+      positionals.length > 0 ||
+      !PayableKindSchema.safeParse(values.tipo).success ||
+      ![undefined, 'cedolare', 'registro'].includes(values.voce)
+    ) {
       throw invalid('bad-arguments');
     }
     const result = await savePayable(
@@ -2158,6 +2188,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ),
         ...optional('repeatYearly', values['ogni-anno'] === true ? true : undefined),
         ...optional('taxYear', taxYearOf(values['anno-riferimento'])),
+        // The voce of the tax table of a bollo or F24, chosen here (plan 17, R303).
+        ...optional('taxVoice', values.voce),
       },
       who,
       clock,
@@ -2423,6 +2455,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-stima',
         'tasse-copia',
         'tasse-assegna',
+        'tasse-conferma',
         'tasse',
         'bolletta',
         'annulla-bolletta',
@@ -2489,18 +2522,20 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'caparra-restituzione',
         'tasse-stima',
         'tasse-copia',
+        'tasse-conferma',
         'bolletta',
         'contatti',
       ],
-      voce: ['recupero', 'tasse-stima'],
+      voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
       inquilini: ['recupero'],
       quote: ['recupero'],
       periodo: ['recupero'],
       stato: ['scadenze', 'recupero'],
       nome: ['inquilino', 'appartamento', 'contatto'],
       ruolo: ['contatto', 'contatti'],
+      note: ['contatto', 'tasse-conferma'],
       ...Object.fromEntries(
-        ['telefono', 'email', 'note', 'appartamenti', 'utenze', 'categorie'].map((option) => [
+        ['telefono', 'email', 'appartamenti', 'utenze', 'categorie'].map((option) => [
           option,
           ['contatto'],
         ]),
@@ -2509,6 +2544,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       'quota-conduttore': ['condominio-documento'],
       anno: [
         'tasso-legale',
+        'tasse-conferma',
         'imu-atteso',
         'imu-f24',
         'imu',

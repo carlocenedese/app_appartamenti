@@ -1229,12 +1229,24 @@ export const PayableSchema = RecordBaseSchema.extend({
   paid: z.object({ date: ISODateSchema, transactionId: NonEmptyString.optional() }).optional(),
   /** The tax year chosen by user1 (plan 13, R242), never computed; absent: not chosen. */
   taxYear: z.int().min(1).max(9999).optional(),
+  /**
+   * The voce of the tax table of a `bollo`, `f24` or `altro` payable, chosen by user1 when it is
+   * created (plan 17, R303); a `cedolare` or `registro` one is its own voce.
+   */
+  taxVoice: z.enum(['cedolare', 'registro']).optional(),
 })
   .refine((p) => p.id.startsWith('scad-'), {
     message: 'The id must start with scad-',
     path: ['id'],
   })
-  .meta({ description: 'id starts with scad-; expected is positive cents; taxYear 1-9999.' });
+  .refine((p) => p.taxVoice === undefined || !['cedolare', 'registro'].includes(p.kind), {
+    message: 'taxVoice only for bollo, f24 and altro',
+    path: ['taxVoice'],
+  })
+  .meta({
+    description:
+      'id starts with scad-; expected is positive cents; taxYear 1-9999; taxVoice only for bollo, f24 and altro.',
+  });
 export type Payable = z.infer<typeof PayableSchema>;
 
 // --- Condominium (plan 8) ----------------------------------------------------------------------
@@ -1436,6 +1448,29 @@ export const TaxPaymentSchema = RecordBaseSchema.extend({
   });
 export type TaxPayment = z.infer<typeof TaxPaymentSchema>;
 
+// --- Confirmed tax discrepancies (plan 17) ---------------------------------------------------
+
+/**
+ * A discrepancy of the tax table confirmed by user1 with a note (plan 17, R304): the row of the
+ * taxpayer of `apartmentId` (the first of the table) for `year` and `voce` no longer warns while
+ * its difference is still `difference` (and `annualDifference`, for an IMU with only the annual
+ * total). Undone with the journal.
+ */
+export const TaxConfirmationSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  year: YearSchema,
+  voce: TaxVoiceSchema,
+  difference: CentsSchema,
+  annualDifference: CentsSchema.optional(),
+  note: NonEmptyString,
+})
+  .refine((c) => c.id === `taxc-${c.apartmentId}-${c.year}-${c.voce}`, {
+    message: 'The id must be taxc-<apartmentId>-<year>-<voce>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is taxc-<apartmentId>-<year>-<voce>; note not empty.' });
+export type TaxConfirmation = z.infer<typeof TaxConfirmationSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -1472,6 +1507,7 @@ export const recordSchemas = {
   taxPayment: TaxPaymentSchema,
   contact: ContactSchema,
   legalRate: LegalRateSchema,
+  taxConfirmation: TaxConfirmationSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

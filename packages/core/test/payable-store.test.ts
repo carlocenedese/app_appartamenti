@@ -250,6 +250,41 @@ describe('reference year of a payable (plan 13)', () => {
   });
 });
 
+describe('voce of the tax table (plan 17, R303)', () => {
+  it('a bollo keeps the voce chosen at creation, its repetition too; a registro refuses one', async () => {
+    const { store } = await setup();
+    const bollo = { ...input, kind: 'bollo' as const, repeatYearly: true as const };
+    const saved = await savePayable(
+      store,
+      { ...bollo, taxVoice: 'registro' },
+      'user1',
+      clock,
+      ids('v'),
+    );
+    expect(saved).toMatchObject({ status: 'saved' });
+    const id = saved.status === 'saved' ? saved.payableId : '';
+    const next = await repeatPayable(
+      store,
+      { payableId: id, dueDate: isoDate('2027-11-16') },
+      'user1',
+      clock,
+      ids('w'),
+    );
+    const records = (await loadAll(store, 'payable', PayableSchema)).records;
+    expect(records.map((p) => p.taxVoice)).toEqual(['registro', 'registro']);
+    expect(next).toMatchObject({ status: 'saved' });
+    expect(
+      await savePayable(
+        store,
+        { ...input, kind: 'registro', taxVoice: 'cedolare' },
+        'user1',
+        clock,
+        ids('x'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'bad-voice' });
+  });
+});
+
 describe('repeatPayable', () => {
   it('makes the next item with the due date given by the user, once', async () => {
     const { store } = await setup();

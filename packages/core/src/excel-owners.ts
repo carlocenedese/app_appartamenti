@@ -10,7 +10,7 @@ import { instalmentOwnerShare, previousToTenants } from './conguaglio';
 import type { ConguaglioInput } from './conguaglio';
 import { expectedDebit } from './match';
 import { apartmentFolder } from './accounts';
-import type { Apartment, Instalment } from './model';
+import type { Apartment, Instalment, TenantRecovery } from './model';
 import { safeWord } from './proposal';
 import { cents } from './money';
 import type { Cents } from './money';
@@ -82,6 +82,35 @@ const monthRange = (from: YearMonth, to: YearMonth): YearMonth[] =>
   monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`));
 
 /**
+ * The owners' part of a condominium instalment (R3, R8): an extraordinary one in full, less the
+ * live recoveries from tenants on it (plan 17, R300); an ordinary one its part of the yearly owner
+ * share, plus last year's settlement with `condoDifferenceTo: 'owner'` (R193). The «Quota
+ * proprietà» of the owners' file and the condominio row of the tax table (R305).
+ */
+export function ownerShareOf(
+  instalment: Instalment,
+  apartment: Apartment,
+  recoveries: readonly TenantRecovery[],
+): Cents {
+  if (instalment.straordinaria === true) {
+    const recovered = recoveries
+      .filter(
+        (r) =>
+          r.deleted !== true &&
+          r.instalmentId === instalment.id &&
+          r.status !== 'non-recuperabile' &&
+          r.amount > 0,
+      )
+      .reduce((sum, r) => sum + r.amount, 0);
+    return cents(expectedDebit(instalment) - recovered);
+  }
+  return cents(
+    instalmentOwnerShare(instalment) +
+      (previousToTenants(apartment) ? 0 : instalment.conguaglioPrec),
+  );
+}
+
+/**
  * The rows of the sheet: the live condominium instalments of the apartment whose months touch the
  * period, with the criterion of the sheet «Bollette» (R153) but with the extraordinary and the
  * pending ones; sorted by `coversFrom`, then `id`.
@@ -92,19 +121,6 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
   const matches = input.matches.filter(
     (m) => m.deleted !== true && m.confirmed && m.itemType === 'instalment',
   );
-  const toTenants = previousToTenants(apartment);
-  const recovered = (instalmentId: string) =>
-    total(
-      (input.recoveries ?? [])
-        .filter(
-          (r) =>
-            r.deleted !== true &&
-            r.instalmentId === instalmentId &&
-            r.status !== 'non-recuperabile' &&
-            r.amount > 0,
-        )
-        .map((r) => r.amount),
-    );
   const esercizioMonths = (instalment: Instalment): YearMonth[] => {
     if (instalment.conguaglioPrec === 0 || apartment.condominioStart === undefined) return [];
     const range = annualitaRange(instalment.esercizio, apartment.condominioStart);
@@ -141,10 +157,7 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
         rata: i.rata,
         conguaglioPrec: i.conguaglioPrec,
         // With `owner` (R193) last year's settlement is the owner's too.
-        // Plan 17, R300: an extraordinary one less what is to be recovered from tenants.
-        ownerShare: straordinaria
-          ? cents(expected - recovered(i.id))
-          : cents(instalmentOwnerShare(i) + (toTenants ? 0 : i.conguaglioPrec)),
+        ownerShare: ownerShareOf(i, apartment, input.recoveries ?? []),
         expected,
         ...(real.length === 0 ? {} : { debited }),
         commission: total(own.filter((m) => m.part === 'commission').map((m) => m.amount)),

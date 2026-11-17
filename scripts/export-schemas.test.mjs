@@ -45,6 +45,7 @@ describe('writeJsonSchemas', () => {
       'statement',
       'supplierProfile',
       'supply',
+      'taxConfirmation',
       'taxEstimate',
       'taxPayment',
       'tenancy',

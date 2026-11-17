@@ -5,6 +5,7 @@ import {
   assignImuF24,
   assignTaxPayment,
   commitChange,
+  confirmTaxDiscrepancy,
   copyPreviousTaxYear,
   isoDate,
   loadAll,
@@ -336,7 +337,8 @@ describe('assignTaxPayment (plan 10, task 2)', () => {
     expect(await assign(store, 'tx-in', one(5000))).toEqual(refused('not-tax-debit'));
     expect(await assign(store, 'tx-pend', one(100))).toEqual(refused('not-tax-debit'));
     expect(await assign(store, 'tx-util', one(3000))).toEqual(refused('not-tax-debit'));
-    expect(await assign(store, 'tx-imu', one(60000))).toEqual(refused('imu-assigned'));
+    // An F24 that pays an IMU rate keeps a positive IMU part (R307).
+    expect(await assign(store, 'tx-imu', one(60000))).toEqual(refused('sum-mismatch'));
     expect(await snapshot(store)).toEqual(before);
   });
 });
@@ -407,7 +409,7 @@ describe('loadTaxTable (plan 10, task 3)', () => {
       'missing-estimate',
       'no-expected-source',
     ]);
-    expect(result.warnings).toEqual([{ apartmentId: 'sud', year: '2026', canCopy: false }]);
+    expect(result.warnings).toEqual([{ apartmentIds: ['sud'], year: '2026', canCopy: false }]);
     expect(await loadTaxTable(store, { year: '26', today: isoDate('2026-01-10') })).toEqual(
       refused('bad-year'),
     );
@@ -416,5 +418,66 @@ describe('loadTaxTable (plan 10, task 3)', () => {
     expect(await loadTaxTable(store, { year: '2026', today: isoDate('2026-01-10') })).toEqual(
       refused('inconsistent-store'),
     );
+  });
+});
+
+describe('plan 17: confirmed discrepancies (R304) and mixed F24 (R307)', () => {
+  it('confirms a discrepancy with a note, once; a row without one is refused; undone', async () => {
+    const store = await fixtureStore();
+    await setTaxEstimate(
+      store,
+      { apartmentId: 'nord', year: '2026', voce: 'condominio', amount: cents(5000) },
+      'p1',
+      clock,
+      ids('e'),
+    );
+    const confirm = (voce: string, note = 'Spesa del condominio già pagata nel 2025', p = 'c') =>
+      confirmTaxDiscrepancy(
+        store,
+        { apartmentId: 'nord', year: '2026', voce, note },
+        'p1',
+        clock,
+        ids(p),
+      );
+    expect(await confirm('imu')).toEqual(refused('no-discrepancy'));
+    expect(await confirm('condominio', '  ')).toEqual(refused('bad-note'));
+    expect(await confirm('altro')).toEqual(refused('bad-voce'));
+    const done = await confirm('condominio');
+    expect(done).toEqual({
+      status: 'confirmed',
+      operationId: 'c-1',
+      confirmationId: 'taxc-nord-2026-condominio',
+    });
+    expect(await confirm('condominio', 'Di nuovo', 'd')).toEqual({
+      status: 'unchanged',
+      confirmationId: 'taxc-nord-2026-condominio',
+    });
+    const table = await loadTaxTable(store, { year: '2026', today: isoDate('2026-03-01') });
+    const row =
+      table.status === 'computed'
+        ? table.tables[0]?.rows.find((r) => r.voce === 'condominio')
+        : undefined;
+    expect(row).toMatchObject({ state: 'confermata', difference: -5000 });
+    await undoOperation(store, 'c-1', 'p1', clock, ids('u'));
+    const after = await loadTaxTable(store, { year: '2026', today: isoDate('2026-03-01') });
+    expect(
+      after.status === 'computed' &&
+        after.tables[0]?.rows.find((r) => r.voce === 'condominio')?.state,
+    ).toBe('discrepanza');
+  });
+
+  it('assigns the other voci of an F24 that pays an IMU rate, leaving the IMU a part', async () => {
+    const store = await fixtureStore();
+    const result = await assignTaxPayment(
+      store,
+      {
+        transactionId: 'tx-imu',
+        parts: [{ voce: 'cedolare', year: '2026', amount: cents(10000) }],
+      },
+      'p1',
+      clock,
+      ids('a'),
+    );
+    expect(result).toMatchObject({ status: 'assigned', taxPaymentId: 'taxp-tx-imu' });
   });
 });

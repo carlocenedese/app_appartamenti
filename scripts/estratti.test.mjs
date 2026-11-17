@@ -3684,7 +3684,8 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
           id: bollo.json.payableId,
           kind: 'bollo',
           apartmentIds: ['pulci'],
-          state: 'da-pagare',
+          // Within the default 15 days (R309).
+          state: 'in-scadenza',
           repeatYearly: true,
         },
       ],
@@ -4104,6 +4105,58 @@ describe('pnpm estratti tasse (piano 10)', () => {
     expect(imu(details)).toMatchObject({ paid: 123457, difference: 0, annualDifference: 57 });
   });
 
+  it('tasse-conferma: una discrepanza confermata con una nota non avvisa più (R304)', async () => {
+    const s = await setup();
+    await run([
+      'tasse-stima',
+      ...s.common,
+      '--appartamento',
+      'nord',
+      '--anno',
+      '2026',
+      '--voce',
+      'condominio',
+      '--importo',
+      '50,00',
+    ]);
+    const row = async () =>
+      (await run(['tasse', ...s.common, '--anno', '2026'])).json.tables[0].rows.find(
+        (r) => r.voce === 'condominio',
+      );
+    expect((await row()).state).toBe('discrepanza');
+    const confirm = [
+      'tasse-conferma',
+      ...s.common,
+      '--appartamento',
+      'nord',
+      '--anno',
+      '2026',
+      '--voce',
+      'condominio',
+      '--note',
+      'Nota di prova',
+    ];
+    const done = await run(confirm);
+    expect([done.code, done.json.status, done.json.confirmationId]).toEqual([
+      0,
+      'confirmed',
+      'taxc-nord-2026-condominio',
+    ]);
+    expect(done.out).not.toMatch(/Nota di prova|5000/);
+    expect((await row()).state).toBe('confermata');
+    expect((await run(confirm.map((a) => (a === 'condominio' ? 'imu' : a)))).json.reason).toBe(
+      'no-discrepancy',
+    );
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      done.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect((await row()).state).toBe('discrepanza');
+  });
+
   it('tasse a gennaio avvisa dell’anno vuoto; tasse-copia copia l’anno prima solo a comando', async () => {
     const s = await setup();
     const january = ['--cartella', s.dir, '--ora', '2027-01-10T09:00:00.000Z'];
@@ -4122,7 +4175,7 @@ describe('pnpm estratti tasse (piano 10)', () => {
     const warned = await run(['tasse', ...january, '--anno', '2027']);
     expect(warned.json.warnings).toEqual([
       {
-        apartmentId: 'nord',
+        apartmentIds: ['nord'],
         year: '2027',
         canCopy: true,
         message:
@@ -4170,7 +4223,7 @@ describe('pnpm estratti tasse (piano 10)', () => {
     // --oggi gives the day instead of the clock (as scadenze).
     const byDay = await run(['tasse', ...s.common, '--anno', '2028', '--oggi', '2028-01-02']);
     expect(byDay.json.warnings).toMatchObject([
-      { apartmentId: 'nord', year: '2028', canCopy: true },
+      { apartmentIds: ['nord'], year: '2028', canCopy: true },
     ]);
     expect((await run(['tasse', ...s.common, '--anno', '2028', '--oggi', '2028-13-01'])).code).toBe(
       2,
