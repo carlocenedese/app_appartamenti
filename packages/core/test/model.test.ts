@@ -298,6 +298,18 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     voce: 'cedolare',
     amount: 180000,
   },
+  legalRate: { ...base, id: 'tasso-2026', year: '2026', rateBp: 160 },
+  consumptionSettings: { ...base, id: 'soglie-consumi', giallo: { consumption: 3000 } },
+  tenantCard: { ...base, id: 'ten-1', taxCode: 'CODICE-PROVA' },
+  taxConfirmation: {
+    ...base,
+    id: 'taxc-apt-1-2026-cedolare',
+    apartmentId: 'apt-1',
+    year: '2026',
+    voce: 'cedolare',
+    difference: -1500,
+    note: 'Arrotondamento del commercialista',
+  },
   contact: {
     ...base,
     id: 'ctc-1',
@@ -422,6 +434,10 @@ describe('recordSchemas', () => {
         'taxEstimate',
         'taxPayment',
         'contact',
+        'legalRate',
+        'taxConfirmation',
+        'consumptionSettings',
+        'tenantCard',
       ].sort(),
     );
   });
@@ -1762,6 +1778,32 @@ describe('TenantRecoverySchema (plan 8, task 7)', () => {
     expect(ok({ amount: 0, shares: [{ tenantId: 'ten-1', amount: 0 }] })).toBe(false);
     expect(ok({ shares: [] })).toBe(false);
     expect(ok({ status: 'pagata' })).toBe(false);
+  });
+});
+
+describe('TenantRecoverySchema (plan 17, R300)', () => {
+  const ok = (changes: Record<string, unknown>) =>
+    TenantRecoverySchema.safeParse(changed(validRecords.tenantRecovery, changes)).success;
+  const one = (amount: number) => ({ amount, shares: [{ tenantId: 'ten-1', amount }] });
+
+  it('accepts a movement instead of an instalment, a date, a negative amount without expense', () => {
+    expect(ok({ instalmentId: undefined, transactionId: 'tx-1', date: '2026-12-03' })).toBe(true);
+    expect(ok({ ...one(-4000), instalmentId: undefined, date: '2026-12-03' })).toBe(true);
+  });
+
+  it('refuses both expenses, a positive one without expense, shares of the other sign', () => {
+    expect(ok({ transactionId: 'tx-1' })).toBe(false);
+    expect(ok({ ...one(4000), instalmentId: undefined })).toBe(false);
+    expect(ok({ amount: -4000, shares: [{ tenantId: 'ten-1', amount: 4000 }] })).toBe(false);
+    expect(
+      ok({
+        amount: 0,
+        shares: [
+          { tenantId: 'ten-1', amount: 100 },
+          { tenantId: 'ten-2', amount: -100 },
+        ],
+      }),
+    ).toBe(false);
   });
 });
 

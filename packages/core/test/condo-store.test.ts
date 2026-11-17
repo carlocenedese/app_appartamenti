@@ -10,6 +10,9 @@ import {
   recordSchemas,
   saveCondoDocument,
   saveTenantRecovery,
+  commitChange,
+  recoveriesUsing,
+  undoBlockedBy,
 } from '../src/index';
 import type { CondoDocument, SaveCondoDocumentInput, SaveTenantRecoveryInput } from '../src/index';
 import { cents } from '../src/money';
@@ -116,6 +119,21 @@ describe('saveCondoDocument (plan 8, task 3)', () => {
     expect(await save(store, { ...budget, total: cents(2) }, 'f')).toEqual({
       status: 'refused',
       reason: 'inconsistent-store',
+    });
+  });
+});
+
+describe('one form of fiscal year per apartment (plan 17, R310)', () => {
+  it('refuses a document of another form than the live ones of the apartment', async () => {
+    const store = await withApartment();
+    expect(await save(store, budget)).toMatchObject({ status: 'saved' });
+    expect(await save(store, { ...budget, esercizio: '2027' }, 'f')).toEqual({
+      status: 'refused',
+      reason: 'esercizio-format',
+      documentIds: ['condoc-apt-a-2026-27-preventivo'],
+    });
+    expect(await save(store, { ...budget, esercizio: '2027-28' }, 'g')).toMatchObject({
+      status: 'saved',
     });
   });
 });
@@ -276,5 +294,202 @@ describe('tenant recoveries (plan 8, task 7)', () => {
         't',
       ),
     ).toMatchObject({ status: 'saved' });
+  });
+});
+
+describe('recoveries of plan 17 (R300): sign, supplier expense, date of the expense', () => {
+  async function storeWithExpense() {
+    const store = await withApartment();
+    const put = async (kind: string, r: { id: string } & Record<string, unknown>) =>
+      store.writeJsonAtomic(
+        recordPath(kind, r.id),
+        recordSchemas[kind as keyof typeof recordSchemas].parse(r),
+      );
+    await put('instalment', {
+      id: 'str-1',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt-a',
+      kind: 'condominio',
+      esercizio: '2026-27',
+      rateIndex: 1,
+      rateCount: 1,
+      dueDate: '2026-11-30',
+      rata: 20000,
+      quotaProprieta: 0,
+      conguaglioPrec: 0,
+      coversFrom: '2026-11',
+      coversTo: '2026-11',
+      straordinaria: true,
+    });
+    const tx = {
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt-a',
+      statementHash: 'h1',
+      description: 'Idraulico',
+    };
+    await put('transaction', { ...tx, id: 'tx-1', date: '2026-12-03', amount: -12000 });
+    await put('transaction', { ...tx, id: 'tx-in', date: '2026-12-04', amount: 12000 });
+    await put('transaction', { ...tx, id: 'tx-free', date: '2026-12-05', amount: -9000 });
+    await put('transaction', {
+      ...tx,
+      id: 'tx-pend',
+      date: '2026-12-06',
+      amount: -9000,
+      booked: false,
+    });
+    await put('movementClass', {
+      id: 'mc-tx-pend',
+      v: 1,
+      rev: 1,
+      transactionId: 'tx-pend',
+      kind: 'altro',
+      apartmentId: 'apt-a',
+    });
+    await put('movementClass', {
+      id: 'mc-tx-1',
+      v: 1,
+      rev: 1,
+      transactionId: 'tx-1',
+      kind: 'altro',
+      apartmentId: 'apt-a',
+    });
+    await put('movementClass', {
+      id: 'mc-tx-in',
+      v: 1,
+      rev: 1,
+      transactionId: 'tx-in',
+      kind: 'altro',
+      apartmentId: 'apt-a',
+    });
+    await put('tenancy', {
+      id: 'tcy-1',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt-a',
+      tenantId: 'ten-1',
+      from: '2026-10',
+      monthlyRent: 30000,
+      monthlyForfait: 3000,
+    });
+    return store;
+  }
+  const base = (extra: Partial<SaveTenantRecoveryInput>): SaveTenantRecoveryInput => ({
+    id: 'rec-1',
+    apartmentId: 'apt-a',
+    amount: cents(6000),
+    shares: [{ tenantId: 'ten-1', amount: cents(6000) }],
+    status: 'da-recuperare',
+    ...extra,
+  });
+  const saveR = (store: MemoryStore, input: SaveTenantRecoveryInput, prefix = 'r') =>
+    saveTenantRecovery(store, input, 'p1', clock, ids(prefix));
+  const stored = async (store: MemoryStore) =>
+    (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records[0];
+
+  it('writes the date of the expense: due date of the instalment, day of the movement', async () => {
+    const store = await storeWithExpense();
+    await saveR(store, base({ instalmentId: 'str-1', date: '2020-01-01' as never }));
+    expect((await stored(store))?.date).toBe('2026-11-30');
+    await saveR(store, base({ transactionId: 'tx-1' }), 's');
+    expect(await stored(store)).toMatchObject({ transactionId: 'tx-1', date: '2026-12-03' });
+    expect((await stored(store))?.instalmentId).toBeUndefined();
+  });
+
+  it('a movement paid to a supplier: outgoing, classified to the apartment, never above it', async () => {
+    const store = await storeWithExpense();
+    const before = await snapshot(store);
+    const refused = (reason: string) => ({ status: 'refused', reason });
+    expect(await saveR(store, base({ transactionId: 'tx-in' }))).toEqual(
+      refused('unknown-expense'),
+    );
+    expect(await saveR(store, base({ transactionId: 'tx-free' }))).toEqual(
+      refused('unknown-expense'),
+    );
+    expect(await saveR(store, base({ transactionId: 'tx-pend' }))).toEqual(
+      refused('unknown-expense'),
+    );
+    expect(await saveR(store, base({ transactionId: 'nessuno' }))).toEqual(
+      refused('unknown-expense'),
+    );
+    expect(
+      await saveR(
+        store,
+        base({
+          transactionId: 'tx-1',
+          amount: cents(12001),
+          shares: [{ tenantId: 'ten-1', amount: cents(12001) }],
+        }),
+      ),
+    ).toEqual(refused('amount-too-high'));
+    expect(await saveR(store, base({}))).toEqual(refused('invalid-recovery'));
+    expect(await saveR(store, base({ instalmentId: 'str-1', transactionId: 'tx-1' }))).toEqual(
+      refused('invalid-recovery'),
+    );
+    expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('a recovery on a movement blocks the undo of its class (I4)', async () => {
+    const store = await storeWithExpense();
+    const op = await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'outgoing.classify',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('movementClass', 'mc-tx-free'),
+            after: recordSchemas.movementClass.parse({
+              id: 'mc-tx-free',
+              v: 1,
+              rev: 1,
+              transactionId: 'tx-free',
+              kind: 'altro',
+              apartmentId: 'apt-a',
+            }),
+          },
+        ],
+      },
+      clock,
+      ids('k'),
+    );
+    expect(await undoBlockedBy(store, op.id)).toEqual([]);
+    await saveR(store, base({ id: 'rec-f', transactionId: 'tx-free' }), 'f');
+    expect(await undoBlockedBy(store, op.id)).toEqual(['rec-f']);
+    expect(await recoveriesUsing(store, ['tx-free'])).toEqual(['rec-f']);
+  });
+
+  it('a negative recovery: the tenant paid for the owners, with or without an expense', async () => {
+    const store = await storeWithExpense();
+    const negative = {
+      amount: cents(-4000),
+      shares: [{ tenantId: 'ten-1', amount: cents(-4000) }],
+    };
+    expect(await saveR(store, base({ ...negative }))).toEqual({
+      status: 'refused',
+      reason: 'missing-date',
+    });
+    expect(
+      await saveR(store, base({ ...negative, date: '2026-12-10' as never }), 's'),
+    ).toMatchObject({ status: 'saved' });
+    expect(await stored(store)).toMatchObject({ amount: -4000, date: '2026-12-10' });
+    // A negative one does not count against the cap of the expense.
+    expect(
+      await saveR(store, base({ id: 'rec-2', ...negative, transactionId: 'tx-1' }), 't'),
+    ).toMatchObject({ status: 'saved' });
+    expect(
+      await saveR(
+        store,
+        base({
+          id: 'rec-3',
+          amount: cents(-4000),
+          shares: [{ tenantId: 'ten-1', amount: cents(4000) }],
+          periodLabel: '2026-27',
+        }),
+        'u',
+      ),
+    ).toEqual({ status: 'refused', reason: 'bad-shares' });
   });
 });

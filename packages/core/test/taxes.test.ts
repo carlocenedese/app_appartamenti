@@ -221,17 +221,26 @@ describe('taxTable (plan 10, task 3)', () => {
         expected: 500,
         difference: 0,
       },
-      // The TARI of the esercizio 2026 (answer of user1): checked as the other voci.
+      // The TARI of the esercizio 2026 (answer of user1): checked as the other voci, with the
+      // bank commission in the paid (answer of 17 November 2026, R306).
       {
         voce: 'tari',
-        state: 'in-linea',
+        state: 'discrepanza',
         reasons: [],
         estimate: 20005,
-        paid: 10000,
+        paid: 10080,
         expected: 10000,
-        difference: -5,
+        difference: 75,
       },
-      { voce: 'condominio', state: 'da-verificare', reasons: ['rule-undecided'], estimate: 3 },
+      // No condominium instalment: nothing paid or expected; the amount rule is not decided (R305).
+      {
+        voce: 'condominio',
+        state: 'da-verificare',
+        reasons: ['rule-undecided'],
+        estimate: 3,
+        paid: 0,
+        expected: 0,
+      },
     ]);
     // user2 typed nothing: every voce is missing its estimate.
     expect(rowOf(tables, 'user2', 'cedolare')).toEqual({
@@ -339,8 +348,22 @@ describe('taxTable (plan 10, task 3)', () => {
         'user1',
         'registro',
       );
-    // A: paid by hand, no movement. B: paid by a movement without tasse-assegna.
-    expect(at({})?.reasons).toEqual(['payable-paid-outside']);
+    // A: paid by hand, no movement: its amount is in the paid (answer of 17 November 2026, R303).
+    expect(at({})).toMatchObject({ reasons: [], paid: 500, expected: 0 });
+    // Paid by hand beside an assigned payment of the same voce and year: never added twice (I6).
+    const both = rowOf(
+      taxTable(
+        input({
+          expectedItems: [
+            { apartmentId: 'nord', voce: 'cedolare', year: '2026', amount: cents(40000), paid: {} },
+          ],
+        }),
+      ),
+      'user1',
+      'cedolare',
+    );
+    expect(both).toMatchObject({ reasons: ['payable-and-payment'], paid: 40000 });
+    // B: paid by a movement assigned to another voce: to be checked.
     expect(at({ transactionId: 'tx-ced' })?.reasons).toEqual(['payable-paid-outside']);
     // The movement is assigned to the registro of the year: in the paid, nothing to check.
     const assigned = parse('taxPayment', [
@@ -664,28 +687,159 @@ describe('taxTable (plan 10, task 3)', () => {
   });
 });
 
-describe('taxYearWarnings (plan 10, task 3)', () => {
+describe('taxYearWarnings (plan 10, task 3; plan 17, R308)', () => {
   const apartments = parse('apartment', [
     apartment('nord', 'user1'),
     apartment('est', 'user1'),
     apartment('sud', 'user2'),
   ]);
   const list = parse('taxEstimate', [
-    ...estimates('nord', { imu: 1 }, '2027'),
-    ...estimates('est', { imu: 1 }, '2026'),
+    ...estimates('nord', { imu: 1 }, '2026'),
+    ...estimates('est', { imu: 1 }, '2028'),
   ]);
 
-  it('in January, the apartments without estimates in the year, and whether the year before can be copied', () => {
-    expect(taxYearWarnings({ today: isoDate('2027-01-15'), apartments, estimates: list })).toEqual([
-      { apartmentId: 'est', year: '2027', canCopy: true },
-      { apartmentId: 'sud', year: '2027', canCopy: false },
-    ]);
+  it('any month, per taxpayer, while none of its apartments has an estimate in the year', () => {
+    for (const today of ['2027-01-15', '2027-06-30', '2027-12-31']) {
+      expect(taxYearWarnings({ today: isoDate(today), apartments, estimates: list })).toEqual([
+        { apartmentIds: ['est', 'nord'], year: '2027', canCopy: true },
+        { apartmentIds: ['sud'], year: '2027', canCopy: false },
+      ]);
+    }
   });
 
-  it('nothing outside January', () => {
-    for (const today of ['2027-02-01', '2026-12-31']) {
-      expect(taxYearWarnings({ today: isoDate(today), apartments, estimates: list })).toEqual([]);
-    }
+  it('nothing once one apartment of the taxpayer has an estimate', () => {
+    expect(taxYearWarnings({ today: isoDate('2028-02-01'), apartments, estimates: list })).toEqual([
+      { apartmentIds: ['sud'], year: '2028', canCopy: false },
+    ]);
+  });
+});
+
+describe('taxTable, answers of 17 November 2026 (plan 17)', () => {
+  const condo = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    apartmentId: 'nord',
+    kind: 'condominio',
+    esercizio: '2025-26',
+    rateIndex: 1,
+    rateCount: 1,
+    dueDate: '2026-12-20',
+    rata: 40000,
+    quotaProprieta: 10000,
+    conguaglioPrec: 0,
+    coversFrom: '2026-01',
+    coversTo: '2026-12',
+    ...extra,
+  });
+
+  it('condominio: the owners part in the year of the debit, else of the due date (R305)', () => {
+    const row = (year: string) =>
+      rowOf(
+        taxTable(
+          input({
+            year,
+            instalments: parse('instalment', [
+              condo('c-paid', { dueDate: '2025-12-20' }),
+              condo('c-due'),
+              condo('c-str', { straordinaria: true, rata: 30000, quotaProprieta: 0 }),
+            ]),
+            matches: parse('match', [
+              match('mc', 'c-paid', 40000, { transactionDate: '2026-01-07' }),
+              match('ms', 'c-str', 30000, { transactionDate: '2026-03-01' }),
+            ]),
+            recoveries: parse('tenantRecovery', [
+              {
+                id: 'rec-1',
+                apartmentId: 'nord',
+                instalmentId: 'c-str',
+                amount: 5000,
+                shares: [{ tenantId: 'ten-1', amount: 5000 }],
+                status: 'da-recuperare',
+              },
+            ]),
+          }),
+        ),
+        'user1',
+        'condominio',
+      );
+    // 2026: 100,00 € of c-paid (debited in January) + 250,00 € of the extraordinary less the
+    // recovery; 100,00 € of c-due expected.
+    expect(row('2026')).toMatchObject({
+      reasons: ['rule-undecided'],
+      paid: 35000,
+      expected: 10000,
+    });
+    expect(row('2025')).toMatchObject({ paid: 0, expected: 0 });
+  });
+
+  it('a discrepancy confirmed with a note no longer warns, until the difference changes (R304)', () => {
+    const confirmation = (difference: number) =>
+      parse('taxConfirmation', [
+        {
+          id: 'taxc-est-2026-cedolare',
+          apartmentId: 'est',
+          year: '2026',
+          voce: 'cedolare',
+          difference,
+          note: 'Arrotondamento',
+        },
+      ]);
+    const row = (difference: number) =>
+      rowOf(taxTable(input({ confirmations: confirmation(difference) })), 'user1', 'cedolare');
+    expect(row(-11)).toMatchObject({
+      state: 'confermata',
+      difference: -11,
+      confirmationId: 'taxc-est-2026-cedolare',
+    });
+    expect(row(-12)).toMatchObject({ state: 'discrepanza' });
+    expect(row(-12)).not.toHaveProperty('confirmationId');
+  });
+
+  it('parts that no longer make the debit, once the IMU rate is gone, are stale (R307)', () => {
+    const row = rowOf(
+      taxTable(
+        input({
+          classes: parse('movementClass', [tasse('tx-imu1'), tasse('tx-ced'), tasse('tx-in')]),
+          taxPayments: parse('taxPayment', [
+            {
+              id: 'taxp-tx-ced',
+              transactionId: 'tx-ced',
+              parts: [{ voce: 'cedolare', year: '2026', amount: 100000 }],
+            },
+            {
+              id: 'taxp-tx-imu1',
+              transactionId: 'tx-imu1',
+              parts: [{ voce: 'cedolare', year: '2026', amount: 10000 }],
+            },
+          ]),
+        }),
+      ),
+      'user1',
+      'cedolare',
+    );
+    expect(row?.reasons).toContain('stale-assignment');
+    expect(row?.paid).toBe(100000);
+  });
+
+  it('a mixed F24: its cedolare part counts, the IMU rate gets the rest (R307)', () => {
+    const tables = taxTable(
+      input({
+        taxPayments: parse('taxPayment', [
+          {
+            id: 'taxp-tx-ced',
+            transactionId: 'tx-ced',
+            parts: [{ voce: 'cedolare', year: '2025', amount: 100000 }],
+          },
+          {
+            id: 'taxp-tx-imu1',
+            transactionId: 'tx-imu1',
+            parts: [{ voce: 'cedolare', year: '2026', amount: 10000 }],
+          },
+        ]),
+      }),
+    );
+    expect(rowOf(tables, 'user1', 'cedolare')).toMatchObject({ paid: 10000 });
+    // 500,00 € debited, 100,00 € of cedolare: 400,00 € for the IMU rate of 500,00 €, out of 1%.
+    expect(rowOf(tables, 'user1', 'imu')).toMatchObject({ reasons: ['imu-to-check'] });
   });
 });
 

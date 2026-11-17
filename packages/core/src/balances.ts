@@ -32,6 +32,7 @@ import {
   ImuYearSchema,
   InstalmentSchema,
   MovementClassSchema,
+  TaxPaymentSchema,
   TransferSchema,
 } from './model';
 import type {
@@ -42,6 +43,7 @@ import type {
   ImuYear,
   Instalment,
   MovementClass,
+  TaxPayment,
   Transfer,
 } from './model';
 import { cents } from './money';
@@ -80,6 +82,8 @@ export interface BalanceInput {
   classes: MovementClass[];
   transfers: Transfer[];
   imuYears: ImuYear[];
+  /** The other voci of a mixed F24 (plan 17, R307); absent: none. */
+  taxPayments?: TaxPayment[];
 }
 
 export type ImuSplitReason = 'imu-da-ripartire' | 'imu-importo-mancante' | 'imu-da-riconciliare';
@@ -101,6 +105,11 @@ export interface AccountBalances {
     payerApartmentId: string;
     forApartmentId: string;
   }[];
+  /**
+   * The part of a mixed F24 that is no IMU (plan 17, R307): left out of the balance, to be
+   * checked (how it is shared between the apartments is a question for user1).
+   */
+  mixedF24: { transactionId: string; apartmentId: string; amount: Cents }[];
 }
 
 /**
@@ -130,8 +139,16 @@ export function accountBalances(input: BalanceInput): AccountBalances {
       years: input.imuYears,
       classes: input.classes,
       transactions: input.transactions,
+      ...(input.taxPayments === undefined ? {} : { taxPayments: input.taxPayments }),
     }).map((r) => [imuRateKey(r), r]),
   );
+  const otherVoci = new Map(
+    live(input.taxPayments ?? []).map((p) => [
+      p.transactionId,
+      p.parts.reduce((sum, part) => sum + part.amount, 0),
+    ]),
+  );
+  const mixedF24: AccountBalances['mixedF24'] = [];
   /** A rate gone (its year undone) has no expected either. */
   const reasonOf = (rate: ImuRate | undefined): ImuSplitReason =>
     rate?.status === 'pagata'
@@ -168,10 +185,15 @@ export function accountBalances(input: BalanceInput): AccountBalances {
       // Only the F24 the rate counts (a second one on it is to reconcile, question 9), and not
       // while the payer is outside the group (`assignImuF24` refuses both).
       const own = rate !== undefined && rate.transactionId === tx.id;
+      // Only the IMU part of a mixed F24 is shared (R307, provisional); the rest stays out.
+      const other = c.imu === undefined ? 0 : (otherVoci.get(tx.id) ?? 0);
       const shares =
         own && rate.apartmentIds.includes(payer)
-          ? imuShares(rate, input.imuYears, tx.amount)
+          ? imuShares(rate, input.imuYears, cents(tx.amount + other))
           : undefined;
+      if (shares !== undefined && other > 0) {
+        mixedF24.push({ transactionId: tx.id, apartmentId: payer, amount: cents(other) });
+      }
       if (shares !== undefined) {
         for (const share of shares.filter((s) => s.apartmentId !== payer)) {
           items.push({
@@ -273,7 +295,7 @@ export function accountBalances(input: BalanceInput): AccountBalances {
   toSplit.sort(
     (a, b) => compareText(a.date, b.date) || compareText(a.transactionId, b.transactionId),
   );
-  return { pairs, toSplit, unverified };
+  return { pairs, toSplit, unverified, mixedF24 };
 }
 
 export type LoadAccountBalancesResult =
@@ -299,6 +321,7 @@ export async function loadAccountBalances(store: Store): Promise<LoadAccountBala
     classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
     transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,
     imuYears: (await loadAll(store, 'imuYear', ImuYearSchema, all)).records,
+    taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
   });
   return { status: 'computed', ...balances };
 }

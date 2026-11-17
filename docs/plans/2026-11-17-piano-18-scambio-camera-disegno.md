@@ -3,7 +3,7 @@
 Bozza da approvare da user1. Caso particolare del subentro (piano 11, R220-R225, sezione 17 della
 specifica). Richiesta di user1: «Dai la possibilità di un caso particolare di subentro che è lo scambio
 camera tra inquilini già presenti. Unica cosa che cambia possibilmente è affitto versato.» Regole del
-registro da **R310**.
+registro da **R320**.
 
 ## Cosa fa
 

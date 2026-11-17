@@ -4,15 +4,15 @@
  * differences: no level, no colour and no default threshold. Exact integer arithmetic on the
  * decimal quantities, never a float.
  *
- * PROVISIONAL and NOT CONNECTED: nothing calls `compareConsumption` yet (not `importBill`, not
- * the command line). Its definitions (category rather than supplier, the window, the unit price)
- * wait for the answers of user1 (R263, R265); only `yearBeforeBill` is in use, by the check
- * `consumption-anomaly` of the proposal.
+ * Answers of user1 (17 November 2026, R313): by kind of bill (category), average of the 12
+ * months before, normalised per day; the thresholds and the yellow and red levels are settings
+ * typed by user1 (the same for all, an apartment may have its own), never a default here. The
+ * unit price and the window rule of R263 stay as they were (question 8 of R265).
  */
 import type { Bill, Consumption } from './model';
 import { cents } from './money';
 import type { Cents } from './money';
-import { addMonths, monthsInPeriod } from './period';
+import { addMonths, daysBetween, monthsInPeriod } from './period';
 import type { YearMonth } from './period';
 import { foldText } from './text';
 
@@ -76,10 +76,13 @@ export function yearBeforeBill<T extends Comparable>(
     .sort(byId)[0];
 }
 
-/** One side of a comparison: totals and the number of months of competence they cover. */
+/** The months of the average of the recent bills (answer of user1, 17 November 2026). */
+export const CONSUMPTION_AVERAGE_MONTHS = 12;
+
+/** One side of a comparison: totals and the number of days of competence they cover. */
 export interface ConsumptionSide {
   billIds: string[];
-  months: number;
+  days: number;
   amount: Cents;
   /** Only when every bill of the side has one, in the unit of the bill compared. */
   consumption?: Consumption;
@@ -90,12 +93,12 @@ export type ConsumptionMetric = 'consumption' | 'amount' | 'unitPrice';
 export interface MetricDifference {
   metric: ConsumptionMetric;
   /**
-   * (current − reference) / reference in basis points: consumption and amount per month of
+   * (current − reference) / reference in basis points: consumption and amount per day of
    * competence, the unit price as amount / consumption. Rounded half away from zero, only to show.
    */
   differenceBp: number;
-  /** Only with a threshold for the metric: |difference| above it, exact on integers. */
-  over?: boolean;
+  /** Only with thresholds for the metric: |difference| above red, else above yellow (exact). */
+  level?: 'giallo' | 'rosso';
 }
 
 export interface ConsumptionComparison {
@@ -104,13 +107,19 @@ export interface ConsumptionComparison {
   recent?: { reference: ConsumptionSide; differences: MetricDifference[] };
 }
 
-/** Thresholds in basis points (whole, ≥ 0), from the caller: none is decided in the code. */
-export type ConsumptionThresholds = Partial<Record<ConsumptionMetric, number>>;
+/**
+ * Thresholds in basis points (whole, ≥ 0) of the two levels, typed by user1: none is decided in
+ * the code.
+ */
+export interface ConsumptionThresholds {
+  giallo?: Partial<Record<ConsumptionMetric, number>>;
+  rosso?: Partial<Record<ConsumptionMetric, number>>;
+}
 
 function sideOf(bills: readonly Comparable[], withConsumption: boolean): ConsumptionSide {
-  const months = bills.reduce((n, b) => n + monthsInPeriod(b.periodStart, b.periodEnd).length, 0);
+  const days = bills.reduce((n, b) => n + daysBetween(b.periodEnd, b.periodStart) + 1, 0);
   const amount = cents(bills.reduce((sum, b) => sum + b.amount, 0));
-  const side: ConsumptionSide = { billIds: bills.map((b) => b.id).sort(), months, amount };
+  const side: ConsumptionSide = { billIds: bills.map((b) => b.id).sort(), days, amount };
   const [first] = bills;
   if (!withConsumption || first?.consumption === undefined) return side;
   const quantities = bills.map((b) => b.consumption?.quantity ?? '0');
@@ -147,8 +156,8 @@ function ratio(
   current: ConsumptionSide,
   reference: ConsumptionSide,
 ): { num: bigint; den: bigint } | undefined {
-  const cm = BigInt(current.months);
-  const rm = BigInt(reference.months);
+  const cm = BigInt(current.days);
+  const rm = BigInt(reference.days);
   if (metric === 'amount') {
     const [c, r] = [BigInt(current.amount), BigInt(reference.amount)];
     return r > 0n && cm > 0n ? { num: c * rm - r * cm, den: r * cm } : undefined;
@@ -177,13 +186,19 @@ function differences(
   return metrics.flatMap((metric) => {
     const r = ratio(metric, current, reference);
     if (r === undefined) return [];
-    const threshold = thresholds?.[metric];
     const abs = r.num < 0n ? -r.num : r.num;
+    const above = (bp: number | undefined) =>
+      bp !== undefined && abs * 10_000n > BigInt(bp) * r.den;
+    const level = above(thresholds?.rosso?.[metric])
+      ? 'rosso'
+      : above(thresholds?.giallo?.[metric])
+        ? 'giallo'
+        : undefined;
     return [
       {
         metric,
         differenceBp: basisPoints(r.num, r.den),
-        ...(threshold === undefined ? {} : { over: abs * 10_000n > BigInt(threshold) * r.den }),
+        ...(level === undefined ? {} : { level }),
       },
     ];
   });
@@ -192,17 +207,21 @@ function differences(
 /**
  * The comparison of `bill` with the bill of the same months a year before (`yearBeforeBill`) and
  * with the live bills of the same kind whose months all fall in the `recentMonths` months before
- * the first month of `bill` (R263). A side without bills is absent; a metric without a positive
- * reference is left out. `recentMonths` and `thresholds` come from the caller (whole numbers ≥ 0,
- * else `RangeError`).
+ * the first month of `bill` (R263; `CONSUMPTION_AVERAGE_MONTHS` unless given). A side without
+ * bills is absent; a metric without a positive reference is left out. `recentMonths` and
+ * `thresholds` must be whole numbers ≥ 0 (else `RangeError`).
  */
 export function compareConsumption(
   bill: Comparable,
   bills: readonly Comparable[],
-  options: { recentMonths: number; thresholds?: ConsumptionThresholds },
+  options: { recentMonths?: number; thresholds?: ConsumptionThresholds } = {},
 ): ConsumptionComparison {
-  const { recentMonths, thresholds } = options;
-  const values = [recentMonths, ...Object.values(thresholds ?? {})];
+  const { recentMonths = CONSUMPTION_AVERAGE_MONTHS, thresholds } = options;
+  const values = [
+    recentMonths,
+    ...Object.values(thresholds?.giallo ?? {}),
+    ...Object.values(thresholds?.rosso ?? {}),
+  ];
   if (values.some((n) => !Number.isSafeInteger(n) || n < 0)) {
     throw new RangeError('Months and thresholds must be whole numbers, not negative');
   }

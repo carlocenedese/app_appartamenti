@@ -3,6 +3,7 @@ import {
   commitChange,
   isoDate,
   loadScadenzario,
+  DEFAULT_SOON_DAYS,
   payableExpectedItems,
   payableState,
   recordPath,
@@ -325,9 +326,9 @@ describe('scadenzario (plan 9, task 2)', () => {
         repeated: true,
       }),
       // The movement has no class any more: not a proof of payment.
-      expect.objectContaining({ id: 'scad-c', state: 'da-pagare' }),
-      expect.objectContaining({ id: 'scad-f', state: 'da-pagare' }),
-      expect.objectContaining({ id: 'scad-g', state: 'da-pagare' }),
+      expect.objectContaining({ id: 'scad-c', state: 'in-scadenza' }),
+      expect.objectContaining({ id: 'scad-f', state: 'in-scadenza' }),
+      expect.objectContaining({ id: 'scad-g', state: 'in-scadenza' }),
       expect.objectContaining({ id: 'scad-d', kind: 'bollo', state: 'da-pagare' }),
     ]);
     expect(items[2]).not.toHaveProperty('paidOn');
@@ -364,6 +365,33 @@ describe('scadenzario (plan 9, task 2)', () => {
       { contractId: 'c-now', apartmentId: 'pulci', end: '2026-11' },
       { contractId: 'c-later', apartmentId: 'pulci', end: '2027-09' },
     ]);
+  });
+});
+
+describe('plan 17: voce of a bollo or F24 (R303), «in scadenza» in 15 days (R309)', () => {
+  it('a bollo or an F24 goes to the voce chosen at creation, a payable without one nowhere', () => {
+    const items = payableExpectedItems({
+      transactions: [],
+      classes: [],
+      payables: [
+        payable('scad-b', { kind: 'bollo', taxYear: 2026, expected: 1600, taxVoice: 'registro' }),
+        payable('scad-f', { kind: 'f24', taxYear: 2026, expected: 900, taxVoice: 'cedolare' }),
+        payable('scad-x', { kind: 'f24', taxYear: 2026, expected: 5 }),
+      ],
+    });
+    expect(items).toEqual([
+      { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 1600 },
+      { apartmentId: 'pulci', voce: 'cedolare', year: '2026', amount: 900 },
+    ]);
+    expect(() => payable('scad-r', { kind: 'registro', taxVoice: 'cedolare' })).toThrow();
+  });
+
+  it('without a window from the caller, 15 days: in scadenza on the 15th day, not on the 16th', () => {
+    const state = (dueDate: string) =>
+      scadenzario({ ...empty, payables: [payable('scad-a', { dueDate })] }).items[0]?.state;
+    expect(DEFAULT_SOON_DAYS).toBe(15);
+    expect(state('2026-12-01')).toBe('in-scadenza');
+    expect(state('2026-12-02')).toBe('da-pagare');
   });
 });
 

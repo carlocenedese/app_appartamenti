@@ -1,7 +1,7 @@
 // Recoveries from tenants in the settlement (plan 8, group B, task 8). Invented amounts: an
 // extraordinary expense of 200,00 €, 150,01 € to recover from two tenants of a 4-bed apartment.
 import { describe, expect, it } from 'vitest';
-import { ExcelRecoveriesError, buildConguaglioWorkbook, calcConguaglio, cents } from '../src/index';
+import { buildConguaglioWorkbook, calcConguaglio, cents } from '../src/index';
 import type { ConguaglioInput, TenantRecovery } from '../src/index';
 import { apartment, bill, instalment, match, period, tenancy } from './helpers/conguaglio-builders';
 import { fixtureInput } from './helpers/excel-fixture';
@@ -100,7 +100,7 @@ describe('recoveries in calcConguaglio (plan 8, task 8, R197)', () => {
     );
   });
 
-  it("the tenants' Excel refuses a period with a recovery (question 10), not without", () => {
+  it("the tenants' Excel shows a recovery as a section of «Bollette» and in Spese (R300)", () => {
     const fixture = fixtureInput();
     expect(() => buildConguaglioWorkbook(fixture)).not.toThrow();
     const tenantId = calcConguaglio(fixture).tenants[0]?.tenantId ?? '';
@@ -126,6 +126,91 @@ describe('recoveries in calcConguaglio (plan 8, task 8, R197)', () => {
         }),
       ],
     };
-    expect(() => buildConguaglioWorkbook(withRecovery)).toThrow(ExcelRecoveriesError);
+    const sheets = buildConguaglioWorkbook(withRecovery).sheets;
+    const rows = sheets[0]?.rows ?? [];
+    const at = rows.findIndex(
+      (r) => r[0]?.kind === 'text' && r[0].value === 'Recuperi dagli inquilini',
+    );
+    expect(at).toBeGreaterThan(0);
+    expect(rows[at + 2]?.[1]).toEqual({ kind: 'euro', value: 500 });
+    const name = fixture.tenants.find((t) => t.id === tenantId)?.name;
+    const spese = (workbook: ReturnType<typeof buildConguaglioWorkbook>) => {
+      const row = workbook.sheets[1]?.rows.find(
+        (r) => r[1]?.kind === 'text' && r[1].value === name,
+      );
+      return row?.[4]?.kind === 'euro' ? row[4].value : undefined;
+    };
+    const without = buildConguaglioWorkbook({ ...withRecovery, recoveries: [] });
+    // Waiting for the debit of its expense: listed among the pending items with the reason.
+    const waiting = buildConguaglioWorkbook({ ...withRecovery, matches: fixture.matches });
+    const texts = (waiting.sheets[0]?.rows ?? [])
+      .flat()
+      .map((c) => (c?.kind === 'text' ? c.value : ''));
+    expect(texts).toContain('recupero in attesa del pagamento');
+    expect(texts).not.toContain('Recuperi dagli inquilini');
+    expect(spese(buildConguaglioWorkbook(withRecovery))).toBe((spese(without) ?? 0) + 500);
+  });
+});
+
+describe('recoveries of plan 17 in calcConguaglio (R300)', () => {
+  const dated = (extra: Partial<TenantRecovery> = {}) =>
+    recovery({ periodLabel: undefined, date: '2026-11-30' as never, ...extra });
+
+  it('without a period, the period of the day of the expense', () => {
+    const counted = calcConguaglio(input({ recoveries: [dated()] }));
+    expect(counted.tenants.find((t) => t.tenantId === 'a')?.recupero).toBe(7500);
+    // Before the period: another period's (as R177, the last period also takes later months).
+    const earlier = calcConguaglio(input({ recoveries: [dated({ date: '2026-09-30' as never })] }));
+    expect(earlier).toEqual(calcConguaglio(input()));
+  });
+
+  it('a movement paid to a supplier counts at once; a negative recovery is a credit', () => {
+    const supplier = dated({ instalmentId: undefined, transactionId: 'tx-1' });
+    const result = calcConguaglio(
+      input({
+        matches: [match(light, 4000)],
+        recoveries: [supplier],
+        recoverableMovements: new Set(['tx-1']),
+      }),
+    );
+    expect(result.tenants.find((t) => t.tenantId === 'b')?.recupero).toBe(7501);
+    // A movement that is no live, booked, classified expense of the apartment: never counted.
+    const without = input({ matches: [match(light, 4000)], recoveries: [supplier] });
+    expect(calcConguaglio(without)).toEqual(calcConguaglio({ ...without, recoveries: [] }));
+    const credit = dated({
+      instalmentId: undefined,
+      amount: cents(-3000),
+      shares: [{ tenantId: 'a', amount: cents(-3000) }],
+    });
+    const plain = calcConguaglio(input());
+    const withCredit = calcConguaglio(input({ recoveries: [credit] }));
+    const a = withCredit.tenants.find((t) => t.tenantId === 'a');
+    expect(a?.recupero).toBe(-3000);
+    expect(a?.due).toBe((plain.tenants.find((t) => t.tenantId === 'a')?.due ?? 0) - 3000);
+  });
+
+  it('a tenant already gone from the period of the expense is left out, not refused', () => {
+    const gone = dated({ shares: [{ tenantId: 'z', amount: cents(15001) }] });
+    expect(calcConguaglio(input({ recoveries: [gone] }))).toEqual(calcConguaglio(input()));
+  });
+});
+
+describe('a recovery without period counts in one period only (R300, settlementPeriodOf)', () => {
+  it('with overlapping periods, only the one settlementPeriodOf gives', () => {
+    const recovery2 = recovery({ periodLabel: undefined, date: '2026-11-30' as never });
+    const periods = [
+      { from: '2026-10' as never, to: '2027-09' as never },
+      { from: '2026-11' as never, to: '2027-09' as never },
+    ];
+    const first = calcConguaglio(input({ recoveries: [recovery2], periods }));
+    const second = calcConguaglio(
+      input({
+        period: period('2026-11', '2027-09', '2026-27b'),
+        recoveries: [recovery2],
+        periods,
+      }),
+    );
+    const counted = [first, second].filter((r) => r.tenants.some((t) => t.recupero !== undefined));
+    expect(counted).toHaveLength(1);
   });
 });

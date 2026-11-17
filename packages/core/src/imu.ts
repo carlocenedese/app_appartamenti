@@ -5,8 +5,13 @@
  * answers of user1 of 16 November 2026). Pure.
  */
 import { checkConsistency } from './journal';
-import { BankTransactionSchema, ImuYearSchema, MovementClassSchema } from './model';
-import type { BankTransaction, ImuYear, MovementClass } from './model';
+import {
+  BankTransactionSchema,
+  ImuYearSchema,
+  MovementClassSchema,
+  TaxPaymentSchema,
+} from './model';
+import type { BankTransaction, ImuYear, MovementClass, TaxPayment } from './model';
 import { cents } from './money';
 import { splitSharedDebit } from './split';
 import type { Cents } from './money';
@@ -59,10 +64,22 @@ export function imuRates(input: {
   years: ImuYear[];
   classes: MovementClass[];
   transactions: BankTransaction[];
+  /** The other voci of a mixed F24 (plan 17, R307): what is left of the debit is the IMU. */
+  taxPayments?: TaxPayment[];
 }): ImuRate[] {
   const transactions = new Map(
     input.transactions.filter((t) => t.deleted !== true).map((t) => [t.id, t]),
   );
+  const otherVoci = new Map<string, number>();
+  for (const p of (input.taxPayments ?? []).filter((p) => p.deleted !== true)) {
+    otherVoci.set(
+      p.transactionId,
+      p.parts.reduce((sum, part) => sum + part.amount, 0),
+    );
+  }
+  /** The IMU part of an F24: the debit less the parts of the other voci. */
+  const imuOf = (tx: BankTransaction | undefined): number =>
+    tx === undefined ? 0 : -tx.amount - (otherVoci.get(tx.id) ?? 0);
   const f24s = new Map<string, BankTransaction>();
   // By transaction id: one F24 per rate (question 9), the first if ever two.
   for (const c of [...input.classes].sort((a, b) => compareText(a.id, b.id))) {
@@ -86,7 +103,7 @@ export function imuRates(input: {
       group.every((y) => y.rates.every((r) => r.expected === undefined)) &&
       totals.every((t) => t !== undefined);
     const annualPaid = indices.every((i) => f24Of(i) !== undefined)
-      ? cents(indices.reduce((sum, i) => sum - (f24Of(i)?.amount ?? 0), 0))
+      ? cents(indices.reduce((sum, i) => sum + imuOf(f24Of(i)), 0))
       : undefined;
     const annual = annualOnly
       ? {
@@ -103,7 +120,7 @@ export function imuRates(input: {
       const dates = new Set(entries.map((r) => r?.dueDate));
       const [dueDate] = dates;
       const tx = f24Of(rateIndex);
-      const paid = tx === undefined ? undefined : cents(-tx.amount);
+      const paid = tx === undefined ? undefined : cents(imuOf(tx));
       const [checkPaid, checkExpected] =
         annual === undefined ? [paid, expected] : [annual.paid, annual.expected];
       const status: ImuRateStatus =
@@ -218,6 +235,7 @@ export async function loadImuRates(
     years: (await loadAll(store, 'imuYear', ImuYearSchema, all)).records,
     classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
+    taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
   });
   return {
     status: 'computed',

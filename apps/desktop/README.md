@@ -72,9 +72,9 @@ Gli installer non sono firmati:
 ## Punti aperti
 
 - **Cargo.lock**: fissato l'11 novembre 2026 con il file generato dalla prima build verde
-  (esecuzione 42946109167); il workflow usa `--locked`. Per aggiornare le dipendenze Rust serve
-  Rust in locale (`cargo update` in `src-tauri`), oppure si toglie `--locked` per una build, si
-  scarica l'artifact `cargo-lock` e lo si committa.
+  (esecuzione 42946109167); il workflow usa `--locked`. Dopo un cambio di `Cargo.toml`, il
+  workflow `cargo-lock.yml` (parte da solo al push) prepara il lock aggiornato come artifact
+  `cargo-lock` ed è rosso finché non lo si committa (`docs/distribuzione.md`, punto 3).
 - **Licenze di `cargo-deny`** (`deny.toml`): ammette l'elenco del vincolo globale più MPL-2.0 e,
   per decisione di user1 dell'11 novembre 2026, `Unicode-3.0` e `Zlib` (richieste dall'albero Rust
   di Tauri). Con queste la prima build è passata; se una dipendenza nuova porta altre licenze, decide user1.

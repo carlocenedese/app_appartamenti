@@ -1,4 +1,15 @@
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import {
+  link,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,14 +22,19 @@ import {
   recordPath,
   writeRecord,
 } from '@bollette/core';
-import { FsStore } from '../src/fs-store';
+import { FsStore, moveFileNoOverwrite } from '../src/fs-store';
 
 // Real folders in the system temp folder: these tests run on Linux, macOS and Windows in CI, so
 // they also cover how each file system treats accented names and renames over an existing file.
 // `rename` is wrapped so that a test can make it fail; everything else in node:fs/promises is real.
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, rename: vi.fn(actual.rename) };
+  return {
+    ...actual,
+    rename: vi.fn(actual.rename),
+    link: vi.fn(actual.link),
+    unlink: vi.fn(actual.unlink),
+  };
 });
 
 const NFC = 'Perch\u00e9.json';
@@ -411,5 +427,55 @@ describe('FsStore with the engine', () => {
     };
     await store.writeJsonAtomic('_app/workspace.json', workspace);
     expect(await findWorkspace(store)).toEqual(workspace);
+  });
+});
+
+describe('moveFileNoOverwrite (plan 17, R315)', () => {
+  it('moves into new folders, never over a file, and says when the source is missing', async () => {
+    await mkdir(join(root, 'Casa', 'Da_smistare'), { recursive: true });
+    await writeFile(join(root, 'Casa', 'Da_smistare', 'a.pdf'), 'uno');
+    const to = 'Casa/Bollette/Gas/2026/a.pdf';
+    expect(await moveFileNoOverwrite(root, 'Casa/Da_smistare/a.pdf', to)).toBe('moved');
+    expect(await readFile(join(root, ...to.split('/')), 'utf8')).toBe('uno');
+    expect(await moveFileNoOverwrite(root, 'Casa/Da_smistare/a.pdf', to)).toBe('missing');
+    await writeFile(join(root, 'Casa', 'Da_smistare', 'a.pdf'), 'due');
+    expect(await moveFileNoOverwrite(root, 'Casa/Da_smistare/a.pdf', to)).toBe('target-exists');
+    expect(await readFile(join(root, ...to.split('/')), 'utf8')).toBe('uno');
+    await expect(moveFileNoOverwrite(root, '../fuori.pdf', to)).rejects.toThrow(RangeError);
+  });
+
+  it('copies exclusively where hard links are not allowed', async () => {
+    await writeFile(join(root, 'a.pdf'), 'uno');
+    vi.mocked(link).mockRejectedValueOnce(Object.assign(new Error('no'), { code: 'EPERM' }));
+    expect(await moveFileNoOverwrite(root, 'a.pdf', 'b/a.pdf')).toBe('moved');
+    expect(await readFile(join(root, 'b', 'a.pdf'), 'utf8')).toBe('uno');
+    expect(await namesIn()).toEqual(['b']);
+  });
+});
+
+describe('moveFileNoOverwrite, the edges (plan 17, R315)', () => {
+  it('finds names in the other Unicode spelling, refuses links and what is no file', async () => {
+    await mkdir(join(root, 'Perche\u0301'), { recursive: true });
+    await writeFile(join(root, 'Perche\u0301', 'a.pdf'), 'uno');
+    expect(await moveFileNoOverwrite(root, 'Perch\u00e9/a.pdf', 'b/a.pdf')).toBe('moved');
+    await mkdir(join(root, 'cartella'));
+    expect(await moveFileNoOverwrite(root, 'cartella', 'c/x')).toBe('missing');
+    await mkdir(join(root, 'vera'));
+    await writeFile(join(root, 'vera', 'f.pdf'), 'x');
+    try {
+      await symlink(join(root, 'vera'), join(root, 'collegata'));
+    } catch {
+      return; // no symbolic links on this machine (Windows without rights)
+    }
+    expect(await moveFileNoOverwrite(root, 'collegata/f.pdf', 'd/f.pdf')).toBe('unsafe-path');
+    expect(await moveFileNoOverwrite(root, 'vera/f.pdf', 'collegata/g.pdf')).toBe('unsafe-path');
+  });
+
+  it('puts the file back when the old name cannot be removed', async () => {
+    await writeFile(join(root, 'a.pdf'), 'uno');
+    vi.mocked(unlink).mockRejectedValueOnce(Object.assign(new Error('no'), { code: 'EBUSY' }));
+    await expect(moveFileNoOverwrite(root, 'a.pdf', 'b/a.pdf')).rejects.toThrow('no');
+    expect(await namesIn()).toEqual(['a.pdf', 'b']);
+    expect(await namesIn('b')).toEqual([]);
   });
 });

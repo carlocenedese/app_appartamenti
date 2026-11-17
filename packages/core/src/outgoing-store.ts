@@ -27,6 +27,7 @@ import {
 } from './model';
 import type { OutgoingKind } from './model';
 import { movementUses } from './movements';
+import { recoveriesUsing } from './condo-store';
 import { taxPaymentsUsing } from './tax-store';
 import { isPayerIban, outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
 import type { MovementClassDraft, OutgoingProposal } from './outgoing';
@@ -445,7 +446,10 @@ export async function cancelAutomaticClass(
   const by = latestOperationByPath((await readJournal(store)).operations).get(path);
   if (cls.ruleId === undefined || by?.kind !== 'outgoing.reconcile') return refuse('not-automatic');
   // Plan 10: the movement is assigned to a tax; undo that first.
-  const recordIds = await taxPaymentsUsing(store, [transactionId]);
+  const recordIds = [
+    ...(await taxPaymentsUsing(store, [transactionId])),
+    ...(await recoveriesUsing(store, [transactionId])), // plan 17
+  ];
   if (recordIds.length > 0) return { status: 'refused', reason: 'has-dependents', recordIds };
   const operation = await commitChange(
     store,

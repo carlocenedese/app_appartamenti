@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  apartmentFolder,
+  billFileMove,
   BillSchema,
   ExtractionResultSchema,
   PendingDocumentSchema,
@@ -154,6 +156,19 @@ describe('importBill', () => {
     const { store, input, clock } = await setup();
     const result = await importBill(store, { ...input, knownCodes: [] }, 'user1', clock, ids('a'));
     expect(result).toMatchObject({ status: 'da-rivedere', codes: ['apartment-codes-unknown'] });
+  });
+
+  it('without codes from the caller, takes those kept in the apartment (R314)', async () => {
+    const { store, input, clock } = await setup();
+    const withoutCodes = { ...input };
+    delete withoutCodes.knownCodes;
+    const none = await importBill(store, withoutCodes, 'user1', clock, ids('a'));
+    expect(none).toMatchObject({ status: 'da-rivedere', codes: ['apartment-codes-unknown'] });
+    const path = recordPath('apartment', 'apt-1');
+    const apartment = (await store.readJson(path)) as Record<string, unknown>;
+    await store.writeJsonAtomic(path, { ...apartment, rev: 2, supplyCodes: [POD] });
+    const kept = await importBill(store, withoutCodes, 'user1', clock, ids('b'));
+    expect(kept).toMatchObject({ status: 'registrata-automaticamente' });
   });
 
   it('gives codes for doubtful fields, a wrong apartment code and the reading status', async () => {
@@ -429,6 +444,15 @@ describe('undoBillImport', () => {
       status: 'refused',
       reason: 'has-dependents',
       recordIds: ['m-1'],
+    });
+  });
+});
+
+describe('billFileMove (plan 17, R315)', () => {
+  it('files the PDF under the apartment, and brings it back to its Da_smistare', () => {
+    expect(billFileMove({ name: 'Casa Nord' }, 'Bollette/Gas/2026/2026-10-05_Gas_X.pdf')).toEqual({
+      filed: `${apartmentFolder('Casa Nord')}/Bollette/Gas/2026/2026-10-05_Gas_X.pdf`,
+      inbox: `${apartmentFolder('Casa Nord')}/Da_smistare/2026-10-05_Gas_X.pdf`,
     });
   });
 });

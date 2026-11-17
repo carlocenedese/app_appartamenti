@@ -29,6 +29,8 @@ export interface SavePayableInput {
   repeatYearly?: true;
   /** The tax year chosen by user1 (R242); absent removes it, as `expected`. */
   taxYear?: number;
+  /** The voce of the tax table of a bollo, f24 or altro (plan 17, R303); absent removes it. */
+  taxVoice?: 'cedolare' | 'registro';
 }
 
 type Refused<R extends string> = { status: 'refused'; reason: R };
@@ -38,7 +40,12 @@ export type SavePayableResult =
   | Saved
   | { status: 'unchanged'; payableId: string }
   | Refused<
-      'inconsistent-store' | 'unknown-apartment' | 'unknown-payable' | 'bad-amount' | 'bad-year'
+      | 'inconsistent-store'
+      | 'unknown-apartment'
+      | 'unknown-payable'
+      | 'bad-amount'
+      | 'bad-year'
+      | 'bad-voice'
     >;
 
 export type RepeatPayableResult =
@@ -107,7 +114,8 @@ async function write(
  * Creates (`id` absent) or updates a live payable in one `payable.save` operation; an update keeps
  * `paid` and `previousId`. Refused without writing: `inconsistent-store`, `unknown-apartment` (not
  * live), `unknown-payable` (`id` not a live payable), `bad-amount` (not a positive integer),
- * `bad-year` (`taxYear` not a whole number 1-9999). The same content is `unchanged`.
+ * `bad-year` (`taxYear` not a whole number 1-9999), `bad-voice` (a `taxVoice` on a cedolare or
+ * registro payable, which is its own voce: R303). The same content is `unchanged`.
  */
 export async function savePayable(
   store: Store,
@@ -127,6 +135,9 @@ export async function savePayable(
   if (input.id !== undefined && before === undefined) return refuse('unknown-payable');
   if (badAmount(input.expected)) return refuse('bad-amount');
   if (badYear(input.taxYear)) return refuse('bad-year');
+  if (input.taxVoice !== undefined && (input.kind === 'cedolare' || input.kind === 'registro')) {
+    return refuse('bad-voice');
+  }
   const after = {
     id: input.id ?? `scad-${newId()}`,
     apartmentId: input.apartmentId,
@@ -135,6 +146,7 @@ export async function savePayable(
     ...(input.expected === undefined ? {} : { expected: input.expected }),
     ...(input.repeatYearly === true ? { repeatYearly: true as const } : {}),
     ...(input.taxYear === undefined ? {} : { taxYear: input.taxYear }),
+    ...(input.taxVoice === undefined ? {} : { taxVoice: input.taxVoice }),
     ...(before?.previousId === undefined ? {} : { previousId: before.previousId }),
     ...(before?.paid === undefined ? {} : { paid: before.paid }),
   };
@@ -191,6 +203,8 @@ export async function repeatPayable(
     previousId: previous.id,
     // Never copied nor computed from the previous item (R242).
     ...(input.taxYear === undefined ? {} : { taxYear: input.taxYear }),
+    // The voce goes with the kind, chosen when the first one was created (R303).
+    ...(previous.taxVoice === undefined ? {} : { taxVoice: previous.taxVoice }),
   };
   return write(
     store,

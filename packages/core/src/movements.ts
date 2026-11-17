@@ -28,6 +28,7 @@ import type {
   Transfer,
 } from './model';
 import { payablesRepeatedFrom, payablesUsing } from './payable-store';
+import { recoveriesUsing } from './condo-store';
 import { taxPaymentsUsing } from './tax-store';
 import { contactsUsing } from './contact-store';
 import { parseOrThrow } from './parse';
@@ -144,6 +145,9 @@ export async function undoBlockedBy(store: Store, operationId: string): Promise<
   // Plan 10: a class whose movement is assigned to a tax (`taxPayment`).
   const taxed = await taxPaymentsUsing(store, classed);
   if (taxed.length > 0) return taxed;
+  // Plan 17: a class whose movement a recovery from tenants recovers.
+  const recovered = await recoveriesUsing(store, classed);
+  if (recovered.length > 0) return recovered;
   // Plan 9: an undo that would take away an item a live item was repeated from.
   const created = (operation?.changes ?? []).flatMap(({ path, before, after }) => {
     if (!path.includes('/payable/')) return [];

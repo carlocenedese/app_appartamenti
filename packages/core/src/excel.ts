@@ -7,11 +7,12 @@ import {
   CATEGORY_ORDER,
   allocateBillToMonths,
   allocateInstalment,
-  RECOVERY_WAITING,
   calcConguaglio,
   isPresent,
   previousToTenants,
+  settlementPeriodOf,
 } from './conguaglio';
+export { settlementPeriodOf } from './conguaglio';
 import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguaglio';
 import { apartmentFolder } from './accounts';
 import type { FreeDebit } from './condominio';
@@ -205,34 +206,23 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
 
 export interface ExcelInput extends ConguaglioInput {
   tenants: Tenant[];
-  /**
-   * Every settlement period of the apartment (this one included), to give a settlement payment
-   * without `forMonth` to one period only (R177); without it, only `period` is known.
-   */
-  periods?: { from: YearMonth; to: YearMonth }[];
   /** The free outgoing movements, for the «duplicato» of the owners' file (R198). */
   freeDebits?: FreeDebit[];
 }
 
 type Span = { from: YearMonth; to: YearMonth };
 
-/**
- * The settlement period a payment of `month` without `forMonth` belongs to (R177, user1's D11 and
- * D13): a period takes the months from its start to the end of the next one (the first that starts
- * after it; none: no end). Among the periods that take `month`, one already ended gets it (the
- * latest starting); otherwise the one that starts last. So a date inside a later period still open
- * goes to the earlier one, and the later one shows nothing paid until it ends (D11).
- */
-export function settlementPeriodOf(month: YearMonth, periods: readonly Span[]): Span | undefined {
-  const sorted = [...periods].sort(
-    (a, b) => compareText(a.from, b.from) || compareText(a.to, b.to),
-  );
-  const takes = sorted.filter((p) => {
-    const next = sorted.find((q) => q.from > p.from);
-    return p.from <= month && (next === undefined || month <= next.to);
-  });
-  const ended = takes.filter((p) => p.to < month);
-  return (ended.length > 0 ? ended : takes).at(-1);
+/** Question 3, R172, R177: a payment counts in `period` by the month given, else by its date. */
+export function inSettlement(
+  payment: Pick<Payment, 'forMonth' | 'date'>,
+  period: Span,
+  spans: readonly Span[],
+): boolean {
+  if (payment.forMonth !== undefined) {
+    return payment.forMonth >= period.from && payment.forMonth <= period.to;
+  }
+  const home = settlementPeriodOf(payment.date.slice(0, 7) as YearMonth, spans);
+  return home?.from === period.from && home.to === period.to;
 }
 
 export type SettlementStatus =
@@ -347,21 +337,6 @@ export class ExcelInputError extends Error {
   }
 }
 
-/**
- * A period with a recovery from tenants (plan 8, R197): how it shows in the tenants' file is not
- * decided yet (question 10 of the plan 8 design), so the file is refused rather than wrong.
- */
-export class ExcelRecoveriesError extends Error {
-  readonly code = 'recoveries-not-supported';
-
-  constructor() {
-    super(
-      "Il periodo ha un recupero da un inquilino: l'Excel degli inquilini non lo mostra ancora.",
-    );
-    this.name = 'ExcelRecoveriesError';
-  }
-}
-
 const text = (value: string | undefined): XlsxCell | null =>
   value === undefined || value === '' ? null : { kind: 'text', value };
 const euro = (value: Cents): XlsxCell => ({ kind: 'euro', value });
@@ -384,12 +359,6 @@ const dayMonthYear = (day: ISODate): string =>
  */
 export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const result = calcConguaglio(input);
-  if (
-    result.tenants.some((t) => t.recupero !== undefined) ||
-    result.pending.some((p) => p.reason === RECOVERY_WAITING)
-  ) {
-    throw new ExcelRecoveriesError();
-  }
   const { apartment, period } = input;
   const names = new Map(live(input.tenants).map((t) => [t.id, t.name]));
   const missing = result.tenants.map((t) => t.tenantId).filter((id) => !names.has(id));
@@ -443,6 +412,14 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
       euro(total(items.map((item) => item[k]))),
     ),
   ]);
+  // Plan 17, R300 (plan 8 question 10): the recoveries from tenants, a section of their own after
+  // the total; in «Conguagli» they are in the column Spese.
+  const recovering = result.tenants.filter((t) => t.recupero !== undefined);
+  if (recovering.length > 0) {
+    bollette.push([], [text('Recuperi dagli inquilini')], [text('Inquilino'), text('Importo')]);
+    for (const t of recovering)
+      bollette.push([text(nameOf(t.tenantId)), euro(t.recupero ?? cents(0))]);
+  }
   // Question 6: the pending items are listed after the total, with no amount.
   interface PendingRow {
     id: string;
@@ -510,15 +487,11 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const payments = live(input.payments).filter(
     (p) => p.confirmed && p.apartmentId === apartment.id,
   );
-  // Question 3, R172, R177: the month given, else the period the date belongs to.
   const spans = input.periods ?? [period];
-  const inSettlement = (p: Payment) => {
-    if (p.forMonth !== undefined) return p.forMonth >= period.from && p.forMonth <= period.to;
-    const home = settlementPeriodOf(p.date.slice(0, 7) as YearMonth, spans);
-    return home?.from === period.from && home.to === period.to;
-  };
   const settlementPayments = payments
-    .filter((p) => p.kind === 'conguaglio' && settled.has(p.tenantId) && inSettlement(p))
+    .filter(
+      (p) => p.kind === 'conguaglio' && settled.has(p.tenantId) && inSettlement(p, period, spans),
+    )
     .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
   const paidBy = (tenantId: string) => settlementPayments.filter((p) => p.tenantId === tenantId);
 
@@ -529,7 +502,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const columns = settlements.map((t) => {
     const versato = total(paidBy(t.tenantId).map((p) => p.amount));
     return [
-      t.spese + t.commissione,
+      t.spese + t.commissione + (t.recupero ?? 0),
       t.condominio.rata + t.condominio.conguaglioPrec,
       t.forfaitIncassato,
       t.due,

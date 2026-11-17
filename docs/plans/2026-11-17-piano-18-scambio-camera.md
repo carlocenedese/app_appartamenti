@@ -1,7 +1,7 @@
 # App Bollette: Piano 18, scambio di camera (core e riga di comando)
 
 Disegno: `docs/plans/2026-11-17-piano-18-scambio-camera-disegno.md` (bozza da approvare da user1).
-Regole del registro da **R310**. Ramo `feat/piano-18-scambio-camera`.
+Regole del registro da **R320**. Ramo `feat/piano-18-scambio-camera`.
 
 ## Metodo di esecuzione
 
