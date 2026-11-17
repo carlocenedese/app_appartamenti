@@ -1334,6 +1334,24 @@ export const TenantRecoverySchema = RecordBaseSchema.extend({
   });
 export type TenantRecovery = z.infer<typeof TenantRecoverySchema>;
 
+// --- Legal interest rates (plan 17) -------------------------------------------------------------
+
+/**
+ * The legal interest rate of one year (plan 17, R301), typed by user1 like the IMU amounts: the
+ * deposit return statement reads it, the code never holds a rate.
+ */
+export const LegalRateSchema = RecordBaseSchema.extend({
+  year: YearSchema,
+  /** Basis points: 250 is 2,50%. */
+  rateBp: z.int().min(0).max(10000),
+})
+  .refine((r) => r.id === `tasso-${r.year}`, {
+    message: 'The id must be tasso-<year>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is tasso-<year>; rateBp in basis points, 0 to 10000.' });
+export type LegalRate = z.infer<typeof LegalRateSchema>;
+
 // --- Address book (plan 14) --------------------------------------------------------------------
 
 /**
@@ -1453,6 +1471,7 @@ export const recordSchemas = {
   taxEstimate: TaxEstimateSchema,
   taxPayment: TaxPaymentSchema,
   contact: ContactSchema,
+  legalRate: LegalRateSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

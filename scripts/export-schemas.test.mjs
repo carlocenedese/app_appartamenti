@@ -31,6 +31,7 @@ describe('writeJsonSchemas', () => {
       'imuRule',
       'imuYear',
       'instalment',
+      'legalRate',
       'match',
       'movementClass',
       'movementRule',

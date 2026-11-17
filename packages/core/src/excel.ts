@@ -234,6 +234,19 @@ export function settlementPeriodOf(month: YearMonth, periods: readonly Span[]): 
   return (ended.length > 0 ? ended : takes).at(-1);
 }
 
+/** Question 3, R172, R177: a payment counts in `period` by the month given, else by its date. */
+export function inSettlement(
+  payment: Pick<Payment, 'forMonth' | 'date'>,
+  period: Span,
+  spans: readonly Span[],
+): boolean {
+  if (payment.forMonth !== undefined) {
+    return payment.forMonth >= period.from && payment.forMonth <= period.to;
+  }
+  const home = settlementPeriodOf(payment.date.slice(0, 7) as YearMonth, spans);
+  return home?.from === period.from && home.to === period.to;
+}
+
 export type SettlementStatus =
   'saldato' | 'parziale' | 'da pagare' | 'da restituire' | 'versato in più';
 
@@ -496,15 +509,11 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const payments = live(input.payments).filter(
     (p) => p.confirmed && p.apartmentId === apartment.id,
   );
-  // Question 3, R172, R177: the month given, else the period the date belongs to.
   const spans = input.periods ?? [period];
-  const inSettlement = (p: Payment) => {
-    if (p.forMonth !== undefined) return p.forMonth >= period.from && p.forMonth <= period.to;
-    const home = settlementPeriodOf(p.date.slice(0, 7) as YearMonth, spans);
-    return home?.from === period.from && home.to === period.to;
-  };
   const settlementPayments = payments
-    .filter((p) => p.kind === 'conguaglio' && settled.has(p.tenantId) && inSettlement(p))
+    .filter(
+      (p) => p.kind === 'conguaglio' && settled.has(p.tenantId) && inSettlement(p, period, spans),
+    )
     .sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
   const paidBy = (tenantId: string) => settlementPayments.filter((p) => p.tenantId === tenantId);
 

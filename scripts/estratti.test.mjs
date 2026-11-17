@@ -4294,14 +4294,6 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     'pulci',
     '--inquilino',
     'ten-anna',
-    '--dal',
-    '2025-09-25',
-    '--al',
-    '2026-02-28',
-    '--tasso',
-    '2025:2',
-    '--tasso',
-    '2026:2',
     '--conguaglio',
     '40,00',
     '--addebito',
@@ -4354,6 +4346,14 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       monthlyRent: 36000,
     });
 
+    for (const year of ['2025', '2026']) {
+      const rate = await go(['tasso-legale', ...s.common, '--anno', year, '--tasso', '2']);
+      expect([rate.code, rate.json.status, rate.json.rateId]).toEqual([
+        0,
+        'saved',
+        `tasso-${year}`,
+      ]);
+    }
     const draft = await go(restituzione(s));
     expect([draft.code, draft.json.status, draft.json.lines]).toEqual([0, 'ok', 4]);
     const full = await run(restituzione(s, '--dettagli'));
@@ -4396,7 +4396,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     ]);
     expect((await run(subentro(s, '--inquilino', 'ten-anna'))).json.reason).toBe('same-tenant');
     expect((await run(restituzione(s, '--inquilino', 'ten-bruno'))).json.reason).toBe('no-deposit');
-    expect((await run(restituzione(s, '--al', '2027-01-31'))).json.reason).toBe('missing-rate');
+    expect((await run(restituzione(s))).json.reason).toBe('missing-rate');
     for (const args of [
       presenza(s, '--affitto', '-1,00'),
       presenza(s, '--caparra-attesa', '0'),
@@ -4404,8 +4404,10 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       presenza(s, '--prova'),
       ['fine-presenza', ...s.common, '--presenza', 'tcy-anna'],
       ['subentro', ...s.common, '--presenza', 'tcy-anna', '--mese', '2026-02'],
-      restituzione(s, '--tasso', '2025'),
-      restituzione(s, '--tasso', '2025:3'),
+      restituzione(s, '--dal', '2025-09-25'),
+      restituzione(s, '--tasso', '2'),
+      ['tasso-legale', ...s.common, '--anno', '2025', '--tasso', '2', '--tasso', '3'],
+      ['tasso-legale', ...s.common, '--anno', '25', '--tasso', '2'],
       restituzione(s, '--addebito', 'senza-importo'),
       ['caparra-restituzione', ...s.common, '--appartamento', 'pulci'],
       ['stato-contratti', ...s.common, '--posto', 'A'],

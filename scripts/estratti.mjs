@@ -103,6 +103,7 @@ import {
   recordTakeover,
   loadContractStatus,
   loadDepositReturn,
+  saveLegalRate,
   saveTenant,
   setImuYear,
   setRentYear,
@@ -263,8 +264,14 @@ const MESSAGES = {
   'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
   'no-deposit': 'Rifiutato: nessuna caparra versata da questo inquilino in questo appartamento.',
   'already-returned': 'Rifiutato: la caparra risulta già restituita.',
-  'invalid-dates': 'Rifiutato: la data finale è prima di quella iniziale.',
-  'missing-rate': 'Rifiutato: manca il tasso legale di un anno.',
+  'missing-rate':
+    'Rifiutato: manca il tasso legale di un anno della permanenza: inserirlo con «tasso-legale».',
+  'no-exit': 'Rifiutato: la permanenza dell’inquilino non ha ancora una fine.',
+  'no-period': 'Rifiutato: nessun periodo di conguaglio contiene il mese di uscita.',
+  'ambiguous-period': 'Rifiutato: più periodi di conguaglio contengono il mese di uscita.',
+  'settlement-error':
+    'Rifiutato: il conguaglio del periodo di uscita non si calcola (presenze o rate da correggere).',
+  'invalid-rate': 'Rifiutato: anno o tasso non validi.',
   'deposit-return-draft':
     'Prospetto con le date, i tassi e il conguaglio indicati: da controllare prima dell’invio.',
   'bad-year': 'Rifiutato: anno non valido.',
@@ -444,6 +451,7 @@ const RECONCILE_KINDS = [
   'tax.copy',
   'tax.assign',
   'contact.save',
+  'legal-rate.save',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -1876,17 +1884,32 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
-  if (name === 'caparra-restituzione') {
-    need(values, 'appartamento', 'inquilino', 'dal', 'al', 'conguaglio');
-    if (positionals.length > 0 || (values.tasso ?? []).length === 0) {
+  if (name === 'tasso-legale') {
+    // Plan 17, R301: the legal rate of a year, typed by user1 like the IMU amounts.
+    need(values, 'anno');
+    if (positionals.length > 0 || values.tasso?.length !== 1 || !/^[0-9]{4}$/.test(values.anno)) {
       throw invalid('bad-arguments');
     }
-    const rates = values.tasso.map((text) => {
-      const found = /^([0-9]{4}):(.+)$/.exec(text);
-      if (found === null) throw invalid('bad-arguments');
-      return { year: Number(found[1]), rateBp: basisPoints(found[2]) };
-    });
-    if (new Set(rates.map((r) => r.year)).size !== rates.length) throw invalid('bad-arguments');
+    const result = await saveLegalRate(
+      store,
+      { year: values.anno, rateBp: basisPoints(values.tasso[0]) },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      rateId: result.rateId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  if (name === 'caparra-restituzione') {
+    // Plan 17, R302: dates from the stay, rates from `tasso-legale`, conguaglio from the settlement
+    // unless typed with --conguaglio.
+    need(values, 'appartamento', 'inquilino');
+    if (positionals.length > 0) throw invalid('bad-arguments');
     const extraCharges = (values.addebito ?? []).map((text) => {
       const at = text.lastIndexOf(':');
       if (at < 1) throw invalid('bad-arguments');
@@ -1895,10 +1918,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const result = await loadDepositReturn(store, {
       apartmentId: values.appartamento,
       tenantId: values.inquilino,
-      from: day(values.dal),
-      to: day(values.al),
-      rates,
-      conguaglio: euro(values.conguaglio),
+      ...(values.conguaglio === undefined ? {} : { conguaglio: euro(values.conguaglio) }),
       extraCharges,
     });
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
@@ -2399,6 +2419,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'subentro',
         'stato-contratti',
         'caparra-restituzione',
+        'tasso-legale',
         'tasse-stima',
         'tasse-copia',
         'tasse-assegna',
@@ -2487,6 +2508,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       esercizio: ['condominio-documento', 'condominio', 'condominio-stima'],
       'quota-conduttore': ['condominio-documento'],
       anno: [
+        'tasso-legale',
         'imu-atteso',
         'imu-f24',
         'imu',
@@ -2527,14 +2549,14 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
       'ogni-anno': ['scadenza-nuova'],
       'anno-riferimento': ['scadenza-nuova', 'scadenza-ripeti'],
-      dal: ['importa', 'contratto-canone', 'presenza', 'caparra-restituzione'],
-      al: ['importa', 'presenza', 'caparra-restituzione'],
+      dal: ['importa', 'contratto-canone', 'presenza'],
+      al: ['importa', 'presenza'],
       posto: ['presenza'],
       affitto: ['presenza', 'subentro'],
       forfait: ['presenza', 'subentro'],
       'caparra-attesa': ['presenza', 'subentro'],
       presenza: ['fine-presenza', 'subentro'],
-      tasso: ['caparra-restituzione'],
+      tasso: ['tasso-legale'],
       addebito: ['caparra-restituzione'],
       ...Object.fromEntries(
         [
