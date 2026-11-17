@@ -8,6 +8,7 @@ import {
   ApartmentSchema,
   ContractSchema,
   TenancySchema,
+  TenantCardSchema,
   TenantSchema,
 } from './model';
 import type { ModuleData } from './modules';
@@ -57,9 +58,11 @@ export async function loadModuleData(
   const ibans = (await live('account', AccountSchema))
     .filter((a) => a.apartmentId === apartment.id)
     .flatMap((a) => (a.iban === undefined ? [] : [a.iban]));
+  const card = (await live('tenantCard', TenantCardSchema)).find((c) => c.id === tenant.id);
   const data: ModuleData = {
     apartment,
     tenant,
+    ...(card === undefined ? {} : { card }),
     tenancy,
     ibans: [...new Set(ibans)].sort(compareText),
   };

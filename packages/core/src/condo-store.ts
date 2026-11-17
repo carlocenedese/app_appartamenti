@@ -44,13 +44,10 @@ export type SaveCondoDocumentResult =
   | { status: 'unchanged'; documentId: string }
   | {
       status: 'refused';
-      reason:
-        | 'inconsistent-store'
-        | 'unknown-apartment'
-        | 'invalid-document'
-        | 'id-collision'
-        | 'esercizio-format';
-    };
+      reason: 'inconsistent-store' | 'unknown-apartment' | 'invalid-document' | 'id-collision';
+    }
+  /** The documents of the apartment with the other form (R310): the ones to correct, or this. */
+  | { status: 'refused'; reason: 'esercizio-format'; documentIds: string[] };
 
 /**
  * Creates or replaces `condoc-<apartmentId>-<esercizio>-<kind>` (a new `rev`; a deleted one comes
@@ -66,8 +63,12 @@ export async function saveCondoDocument(
   clock: () => string,
   newId: () => string,
 ): Promise<SaveCondoDocumentResult> {
-  const refuse = (reason: Extract<SaveCondoDocumentResult, { status: 'refused' }>['reason']) =>
-    ({ status: 'refused', reason }) as const;
+  const refuse = (
+    reason: Exclude<
+      Extract<SaveCondoDocumentResult, { status: 'refused' }>['reason'],
+      'esercizio-format'
+    >,
+  ) => ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
@@ -78,15 +79,17 @@ export async function saveCondoDocument(
     await loadAll(store, 'condoDocument', CondoDocumentSchema, { includeDeleted: true })
   ).records;
   const before = docs.find((d) => d.id === id);
-  if (
-    docs.some(
+  const otherForm = docs
+    .filter(
       (d) =>
         d.deleted !== true &&
         d.apartmentId === input.apartmentId &&
         esercizioForm(d.esercizio) !== esercizioForm(input.esercizio),
     )
-  ) {
-    return refuse('esercizio-format');
+    .map((d) => d.id)
+    .sort(compareText);
+  if (otherForm.length > 0) {
+    return { status: 'refused', reason: 'esercizio-format', documentIds: otherForm };
   }
   // `a` + `b-c` and `a-b` + `c` give the same id: never write over another apartment's document.
   if (
@@ -127,7 +130,10 @@ export type LoadCondoResult =
       status: 'computed';
       rates: CondoCheckRow[];
       differences: CondoDifference[];
-      /** The live recoveries on the instalments read, sorted by id. */
+      /**
+       * The live recoveries on the instalments read, and (without `esercizio`) those of the
+       * apartment on a movement or on no expense; sorted by id.
+       */
       recoveries: TenantRecovery[];
       /**
        * Instalments whose live recoveries now add up to more than the expense (it was edited down
@@ -155,7 +161,13 @@ export async function loadCondo(
   const instalments = (await loadAll(store, 'instalment', InstalmentSchema)).records.filter(wanted);
   const ids = new Set(instalments.map((i) => i.id));
   const recoveries = (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records
-    .filter((r) => r.instalmentId !== undefined && ids.has(r.instalmentId))
+    // Plan 17: also those without an instalment (a movement, or none) of the apartment asked.
+    .filter((r) =>
+      r.instalmentId !== undefined
+        ? ids.has(r.instalmentId)
+        : query.esercizio === undefined &&
+          (query.apartmentId === undefined || r.apartmentId === query.apartmentId),
+    )
     .sort((a, b) => compareText(a.id, b.id));
   const matches = [
     ...(await loadAll(store, 'match', BillMatchSchema)).records,
@@ -363,4 +375,15 @@ export async function saveTenantRecovery(
     newId,
   );
   return { status: 'saved', operationId: operation.id, recoveryId: input.id };
+}
+
+/** The live recoveries on these movements, sorted ids (plan 17, R300: they block an undo). */
+export async function recoveriesUsing(
+  store: Store,
+  transactionIds: readonly string[],
+): Promise<string[]> {
+  return (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records
+    .filter((r) => r.transactionId !== undefined && transactionIds.includes(r.transactionId))
+    .map((r) => r.id)
+    .sort(compareText);
 }

@@ -6,7 +6,8 @@
  */
 import { caparraReturn } from './caparra';
 import type { CaparraReturn } from './caparra';
-import { SettlementInputError, calcConguaglio, isPresent } from './conguaglio';
+import { SettlementInputError, calcConguaglio, isPresent, settlementPeriodOf } from './conguaglio';
+import { recoverableMovements } from './condominio';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
 import { legalInterest } from './interest';
@@ -14,7 +15,9 @@ import { planMatch } from './match-store';
 import { checkConsistency, commitChange } from './journal';
 import {
   ApartmentSchema,
+  BankTransactionSchema,
   BillMatchSchema,
+  MovementClassSchema,
   ContractSchema,
   LegalRateSchema,
   PaymentSchema,
@@ -181,13 +184,20 @@ export interface DepositReturnInput {
 }
 
 export type DepositReturnResult =
-  | { status: 'computed'; statement: CaparraReturn }
+  | {
+      status: 'computed';
+      statement: CaparraReturn;
+      /** Recoveries kept from the deposit once their expense is paid: not in yet (RECOVERY_WAITING). */
+      recoveriesWaiting: number;
+    }
   | {
       status: 'refused';
       reason:
         | 'inconsistent-store'
         | 'no-deposit'
         | 'already-returned'
+        | 'partial-return'
+        | 'several-stays'
         | 'no-exit'
         | 'missing-rate'
         | 'no-period'
@@ -197,16 +207,17 @@ export type DepositReturnResult =
 
 /**
  * The return statement of the deposit of `tenantId` in `apartmentId` (plan 11; plan 17, R302).
- * Capital: the deposit held, confirmed `caparra` payments less the returns. Interest
- * (`legalInterest`, whole months, R7) on all of it from the first day of the latest continuous stay
- * to the last day of its last month, with the rates of the `legalRate` records. Conguaglio: the
- * tenant's `due` in the settlement period of the last month (items still pending do not count),
- * less the settlement payments already made for it; `input.conguaglio` replaces it. Then a line
- * «Recupero» for each share of a live recovery without a period whose tenant is not in the period
- * of the expense (R300), once the expense is paid, and the extra charges. Read only. Refused:
- * `inconsistent-store`; `no-deposit` (nothing paid); `already-returned` (nothing left in hand);
- * `no-exit` (no stay, or the latest has no end); `missing-rate`; `no-period` and `ambiguous-period`
- * (no settlement period, or two, for the last month); `settlement-error` (the settlement throws).
+ * Capital: the deposit paid. Refused, prudently until user1 answers, when a return already exists
+ * (`already-returned` if nothing is left, else `partial-return`) or the tenant had several separate
+ * stays in the apartment (`several-stays`). Interest (`legalInterest`, whole months, R7: user1 said
+ * days, question open) on all of it from the first month of the stay to its last, with the rates of
+ * the `legalRate` records. Conguaglio: the tenant's `due` in the settlement period of the last month
+ * (pending items do not count) and, on a line of its own, what is already paid on it;
+ * `input.conguaglio` replaces both and then no period is needed. Then a line «Recupero» for each
+ * share of a live recovery without a period whose tenant is not in the period of the expense
+ * (R300), once the expense is paid (`recoveriesWaiting` counts the others), and the extra charges.
+ * Read only. Other refusals: `inconsistent-store`, `no-deposit`, `no-exit`, `missing-rate`,
+ * `no-period`, `ambiguous-period`, `settlement-error`.
  */
 export async function loadDepositReturn(
   store: Store,
@@ -225,7 +236,12 @@ export async function loadDepositReturn(
   if (check === undefined || check.paid === 0) return refuse('no-deposit');
   const held = cents(check.paid - check.returned);
   if (held <= 0) return refuse('already-returned');
-  const stay = continuousStays(tenancies.filter((t) => t.tenantId === input.tenantId)).at(-1);
+  // Prudent until user1 answers (R302): which deposit belongs to which stay, and what a partial
+  // return leaves, are not decided.
+  if (check.returned > 0) return refuse('partial-return');
+  const stays = continuousStays(tenancies.filter((t) => t.tenantId === input.tenantId));
+  if (stays.length > 1) return refuse('several-stays');
+  const stay = stays.at(-1);
   if (stay?.to === undefined) return refuse('no-exit');
   const exit = stay.to;
   const rates = (await loadAll(store, 'legalRate', LegalRateSchema)).records.map((r) => ({
@@ -257,6 +273,7 @@ export async function loadDepositReturn(
 
   // The conguaglio of the exit period, unless user1 typed it.
   let conguaglio = input.conguaglio;
+  const settled: { label: string; amount: Cents }[] = [];
   if (conguaglio === undefined) {
     const holding = spans.filter((p) => p.from <= exit && exit <= p.to);
     if (holding.length === 0) return refuse('no-period');
@@ -266,7 +283,9 @@ export async function loadDepositReturn(
       apartmentId: input.apartmentId,
       periodLabel: period.label,
     });
-    if (loaded.status !== 'ok') return refuse('ambiguous-period');
+    if (loaded.status !== 'ok') {
+      return refuse(loaded.reason === 'ambiguous-period' ? 'ambiguous-period' : 'no-period');
+    }
     let settlement;
     try {
       settlement = calcConguaglio(loaded.input);
@@ -285,13 +304,17 @@ export async function loadDepositReturn(
           inSettlement(p, period, loaded.input.periods ?? [period]),
       )
       .reduce((sum, p) => sum + p.amount, 0);
-    conguaglio = cents(due - paid);
+    // The amount due and what is already paid on it as two lines (R302): nothing subtracted unseen.
+    conguaglio = cents(due);
+    if (paid !== 0) settled.push({ label: 'Conguaglio già versato', amount: cents(-paid) });
   }
 
   const matches = [
     ...(await loadAll(store, 'match', BillMatchSchema)).records,
     ...(await planMatch(store)).assumedMatches,
   ];
+  const transactions = (await loadAll(store, 'transaction', BankTransactionSchema)).records;
+  const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
   const recoveries = withheldRecoveries({
     recoveries: (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records.filter(
       (r) => r.apartmentId === input.apartmentId,
@@ -299,6 +322,11 @@ export async function loadDepositReturn(
     tenantId: input.tenantId,
     tenancies,
     periods: spans,
+    recoverableMovements: recoverableMovements({
+      apartmentId: input.apartmentId,
+      transactions,
+      classes,
+    }),
     paidInstalments: new Set(
       matches
         .filter((m) => m.deleted !== true && m.confirmed && m.part === 'amount')
@@ -311,8 +339,9 @@ export async function loadDepositReturn(
       caparra: held,
       interest,
       conguaglio,
-      extraCharges: [...recoveries, ...input.extraCharges],
+      extraCharges: [...settled, ...recoveries.withheld, ...input.extraCharges],
     }),
+    recoveriesWaiting: recoveries.waiting,
   };
 }
 
@@ -328,26 +357,35 @@ export function withheldRecoveries(input: {
   tenancies: readonly Tenancy[];
   periods: readonly { from: YearMonth; to: YearMonth }[];
   paidInstalments: ReadonlySet<string>;
-}): { label: string; amount: Cents }[] {
+  recoverableMovements: ReadonlySet<string>;
+}): { withheld: { label: string; amount: Cents }[]; waiting: number } {
   const own = input.tenancies.filter((t) => t.deleted !== true && t.tenantId === input.tenantId);
-  return [...input.recoveries]
+  const candidates = [...input.recoveries]
     .filter((r) => r.deleted !== true && r.status === 'da-recuperare')
     .filter((r) => r.periodLabel === undefined && r.date !== undefined)
-    .filter((r) => r.instalmentId === undefined || input.paidInstalments.has(r.instalmentId))
+    .filter((r) => r.shares.some((s) => s.tenantId === input.tenantId))
+    .filter((r) => r.transactionId === undefined || input.recoverableMovements.has(r.transactionId))
     .filter((r) => {
-      const month = (r.date as ISODate).slice(0, 7) as YearMonth;
-      return !input.periods
-        .filter((p) => p.from <= month && month <= p.to)
-        .some((p) =>
-          monthsInPeriod(isoDate(`${p.from}-01`), isoDate(`${p.to}-01`)).some((m) =>
-            own.some((t) => isPresent(t, m)),
-          ),
-        );
+      // The one period of the date, as the settlement (`settlementPeriodOf`, R177).
+      const home = settlementPeriodOf((r.date as ISODate).slice(0, 7) as YearMonth, input.periods);
+      return (
+        home === undefined ||
+        !monthsInPeriod(isoDate(`${home.from}-01`), isoDate(`${home.to}-01`)).some((m) =>
+          own.some((t) => isPresent(t, m)),
+        )
+      );
     })
-    .sort((a, b) => compareText(a.id, b.id))
-    .flatMap((r) =>
-      r.shares
-        .filter((s) => s.tenantId === input.tenantId)
-        .map((s) => ({ label: `Recupero ${r.id}`, amount: s.amount })),
-    );
+    .sort((a, b) => compareText(a.id, b.id));
+  const paid = (r: TenantRecovery) =>
+    r.instalmentId === undefined || input.paidInstalments.has(r.instalmentId);
+  return {
+    withheld: candidates
+      .filter(paid)
+      .flatMap((r) =>
+        r.shares
+          .filter((s) => s.tenantId === input.tenantId)
+          .map((s) => ({ label: `Recupero ${r.id}`, amount: s.amount })),
+      ),
+    waiting: candidates.filter((r) => !paid(r)).length,
+  };
 }

@@ -291,6 +291,9 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
           const tx = item.paid.transactionId;
           if (tx !== undefined && counted.has(key(tx, voce))) continue;
           if (tx !== undefined && assigned.has(tx)) flag(voce, 'payable-paid-outside');
+          // Paid by hand beside an assigned payment of the same voce, year and apartment: it could
+          // be the same money, never added twice.
+          else if (counted.has(key(item.apartmentId, voce))) flag(voce, 'payable-and-payment');
           else if (item.amount === undefined) flag(voce, 'expected-amount-missing');
           else at(voce).paid += item.amount;
           continue;

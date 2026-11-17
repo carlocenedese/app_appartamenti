@@ -448,8 +448,13 @@ describe('plan 17: confirmed discrepancies (R304) and mixed F24 (R307)', () => {
       operationId: 'c-1',
       confirmationId: 'taxc-nord-2026-tari',
     });
-    expect(await confirm('tari', 'Di nuovo', 'd')).toEqual({
+    expect(await confirm('tari', undefined, 'd')).toEqual({
       status: 'unchanged',
+      confirmationId: 'taxc-nord-2026-tari',
+    });
+    // A new note replaces the old one, same id.
+    expect(await confirm('tari', 'Nota nuova', 'x')).toMatchObject({
+      status: 'confirmed',
       confirmationId: 'taxc-nord-2026-tari',
     });
     const table = await loadTaxTable(store, { year: '2026', today: isoDate('2026-03-01') });
@@ -458,7 +463,8 @@ describe('plan 17: confirmed discrepancies (R304) and mixed F24 (R307)', () => {
         ? table.tables[0]?.rows.find((r) => r.voce === 'tari')
         : undefined;
     expect(row).toMatchObject({ state: 'confermata', difference: -5000 });
-    await undoOperation(store, 'c-1', 'p1', clock, ids('u'));
+    await undoOperation(store, 'x-1', 'p1', clock, ids('u'));
+    await undoOperation(store, 'c-1', 'p1', clock, ids('w'));
     const after = await loadTaxTable(store, { year: '2026', today: isoDate('2026-03-01') });
     expect(
       after.status === 'computed' && after.tables[0]?.rows.find((r) => r.voce === 'tari')?.state,

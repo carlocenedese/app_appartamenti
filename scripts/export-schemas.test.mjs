@@ -51,6 +51,7 @@ describe('writeJsonSchemas', () => {
       'taxPayment',
       'tenancy',
       'tenant',
+      'tenantCard',
       'tenantRecovery',
       'transaction',
       'transfer',

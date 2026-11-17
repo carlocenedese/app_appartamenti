@@ -10,6 +10,7 @@ import {
   recordPath,
   recordSchemas,
   saveLegalRate,
+  withheldRecoveries,
   yearMonth,
 } from '../src/index';
 import type { DepositReturnInput, RecordKind } from '../src/index';
@@ -180,7 +181,7 @@ async function depositStore(extra: [RecordKind, Record<string, unknown> & { id: 
 }
 
 describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
-  it('interest from entry to exit, conguaglio of the exit period less what is paid, charges', async () => {
+  it('interest from entry to exit, conguaglio of the exit period and what is paid apart', async () => {
     const store = await depositStore([
       [
         'bill',
@@ -226,18 +227,20 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
     ]);
     const before = await snapshot(store);
     // 500,00 € at 2% for October 2025..February 2026 (5 whole months): 4,1666… → 4,17 €. The bill
-    // goes half to Anna (two beds): 20,00 €, less the 5,00 € already paid.
+    // goes half to Anna (two beds): 20,00 €; the 5,00 € already paid on a line of its own.
     expect(await loadDepositReturn(store, returnInput())).toEqual({
       status: 'computed',
       statement: {
-        total: 50000 + 417 - 1500 - 2500,
+        total: 50000 + 417 - 2000 + 500 - 2500,
         lines: [
           { label: 'Caparra', amount: 50000 },
           { label: 'Interessi legali', amount: 417 },
-          { label: 'Conguaglio bollette', amount: -1500 },
+          { label: 'Conguaglio bollette', amount: -2000 },
+          { label: 'Conguaglio già versato', amount: 500 },
           { label: 'Zanzariera', amount: -2500 },
         ],
       },
+      recoveriesWaiting: 0,
     });
     const typed = await loadDepositReturn(store, returnInput({ conguaglio: cents(4000) }));
     expect(typed.status === 'computed' && typed.statement.lines[2]?.amount).toBe(-4000);
@@ -257,18 +260,21 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
     ]);
   });
 
-  it('a later stay after a return counts the new deposit only, from the new entry', async () => {
-    const store = await depositStore([
-      ['payment', payment('p-back', { amount: -50000, date: '2026-03-05' })],
+  it('refuses, until user1 answers, a partial return and several separate stays (R302)', async () => {
+    const partial = await depositStore([
+      ['payment', payment('p-back', { amount: -20000, date: '2026-03-05' })],
+    ]);
+    expect(await loadDepositReturn(partial, returnInput({ conguaglio: cents(0) }))).toEqual({
+      status: 'refused',
+      reason: 'partial-return',
+    });
+    const twice = await depositStore([
       ['tenancy', tenancy('t-anna-2', { from: '2026-06', to: '2026-08' })],
-      ['payment', payment('p-anna-2', { amount: 30000, date: '2026-05-25' })],
     ]);
-    // 300,00 € at 2% for June..August: 1,50 €.
-    const result = await loadDepositReturn(store, returnInput({ conguaglio: cents(0) }));
-    expect(result.status === 'computed' && result.statement.lines.slice(0, 2)).toEqual([
-      { label: 'Caparra', amount: 30000 },
-      { label: 'Interessi legali', amount: 150 },
-    ]);
+    expect(await loadDepositReturn(twice, returnInput({ conguaglio: cents(0) }))).toEqual({
+      status: 'refused',
+      reason: 'several-stays',
+    });
   });
 
   it('keeps from the deposit a recovery of a tenant gone from the period of the expense', async () => {
@@ -280,10 +286,51 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
       amount: 1500,
       shares: [{ tenantId: 'ten-anna', amount: 1500 }],
       status: 'da-recuperare',
-      date: '2026-10-15',
+      // Its period (`settlementPeriodOf`, R177) is 2026-27, where Anna is not.
+      date: '2027-11-15',
       ...extra,
     });
     const store = await depositStore([
+      ['contract', contractRecord('ctr-2', '2026-10', '2028-09', [])],
+      [
+        'transaction',
+        {
+          ...base,
+          id: 'tx-x',
+          apartmentId: 'pulci',
+          date: '2026-10-15',
+          amount: -1500,
+          description: 'Fornitore',
+          statementHash: 'h',
+        },
+      ],
+      [
+        'movementClass',
+        { ...base, id: 'mc-tx-x', transactionId: 'tx-x', kind: 'altro', apartmentId: 'pulci' },
+      ],
+      [
+        'instalment',
+        {
+          ...base,
+          id: 'str-1',
+          apartmentId: 'pulci',
+          kind: 'condominio',
+          esercizio: '2026-27',
+          rateIndex: 1,
+          rateCount: 1,
+          dueDate: '2026-10-20',
+          rata: 3000,
+          quotaProprieta: 0,
+          conguaglioPrec: 0,
+          coversFrom: '2026-10',
+          coversTo: '2026-10',
+          straordinaria: true,
+        },
+      ],
+      // No statement covers its debit: taken as paid (R2), so it is in.
+      ['tenantRecovery', recovery('rec-6', { transactionId: undefined, instalmentId: 'str-1' })],
+      // A movement that is no expense of the apartment: never counted.
+      ['tenantRecovery', recovery('rec-7', { transactionId: 'tx-nessuno' })],
       ['tenantRecovery', recovery('rec-1', {})],
       ['tenantRecovery', recovery('rec-2', { status: 'non-recuperabile' })],
       ['tenantRecovery', recovery('rec-3', { periodLabel: '2026-27' })],
@@ -299,10 +346,14 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
       ],
     ]);
     const result = await loadDepositReturn(store, returnInput({ conguaglio: cents(0) }));
-    expect(result.status === 'computed' && result.statement.lines.slice(3, 5)).toEqual([
+    expect(result.status === 'computed' && result.statement.lines.slice(3, 6)).toEqual([
       { label: 'Recupero rec-1', amount: -1500 },
       { label: 'Recupero rec-5', amount: 700 },
+      { label: 'Recupero rec-6', amount: -1500 },
     ]);
+    // rec-7: the movement is no expense of the apartment.
+    expect(result.status === 'computed' && result.statement.lines).toHaveLength(7);
+    expect(result.status === 'computed' && result.recoveriesWaiting).toBe(0);
   });
 
   it('refusals', async () => {
@@ -422,5 +473,35 @@ describe('loadContractStatus (plan 11, task 3)', () => {
       ['ten-carla', 'mancante'],
     ]);
     expect(status?.checks.map((c) => c.code)).toEqual(['tenancy-outside-contract']);
+  });
+});
+
+describe('withheldRecoveries (plan 17, R300)', () => {
+  it('counts as waiting a recovery whose instalment is not paid yet', () => {
+    const r = recordSchemas.tenantRecovery.parse({
+      ...base,
+      id: 'rec-w',
+      apartmentId: 'pulci',
+      instalmentId: 'str-1',
+      amount: 1000,
+      shares: [{ tenantId: 'ten-anna', amount: 1000 }],
+      status: 'da-recuperare',
+      date: '2027-01-10',
+    });
+    const input = {
+      recoveries: [r],
+      tenantId: 'ten-anna',
+      tenancies: [tenancy('t-anna', { to: '2026-02' })],
+      periods: [],
+      recoverableMovements: new Set<string>(),
+    };
+    expect(withheldRecoveries({ ...input, paidInstalments: new Set() })).toEqual({
+      withheld: [],
+      waiting: 1,
+    });
+    expect(withheldRecoveries({ ...input, paidInstalments: new Set(['str-1']) })).toEqual({
+      withheld: [{ label: 'Recupero rec-w', amount: 1000 }],
+      waiting: 0,
+    });
   });
 });

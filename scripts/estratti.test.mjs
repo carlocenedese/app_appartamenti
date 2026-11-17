@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
@@ -802,39 +802,42 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
   );
 
   it(
-    'scheda-inquilino: dati riservati salvati senza stamparli, mantenuti da «inquilino» (R311)',
+    'scheda-inquilino: scheda riservata da un file, mai negli argomenti né in uscita (R311)',
     async () => {
       const s = await incomeSetup();
-      const card = cli([
-        'scheda-inquilino',
-        ...s.common,
-        '--inquilino',
-        't1',
-        '--codice-fiscale',
-        'CODICE-PROVA',
-        '--data-nascita',
-        '2005-02-03',
-        '--documento',
-        'DOC-PROVA',
-        '--documento-scadenza',
-        '2030-01-31',
-      ]);
+      const valori = join(s.dir, 'scheda.json');
+      writeFileSync(
+        valori,
+        JSON.stringify({
+          codice_fiscale: 'CODICE-PROVA',
+          data_nascita: '2005-02-03',
+          documento_numero: 'DOC-PROVA',
+          documento_scadenza: '2030-01-31',
+        }),
+      );
+      const card = cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--valori', valori]);
       expect([card.code, card.json.status]).toEqual([0, 'saved']);
       expect(card.out).not.toMatch(/CODICE-PROVA|DOC-PROVA|2005/);
-      const tenantFile = join(s.dir, '_app', 'dati', 'tenant', 't1.json');
-      expect(JSON.parse(readFileSync(tenantFile, 'utf8')).personal).toEqual({
+      const cardFile = join(s.dir, '_app', 'dati', 'tenantCard', 't1.json');
+      expect(JSON.parse(readFileSync(cardFile, 'utf8'))).toMatchObject({
         taxCode: 'CODICE-PROVA',
         birthDate: '2005-02-03',
         idDocument: { number: 'DOC-PROVA', expiresOn: '2030-01-31' },
       });
-      expect(cli(['inquilino', ...s.common, '--id', 't1', '--nome', NAME]).code).toBe(0);
-      expect(JSON.parse(readFileSync(tenantFile, 'utf8')).personal.taxCode).toBe('CODICE-PROVA');
+      // The tenant record never holds it.
+      const tenantFile = join(s.dir, '_app', 'dati', 'tenant', 't1.json');
+      expect(JSON.parse(readFileSync(tenantFile, 'utf8'))).not.toHaveProperty('taxCode');
+      writeFileSync(valori, JSON.stringify({ documento_ente: 'X' }));
       expect(
-        cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--documento-ente', 'X']).code,
+        cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--valori', valori]).code,
       ).toBe(2);
-      expect(cli(['scheda-inquilino', ...s.common, '--inquilino', 't9']).json.reason).toBe(
-        'unknown-tenant',
-      );
+      writeFileSync(valori, JSON.stringify({}));
+      expect(
+        cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--valori', valori]).json.reason,
+      ).toBe('invalid-card');
+      expect(
+        cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--codice-fiscale', 'X']).code,
+      ).toBe(2);
     },
     TIMEOUT,
   );
@@ -4655,6 +4658,26 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     const empty = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
     expect(empty.json.apartments).toEqual([{ apartmentId: 'pulci', counts: {} }]);
     expect((await run(['cruscotto', ...common, '--lettura', lettura])).code).toBe(2);
+
+    // A file outside the shared folder stays where it is; a taken place is never written over.
+    const outside = join(root, `fuori-${String((counter += 1))}.pdf`);
+    writeFileSync(outside, readFileSync(inbox));
+    const outsideArgs = [...common, '--appartamento', 'pulci', '--lettura', lettura, outside];
+    const kept = await run(['bolletta', ...outsideArgs, '--soglia-consumi', '30', '--conferma']);
+    expect([kept.json.status, kept.json.file]).toEqual(['confermata', 'outside-folder']);
+    expect(existsSync(outside)).toBe(true);
+    await run(['annulla-bolletta', ...common, outside]);
+    mkdirSync(dirname(moved), { recursive: true });
+    writeFileSync(moved, 'già qui');
+    const taken = await run([
+      'bolletta',
+      ...args.map((a) => (a === pdf ? inbox : a)),
+      '--soglia-consumi',
+      '30',
+      '--conferma',
+    ]);
+    expect([taken.json.status, taken.json.file]).toEqual(['confermata', 'target-exists']);
+    expect([existsSync(inbox), readFileSync(moved, 'utf8')]).toEqual([true, 'già qui']);
   });
 });
 

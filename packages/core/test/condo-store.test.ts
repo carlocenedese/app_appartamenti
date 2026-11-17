@@ -10,6 +10,9 @@ import {
   recordSchemas,
   saveCondoDocument,
   saveTenantRecovery,
+  commitChange,
+  recoveriesUsing,
+  undoBlockedBy,
 } from '../src/index';
 import type { CondoDocument, SaveCondoDocumentInput, SaveTenantRecoveryInput } from '../src/index';
 import { cents } from '../src/money';
@@ -127,6 +130,7 @@ describe('one form of fiscal year per apartment (plan 17, R310)', () => {
     expect(await save(store, { ...budget, esercizio: '2027' }, 'f')).toEqual({
       status: 'refused',
       reason: 'esercizio-format',
+      documentIds: ['condoc-apt-a-2026-27-preventivo'],
     });
     expect(await save(store, { ...budget, esercizio: '2027-28' }, 'g')).toMatchObject({
       status: 'saved',
@@ -424,6 +428,37 @@ describe('recoveries of plan 17 (R300): sign, supplier expense, date of the expe
       refused('invalid-recovery'),
     );
     expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('a recovery on a movement blocks the undo of its class (I4)', async () => {
+    const store = await storeWithExpense();
+    const op = await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'outgoing.classify',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('movementClass', 'mc-tx-free'),
+            after: recordSchemas.movementClass.parse({
+              id: 'mc-tx-free',
+              v: 1,
+              rev: 1,
+              transactionId: 'tx-free',
+              kind: 'altro',
+              apartmentId: 'apt-a',
+            }),
+          },
+        ],
+      },
+      clock,
+      ids('k'),
+    );
+    expect(await undoBlockedBy(store, op.id)).toEqual([]);
+    await saveR(store, base({ id: 'rec-f', transactionId: 'tx-free' }), 'f');
+    expect(await undoBlockedBy(store, op.id)).toEqual(['rec-f']);
+    expect(await recoveriesUsing(store, ['tx-free'])).toEqual(['rec-f']);
   });
 
   it('a negative recovery: the tenant paid for the owners, with or without an expense', async () => {

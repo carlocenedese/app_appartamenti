@@ -87,6 +87,37 @@ export interface ConguaglioInput {
   contracts?: Contract[];
   /** Recoveries from tenants chosen by user1 (plan 8, R197); none when absent. */
   recoveries?: TenantRecovery[];
+  /**
+   * Every settlement period of the apartment (this one included), to give a settlement payment
+   * (R177) or a recovery without period (R300) to one period only; without it, only `period`.
+   */
+  periods?: { from: YearMonth; to: YearMonth }[];
+  /**
+   * The movements a recovery may recover (plan 17, R300): live, booked, outgoing, with a live class
+   * of the apartment that is not an exclusion (`recoverableMovements`). Absent: none.
+   */
+  recoverableMovements?: ReadonlySet<string>;
+}
+
+type Span = { from: YearMonth; to: YearMonth };
+
+/**
+ * The settlement period a payment of `month` without `forMonth` belongs to (R177, user1's D11 and
+ * D13): a period takes the months from its start to the end of the next one (the first that starts
+ * after it; none: no end). Among the periods that take `month`, one already ended gets it (the
+ * latest starting); otherwise the one that starts last. So a date inside a later period still open
+ * goes to the earlier one, and the later one shows nothing paid until it ends (D11).
+ */
+export function settlementPeriodOf(month: YearMonth, periods: readonly Span[]): Span | undefined {
+  const sorted = [...periods].sort(
+    (a, b) => compareText(a.from, b.from) || compareText(a.to, b.to),
+  );
+  const takes = sorted.filter((p) => {
+    const next = sorted.find((q) => q.from > p.from);
+    return p.from <= month && (next === undefined || month <= next.to);
+  });
+  const ended = takes.filter((p) => p.to < month);
+  return (ended.length > 0 ? ended : takes).at(-1);
 }
 
 export interface TenantSettlement {
@@ -563,14 +594,21 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
       .filter((i) => i.kind === 'condominio' && i.straordinaria === true)
       .map((i) => i.id),
   );
+  // One period only: the one `settlementPeriodOf` gives (R177), as the settlement payments.
+  const homeIsThis = (month: YearMonth) => {
+    const home = settlementPeriodOf(month, input.periods ?? [period]);
+    return home?.from === period.from && home.to === period.to;
+  };
   const recoveries = own(input.recoveries ?? [])
     .filter(
       (r) =>
         (r.periodLabel === undefined
-          ? r.date !== undefined && inPeriod.has(r.date.slice(0, 7) as YearMonth)
+          ? r.date !== undefined && homeIsThis(r.date.slice(0, 7) as YearMonth)
           : r.periodLabel === period.label) &&
         r.status !== 'non-recuperabile' &&
-        (r.instalmentId === undefined || extraordinary.has(r.instalmentId)),
+        (r.instalmentId === undefined || extraordinary.has(r.instalmentId)) &&
+        (r.transactionId === undefined ||
+          input.recoverableMovements?.has(r.transactionId) === true),
     )
     .sort((a, b) => compareText(a.id, b.id));
   for (const recovery of recoveries) {

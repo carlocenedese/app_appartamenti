@@ -360,29 +360,29 @@ export type Tenancy = z.infer<typeof TenancySchema>;
 export const TenantSchema = RecordBaseSchema.extend({
   name: NonEmptyString,
   language: z.enum(['it', 'en']).optional(),
-  /**
-   * The personal data of the tenant's card (plan 17, R311), typed by user1: they fill the forms.
-   * Owners only: `_app/dati` is never shared with the tenants (section 11), never printed without
-   * `--dettagli`.
-   */
-  personal: z
-    .object({
-      taxCode: NonEmptyString.optional(),
-      birthPlace: NonEmptyString.optional(),
-      birthDate: ISODateSchema.optional(),
-      residence: NonEmptyString.optional(),
-      idDocument: z
-        .object({
-          number: NonEmptyString,
-          issuer: NonEmptyString.optional(),
-          issuedOn: ISODateSchema.optional(),
-          expiresOn: ISODateSchema.optional(),
-        })
-        .optional(),
-    })
-    .optional(),
 });
 export type Tenant = z.infer<typeof TenantSchema>;
+
+/**
+ * The reserved part of the tenant's card (plan 17, R311): personal data typed by user1 that fill
+ * the forms. A record of its own (`_app/dati/tenantCard/<tenantId>.json`, id = the tenant's id),
+ * read only by the forms and `scheda-inquilino`, never by the reconciliation; never printed.
+ */
+export const TenantCardSchema = RecordBaseSchema.extend({
+  taxCode: NonEmptyString.optional(),
+  birthPlace: NonEmptyString.optional(),
+  birthDate: ISODateSchema.optional(),
+  residence: NonEmptyString.optional(),
+  idDocument: z
+    .object({
+      number: NonEmptyString,
+      issuer: NonEmptyString.optional(),
+      issuedOn: ISODateSchema.optional(),
+      expiresOn: ISODateSchema.optional(),
+    })
+    .optional(),
+}).meta({ description: 'id is the tenant id; personal data, every field optional.' });
+export type TenantCard = z.infer<typeof TenantCardSchema>;
 
 /** `iban:<normalised IBAN>` or `name:<folded name>`: the same form the matcher compares. */
 export const PayerKeySchema = z.string().refine(
@@ -1565,6 +1565,7 @@ export const recordSchemas = {
   legalRate: LegalRateSchema,
   taxConfirmation: TaxConfirmationSchema,
   consumptionSettings: ConsumptionSettingsSchema,
+  tenantCard: TenantCardSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

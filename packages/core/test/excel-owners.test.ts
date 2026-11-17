@@ -187,6 +187,31 @@ describe('buildOwnersWorkbook', () => {
     expect(share()).toBe(30000);
   });
 
+  it('lists the recoveries of the period, a negative one as a credit, no tenant (R300)', () => {
+    const input = fixtureInput();
+    const tenantId = input.tenancies[0]?.tenantId ?? '';
+    input.recoveries = [
+      {
+        id: 'rec-n',
+        v: 1,
+        rev: 1,
+        apartmentId: input.apartment.id,
+        amount: cents(-4000),
+        shares: [{ tenantId, amount: cents(-4000) }],
+        status: 'da-recuperare',
+        date: isoDate(`${input.period.from}-10`),
+      },
+    ];
+    const rows = rowsOf(input);
+    const at = rows.findIndex((r) => r[0] === 'Recuperi dagli inquilini');
+    expect(rows[at + 2]).toEqual([
+      'rec-n',
+      `${input.period.from}-10`,
+      -4000,
+      'credito dell’inquilino',
+    ]);
+  });
+
   it('says on top that it is provisional, with the instalments not paid (5b, D5)', () => {
     expect(top(fixtureInput())).toEqual([
       { kind: 'text', value: 'Conguaglio provvisorio: voci in attesa 0' },

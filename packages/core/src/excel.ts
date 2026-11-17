@@ -10,7 +10,9 @@ import {
   calcConguaglio,
   isPresent,
   previousToTenants,
+  settlementPeriodOf,
 } from './conguaglio';
+export { settlementPeriodOf } from './conguaglio';
 import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguaglio';
 import { apartmentFolder } from './accounts';
 import type { FreeDebit } from './condominio';
@@ -204,35 +206,11 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
 
 export interface ExcelInput extends ConguaglioInput {
   tenants: Tenant[];
-  /**
-   * Every settlement period of the apartment (this one included), to give a settlement payment
-   * without `forMonth` to one period only (R177); without it, only `period` is known.
-   */
-  periods?: { from: YearMonth; to: YearMonth }[];
   /** The free outgoing movements, for the «duplicato» of the owners' file (R198). */
   freeDebits?: FreeDebit[];
 }
 
 type Span = { from: YearMonth; to: YearMonth };
-
-/**
- * The settlement period a payment of `month` without `forMonth` belongs to (R177, user1's D11 and
- * D13): a period takes the months from its start to the end of the next one (the first that starts
- * after it; none: no end). Among the periods that take `month`, one already ended gets it (the
- * latest starting); otherwise the one that starts last. So a date inside a later period still open
- * goes to the earlier one, and the later one shows nothing paid until it ends (D11).
- */
-export function settlementPeriodOf(month: YearMonth, periods: readonly Span[]): Span | undefined {
-  const sorted = [...periods].sort(
-    (a, b) => compareText(a.from, b.from) || compareText(a.to, b.to),
-  );
-  const takes = sorted.filter((p) => {
-    const next = sorted.find((q) => q.from > p.from);
-    return p.from <= month && (next === undefined || month <= next.to);
-  });
-  const ended = takes.filter((p) => p.to < month);
-  return (ended.length > 0 ? ended : takes).at(-1);
-}
 
 /** Question 3, R172, R177: a payment counts in `period` by the month given, else by its date. */
 export function inSettlement(

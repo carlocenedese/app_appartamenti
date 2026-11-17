@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { docxPlaceholders, readZip } from '../src/docx';
-import { ApartmentSchema, ContractSchema, TenancySchema, TenantSchema } from '../src/model';
+import {
+  ApartmentSchema,
+  ContractSchema,
+  TenancySchema,
+  TenantCardSchema,
+  TenantSchema,
+} from '../src/model';
 import {
   APP_FIELDS,
   ASKED_FIELDS,
@@ -116,17 +122,17 @@ describe('moduleValues', () => {
   });
 
   it('fills the asked fields of the tenant card when it has them (R311)', () => {
-    const card = TenantSchema.parse({
-      ...tenant,
-      personal: {
-        taxCode: 'CODICE-PROVA',
-        birthPlace: 'Città Inventata',
-        birthDate: '2005-02-03',
-        residence: 'Via Finta 2',
-        idDocument: { number: 'DOC-PROVA', issuer: 'Comune Inventato', expiresOn: '2030-01-31' },
-      },
+    const card = TenantCardSchema.parse({
+      id: 'ten-1',
+      v: 1,
+      rev: 1,
+      taxCode: 'CODICE-PROVA',
+      birthPlace: 'Città Inventata',
+      birthDate: '2005-02-03',
+      residence: 'Via Finta 2',
+      idDocument: { number: 'DOC-PROVA', issuer: 'Comune Inventato', expiresOn: '2030-01-31' },
     });
-    expect(moduleValues({ ...data, tenant: card }, today)).toMatchObject({
+    expect(moduleValues({ ...data, card }, today)).toMatchObject({
       codice_fiscale: 'CODICE-PROVA',
       luogo_nascita: 'Città Inventata',
       data_nascita: '03/02/2005',
@@ -138,7 +144,7 @@ describe('moduleValues', () => {
     const typed = generateModule({
       kind: 'promessa',
       template: starterDocx('promessa'),
-      data: { ...data, tenant: card },
+      data: { ...data, card },
       supplied: { codice_fiscale: 'ALTRO' },
       today,
       inflateRaw,
@@ -150,20 +156,26 @@ describe('moduleValues', () => {
     });
   });
 
-  it('an advance typed instead of the contract one needs a note (R312)', () => {
-    const run = (supplied: Record<string, string>) =>
+  it('an advance typed instead of the contract one needs a note printed in the document (R312)', () => {
+    const run = (template: Uint8Array, supplied: Record<string, string>) =>
       generateModule({
         kind: 'aumento-prezzi',
-        template: starterDocx('aumento-prezzi'),
+        template,
         data,
         supplied: { nuovo_canone: 'x', ...supplied },
         today,
         inflateRaw,
       }).status;
-    expect(run({ acconto_spese_mensile: '€ 30,00' })).toBe('refused');
-    expect(run({ acconto_spese_mensile: '€ 30,00', nota_acconto: 'Accordo del 1° novembre' })).toBe(
-      'ok',
+    const withNote = docx([['{{nuovo_canone}} {{acconto_spese_mensile}} {{nota_acconto}}']]);
+    const withoutNote = docx([['{{nuovo_canone}} {{acconto_spese_mensile}}']]);
+    expect(run(withNote, { acconto_spese_mensile: '€ 30,00' })).toBe('refused');
+    expect(run(withNote, { acconto_spese_mensile: '€ 30,00', nota_acconto: 'Accordo' })).toBe('ok');
+    // A template without {{nota_acconto}} would lose the note: refused.
+    expect(run(withoutNote, { acconto_spese_mensile: '€ 30,00', nota_acconto: 'Accordo' })).toBe(
+      'refused',
     );
+    // The contract advance needs no note.
+    expect(run(withoutNote, {})).toBe('ok');
   });
 
   it('leaves out what the records do not have', () => {

@@ -213,6 +213,34 @@ export function buildOwnersWorkbook(
     items.some((i) => i.debited !== undefined) ? sum((i) => i.debited) : null,
     sum((i) => i.commission),
   ]);
+  // Plan 17, R300: every recovery of the period, a negative one as the tenant's credit; no tenant.
+  const months = new Set(monthRange(input.period.from, input.period.to));
+  const recoveries = (input.recoveries ?? [])
+    .filter(
+      (r) =>
+        r.deleted !== true &&
+        r.apartmentId === input.apartment.id &&
+        r.status !== 'non-recuperabile' &&
+        (r.periodLabel === undefined
+          ? r.date !== undefined && months.has(r.date.slice(0, 7) as YearMonth)
+          : r.periodLabel === input.period.label),
+    )
+    .sort((a, b) => compareText(a.id, b.id));
+  if (recoveries.length > 0) {
+    rows.push(
+      [],
+      [text('Recuperi dagli inquilini')],
+      ['Recupero', 'Data', 'Importo', 'Nota'].map(text),
+    );
+    for (const r of recoveries) {
+      rows.push([
+        text(r.id),
+        r.date === undefined ? null : date(r.date),
+        euro(r.amount),
+        text(r.amount < 0 ? 'credito dell’inquilino' : ''),
+      ]);
+    }
+  }
   const header = OWNERS_HEADERS.map((value): XlsxCell => ({ kind: 'text', value }));
   // 5b D5, R184: as the tenants' file (R171), every period is open; N = instalments not paid.
   const waiting = items.filter((i) =>

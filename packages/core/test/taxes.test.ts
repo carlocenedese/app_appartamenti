@@ -350,6 +350,19 @@ describe('taxTable (plan 10, task 3)', () => {
       );
     // A: paid by hand, no movement: its amount is in the paid (answer of 17 November 2026, R303).
     expect(at({})).toMatchObject({ reasons: [], paid: 500, expected: 0 });
+    // Paid by hand beside an assigned payment of the same voce and year: never added twice (I6).
+    const both = rowOf(
+      taxTable(
+        input({
+          expectedItems: [
+            { apartmentId: 'nord', voce: 'cedolare', year: '2026', amount: cents(40000), paid: {} },
+          ],
+        }),
+      ),
+      'user1',
+      'cedolare',
+    );
+    expect(both).toMatchObject({ reasons: ['payable-and-payment'], paid: 40000 });
     // B: paid by a movement assigned to another voce: to be checked.
     expect(at({ transactionId: 'tx-ced' })?.reasons).toEqual(['payable-paid-outside']);
     // The movement is assigned to the registro of the year: in the paid, nothing to check.

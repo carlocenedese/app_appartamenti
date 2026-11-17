@@ -1,4 +1,15 @@
-import { link, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import {
+  link,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,7 +29,12 @@ import { FsStore, moveFileNoOverwrite } from '../src/fs-store';
 // `rename` is wrapped so that a test can make it fail; everything else in node:fs/promises is real.
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, rename: vi.fn(actual.rename), link: vi.fn(actual.link) };
+  return {
+    ...actual,
+    rename: vi.fn(actual.rename),
+    link: vi.fn(actual.link),
+    unlink: vi.fn(actual.unlink),
+  };
 });
 
 const NFC = 'Perch\u00e9.json';
@@ -434,5 +450,32 @@ describe('moveFileNoOverwrite (plan 17, R315)', () => {
     expect(await moveFileNoOverwrite(root, 'a.pdf', 'b/a.pdf')).toBe('moved');
     expect(await readFile(join(root, 'b', 'a.pdf'), 'utf8')).toBe('uno');
     expect(await namesIn()).toEqual(['b']);
+  });
+});
+
+describe('moveFileNoOverwrite, the edges (plan 17, R315)', () => {
+  it('finds names in the other Unicode spelling, refuses links and what is no file', async () => {
+    await mkdir(join(root, 'Perche\u0301'), { recursive: true });
+    await writeFile(join(root, 'Perche\u0301', 'a.pdf'), 'uno');
+    expect(await moveFileNoOverwrite(root, 'Perch\u00e9/a.pdf', 'b/a.pdf')).toBe('moved');
+    await mkdir(join(root, 'cartella'));
+    expect(await moveFileNoOverwrite(root, 'cartella', 'c/x')).toBe('missing');
+    await mkdir(join(root, 'vera'));
+    await writeFile(join(root, 'vera', 'f.pdf'), 'x');
+    try {
+      await symlink(join(root, 'vera'), join(root, 'collegata'));
+    } catch {
+      return; // no symbolic links on this machine (Windows without rights)
+    }
+    expect(await moveFileNoOverwrite(root, 'collegata/f.pdf', 'd/f.pdf')).toBe('unsafe-path');
+    expect(await moveFileNoOverwrite(root, 'vera/f.pdf', 'collegata/g.pdf')).toBe('unsafe-path');
+  });
+
+  it('puts the file back when the old name cannot be removed', async () => {
+    await writeFile(join(root, 'a.pdf'), 'uno');
+    vi.mocked(unlink).mockRejectedValueOnce(Object.assign(new Error('no'), { code: 'EBUSY' }));
+    await expect(moveFileNoOverwrite(root, 'a.pdf', 'b/a.pdf')).rejects.toThrow('no');
+    expect(await namesIn()).toEqual(['a.pdf', 'b']);
+    expect(await namesIn('b')).toEqual([]);
   });
 });

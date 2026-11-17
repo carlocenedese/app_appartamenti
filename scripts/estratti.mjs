@@ -114,7 +114,7 @@ import {
   loadDepositReturn,
   saveLegalRate,
   confirmTaxDiscrepancy,
-  saveTenantPersonal,
+  saveTenantCard,
   saveConsumptionSettings,
   billFileMove,
   loadConsumption,
@@ -283,6 +283,14 @@ const MESSAGES = {
   'missing-rate':
     'Rifiutato: manca il tasso legale di un anno della permanenza: inserirlo con «tasso-legale».',
   'no-exit': 'Rifiutato: la permanenza dell’inquilino non ha ancora una fine.',
+  'partial-return':
+    'Rifiutato: c’è già una restituzione parziale della caparra: come contarla non è ancora deciso.',
+  'several-stays':
+    'Rifiutato: l’inquilino ha avuto più permanenze separate nell’appartamento: quale caparra appartenga a quale non è ancora deciso.',
+  'mixed-f24-out':
+    'Da verificare: la parte non IMU di un F24 misto resta fuori dal saldo tra appartamenti.',
+  'recovery-waiting':
+    'Avviso: un recupero da trattenere aspetta il pagamento della spesa: non è ancora nel prospetto.',
   'no-period': 'Rifiutato: nessun periodo di conguaglio contiene il mese di uscita.',
   'ambiguous-period': 'Rifiutato: più periodi di conguaglio contengono il mese di uscita.',
   'settlement-error':
@@ -311,7 +319,9 @@ const MESSAGES = {
     'Da verificare: nessuna scadenza con anno di riferimento per questa voce e quest’anno; una scadenza senza anno va riscritta con «scadenza-nuova --id <id> --anno-riferimento <AAAA>».',
   'no-discrepancy': 'Rifiutato: la voce di quest’anno non ha una discrepanza da confermare.',
   'bad-note': 'Rifiutato: la nota è vuota.',
-  'invalid-personal': 'Rifiutato: i dati riservati dell’inquilino non sono validi.',
+  'invalid-card': 'Rifiutato: la scheda riservata è vuota o ha dati non validi (date AAAA-MM-GG).',
+  'bad-values':
+    'Il file dei valori non è valido: un oggetto JSON con testi per codice_fiscale, luogo_nascita, data_nascita, residenza, documento_numero, documento_ente, documento_rilascio, documento_scadenza.',
   'invalid-settings': 'Rifiutato: soglie non valide.',
   'unknown-bill': 'Rifiutato: bolletta sconosciuta o cancellata.',
   'no-consumption-thresholds':
@@ -406,17 +416,10 @@ const OPTIONS = {
   telefono: { type: 'string' },
   email: { type: 'string' },
   note: { type: 'string' },
-  'codice-fiscale': { type: 'string' },
-  'luogo-nascita': { type: 'string' },
-  'data-nascita': { type: 'string' },
-  residenza: { type: 'string' },
   giallo: { type: 'string' },
+  valori: { type: 'string' },
   bolletta: { type: 'string' },
   rosso: { type: 'string' },
-  documento: { type: 'string' },
-  'documento-ente': { type: 'string' },
-  'documento-rilascio': { type: 'string' },
-  'documento-scadenza': { type: 'string' },
   appartamenti: { type: 'string' },
   utenze: { type: 'string' },
   categorie: { type: 'string' },
@@ -489,7 +492,7 @@ const RECONCILE_KINDS = [
   'contact.save',
   'legal-rate.save',
   'tax.confirm',
-  'tenant.personal',
+  'tenant.card',
   'consumption.settings',
 ];
 
@@ -890,46 +893,70 @@ async function command(name, values, positionals, store, who, clock, newId) {
   }
 
   if (name === 'scheda-inquilino') {
-    // Plan 17, R311: the personal data of the tenant card, for the forms. Never echoed.
-    need(values, 'inquilino');
+    // Plan 17, R311: the reserved card of a tenant, from a JSON file (never personal data as
+    // arguments, never echoed). Keys: codice_fiscale, luogo_nascita, data_nascita, residenza,
+    // documento_numero, documento_ente, documento_rilascio, documento_scadenza. Replaces the card.
+    need(values, 'inquilino', 'valori');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const document =
-      values.documento === undefined
+    let given;
+    try {
+      given = JSON.parse(readBytes(values.valori).toString('utf8'));
+    } catch {
+      throw invalid('bad-values');
+    }
+    const keys = [
+      'codice_fiscale',
+      'luogo_nascita',
+      'data_nascita',
+      'residenza',
+      'documento_numero',
+      'documento_ente',
+      'documento_rilascio',
+      'documento_scadenza',
+    ];
+    if (
+      typeof given !== 'object' ||
+      given === null ||
+      Array.isArray(given) ||
+      Object.entries(given).some(([k, v]) => !keys.includes(k) || typeof v !== 'string')
+    ) {
+      throw invalid('bad-values');
+    }
+    if (
+      given.documento_numero === undefined &&
+      Object.keys(given).some((k) => k.startsWith('documento_'))
+    ) {
+      throw invalid('bad-values');
+    }
+    const date = (text) => (ISODateSchema.safeParse(text).success ? text : null);
+    const card = {
+      ...optional('taxCode', given.codice_fiscale),
+      ...optional('birthPlace', given.luogo_nascita),
+      ...optional(
+        'birthDate',
+        given.data_nascita === undefined ? undefined : date(given.data_nascita),
+      ),
+      ...optional('residence', given.residenza),
+      ...(given.documento_numero === undefined
         ? {}
         : {
             idDocument: {
-              number: values.documento,
-              ...optional('issuer', values['documento-ente']),
-              ...(values['documento-rilascio'] === undefined
-                ? {}
-                : { issuedOn: day(values['documento-rilascio']) }),
-              ...(values['documento-scadenza'] === undefined
-                ? {}
-                : { expiresOn: day(values['documento-scadenza']) }),
+              number: given.documento_numero,
+              ...optional('issuer', given.documento_ente),
+              ...optional(
+                'issuedOn',
+                given.documento_rilascio === undefined ? undefined : date(given.documento_rilascio),
+              ),
+              ...optional(
+                'expiresOn',
+                given.documento_scadenza === undefined ? undefined : date(given.documento_scadenza),
+              ),
             },
-          };
-    if (
-      values.documento === undefined &&
-      ['documento-ente', 'documento-rilascio', 'documento-scadenza'].some(
-        (o) => values[o] !== undefined,
-      )
-    ) {
-      throw invalid('bad-arguments');
-    }
-    const result = await saveTenantPersonal(
+          }),
+    };
+    const result = await saveTenantCard(
       store,
-      {
-        tenantId: values.inquilino,
-        personal: {
-          ...optional('taxCode', values['codice-fiscale']),
-          ...optional('birthPlace', values['luogo-nascita']),
-          ...(values['data-nascita'] === undefined
-            ? {}
-            : { birthDate: day(values['data-nascita']) }),
-          ...optional('residence', values.residenza),
-          ...document,
-        },
-      },
+      { tenantId: values.inquilino, card },
       who,
       clock,
       newId,
@@ -1232,6 +1259,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         toSplit: result.toSplit,
         toSplitImu,
         unverified: result.unverified,
+        mixedF24: result.mixedF24,
       };
     }
     return {
@@ -1244,6 +1272,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
       toSplit: result.toSplit.length,
       toSplitImu,
       unverified: result.unverified.length,
+      // Plan 17, R307: the part of a mixed F24 that is no IMU, out of the balance (to check).
+      ...(result.mixedF24.length > 0
+        ? { mixedF24: result.mixedF24.length, message: MESSAGES['mixed-f24-out'] }
+        : {}),
     };
   }
 
@@ -1386,7 +1418,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
       clock,
       newId,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    if (result.status === 'refused') {
+      // R310: which documents have the other form (ids only).
+      throw new Stop(
+        'rejected',
+        result.reason,
+        result.reason === 'esercizio-format' ? { documentIds: result.documentIds } : {},
+      );
+    }
     return {
       status: result.status,
       documentId: result.documentId,
@@ -1486,7 +1525,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       recoveries: result.recoveries.map((r) => ({
         recoveryId: r.id,
         apartmentId: r.apartmentId,
-        instalmentId: r.instalmentId,
+        ...optional('instalmentId', r.instalmentId),
+        ...optional('transactionId', r.transactionId),
         status: r.status,
         ...optional('periodLabel', r.periodLabel),
         tenants: r.shares.length,
@@ -2112,6 +2152,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
       status: 'ok',
       lines: result.statement.lines.length,
       message: MESSAGES['deposit-return-draft'],
+      ...(result.recoveriesWaiting > 0
+        ? { recoveriesWaiting: result.recoveriesWaiting, warning: MESSAGES['recovery-waiting'] }
+        : {}),
       ...(values.dettagli === true ? { statement: result.statement } : {}),
     };
   }
@@ -2260,7 +2303,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       const inside = relative(resolve(values.cartella), resolve(positionals[0]))
         .split(/[\\/]/)
         .join('/');
-      if (inside === plan.filed) {
+      if (inside.normalize('NFC') === plan.filed.normalize('NFC')) {
         file = await moveSafely(values.cartella, plan.filed, plan.inbox);
       }
     }
@@ -2725,18 +2768,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       giallo: ['soglie-consumi'],
       bolletta: ['consumi'],
       rosso: ['soglie-consumi'],
-      ...Object.fromEntries(
-        [
-          'codice-fiscale',
-          'luogo-nascita',
-          'data-nascita',
-          'residenza',
-          'documento',
-          'documento-ente',
-          'documento-rilascio',
-          'documento-scadenza',
-        ].map((option) => [option, ['scheda-inquilino']]),
-      ),
+      valori: ['scheda-inquilino'],
       appartamento: [
         'conto',
         'uscita',

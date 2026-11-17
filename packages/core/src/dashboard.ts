@@ -68,19 +68,6 @@ export type DashboardResult =
 // an instalment without a statement is paid is open (R204, question 7).
 const DONE = new Set(['pagata', 'versata', 'in-linea', 'confermata']);
 
-/**
- * The counts of every live apartment, by id (R264: any loader refused refuses it all):
- * `documento-da-rivedere` (`pendingDocuments`), `movimento-senza-uso` (a booked movement with no
- * use in `movementUses`, the definition of the reconciliation, on the apartment of its account),
- * `scadenza:<stato>` and `scadenza-controllo:<check>` (`loadScadenzario`, for each apartment of the
- * item), `contratto:<codice>` (`loadContractChecks` in the month of `today`), `caparra:<stato>`
- * (`loadContractStatus`, once per tenant), `condominio:<stato>` and
- * `condominio:recupero-oltre-spesa` (`loadCondo` on `today`), `tasse:<stato>` and
- * `tasse:stima-mancante` (`loadTaxTable`, only with `taxYear`, for each apartment of the taxpayer),
- * and for each settlement period given `conguaglio:voci-in-attesa` (the pending items),
- * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`.
- * States that mean done (`pagata`, `versata`, `in-linea`) are not counted.
- */
 /** The settlement period in course of each live apartment, by apartment and label (R316). */
 async function currentSettlements(
   store: Store,
@@ -110,6 +97,20 @@ async function currentSettlements(
   );
 }
 
+/**
+ * The counts of every live apartment, by id (R264: any loader refused refuses it all):
+ * `documento-da-rivedere` (`pendingDocuments`), `movimento-senza-uso` (a booked movement with no
+ * use in `movementUses`, the definition of the reconciliation, on the apartment of its account),
+ * `scadenza:<stato>` and `scadenza-controllo:<check>` (`loadScadenzario`, for each apartment of the
+ * item), `contratto:<codice>` (`loadContractChecks` in the month of `today`), `caparra:<stato>`
+ * (`loadContractStatus`, once per tenant), `condominio:<stato>` and
+ * `condominio:recupero-oltre-spesa` (`loadCondo` on `today`), `tasse:<stato>` and
+ * `tasse:stima-mancante` (`loadTaxTable`, only with `taxYear`, for each apartment of the taxpayer),
+ * and for each settlement period given (else the one in course of each apartment, R316)
+ * `conguaglio:voci-in-attesa` (the pending items),
+ * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`.
+ * States that mean done (`pagata`, `versata`, `in-linea`, `confermata`) are not counted.
+ */
 export async function loadDashboard(
   store: Store,
   options: DashboardOptions,

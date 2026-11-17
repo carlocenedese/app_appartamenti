@@ -308,3 +308,26 @@ export function equalShares(
   );
   return tenantIds.map((tenantId, i) => ({ tenantId, amount: parts[i] as Cents }));
 }
+
+/**
+ * The movements a recovery may recover (plan 17, R300): live, booked, outgoing, with a live class
+ * of `apartmentId` that is not an exclusion.
+ */
+export function recoverableMovements(input: {
+  apartmentId: string;
+  transactions: readonly BankTransaction[];
+  classes: readonly MovementClass[];
+}): Set<string> {
+  const classed = new Set(
+    input.classes
+      .filter(
+        (c) => c.deleted !== true && c.kind !== 'escluso' && c.apartmentId === input.apartmentId,
+      )
+      .map((c) => c.transactionId),
+  );
+  return new Set(
+    input.transactions
+      .filter((t) => t.deleted !== true && t.booked !== false && t.amount < 0 && classed.has(t.id))
+      .map((t) => t.id),
+  );
+}

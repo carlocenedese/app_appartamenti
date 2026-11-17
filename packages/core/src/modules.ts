@@ -8,7 +8,7 @@ import { docxPlaceholders, fillDocx } from './docx';
 import type { DocxRefusal, InflateRaw } from './docx';
 import { formatEuro, cents } from './money';
 import { safeWord } from './proposal';
-import type { Apartment, Contract, Tenancy, Tenant } from './model';
+import type { Apartment, Contract, Tenancy, Tenant, TenantCard } from './model';
 import { rentForMonth } from './contract';
 import type { ISODate, YearMonth } from './period';
 import { escapeXml } from './xlsx-write';
@@ -138,6 +138,8 @@ export const ADVANCE_NOTE = 'nota_acconto';
 export interface ModuleData {
   apartment: Apartment;
   tenant: Tenant;
+  /** The reserved card of the tenant (R311), if any. */
+  card?: TenantCard;
   tenancy: Tenancy;
   /** The live contract that links the tenancy, if any. */
   contract?: Contract;
@@ -155,7 +157,7 @@ export function moduleValues(
   today: ISODate,
 ): Partial<Record<AppField | (typeof CARD_FIELDS)[number], string>> {
   const { apartment, tenant, tenancy, contract } = data;
-  const card = tenant.personal;
+  const { card } = data;
   const values: Partial<Record<AppField | (typeof CARD_FIELDS)[number], string>> = {
     data_documento: day(today),
     appartamento: apartment.name,
@@ -258,7 +260,8 @@ export function generateModule(input: {
   // The contract's advance may be changed by hand, with a note (answer of user1, R312).
   const note = input.supplied[ADVANCE_NOTE];
   if (Object.hasOwn(input.supplied, 'acconto_spese_mensile')) {
-    if (note === undefined || note.trim() === '') {
+    // The note must reach the document: a template without {{nota_acconto}} would lose it.
+    if (note === undefined || note.trim() === '' || !placeholders.fields.includes(ADVANCE_NOTE)) {
       return { status: 'refused', reason: 'advance-without-note' };
     }
     delete app.acconto_spese_mensile;

@@ -17,10 +17,11 @@ import {
   PaymentSchema,
   StatementSchema,
   TenancySchema,
+  TenantCardSchema,
   TenantSchema,
   TransferSchema,
 } from './model';
-import type { Payment, Tenant } from './model';
+import type { Payment, TenantCard } from './model';
 import type { Cents } from './money';
 import { movementUses } from './movements';
 import { parseOrThrow } from './parse';
@@ -41,17 +42,7 @@ export async function saveTenant(
   const before = (
     await loadAll(store, 'tenant', TenantSchema, { includeDeleted: true })
   ).records.find((t) => t.id === draft.id);
-  // The personal data have their own command (`saveTenantPersonal`, R311): kept here.
-  const after = parseOrThrow(
-    TenantSchema,
-    {
-      ...draft,
-      ...(before?.personal === undefined ? {} : { personal: before.personal }),
-      v: 1,
-      rev: 1,
-    },
-    'tenant',
-  );
+  const after = parseOrThrow(TenantSchema, { ...draft, v: 1, rev: 1 }, 'tenant');
   return commitChange(
     store,
     {
@@ -65,47 +56,55 @@ export async function saveTenant(
   );
 }
 
-export type SaveTenantPersonalResult =
+export type SaveTenantCardResult =
   | { status: 'saved'; operationId: string }
   | { status: 'unchanged' }
-  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-tenant' | 'invalid-personal' };
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-tenant' | 'invalid-card' };
 
 /**
- * Replaces the personal data of the live tenant `tenantId` (plan 17, R311): tax code, birth,
- * residence, identity document, typed by user1 for the forms. One `tenant.personal` operation, no
- * value in the summary. Refused without writing: `inconsistent-store`, `unknown-tenant`,
- * `invalid-personal` (fields the schema refuses).
+ * Replaces the whole reserved card of the live tenant `tenantId` (plan 17, R311): a field left out
+ * is removed. One `tenant.card` operation, no value in the summary. Refused without writing:
+ * `inconsistent-store`, `unknown-tenant`, `invalid-card` (empty, or fields the schema refuses).
  */
-export async function saveTenantPersonal(
+export async function saveTenantCard(
   store: Store,
-  input: { tenantId: string; personal: NonNullable<Tenant['personal']> },
+  input: { tenantId: string; card: Omit<TenantCard, 'id' | 'v' | 'rev' | 'deleted'> },
   profileId: string,
   clock: () => string,
   newId: () => string,
-): Promise<SaveTenantPersonalResult> {
+): Promise<SaveTenantCardResult> {
   if ((await checkConsistency(store)).length > 0) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
-  const before = (await loadAll(store, 'tenant', TenantSchema)).records.find(
-    (t) => t.id === input.tenantId,
-  );
-  if (before === undefined) return { status: 'refused', reason: 'unknown-tenant' };
-  const parsed = TenantSchema.safeParse({ ...before, personal: input.personal });
-  if (!parsed.success) return { status: 'refused', reason: 'invalid-personal' };
-  if (JSON.stringify(parsed.data) === JSON.stringify(before)) return { status: 'unchanged' };
+  if (
+    !(await loadAll(store, 'tenant', TenantSchema)).records.some((t) => t.id === input.tenantId)
+  ) {
+    return { status: 'refused', reason: 'unknown-tenant' };
+  }
+  if (Object.values(input.card).every((v) => v === undefined)) {
+    return { status: 'refused', reason: 'invalid-card' };
+  }
+  const before = (
+    await loadAll(store, 'tenantCard', TenantCardSchema, { includeDeleted: true })
+  ).records.find((c) => c.id === input.tenantId);
+  const record = (rev: number) =>
+    TenantCardSchema.safeParse({ ...input.card, id: input.tenantId, v: 1, rev });
+  const parsed = record((before?.rev ?? 0) + 1);
+  if (!parsed.success) return { status: 'refused', reason: 'invalid-card' };
+  if (
+    before !== undefined &&
+    before.deleted !== true &&
+    JSON.stringify(record(before.rev).data) === JSON.stringify(before)
+  ) {
+    return { status: 'unchanged' };
+  }
   const operation = await commitChange(
     store,
     {
       profileId,
-      kind: 'tenant.personal',
-      summary: 'Dati riservati dell’inquilino salvati.',
-      changes: [
-        {
-          path: recordPath('tenant', before.id),
-          before,
-          after: { ...parsed.data, rev: before.rev + 1 },
-        },
-      ],
+      kind: 'tenant.card',
+      summary: 'Scheda riservata dell’inquilino salvata.',
+      changes: [{ path: recordPath('tenantCard', input.tenantId), before, after: parsed.data }],
     },
     clock,
     newId,

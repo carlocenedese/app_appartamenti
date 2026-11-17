@@ -16,7 +16,7 @@ import {
   repairDiverged,
   runReconcile,
   saveTenant,
-  saveTenantPersonal,
+  saveTenantCard,
   undoOperation,
   yearMonth,
 } from '../src/index';
@@ -630,26 +630,34 @@ describe('cancelAutomaticPayment (user1, 15 Nov 2026)', () => {
   });
 });
 
-describe('saveTenantPersonal (plan 17, R311)', () => {
-  it('saves the card, then unchanged; refuses an unknown tenant or bad data, writing nothing', async () => {
+describe('saveTenantCard (plan 17, R311)', () => {
+  it('saves the card, then unchanged; refuses an unknown tenant, an empty or bad card', async () => {
     const store = new MemoryStore();
     await saveTenant(store, { id: 'ten-1', name: 'Anna Prova' }, 'p1', clock, ids('t'));
-    const save = (tenantId: string, personal: Record<string, unknown>, prefix: string) =>
-      saveTenantPersonal(store, { tenantId, personal }, 'p1', clock, ids(prefix));
+    const save = (tenantId: string, card: Record<string, unknown>, prefix: string) =>
+      saveTenantCard(store, { tenantId, card }, 'p1', clock, ids(prefix));
     expect(await save('ten-1', { taxCode: 'CODICE-PROVA' }, 'a')).toEqual({
       status: 'saved',
       operationId: 'a-1',
     });
     expect(await save('ten-1', { taxCode: 'CODICE-PROVA' }, 'b')).toEqual({ status: 'unchanged' });
     const before = await snapshot(store);
-    expect(await save('ten-9', {}, 'c')).toEqual({ status: 'refused', reason: 'unknown-tenant' });
-    expect(await save('ten-1', { birthDate: '2005-13-01' }, 'd')).toEqual({
+    expect(await save('ten-9', { taxCode: 'X' }, 'c')).toEqual({
       status: 'refused',
-      reason: 'invalid-personal',
+      reason: 'unknown-tenant',
+    });
+    expect(await save('ten-1', {}, 'd')).toEqual({ status: 'refused', reason: 'invalid-card' });
+    expect(await save('ten-1', { birthDate: '2005-13-01' }, 'e')).toEqual({
+      status: 'refused',
+      reason: 'invalid-card',
     });
     expect(await snapshot(store)).toEqual(before);
-    // The name is written again: the card stays.
-    await saveTenant(store, { id: 'ten-1', name: 'Anna Prova Due' }, 'p1', clock, ids('e'));
-    expect(await save('ten-1', { taxCode: 'CODICE-PROVA' }, 'f')).toEqual({ status: 'unchanged' });
+    // The tenant record never holds the card: writing the name again leaves it alone.
+    await saveTenant(store, { id: 'ten-1', name: 'Anna Prova Due' }, 'p1', clock, ids('f'));
+    expect(await save('ten-1', { taxCode: 'CODICE-PROVA' }, 'g')).toEqual({ status: 'unchanged' });
+    const { operations } = await readJournal(store);
+    expect(operations.find((o) => o.kind === 'tenant.card')?.summary).toBe(
+      'Scheda riservata dell’inquilino salvata.',
+    );
   });
 });

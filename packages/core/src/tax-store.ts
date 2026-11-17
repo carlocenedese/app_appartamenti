@@ -299,8 +299,9 @@ export type ConfirmTaxDiscrepancyResult =
 
 /**
  * Confirms with a note the discrepancy of the row `voce` of `year` of the taxpayer of
- * `apartmentId` (plan 17, R304): `taxc-<first apartment of the table>-<year>-<voce>` keeps the
- * difference of today, so a new difference warns again. One `tax.confirm` operation, undone with
+ * `apartmentId` (plan 17, R304): `taxc-<apartmentId>-<year>-<voce>` (a confirmed row keeps its id,
+ * and a new note replaces the old one) keeps the difference of today, so a new difference warns
+ * again. One `tax.confirm` operation, undone with
  * the journal. Refused without writing: `inconsistent-store`; `bad-year`; `bad-voce`; `bad-note`
  * (empty); `no-discrepancy` (the row is not a discrepancy now, or the apartment is in no table).
  */
@@ -323,18 +324,22 @@ export async function confirmTaxDiscrepancy(
   if (input.note.trim() === '') return refuse('bad-note');
   const own = table.tables.find((t) => t.apartmentIds.includes(input.apartmentId));
   const row = own?.rows.find((r) => r.voce === voce.data);
-  const first = own?.apartmentIds[0];
-  if (row === undefined || first === undefined || row.difference === undefined) {
-    return refuse('no-discrepancy');
-  }
-  const id = `taxc-${first}-${input.year}-${voce.data}`;
-  if (row.state === 'confermata' && row.confirmationId === id) {
-    return { status: 'unchanged', confirmationId: id };
-  }
-  if (row.state !== 'discrepanza') return refuse('no-discrepancy');
+  if (row === undefined || row.difference === undefined) return refuse('no-discrepancy');
+  // A confirmed row keeps the id it has (its note can be changed); else the apartment given.
+  const id = row.confirmationId ?? `taxc-${input.apartmentId}-${input.year}-${voce.data}`;
+  if (row.state !== 'discrepanza' && row.state !== 'confermata') return refuse('no-discrepancy');
   const before = (
     await loadAll(store, 'taxConfirmation', TaxConfirmationSchema, withDeleted)
   ).records.find((c) => c.id === id);
+  const first = before?.apartmentId ?? input.apartmentId;
+  if (
+    row.state === 'confermata' &&
+    before !== undefined &&
+    before.deleted !== true &&
+    before.note === input.note.trim()
+  ) {
+    return { status: 'unchanged', confirmationId: id };
+  }
   const after = parseOrThrow(
     TaxConfirmationSchema,
     {

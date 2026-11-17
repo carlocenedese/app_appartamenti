@@ -74,19 +74,21 @@ agli inquilini (R193). Esempio numerico delle due letture possibili:
 - **Permanenza continua:** presenze vive dello stesso inquilino nello stesso appartamento senza mesi
   vuoti tra l'una e l'altra (`next.from` = mese dopo `prev.to`). La caparra segue la permanenza, non
   il contratto: un rinnovo non chiede una nuova caparra.
-- **Capitale:** versamenti `caparra` confermati meno restituzioni dell'inquilino in quell'appartamento
-  (la caparra **in mano**). Rifiuto `already-returned` solo se c'è stato un versamento e non resta
-  nulla in mano: una permanenza nuova dopo una restituzione si calcola sui versamenti nuovi.
+- **Capitale:** versamenti `caparra` confermati. Finché user1 non risponde il prospetto rifiuta una
+  storia con una restituzione parziale (`partial-return`) o con più permanenze separate
+  (`several-stays`); tutto restituito: `already-returned`.
 - **Date degli interessi:** dal primo giorno del primo mese della permanenza continua più recente
   all'ultimo giorno del suo ultimo mese (uscita effettiva, mesi interi come le presenze). Per tutta la
-  caparra, anche con più versamenti (lotto 11). Permanenza senza fine: `no-exit`. Il metodo di
-  calcolo resta R7 (mesi interi).
+  caparra, anche con più versamenti (lotto 11). Permanenza senza fine: `no-exit`. **Mesi interi**
+  (R7): risposta di user1 del 17 novembre 2026, «dall'ingresso all'uscita» è il periodo, non un
+  calcolo a giorni.
 - **Tassi legali:** record `legalRate` per anno (`_app/dati/legalRate/tasso-<anno>.json`, `year`,
   `rateBp`), scritto da user1 con `pnpm estratti tasso-legale --anno --tasso` (annullabile). Il
   prospetto li legge dall'archivio; un anno mancante: `missing-rate`.
 - **Conguaglio nel prospetto:** la riga dell'inquilino (`due`) del periodo di conguaglio che contiene
-  il mese di uscita, senza le voci in attesa (non contano già), meno i versamenti di conguaglio già
-  fatti per quel periodo. `--conguaglio` lo sostituisce se user1 lo scrive a mano.
+  il mese di uscita, senza le voci in attesa (non contano già), e su una riga a parte i versamenti di
+  conguaglio già fatti per quel periodo (niente sottratto in silenzio). `--conguaglio` sostituisce il
+  calcolo se user1 lo scrive a mano.
 - **Recuperi trattenuti:** ogni quota positiva o negativa di un recupero vivo senza periodo indicato,
   con la spesa pagata, il cui inquilino non è nel periodo della data della spesa, è una riga
   «Recupero» del prospetto.
@@ -106,8 +108,9 @@ agli inquilini (R193). Esempio numerico delle due letture possibili:
   scadenza» a 15 giorni.
 - **D (R310):** una sola forma dell'esercizio per appartamento (`esercizio-format`); la copia del
   consuntivo dell'ultimo anno con documenti era già così.
-- **E (R311-R312):** dati personali nella scheda dell'inquilino (`Tenant.personal`,
-  `scheda-inquilino`), durata residua e acconto del contratto nei moduli (a mano con una nota).
+- **E (R311-R312):** dati personali in un record separato `tenantCard` (deciso da user1, con il
+  limite del registro che conserva le versioni), scritti con `scheda-inquilino --valori <file>`;
+  durata residua e acconto del contratto nei moduli (a mano con una nota stampata nel documento).
 - **F (R313-R316):** consumi per giorno sulla media di 12 mesi con soglie di user1
   (`consumptionSettings`), codici nell'appartamento, PDF spostato e riportato, periodo di
   conguaglio in corso nel cruscotto.
@@ -119,11 +122,13 @@ agli inquilini (R193). Esempio numerico delle due letture possibili:
 2. Adempimenti fiscali del subentro (R224 domanda 6): li indicherà user1.
 3. Formula della quota del conguaglio dell'anno prima nel preventivo (lotto 7, esempio sopra).
 4. Valori delle soglie dell'allarme consumi e livelli giallo/rosso (R265 domanda 1).
-5. Interessi «a giorni»: il calcolo resta a mesi interi (R7); le presenze sono a mesi interi.
+5. (Chiusa il 17 novembre 2026: interessi a mesi interi, R7.)
 6. Come si restituisce un recupero negativo (dall'affitto del mese dopo o altro): solo il segno.
 7. Importo del condominio quota proprietario nella tabella delle tasse (R305: la riga resta
    `rule-undecided`).
-9. Collegare il nuovo allarme consumi all'importazione della bolletta (R313).
-10. Capitale della caparra su tutta la storia e conguaglio dell'uscente al netto del già versato
-    (R302, Ruling).
 8. Stima del condominio quando l'ultimo anno con documenti ha il solo preventivo (R310).
+9. Collegare il nuovo allarme consumi all'importazione della bolletta (R313).
+10. Caparra con restituzioni parziali o più permanenze separate (oggi rifiutate) e se il già
+    versato del conguaglio si toglie (oggi riga a parte) (R302).
+11. Come dividere un F24 misto (oggi il resto alla rata IMU, provvisorio) e come ripartire tra gli
+    appartamenti la parte non IMU (oggi fuori dal saldo) (R307).
