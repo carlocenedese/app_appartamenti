@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import {
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
@@ -15,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   ContractSchema,
+  billFileMove,
   commitChange,
   hashBytes,
   recordPath,
@@ -4628,18 +4630,122 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     ]);
 
     const confirmed = await run(['bolletta', ...args, '--soglia-consumi', '30', '--conferma']);
-    expect(confirmed.json).toMatchObject({ status: 'confermata' });
-    const duplicate = await run(['bolletta', ...args, '--soglia-consumi', '30', '--conferma']);
+    expect(confirmed.json).toMatchObject({ status: 'confermata', file: 'moved' });
+    // Plan 17, R315: the PDF is now in the Bollette folder of the apartment.
+    const { filePath } = JSON.parse(
+      readFileSync(join(dir, '_app', 'dati', 'bill', `${confirmed.json.ids[0]}.json`), 'utf8'),
+    );
+    const plan = billFileMove(apartment({ id: 'pulci' }), filePath);
+    const moved = join(dir, ...plan.filed.split('/'));
+    expect([existsSync(pdf), existsSync(moved)]).toEqual([false, true]);
+    const movedArgs = args.map((a) => (a === pdf ? moved : a));
+    const duplicate = await run(['bolletta', ...movedArgs, '--soglia-consumi', '30', '--conferma']);
     expect(duplicate.code).toBe(1);
     expect(duplicate.json).toMatchObject({ reason: 'duplicate-bill' });
 
-    const undone = await run(['annulla-bolletta', ...common, pdf]);
+    const undone = await run(['annulla-bolletta', ...common, moved]);
     expect(undone.json.status).toBe('undone');
+    // Back to Da_smistare, never over another file.
+    expect(undone.json.file).toBe('moved');
+    const inbox = join(dir, ...plan.inbox.split('/'));
+    expect([existsSync(moved), existsSync(inbox)]).toEqual([false, true]);
     expect(undone.json.operationIds).toHaveLength(2);
     expect(undone.json.records).toBe(2);
     expect((await run(['annulla-bolletta', ...common, '--pagine', '2-1', pdf])).code).toBe(2);
     const empty = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
     expect(empty.json.apartments).toEqual([{ apartmentId: 'pulci', counts: {} }]);
     expect((await run(['cruscotto', ...common, '--lettura', lettura])).code).toBe(2);
+  });
+});
+
+describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 17)', () => {
+  let n = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `p17-${String((n += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+
+  it('soglie inserite da user1, livello solo con le soglie, importi solo con --dettagli', async () => {
+    const dir = join(root, `p17-${String((counter += 1))}`);
+    mkdirSync(dir);
+    let k = 0;
+    const bill = (id, start, end, quantity) => ({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'pulci',
+      supplier: 'Fornitore-Inventato-Gas',
+      category: 'gas',
+      periodStart: start,
+      periodEnd: end,
+      amount: 4321,
+      consumption: { quantity, unit: 'Smc' },
+      includedInConguaglio: true,
+      sharedWithTenants: true,
+      filePath: `${id}.pdf`,
+      fileHash: `h-${id}`,
+    });
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          { path: recordPath('apartment', 'pulci'), after: apartment({ id: 'pulci' }) },
+          {
+            path: recordPath('bill', 'b-prev'),
+            after: bill('b-prev', '2025-01-01', '2025-01-31', '100'),
+          },
+          {
+            path: recordPath('bill', 'b-now'),
+            after: bill('b-now', '2026-01-01', '2026-01-31', '160'),
+          },
+        ],
+      },
+      () => ORA,
+      () => `seed-${String((k += 1))}`,
+    );
+    const common = ['--cartella', dir, '--ora', ORA];
+    const plain = await run(['consumi', ...common, '--bolletta', 'b-now']);
+    expect([plain.code, plain.json.thresholds]).toEqual([0, false]);
+    expect(plain.json.yearBefore.differences[0]).toEqual({
+      metric: 'consumption',
+      differenceBp: 6000,
+    });
+    expect(plain.out).not.toMatch(/4321|160/);
+    const saved = await run([
+      'soglie-consumi',
+      ...common,
+      '--giallo',
+      'consumi:30',
+      '--rosso',
+      'consumi:50,importo:80',
+    ]);
+    expect([saved.code, saved.json.status, saved.json.settingsId]).toEqual([
+      0,
+      'saved',
+      'soglie-consumi',
+    ]);
+    const leveled = await run(['consumi', ...common, '--bolletta', 'b-now', '--dettagli']);
+    expect(leveled.json.yearBefore.differences[0].level).toBe('rosso');
+    expect(leveled.json.current.amount).toBe(4321);
+    for (const bad of [
+      ['soglie-consumi', ...common],
+      ['soglie-consumi', ...common, '--giallo', 'acqua:30'],
+      ['soglie-consumi', ...common, '--giallo', 'consumi:30,consumi:40'],
+      ['consumi', ...common],
+    ]) {
+      expect((await run(bad)).code).toBe(2);
+    }
+    const codes = await run(['appartamento', ...common, '--id', 'pulci', '--codici', 'POD-PROVA']);
+    expect([codes.code, codes.json.status]).toEqual([0, 'updated']);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...common,
+      '--operazione',
+      saved.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
   });
 });

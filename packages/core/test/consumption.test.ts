@@ -44,7 +44,7 @@ describe('compareConsumption', () => {
     const result = compareConsumption(now, [prev], { recentMonths: 0 });
     expect(result.current).toEqual({
       billIds: ['b-now'],
-      months: 2,
+      days: 59,
       amount: 12000,
       consumption: { quantity: '120', unit: 'Smc' },
     });
@@ -58,35 +58,44 @@ describe('compareConsumption', () => {
     expect(result.recent).toBeUndefined();
   });
 
-  it('averages the recent window per month of competence', () => {
+  it('averages the recent window per day of competence (R313)', () => {
     const nov = bill('b-nov', '2025-11-01', '2025-11-30', 3000, '25.5');
     const dec = bill('b-dec', '2025-12-01', '2025-12-31', 3000, '34.5');
     const old = bill('b-old', '2025-09-01', '2025-10-31', 9999, '999');
     const result = compareConsumption(now, [nov, dec, old], { recentMonths: 2 });
     expect(result.recent?.reference).toEqual({
       billIds: ['b-dec', 'b-nov'],
-      months: 2,
+      days: 61,
       amount: 6000,
       consumption: { quantity: '60.0', unit: 'Smc' },
     });
-    // 60/month now vs 30/month: +100 %; amount 6000/month vs 3000/month: +100 %; price equal.
+    // 120 in 59 days against 60 in 61 days: (120·61 − 60·59) / (60·59) = +106,78 %.
     expect(result.recent?.differences).toEqual([
-      { metric: 'consumption', differenceBp: 10000 },
-      { metric: 'amount', differenceBp: 10000 },
+      { metric: 'consumption', differenceBp: 10678 },
+      { metric: 'amount', differenceBp: 10678 },
       { metric: 'unitPrice', differenceBp: 0 },
+    ]);
+    // Without a window from the caller, the 12 months before (R313).
+    expect(compareConsumption(now, [nov, dec, old]).recent?.reference.billIds).toEqual([
+      'b-dec',
+      'b-nov',
+      'b-old',
     ]);
   });
 
-  it('marks over only for the thresholds given, exactly at the threshold not over', () => {
+  it('gives the level of the thresholds given, exactly at a threshold not above it', () => {
     const prev = bill('b-prev', '2025-01-01', '2025-02-28', 10000, '80');
     const result = compareConsumption(now, [prev], {
       recentMonths: 0,
-      thresholds: { consumption: 5000, unitPrice: 1999 },
+      thresholds: {
+        giallo: { consumption: 3000, amount: 2000, unitPrice: 1000 },
+        rosso: { consumption: 5000, unitPrice: 1999 },
+      },
     });
     expect(result.yearBefore?.differences).toEqual([
-      { metric: 'consumption', differenceBp: 5000, over: false },
+      { metric: 'consumption', differenceBp: 5000, level: 'giallo' },
       { metric: 'amount', differenceBp: 2000 },
-      { metric: 'unitPrice', differenceBp: -2000, over: true },
+      { metric: 'unitPrice', differenceBp: -2000, level: 'rosso' },
     ]);
   });
 
@@ -100,7 +109,7 @@ describe('compareConsumption', () => {
     const credit = bill('b-c', '2025-01-01', '2025-01-31', -500);
     const noQty = bill('b-n', '2026-01-01', '2026-01-31', 500);
     expect(compareConsumption(noQty, [credit], { recentMonths: 0 }).yearBefore).toEqual({
-      reference: { billIds: ['b-c'], months: 1, amount: -500 },
+      reference: { billIds: ['b-c'], days: 31, amount: -500 },
       differences: [],
     });
   });
@@ -108,7 +117,7 @@ describe('compareConsumption', () => {
   it('refuses months or thresholds that are not whole and non-negative', () => {
     expect(() => compareConsumption(now, [], { recentMonths: -1 })).toThrow(RangeError);
     expect(() =>
-      compareConsumption(now, [], { recentMonths: 1, thresholds: { amount: 0.5 } }),
+      compareConsumption(now, [], { recentMonths: 1, thresholds: { rosso: { amount: 0.5 } } }),
     ).toThrow(RangeError);
   });
 });

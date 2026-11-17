@@ -25,6 +25,7 @@ describe('writeJsonSchemas', () => {
       'bankProfile',
       'bill',
       'condoDocument',
+      'consumptionSettings',
       'contact',
       'contract',
       'extractionResult',

@@ -99,6 +99,13 @@
       "type": "string",
       "minLength": 1
     },
+    "supplyCodes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "cadastre": {
       "type": "array",
       "items": {

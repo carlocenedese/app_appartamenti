@@ -45,11 +45,14 @@
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { FsStore } from '../packages/store-fs/src/fs-store.ts';
+import { FsStore, moveFileNoOverwrite } from '../packages/store-fs/src/fs-store.ts';
 import {
   AccountSchema,
+  ApartmentSchema,
+  BillSchema,
   BankProfileSchema,
   CsvError,
   ExcludeReasonSchema,
@@ -106,6 +109,9 @@ import {
   saveLegalRate,
   confirmTaxDiscrepancy,
   saveTenantPersonal,
+  saveConsumptionSettings,
+  billFileMove,
+  loadConsumption,
   saveTenant,
   setImuYear,
   setRentYear,
@@ -300,6 +306,10 @@ const MESSAGES = {
   'no-discrepancy': 'Rifiutato: la voce di quest’anno non ha una discrepanza da confermare.',
   'bad-note': 'Rifiutato: la nota è vuota.',
   'invalid-personal': 'Rifiutato: i dati riservati dell’inquilino non sono validi.',
+  'invalid-settings': 'Rifiutato: soglie non valide.',
+  'unknown-bill': 'Rifiutato: bolletta sconosciuta o cancellata.',
+  'no-consumption-thresholds':
+    'Nessuna soglia dell’allarme consumi: inserirle con «soglie-consumi» (nessun valore predefinito).',
   'bad-voce': 'Rifiutato: voce delle tasse non valida.',
   'bad-voice': 'Rifiutato: una scadenza di cedolare o registro è già la sua voce: niente --voce.',
   'tax-discrepancy':
@@ -394,6 +404,9 @@ const OPTIONS = {
   'luogo-nascita': { type: 'string' },
   'data-nascita': { type: 'string' },
   residenza: { type: 'string' },
+  giallo: { type: 'string' },
+  bolletta: { type: 'string' },
+  rosso: { type: 'string' },
   documento: { type: 'string' },
   'documento-ente': { type: 'string' },
   'documento-rilascio': { type: 'string' },
@@ -471,6 +484,7 @@ const RECONCILE_KINDS = [
   'legal-rate.save',
   'tax.confirm',
   'tenant.personal',
+  'consumption.settings',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -544,6 +558,21 @@ function basisPoints(text) {
   const bp = Number(found[1]) * 100 + Number((found[2] ?? '').padEnd(2, '0'));
   if (bp < 1 || bp > 10000) throw invalid('bad-arguments');
   return bp;
+}
+
+/** `consumi:30,importo:20,prezzo:10` (percent) as basis points by metric (plan 17, R313). */
+function metricThresholds(text) {
+  const names = { consumi: 'consumption', importo: 'amount', prezzo: 'unitPrice' };
+  const out = {};
+  for (const part of text.split(',')) {
+    const [name, percent, ...rest] = part.split(':');
+    const metric = names[name];
+    if (metric === undefined || percent === undefined || rest.length > 0 || metric in out) {
+      throw invalid('bad-arguments');
+    }
+    out[metric] = basisPoints(percent);
+  }
+  return out;
 }
 
 /** `<cedolare|registro>:<AAAA>:<importo>` for tasse-assegna (plan 10). */
@@ -794,6 +823,55 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw error;
     }
     return { status: 'decided', statementId: values.estratto, row: Number(values.riga), decision };
+  }
+
+  if (name === 'soglie-consumi') {
+    // Plan 17, R313: the thresholds of the consumption alarm, typed by user1 (none in the code).
+    if (positionals.length > 0 || (values.giallo === undefined && values.rosso === undefined)) {
+      throw invalid('bad-arguments');
+    }
+    const result = await saveConsumptionSettings(
+      store,
+      {
+        ...optional('apartmentId', values.appartamento),
+        ...optional(
+          'giallo',
+          values.giallo === undefined ? undefined : metricThresholds(values.giallo),
+        ),
+        ...optional(
+          'rosso',
+          values.rosso === undefined ? undefined : metricThresholds(values.rosso),
+        ),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return result;
+  }
+
+  if (name === 'consumi') {
+    // Differences in basis points and levels; the sides (amounts, quantities) with --dettagli.
+    need(values, 'bolletta');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const result = await loadConsumption(store, values.bolletta);
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const side = (c) =>
+      c === undefined
+        ? undefined
+        : {
+            differences: c.differences,
+            ...(values.dettagli === true ? { reference: c.reference } : {}),
+          };
+    return {
+      status: 'ok',
+      thresholds: result.thresholds,
+      ...(result.thresholds ? {} : { message: MESSAGES['no-consumption-thresholds'] }),
+      yearBefore: side(result.comparison.yearBefore),
+      recent: side(result.comparison.recent),
+      ...(values.dettagli === true ? { current: result.comparison.current } : {}),
+    };
   }
 
   if (name === 'scheda-inquilino') {
@@ -1256,6 +1334,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
             : yearStart(v['esercizio-condominio']),
         ),
         ...optional('condoDifferenceTo', to === undefined ? undefined : DIFFERENCE_TO[to]),
+        ...optional(
+          'supplyCodes',
+          v.codici === undefined ? undefined : v.codici.split(',').filter((c) => c !== ''),
+        ),
       },
       who,
       clock,
@@ -2037,7 +2119,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-reading');
     }
     if (!read.success) throw invalid('bad-reading');
-    const knownCodes = (values.codici ?? '').split(',').filter((c) => c !== '');
+    // Without --codici, those of the apartment (`appartamento --codici`, R314).
+    const knownCodes =
+      values.codici === undefined ? undefined : values.codici.split(',').filter((c) => c !== '');
     const result = await importBill(
       store,
       {
@@ -2080,11 +2164,32 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...(details ? { reasons: result.reasons } : {}),
       };
     }
+    // Plan 17, R315: the PDF of a whole file registered as a bill goes to the Bollette folder of
+    // the apartment, never over another file and only from inside the shared folder.
+    const bills = (await loadAll(store, 'bill', BillSchema)).records;
+    const bill = bills.find((b) => result.ids.includes(b.id));
+    const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+    const apartment = apartments.find((a) => a.id === values.appartamento);
+    const [first, last] = read.data.pageRange ?? [1, read.data.pages];
+    let file = 'not-moved';
+    if (bill !== undefined && apartment !== undefined && first === 1 && last === read.data.pages) {
+      const inside = relative(resolve(values.cartella), resolve(positionals[0]));
+      if (inside.startsWith('..') || isAbsolute(inside)) file = 'outside-folder';
+      else {
+        const plan = billFileMove(apartment, bill.filePath);
+        file = await moveFileNoOverwrite(
+          values.cartella,
+          inside.split(/[\\/]/).join('/'),
+          plan.filed,
+        );
+      }
+    }
     return {
       status: result.status,
       ids: result.ids,
       operationId: result.operationId,
       checks: checks(result.checks),
+      file,
     };
   }
 
@@ -2100,6 +2205,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
       } else throw invalid('bad-arguments');
     }
     const fileHash = await hashBytes(readBytes(positionals[0]));
+    // Read before the undo: the bill tells where the file is and which Da_smistare it goes to.
+    const filed = (await loadAll(store, 'bill', BillSchema)).records.find(
+      (b) => b.fileHash === fileHash,
+    );
     let result;
     try {
       result = await undoBillImport(store, fileHash, who, clock, newId, optional('pages', pages));
@@ -2122,10 +2231,32 @@ async function command(name, values, positionals, store, who, clock, newId) {
       }
       throw new Stop('rejected', result.reason);
     }
+    // Plan 17, R315: the file goes back to Da_smistare, once nothing of it is registered, never
+    // over another file.
+    let file = 'not-moved';
+    const left = (await loadAll(store, 'bill', BillSchema)).records.some(
+      (b) => b.fileHash === fileHash,
+    );
+    const apartment =
+      filed === undefined
+        ? undefined
+        : (await loadAll(store, 'apartment', ApartmentSchema)).records.find(
+            (a) => a.id === filed.apartmentId,
+          );
+    if (filed !== undefined && apartment !== undefined && !left) {
+      const plan = billFileMove(apartment, filed.filePath);
+      const inside = relative(resolve(values.cartella), resolve(positionals[0]))
+        .split(/[\\/]/)
+        .join('/');
+      if (inside === plan.filed) {
+        file = await moveFileNoOverwrite(values.cartella, plan.filed, plan.inbox);
+      }
+    }
     return {
       status: 'undone',
       records: result.records,
       operationIds: result.operations.map((o) => o.id),
+      file,
     };
   }
 
@@ -2144,7 +2275,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       today: day(values.oggi ?? clock().slice(0, 10)),
       ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
       ...optional('taxYear', anno),
-      settlements,
+      // Without --periodo-conguaglio, the period in course of each apartment (R316).
+      ...(settlements.length === 0 ? {} : { settlements }),
     });
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     // Counts and codes; the share of the empty beds is an amount: only with --dettagli (R107).
@@ -2519,6 +2651,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-assegna',
         'tasse-conferma',
         'scheda-inquilino',
+        'soglie-consumi',
+        'consumi',
         'tasse',
         'bolletta',
         'annulla-bolletta',
@@ -2538,6 +2672,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     const only = {
       prova: ['riconcilia'],
       dettagli: [
+        'consumi',
         'riconcilia',
         'importa',
         'saldi',
@@ -2575,6 +2710,9 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'caparra-restituzione',
         'scheda-inquilino',
       ],
+      giallo: ['soglie-consumi'],
+      bolletta: ['consumi'],
+      rosso: ['soglie-consumi'],
       ...Object.fromEntries(
         [
           'codice-fiscale',
@@ -2605,6 +2743,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-stima',
         'tasse-copia',
         'tasse-conferma',
+        'soglie-consumi',
         'bolletta',
         'contatti',
       ],
@@ -2660,7 +2799,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       oggi: ['scadenze', 'tasse', 'cruscotto'],
       lettura: ['bolletta'],
       'soglia-consumi': ['bolletta'],
-      codici: ['bolletta'],
+      codici: ['bolletta', 'appartamento'],
       conferma: ['bolletta'],
       'periodo-conguaglio': ['cruscotto'],
       pagine: ['annulla-bolletta'],

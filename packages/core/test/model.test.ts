@@ -299,6 +299,7 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     amount: 180000,
   },
   legalRate: { ...base, id: 'tasso-2026', year: '2026', rateBp: 160 },
+  consumptionSettings: { ...base, id: 'soglie-consumi', giallo: { consumption: 3000 } },
   taxConfirmation: {
     ...base,
     id: 'taxc-apt-1-2026-cedolare',
@@ -434,6 +435,7 @@ describe('recordSchemas', () => {
         'contact',
         'legalRate',
         'taxConfirmation',
+        'consumptionSettings',
       ].sort(),
     );
   });

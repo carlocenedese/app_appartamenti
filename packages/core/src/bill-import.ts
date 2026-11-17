@@ -28,7 +28,8 @@ import {
   TenancySchema,
   TenantRecoverySchema,
 } from './model';
-import type { PendingDocument } from './model';
+import type { Apartment, PendingDocument } from './model';
+import { apartmentFolder } from './accounts';
 import { parseOrThrow } from './parse';
 import { proposalFromExtraction } from './proposal';
 import type { ProposalCheck } from './proposal';
@@ -58,12 +59,30 @@ export type ImportBillResult =
   | { status: 'rejected'; reason: string; checks: ProposalCheck[] }
   | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-apartment' };
 
+/**
+ * Where the PDF of a registered bill goes, and where an undo brings it back (answer of user1, 17
+ * November 2026, R315): `filed` is `<Appartamento>/<bill.filePath>`, `inbox` the `Da_smistare`
+ * of the apartment with the same name. Paths relative to the shared folder; the caller moves the
+ * file, never over another one.
+ */
+export function billFileMove(
+  apartment: Pick<Apartment, 'name'>,
+  filePath: string,
+): { filed: string; inbox: string } {
+  const folder = apartmentFolder(apartment.name);
+  const name = filePath.split('/').pop() ?? filePath;
+  return { filed: `${folder}/${filePath}`, inbox: `${folder}/Da_smistare/${name}` };
+}
+
 export interface ImportBillInput {
   result: ExtractionResult;
   bytes: Uint8Array;
   apartmentId: string;
-  /** POD, PDR and customer codes of the apartment (R261): no record keeps them yet. */
-  knownCodes: string[];
+  /**
+   * POD, PDR and customer codes of the apartment (R261) given by the caller; absent, those kept
+   * in `Apartment.supplyCodes` (plan 17, R314).
+   */
+  knownCodes?: string[];
   /** From the user's configuration, never from the code (R262). */
   thresholds: { consumptionAnomalyPercent: number };
   /** `auto`: the policy decides; `manual`: a person confirmed the proposal. */
@@ -116,6 +135,7 @@ export async function importBill(
     (a) => a.id === apartmentId,
   );
   if (apartment === undefined) return { status: 'refused', reason: 'unknown-apartment' };
+  const knownCodes = input.knownCodes ?? apartment.supplyCodes ?? [];
   if ((await hashBytes(bytes)) !== result.fileHash) {
     return {
       status: 'rejected',
@@ -127,7 +147,7 @@ export async function importBill(
   const proposal = proposalFromExtraction(
     result,
     {
-      apartment: { id: apartmentId, knownCodes: input.knownCodes },
+      apartment: { id: apartmentId, knownCodes },
       bills: (await loadAll(store, 'bill', BillSchema)).records,
       instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
       tenancies: (await loadAll(store, 'tenancy', TenancySchema)).records,
@@ -156,7 +176,7 @@ export async function importBill(
 
   const profile = await readSupplierProfile(store, result);
   const decision = decideRegistration({ proposal, result, profile });
-  const noCodes = input.knownCodes.length === 0;
+  const noCodes = knownCodes.length === 0;
   if (decision.action === 'auto-register' && !noCodes) return register('auto');
 
   const known = await findProposalDuplicate(store, proposal, result);

@@ -216,5 +216,11 @@ describe('loadDashboard on the Excel fixture', () => {
       },
       { apartmentId: 'apt-sud', counts: {} },
     ]);
+    // Without periods given, the one in course of each apartment (R316).
+    const current = await loadDashboard(s, { today: isoDate('2027-01-15'), soonDays: 30 });
+    if (current.status !== 'computed') throw new Error(current.reason);
+    expect(current.settlements.map((r) => [r.apartmentId, r.periodLabel])).toEqual([
+      ['apt-nord', '2026-27'],
+    ]);
   });
 });

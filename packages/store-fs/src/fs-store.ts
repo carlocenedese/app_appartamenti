@@ -3,7 +3,19 @@
  * core itself never touches `node:fs`, and the desktop app will have a Tauri-based store (plan 4).
  */
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import {
+  copyFile,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  unlink,
+} from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { MalformedJsonError, assertSafeRelPath } from '@bollette/core';
@@ -157,4 +169,40 @@ export class FsStore implements Store {
     }
     return { rel, file: current };
   }
+}
+
+/**
+ * Moves the file `from` to `to`, both relative to `root` and checked with `assertSafeRelPath`,
+ * creating the folders of `to`; never over an existing file (plan 17, R315): `target-exists`
+ * leaves both where they are. A hard link then the removal of the old name, so the target is never
+ * replaced; where links are not allowed, an exclusive copy instead of the link.
+ */
+export async function moveFileNoOverwrite(
+  root: string,
+  from: string,
+  to: string,
+): Promise<'moved' | 'target-exists' | 'missing'> {
+  const [fromPath, toPath] = [from.normalize('NFC'), to.normalize('NFC')];
+  assertSafeRelPath(fromPath);
+  assertSafeRelPath(toPath);
+  const source = join(root, fromPath);
+  const target = join(root, toPath);
+  if (!(await exists(source))) return 'missing';
+  if (await exists(target)) return 'target-exists';
+  await mkdir(dirname(target), { recursive: true });
+  try {
+    await link(source, target);
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code === 'EEXIST') return 'target-exists';
+    if (code !== 'EPERM' && code !== 'ENOTSUP' && code !== 'EXDEV') throw error;
+    try {
+      await copyFile(source, target, constants.COPYFILE_EXCL);
+    } catch (copyError) {
+      if ((copyError as { code?: unknown } | null)?.code === 'EEXIST') return 'target-exists';
+      throw copyError;
+    }
+  }
+  await unlink(source);
+  return 'moved';
 }

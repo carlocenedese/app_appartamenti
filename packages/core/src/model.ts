@@ -170,6 +170,11 @@ export const ApartmentSchema = RecordBaseSchema.extend({
   rentLateDays: z.int().min(0).max(31).optional(),
   /** Street address, as written on the notices. */
   address: NonEmptyString.optional(),
+  /**
+   * POD, PDR and customer codes of the utilities of the apartment (plan 17, R314), typed by
+   * user1: the import of a bill checks them.
+   */
+  supplyCodes: z.array(NonEmptyString).optional(),
   /** Cadastral identifiers (foglio, particella, subalterno), one entry per unit. */
   cadastre: z
     .array(z.object({ sheet: NonEmptyString, parcel: NonEmptyString, sub: NonEmptyString }))
@@ -1367,6 +1372,36 @@ export const TenantRecoverySchema = RecordBaseSchema.extend({
   });
 export type TenantRecovery = z.infer<typeof TenantRecoverySchema>;
 
+// --- Thresholds of the consumption alarm (plan 17) ---------------------------------------------
+
+const MetricThresholdsSchema = z
+  .object({
+    consumption: z.int().min(0).optional(),
+    amount: z.int().min(0).optional(),
+    unitPrice: z.int().min(0).optional(),
+  })
+  .optional();
+
+/**
+ * The thresholds of the consumption alarm (plan 17, R313), in basis points, typed by user1: the
+ * same for every apartment (`soglie-consumi`), or one apartment's own (`soglie-consumi-<id>`).
+ */
+export const ConsumptionSettingsSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString.optional(),
+  giallo: MetricThresholdsSchema,
+  rosso: MetricThresholdsSchema,
+})
+  .refine(
+    (c) =>
+      c.id === (c.apartmentId === undefined ? 'soglie-consumi' : `soglie-consumi-${c.apartmentId}`),
+    { message: 'The id must be soglie-consumi or soglie-consumi-<apartmentId>', path: ['id'] },
+  )
+  .meta({
+    description:
+      'id is soglie-consumi, or soglie-consumi-<apartmentId> for one apartment; thresholds in basis points.',
+  });
+export type ConsumptionSettings = z.infer<typeof ConsumptionSettingsSchema>;
+
 // --- Legal interest rates (plan 17) -------------------------------------------------------------
 
 /**
@@ -1529,6 +1564,7 @@ export const recordSchemas = {
   contact: ContactSchema,
   legalRate: LegalRateSchema,
   taxConfirmation: TaxConfirmationSchema,
+  consumptionSettings: ConsumptionSettingsSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 
