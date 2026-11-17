@@ -120,6 +120,20 @@ describe('saveCondoDocument (plan 8, task 3)', () => {
   });
 });
 
+describe('one form of fiscal year per apartment (plan 17, R310)', () => {
+  it('refuses a document of another form than the live ones of the apartment', async () => {
+    const store = await withApartment();
+    expect(await save(store, budget)).toMatchObject({ status: 'saved' });
+    expect(await save(store, { ...budget, esercizio: '2027' }, 'f')).toEqual({
+      status: 'refused',
+      reason: 'esercizio-format',
+    });
+    expect(await save(store, { ...budget, esercizio: '2027-28' }, 'g')).toMatchObject({
+      status: 'saved',
+    });
+  });
+});
+
 describe('documentQuotaConduttore (plan 8, task 3)', () => {
   const doc = (extra: Partial<CondoDocument>): CondoDocument =>
     CondoDocumentSchema.parse({

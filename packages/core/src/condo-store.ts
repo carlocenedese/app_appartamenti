@@ -5,7 +5,13 @@
  * `checkConsistency` reports a problem, nothing for the same request on the same state. No amount
  * or name in a summary.
  */
-import { condoCheck, condoDifferences, condoEstimate, freeDebits } from './condominio';
+import {
+  condoCheck,
+  condoDifferences,
+  condoEstimate,
+  esercizioForm,
+  freeDebits,
+} from './condominio';
 import type { CondoCheckRow, CondoDifference, CondoEstimate, FreeDebit } from './condominio';
 import type { ZodType } from 'zod';
 import { checkConsistency, commitChange } from './journal';
@@ -38,13 +44,20 @@ export type SaveCondoDocumentResult =
   | { status: 'unchanged'; documentId: string }
   | {
       status: 'refused';
-      reason: 'inconsistent-store' | 'unknown-apartment' | 'invalid-document' | 'id-collision';
+      reason:
+        | 'inconsistent-store'
+        | 'unknown-apartment'
+        | 'invalid-document'
+        | 'id-collision'
+        | 'esercizio-format';
     };
 
 /**
  * Creates or replaces `condoc-<apartmentId>-<esercizio>-<kind>` (a new `rev`; a deleted one comes
  * back) in one `condo.document` operation. Refused: the apartment is not live, the schema refuses
- * the document or the fiscal year is not a safe file name part (`invalid-document`).
+ * the document or the fiscal year is not a safe file name part (`invalid-document`); a fiscal year
+ * of another form than the other live documents of the apartment (`2026` beside `2025-26`): one
+ * form per apartment (answer of user1, 17 November 2026, R310), `esercizio-format`.
  */
 export async function saveCondoDocument(
   store: Store,
@@ -65,6 +78,16 @@ export async function saveCondoDocument(
     await loadAll(store, 'condoDocument', CondoDocumentSchema, { includeDeleted: true })
   ).records;
   const before = docs.find((d) => d.id === id);
+  if (
+    docs.some(
+      (d) =>
+        d.deleted !== true &&
+        d.apartmentId === input.apartmentId &&
+        esercizioForm(d.esercizio) !== esercizioForm(input.esercizio),
+    )
+  ) {
+    return refuse('esercizio-format');
+  }
   // `a` + `b-c` and `a-b` + `c` give the same id: never write over another apartment's document.
   if (
     before !== undefined &&

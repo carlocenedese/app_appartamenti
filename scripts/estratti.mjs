@@ -231,6 +231,8 @@ const MESSAGES = {
   'missing-fields':
     'Rifiutato: per un appartamento nuovo servono nome, locatore, posti, annualità e differenza del condominio.',
   'invalid-document': 'Rifiutato: i dati del documento del condominio non sono validi.',
+  'esercizio-format':
+    'Rifiutato: l’esercizio ha una forma diversa da quella degli altri documenti dell’appartamento (2026 o 2026-27).',
   'not-extraordinary':
     'Rifiutato: la voce non è una spesa condominiale straordinaria viva di questo appartamento.',
   'amount-too-high': 'Rifiutato: da recuperare più della spesa anticipata.',
