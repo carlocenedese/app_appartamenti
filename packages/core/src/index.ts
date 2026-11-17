@@ -65,6 +65,7 @@ export * from './payable-store';
 export * from './apartment-store';
 export * from './condominio';
 export * from './condo-store';
+export * from './contact-store';
 export * from './taxes';
 export * from './tax-store';
 export { compareConsumption, yearBeforeBill } from './consumption';

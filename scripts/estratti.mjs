@@ -24,6 +24,10 @@
 // or updates the fields given), condominio-documento (preventivo or consuntivo of a fiscal year),
 // condominio (the owners' check of the condominium expenses, the differences and the recoveries)
 // and recupero (part of an extraordinary expense to recover from tenants chosen by user1).
+// Plan 14 adds condominio-stima (the condominium estimate of a fiscal year: its own document, or a
+// copy of the nearest earlier one, never written; amounts only with --dettagli), contatto (an
+// administrator or a supplier of the address book, every field replaced) and contatti (the list;
+// names and contacts only with --dettagli).
 // Plan 11 adds presenza (the arrival of a tenant, optionally in a contract), fine-presenza (the last
 // month of a stay), subentro (a takeover inside a contract), stato-contratti (tenancies, takeovers,
 // deposits and checks of each contract) and caparra-restituzione (the return statement of a deposit,
@@ -75,6 +79,8 @@ import {
   loadAccountBalances,
   loadImuRates,
   loadCondo,
+  loadCondoEstimate,
+  loadContacts,
   loadAll,
   parseCsv,
   parseEuro,
@@ -87,6 +93,7 @@ import {
   saveBankProfile,
   saveApartment,
   saveCondoDocument,
+  saveContact,
   saveTenantRecovery,
   equalShares,
   saveContract,
@@ -163,7 +170,7 @@ const MESSAGES = {
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
   'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
   'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti, appartamenti, condominio, scadenze, tasse, presenze).',
+    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti, appartamenti, condominio, scadenze, tasse, presenze, rubrica).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
   'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
@@ -266,6 +273,11 @@ const MESSAGES = {
   'imu-assigned': 'Rifiutato: il movimento paga una rata IMU: annullare prima l’assegnazione.',
   'tax-assigned':
     'Rifiutato: il movimento è assegnato a cedolare o registro: annullare prima l’assegnazione.',
+  'invalid-contact':
+    'Rifiutato: contatto non valido (id o campi vuoti, categoria sconosciuta, collegamento ripetuto).',
+  'unknown-supply': 'Rifiutato: utenza sconosciuta.',
+  'condo-estimate-copied':
+    'Stima copiata da un esercizio precedente: non è un documento del condominio e non si salva.',
   'tax-year-empty':
     'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
   'tax-no-payable':
@@ -354,6 +366,13 @@ const OPTIONS = {
   canone: { type: 'string' },
   acconto: { type: 'string' },
   stato: { type: 'string' },
+  ruolo: { type: 'string' },
+  telefono: { type: 'string' },
+  email: { type: 'string' },
+  note: { type: 'string' },
+  appartamenti: { type: 'string' },
+  utenze: { type: 'string' },
+  categorie: { type: 'string' },
   entro: { type: 'string' },
   oggi: { type: 'string' },
   scadenza: { type: 'string' },
@@ -420,8 +439,10 @@ const RECONCILE_KINDS = [
   'tax.estimate',
   'tax.copy',
   'tax.assign',
+  'contact.save',
 ];
 
+const CONTACT_ROLES = ['amministratore', 'fornitore'];
 const PAYABLE_STATES = ['da-pagare', 'in-scadenza', 'pagata', 'in-ritardo'];
 const PAYABLE_ITEM_KINDS = ['imu', 'condominio', 'tari', ...PayableKindSchema.options];
 
@@ -1291,6 +1312,99 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...(details ? { amount: r.amount, shares: r.shares } : {}),
       })),
       warnings: result.warnings.map((w) => ({ ...w, message: MESSAGES[w.code] })),
+    };
+  }
+
+  // The estimate of a fiscal year (plan 14, R250): source always, amounts only with --dettagli.
+  if (name === 'condominio-stima') {
+    need(values, 'appartamento', 'esercizio');
+    // The same form as a fiscal year of condominio-documento (`saveCondoDocument`).
+    if (positionals.length > 0 || !/^[A-Za-z0-9_-]{1,32}$/.test(values.esercizio)) {
+      throw invalid('bad-arguments');
+    }
+    const result = await loadCondoEstimate(store, {
+      apartmentId: values.appartamento,
+      esercizio: values.esercizio,
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    const e = result.estimate;
+    if (e === undefined) return { status: 'ok' };
+    return {
+      status: 'ok',
+      estimate: {
+        apartmentId: e.apartmentId,
+        esercizio: e.esercizio,
+        source: e.source,
+        fromEsercizio: e.fromEsercizio,
+        fromKind: e.fromKind,
+        ...(e.source === 'copiata' ? { message: MESSAGES['condo-estimate-copied'] } : {}),
+        ...(values.dettagli === true
+          ? { total: e.total, quotaConduttore: e.quotaConduttore, lines: e.lines }
+          : {}),
+      },
+    };
+  }
+
+  // The address book (plan 14, R253): every field replaced, a field left out is removed.
+  if (name === 'contatto') {
+    need(values, 'id', 'ruolo', 'nome');
+    if (positionals.length > 0 || !CONTACT_ROLES.includes(values.ruolo)) {
+      throw invalid('bad-arguments');
+    }
+    const result = await saveContact(
+      store,
+      {
+        id: values.id,
+        role: values.ruolo,
+        name: values.nome,
+        ...optional('phone', values.telefono),
+        ...optional('email', values.email),
+        ...optional('notes', values.note),
+        apartmentIds: idList(values.appartamenti) ?? [],
+        ...optional('supplyIds', idList(values.utenze)),
+        ...optional('categories', idList(values.categorie)),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: result.status,
+      contactId: result.contactId,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+    };
+  }
+
+  // Ids, role and links; the name and the contacts only with --dettagli (R107).
+  if (name === 'contatti') {
+    if (
+      positionals.length > 0 ||
+      (values.ruolo !== undefined && !CONTACT_ROLES.includes(values.ruolo))
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await loadContacts(store, {
+      ...optional('apartmentId', values.appartamento),
+      ...optional('role', values.ruolo),
+    });
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return {
+      status: 'ok',
+      contacts: result.contacts.map((c) => ({
+        contactId: c.id,
+        role: c.role,
+        apartmentIds: c.apartmentIds,
+        supplyIds: c.supplyIds ?? [],
+        categories: c.categories ?? [],
+        ...(values.dettagli === true
+          ? { name: c.name, phone: c.phone, email: c.email, notes: c.notes }
+          : {
+              phone: c.phone === undefined ? 0 : 1,
+              email: c.email === undefined ? 0 : 1,
+              notes: c.notes === undefined ? 0 : 1,
+            }),
+      })),
     };
   }
 
@@ -2268,7 +2382,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'appartamento',
         'condominio-documento',
         'condominio',
+        'condominio-stima',
         'recupero',
+        'contatto',
+        'contatti',
         'presenza',
         'fine-presenza',
         'subentro',
@@ -2303,6 +2420,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contratti',
         'scadenze',
         'condominio',
+        'condominio-stima',
+        'contatti',
         'stato-contratti',
         'caparra-restituzione',
         'tasse',
@@ -2327,6 +2446,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'scadenza-nuova',
         'condominio-documento',
         'condominio',
+        'condominio-stima',
         'recupero',
         'presenza',
         'stato-contratti',
@@ -2334,13 +2454,22 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-stima',
         'tasse-copia',
         'bolletta',
+        'contatti',
       ],
       voce: ['recupero', 'tasse-stima'],
       inquilini: ['recupero'],
       quote: ['recupero'],
       periodo: ['recupero'],
       stato: ['scadenze', 'recupero'],
-      esercizio: ['condominio-documento', 'condominio'],
+      nome: ['inquilino', 'appartamento', 'contatto'],
+      ruolo: ['contatto', 'contatti'],
+      ...Object.fromEntries(
+        ['telefono', 'email', 'note', 'appartamenti', 'utenze', 'categorie'].map((option) => [
+          option,
+          ['contatto'],
+        ]),
+      ),
+      esercizio: ['condominio-documento', 'condominio', 'condominio-stima'],
       'quota-conduttore': ['condominio-documento'],
       anno: [
         'imu-atteso',

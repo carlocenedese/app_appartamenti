@@ -7,6 +7,7 @@ import { imuDependents } from './imu';
 import { checkConsistency, commitChange, readJournal } from './journal';
 import {
   AccountSchema,
+  ApartmentSchema,
   BankTransactionSchema,
   BillMatchSchema,
   ImuYearSchema,
@@ -28,6 +29,7 @@ import type {
 } from './model';
 import { payablesRepeatedFrom, payablesUsing } from './payable-store';
 import { taxPaymentsUsing } from './tax-store';
+import { contactsUsing } from './contact-store';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -112,7 +114,8 @@ const CANCEL_KINDS = ['income.cancel-payment', 'outgoing.cancel-auto'];
  * would take away or change in group or number of rates (`imuDependents`). For any operation
  * that wrote a live class (plan 9), the live payables paid by its movement, then (plan 10) the live
  * tax payments on it; for one that created a payable, the live payables repeated from it. For one
- * that wrote tenancies (plan 11), `tenancyUndoBlockers`.
+ * that wrote tenancies (plan 11), `tenancyUndoBlockers`. For one that created an apartment (plan
+ * 14), the live contacts linked to it.
  */
 export async function undoBlockedBy(store: Store, operationId: string): Promise<string[]> {
   const operation = (await readJournal(store)).operations.find((o) => o.id === operationId);
@@ -152,6 +155,17 @@ export async function undoBlockedBy(store: Store, operationId: string): Promise<
   });
   const successors = await payablesRepeatedFrom(store, created);
   if (successors.length > 0) return successors;
+  // Plan 14: an undo that would take away an apartment a live contact is linked to.
+  const apartments = (operation?.changes ?? []).flatMap(({ path, before, after }) => {
+    if (!path.includes('/apartment/')) return [];
+    const was = ApartmentSchema.safeParse(before);
+    const is = ApartmentSchema.safeParse(after);
+    return is.success && is.data.deleted !== true && !(was.success && was.data.deleted !== true)
+      ? [is.data.id]
+      : [];
+  });
+  const contacts = await contactsUsing(store, apartments);
+  if (contacts.length > 0) return contacts;
   if (operation === undefined || !CANCEL_KINDS.includes(operation.kind)) return [];
   const movements = operation.changes.flatMap(({ before }) =>
     typeof before === 'object' &&

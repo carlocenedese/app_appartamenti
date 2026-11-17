@@ -1302,6 +1302,31 @@ export const TenantRecoverySchema = RecordBaseSchema.extend({
   });
 export type TenantRecovery = z.infer<typeof TenantRecoverySchema>;
 
+// --- Address book (plan 14) --------------------------------------------------------------------
+
+/**
+ * A condominium administrator or a supplier (plan 14, R251): name and contacts as free text typed
+ * by user1, never checked or read by the engine; linked to apartments, supplies (utenze) and bill
+ * categories (spese).
+ */
+export const ContactSchema = RecordBaseSchema.extend({
+  role: z.enum(['amministratore', 'fornitore']),
+  name: NonEmptyString,
+  phone: NonEmptyString.optional(),
+  email: NonEmptyString.optional(),
+  notes: NonEmptyString.optional(),
+  apartmentIds: z.array(NonEmptyString),
+  supplyIds: z.array(NonEmptyString).optional(),
+  /** The kinds of bill (spese) the contact is for: bills carry no supply id. */
+  categories: z.array(BillCategorySchema).optional(),
+})
+  .refine((c) => unique(c.apartmentIds) && unique(c.supplyIds) && unique(c.categories), {
+    message: 'An apartment or a supply appears once',
+    path: ['apartmentIds'],
+  })
+  .meta({ description: 'Each apartment, supply and category appears once.' });
+export type Contact = z.infer<typeof ContactSchema>;
+
 // --- Taxes and estimates (plan 10) -------------------------------------------------------------
 
 /** The voci of «Tasse e stime» (section 34). */
@@ -1395,6 +1420,7 @@ export const recordSchemas = {
   tenantRecovery: TenantRecoverySchema,
   taxEstimate: TaxEstimateSchema,
   taxPayment: TaxPaymentSchema,
+  contact: ContactSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 
