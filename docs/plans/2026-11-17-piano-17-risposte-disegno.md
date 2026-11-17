@@ -1,6 +1,6 @@
 # Piano 17: applicare le risposte di user1 del 17 novembre 2026 (disegno)
 
-Stato: **in esecuzione** (17 novembre 2026). Ramo `feat/piano-17-risposte`. R nuovi da R300.
+Stato: **implementato** (17 novembre 2026), gruppi A-G; ciò che resta aperto è in «Domande ancora aperte» e R318. Ramo `feat/piano-17-risposte`. R nuovi da R300.
 Fonte: risposte di user1 del 16 novembre (piano 10) e del 17 novembre 2026 (lotti 1-11). Si applicano
 **solo** quelle risposte; ciò che resta aperto è in «Domande ancora aperte». Solo core e riga di
 comando, niente schermate. Registro: `docs/progress.md` R300 e seguenti.
@@ -98,7 +98,20 @@ agli inquilini (R193). Esempio numerico delle due letture possibili:
 
 ## C, D, E, F, G
 
-Vedi le sezioni di `docs/progress.md` R300 e seguenti: ogni gruppo ha il suo Ruling con il dettaglio.
+- **C (R303-R309):** condominio quota proprietario nell'anno dell'addebito, con la «Quota
+  proprietà» del file dei proprietari; discrepanza confermata con una nota (`taxConfirmation`,
+  `tasse-conferma`); voce di bollo/F24 scelta alla creazione (`Payable.taxVoice`); scadenze pagate a
+  mano nel pagato; commissione della TARI nel pagato; F24 misto diviso (parti di cedolare e
+  registro, il resto alla rata IMU); avviso dell'anno vuoto per contribuente in ogni mese; «in
+  scadenza» a 15 giorni.
+- **D (R310):** una sola forma dell'esercizio per appartamento (`esercizio-format`); la copia del
+  consuntivo dell'ultimo anno con documenti era già così.
+- **E (R311-R312):** dati personali nella scheda dell'inquilino (`Tenant.personal`,
+  `scheda-inquilino`), durata residua e acconto del contratto nei moduli (a mano con una nota).
+- **F (R313-R316):** consumi per giorno sulla media di 12 mesi con soglie di user1
+  (`consumptionSettings`), codici nell'appartamento, PDF spostato e riportato, periodo di
+  conguaglio in corso nel cruscotto.
+- **G (R317):** solo documenti (piano 16).
 
 ## Domande ancora aperte (non decise)
 
@@ -108,3 +121,5 @@ Vedi le sezioni di `docs/progress.md` R300 e seguenti: ogni gruppo ha il suo Rul
 4. Valori delle soglie dell'allarme consumi e livelli giallo/rosso (R265 domanda 1).
 5. Interessi «a giorni»: il calcolo resta a mesi interi (R7); le presenze sono a mesi interi.
 6. Come si restituisce un recupero negativo (dall'affitto del mese dopo o altro): solo il segno.
+7. Importo del condominio quota proprietario nella tabella delle tasse (R305 è un Ruling).
+8. Stima del condominio quando l'ultimo anno con documenti ha il solo preventivo (R310).
