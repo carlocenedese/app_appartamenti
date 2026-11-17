@@ -7,10 +7,13 @@
 import type { ZodType } from 'zod';
 import type { ExcelInput } from './excel';
 import { loadFreeDebits } from './condo-store';
+import { recoverableMovements } from './condominio';
 import { checkConsistency } from './journal';
 import { planMatch } from './match-store';
 import {
   ApartmentSchema,
+  BankTransactionSchema,
+  MovementClassSchema,
   BillMatchSchema,
   BillSchema,
   ContractSchema,
@@ -86,6 +89,11 @@ export async function loadExcelInput(
       payments: own(await records('payment', PaymentSchema)),
       contracts,
       recoveries: own(await records('tenantRecovery', TenantRecoverySchema)),
+      recoverableMovements: recoverableMovements({
+        apartmentId: apartment.id,
+        transactions: await records('transaction', BankTransactionSchema),
+        classes: await records('movementClass', MovementClassSchema),
+      }),
       matches,
       freeDebits: await loadFreeDebits(store, matches),
     },

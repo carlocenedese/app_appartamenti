@@ -33,6 +33,12 @@ import { SEMVER_PATTERN } from './version';
 /** Whole euro cents, any sign. Parses to the branded `Cents`. */
 export const CentsSchema = z.int().transform((n): Cents => cents(n));
 
+/** Whole euro cents, any sign but zero. */
+const NonZeroCentsSchema = z
+  .int()
+  .refine((n) => n !== 0, { message: 'Not zero' })
+  .transform((n): Cents => cents(n));
+
 /** Whole euro cents, at least one. */
 const PositiveCentsSchema = z
   .int()
@@ -164,6 +170,11 @@ export const ApartmentSchema = RecordBaseSchema.extend({
   rentLateDays: z.int().min(0).max(31).optional(),
   /** Street address, as written on the notices. */
   address: NonEmptyString.optional(),
+  /**
+   * POD, PDR and customer codes of the utilities of the apartment (plan 17, R314), typed by
+   * user1: the import of a bill checks them.
+   */
+  supplyCodes: z.array(NonEmptyString).optional(),
   /** Cadastral identifiers (foglio, particella, subalterno), one entry per unit. */
   cadastre: z
     .array(z.object({ sheet: NonEmptyString, parcel: NonEmptyString, sub: NonEmptyString }))
@@ -351,6 +362,27 @@ export const TenantSchema = RecordBaseSchema.extend({
   language: z.enum(['it', 'en']).optional(),
 });
 export type Tenant = z.infer<typeof TenantSchema>;
+
+/**
+ * The reserved part of the tenant's card (plan 17, R311): personal data typed by user1 that fill
+ * the forms. A record of its own (`_app/dati/tenantCard/<tenantId>.json`, id = the tenant's id),
+ * read only by the forms and `scheda-inquilino`, never by the reconciliation; never printed.
+ */
+export const TenantCardSchema = RecordBaseSchema.extend({
+  taxCode: NonEmptyString.optional(),
+  birthPlace: NonEmptyString.optional(),
+  birthDate: ISODateSchema.optional(),
+  residence: NonEmptyString.optional(),
+  idDocument: z
+    .object({
+      number: NonEmptyString,
+      issuer: NonEmptyString.optional(),
+      issuedOn: ISODateSchema.optional(),
+      expiresOn: ISODateSchema.optional(),
+    })
+    .optional(),
+}).meta({ description: 'id is the tenant id; personal data, every field optional.' });
+export type TenantCard = z.infer<typeof TenantCardSchema>;
 
 /** `iban:<normalised IBAN>` or `name:<folded name>`: the same form the matcher compares. */
 export const PayerKeySchema = z.string().refine(
@@ -1223,12 +1255,24 @@ export const PayableSchema = RecordBaseSchema.extend({
   paid: z.object({ date: ISODateSchema, transactionId: NonEmptyString.optional() }).optional(),
   /** The tax year chosen by user1 (plan 13, R242), never computed; absent: not chosen. */
   taxYear: z.int().min(1).max(9999).optional(),
+  /**
+   * The voce of the tax table of a `bollo`, `f24` or `altro` payable, chosen by user1 when it is
+   * created (plan 17, R303); a `cedolare` or `registro` one is its own voce.
+   */
+  taxVoice: z.enum(['cedolare', 'registro']).optional(),
 })
   .refine((p) => p.id.startsWith('scad-'), {
     message: 'The id must start with scad-',
     path: ['id'],
   })
-  .meta({ description: 'id starts with scad-; expected is positive cents; taxYear 1-9999.' });
+  .refine((p) => p.taxVoice === undefined || !['cedolare', 'registro'].includes(p.kind), {
+    message: 'taxVoice only for bollo, f24 and altro',
+    path: ['taxVoice'],
+  })
+  .meta({
+    description:
+      'id starts with scad-; expected is positive cents; taxYear 1-9999; taxVoice only for bollo, f24 and altro.',
+  });
 export type Payable = z.infer<typeof PayableSchema>;
 
 // --- Condominium (plan 8) ----------------------------------------------------------------------
@@ -1282,11 +1326,25 @@ export type CondoDocument = z.infer<typeof CondoDocumentSchema>;
 export const TenantRecoverySchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,
   /** A live extraordinary condominium `Instalment` of the same apartment. */
-  instalmentId: NonEmptyString,
-  amount: PositiveCentsSchema,
-  shares: z.array(z.object({ tenantId: NonEmptyString, amount: PositiveCentsSchema })).min(1),
+  instalmentId: NonEmptyString.optional(),
+  /**
+   * Or a live outgoing movement classified to the apartment: an expense paid straight to a
+   * supplier (plan 17, R300).
+   */
+  transactionId: NonEmptyString.optional(),
+  /**
+   * Signed (plan 17, R300): negative when the tenant paid on behalf of the owners (a credit of the
+   * tenant). Never zero; every share has the sign of the amount.
+   */
+  amount: NonZeroCentsSchema,
+  shares: z.array(z.object({ tenantId: NonEmptyString, amount: NonZeroCentsSchema })).min(1),
   status: z.enum(['da-recuperare', 'recuperata', 'non-recuperabile']),
   periodLabel: NonEmptyString.optional(),
+  /**
+   * The day of the expense (plan 17, R300): its period is the default one when `periodLabel` is
+   * absent. Written from the instalment or the movement; typed by user1 without either.
+   */
+  date: ISODateSchema.optional(),
 })
   .refine((r) => unique(r.shares.map((s) => s.tenantId)), {
     message: 'A tenant appears once',
@@ -1296,11 +1354,71 @@ export const TenantRecoverySchema = RecordBaseSchema.extend({
     message: 'The shares add up to the amount',
     path: ['shares'],
   })
+  .refine((r) => r.shares.every((s) => s.amount > 0 === r.amount > 0), {
+    message: 'Every share has the sign of the amount',
+    path: ['shares'],
+  })
+  .refine((r) => r.instalmentId === undefined || r.transactionId === undefined, {
+    message: 'At most one expense: an instalment or a movement',
+    path: ['transactionId'],
+  })
+  .refine((r) => r.amount < 0 || r.instalmentId !== undefined || r.transactionId !== undefined, {
+    message: 'A positive recovery recovers an expense',
+    path: ['instalmentId'],
+  })
   .meta({
     description:
-      'amount and shares are positive cents; each tenant once; the shares add up to amount.',
+      'amount and shares are non-zero cents of one sign; each tenant once; the shares add up to amount; at most one of instalmentId and transactionId, one of them when amount is positive.',
   });
 export type TenantRecovery = z.infer<typeof TenantRecoverySchema>;
+
+// --- Thresholds of the consumption alarm (plan 17) ---------------------------------------------
+
+const MetricThresholdsSchema = z
+  .object({
+    consumption: z.int().min(0).optional(),
+    amount: z.int().min(0).optional(),
+    unitPrice: z.int().min(0).optional(),
+  })
+  .optional();
+
+/**
+ * The thresholds of the consumption alarm (plan 17, R313), in basis points, typed by user1: the
+ * same for every apartment (`soglie-consumi`), or one apartment's own (`soglie-consumi-<id>`).
+ */
+export const ConsumptionSettingsSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString.optional(),
+  giallo: MetricThresholdsSchema,
+  rosso: MetricThresholdsSchema,
+})
+  .refine(
+    (c) =>
+      c.id === (c.apartmentId === undefined ? 'soglie-consumi' : `soglie-consumi-${c.apartmentId}`),
+    { message: 'The id must be soglie-consumi or soglie-consumi-<apartmentId>', path: ['id'] },
+  )
+  .meta({
+    description:
+      'id is soglie-consumi, or soglie-consumi-<apartmentId> for one apartment; thresholds in basis points.',
+  });
+export type ConsumptionSettings = z.infer<typeof ConsumptionSettingsSchema>;
+
+// --- Legal interest rates (plan 17) -------------------------------------------------------------
+
+/**
+ * The legal interest rate of one year (plan 17, R301), typed by user1 like the IMU amounts: the
+ * deposit return statement reads it, the code never holds a rate.
+ */
+export const LegalRateSchema = RecordBaseSchema.extend({
+  year: YearSchema,
+  /** Basis points: 250 is 2,50%. */
+  rateBp: z.int().min(0).max(10000),
+})
+  .refine((r) => r.id === `tasso-${r.year}`, {
+    message: 'The id must be tasso-<year>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is tasso-<year>; rateBp in basis points, 0 to 10000.' });
+export type LegalRate = z.infer<typeof LegalRateSchema>;
 
 // --- Address book (plan 14) --------------------------------------------------------------------
 
@@ -1386,6 +1504,29 @@ export const TaxPaymentSchema = RecordBaseSchema.extend({
   });
 export type TaxPayment = z.infer<typeof TaxPaymentSchema>;
 
+// --- Confirmed tax discrepancies (plan 17) ---------------------------------------------------
+
+/**
+ * A discrepancy of the tax table confirmed by user1 with a note (plan 17, R304): the row of the
+ * taxpayer of `apartmentId` (the first of the table) for `year` and `voce` no longer warns while
+ * its difference is still `difference` (and `annualDifference`, for an IMU with only the annual
+ * total). Undone with the journal.
+ */
+export const TaxConfirmationSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  year: YearSchema,
+  voce: TaxVoiceSchema,
+  difference: CentsSchema,
+  annualDifference: CentsSchema.optional(),
+  note: NonEmptyString,
+})
+  .refine((c) => c.id === `taxc-${c.apartmentId}-${c.year}-${c.voce}`, {
+    message: 'The id must be taxc-<apartmentId>-<year>-<voce>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is taxc-<apartmentId>-<year>-<voce>; note not empty.' });
+export type TaxConfirmation = z.infer<typeof TaxConfirmationSchema>;
+
 /**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
@@ -1421,6 +1562,10 @@ export const recordSchemas = {
   taxEstimate: TaxEstimateSchema,
   taxPayment: TaxPaymentSchema,
   contact: ContactSchema,
+  legalRate: LegalRateSchema,
+  taxConfirmation: TaxConfirmationSchema,
+  consumptionSettings: ConsumptionSettingsSchema,
+  tenantCard: TenantCardSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

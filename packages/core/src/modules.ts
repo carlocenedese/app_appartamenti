@@ -8,8 +8,9 @@ import { docxPlaceholders, fillDocx } from './docx';
 import type { DocxRefusal, InflateRaw } from './docx';
 import { formatEuro, cents } from './money';
 import { safeWord } from './proposal';
-import type { Apartment, Contract, Tenancy, Tenant } from './model';
-import type { ISODate } from './period';
+import type { Apartment, Contract, Tenancy, Tenant, TenantCard } from './model';
+import { rentForMonth } from './contract';
+import type { ISODate, YearMonth } from './period';
 import { escapeXml } from './xlsx-write';
 import { zipStored } from './zip';
 
@@ -63,6 +64,7 @@ export const APP_FIELDS = {
   regime_fiscale: 'Regime fiscale',
   durata_residua_mesi: 'Durata residua (mesi)',
   importo_caparra: 'Importo della caparra',
+  acconto_spese_mensile: 'Acconto spese mensile',
 } as const;
 export type AppField = keyof typeof APP_FIELDS;
 
@@ -104,8 +106,6 @@ export const ASKED_FIELDS: Record<ModuleKind, readonly string[]> = {
     'residenza',
     'corso_studi',
     'deposito',
-    // Question 10: which advance (contract, room, month) is not decided, so it is typed by hand.
-    'acconto_spese_mensile',
     'classe_energetica',
     'superficie',
     'caratteristiche_alloggio',
@@ -113,10 +113,33 @@ export const ASKED_FIELDS: Record<ModuleKind, readonly string[]> = {
   ],
 };
 
+/**
+ * The asked fields the tenant's card fills when it has them (plan 17, R311): the card wins, as an
+ * app field, so a value typed for them is refused (`field-from-app`).
+ */
+export const CARD_FIELDS = [
+  'codice_fiscale',
+  'luogo_nascita',
+  'data_nascita',
+  'residenza',
+  'documento_numero',
+  'documento_ente',
+  'documento_rilascio',
+  'documento_scadenza',
+] as const;
+
+/**
+ * The note that must go with an advance typed by hand instead of the contract's (plan 17, R312);
+ * any form may print it.
+ */
+export const ADVANCE_NOTE = 'nota_acconto';
+
 /** What the store gives for one tenancy (`loadModuleData`). */
 export interface ModuleData {
   apartment: Apartment;
   tenant: Tenant;
+  /** The reserved card of the tenant (R311), if any. */
+  card?: TenantCard;
   tenancy: Tenancy;
   /** The live contract that links the tenancy, if any. */
   contract?: Contract;
@@ -129,9 +152,13 @@ const month = (ym: string) => `${ym.slice(5, 7)}/${ym.slice(0, 4)}`;
 const monthIndex = (ym: string) => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7));
 
 /** The app fields the records give, as text; a field with no data is left out. */
-export function moduleValues(data: ModuleData, today: ISODate): Partial<Record<AppField, string>> {
+export function moduleValues(
+  data: ModuleData,
+  today: ISODate,
+): Partial<Record<AppField | (typeof CARD_FIELDS)[number], string>> {
   const { apartment, tenant, tenancy, contract } = data;
-  const values: Partial<Record<AppField, string>> = {
+  const { card } = data;
+  const values: Partial<Record<AppField | (typeof CARD_FIELDS)[number], string>> = {
     data_documento: day(today),
     appartamento: apartment.name,
     locatore: apartment.locatore,
@@ -152,15 +179,24 @@ export function moduleValues(data: ModuleData, today: ISODate): Partial<Record<A
     // The deposit user1 typed for this tenancy (plan 11, R220): data only, never computed.
     importo_caparra:
       tenancy.expectedDeposit === undefined ? undefined : formatEuro(tenancy.expectedDeposit),
+    codice_fiscale: card?.taxCode,
+    luogo_nascita: card?.birthPlace,
+    data_nascita: card?.birthDate === undefined ? undefined : day(card.birthDate),
+    residenza: card?.residence,
+    documento_numero: card?.idDocument?.number,
+    documento_ente: card?.idDocument?.issuer,
+    documento_rilascio:
+      card?.idDocument?.issuedOn === undefined ? undefined : day(card.idDocument.issuedOn),
+    documento_scadenza:
+      card?.idDocument?.expiresOn === undefined ? undefined : day(card.idDocument.expiresOn),
   };
   if (contract !== undefined) {
-    // Provisional (question 9): counted from the entry only when nothing else could be meant, a
-    // document prepared before the entry for a tenancy inside the contract; otherwise typed by hand.
-    const plain =
-      contract.start <= tenancy.from &&
-      tenancy.from <= contract.end &&
-      today.slice(0, 7) <= tenancy.from;
-    const remaining = monthIndex(contract.end) - monthIndex(tenancy.from) + 1;
+    // Answer of user1 (17 November 2026, R312): from the later of the entry and the start of the
+    // contract to its end month, both included.
+    const from = tenancy.from > contract.start ? tenancy.from : contract.start;
+    const remaining = monthIndex(contract.end) - monthIndex(from) + 1;
+    // The advance of the contract in the month of the document (R312).
+    const advance = rentForMonth(contract, today.slice(0, 7) as YearMonth)?.monthlyAdvance;
     Object.assign(values, {
       tipo_contratto: contract.type,
       inizio_contratto: month(contract.start),
@@ -171,7 +207,8 @@ export function moduleValues(data: ModuleData, today: ISODate): Partial<Record<A
       registrato_il:
         contract.registration?.date === undefined ? undefined : day(contract.registration.date),
       regime_fiscale: contract.taxRegime,
-      durata_residua_mesi: plain ? String(remaining) : undefined,
+      durata_residua_mesi: remaining > 0 ? String(remaining) : undefined,
+      acconto_spese_mensile: advance === undefined ? undefined : formatEuro(advance),
     });
   }
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
@@ -188,6 +225,8 @@ export type GenerateModuleResult =
     }
   | DocxRefusal
   | { status: 'refused'; reason: 'unknown-fields' | 'field-from-app'; fields: string[] }
+  /** An advance typed instead of the contract's without a note (R312). */
+  | { status: 'refused'; reason: 'advance-without-note' }
   /** Keys of the values file the form does not know: only their count, a key could be a value. */
   | { status: 'refused'; reason: 'unknown-values'; count: number };
 
@@ -206,7 +245,11 @@ export function generateModule(input: {
   today: ISODate;
   inflateRaw: InflateRaw;
 }): GenerateModuleResult {
-  const known = new Set<string>([...Object.keys(APP_FIELDS), ...ASKED_FIELDS[input.kind]]);
+  const known = new Set<string>([
+    ...Object.keys(APP_FIELDS),
+    ...ASKED_FIELDS[input.kind],
+    ADVANCE_NOTE,
+  ]);
   const placeholders = docxPlaceholders(input.template, input.inflateRaw);
   if (placeholders.status !== 'ok') return placeholders;
   const strangers = Object.keys(input.supplied).filter((f) => !known.has(f)).length;
@@ -214,6 +257,15 @@ export function generateModule(input: {
   const unknown = placeholders.fields.filter((f) => !known.has(f));
   if (unknown.length > 0) return { status: 'refused', reason: 'unknown-fields', fields: unknown };
   const app: Record<string, string> = moduleValues(input.data, input.today);
+  // The contract's advance may be changed by hand, with a note (answer of user1, R312).
+  const note = input.supplied[ADVANCE_NOTE];
+  if (Object.hasOwn(input.supplied, 'acconto_spese_mensile')) {
+    // The note must reach the document: a template without {{nota_acconto}} would lose it.
+    if (note === undefined || note.trim() === '' || !placeholders.fields.includes(ADVANCE_NOTE)) {
+      return { status: 'refused', reason: 'advance-without-note' };
+    }
+    delete app.acconto_spese_mensile;
+  }
   const clash = Object.keys(input.supplied)
     .filter((f) => Object.hasOwn(app, f))
     .sort();

@@ -3,7 +3,19 @@
  * core itself never touches `node:fs`, and the desktop app will have a Tauri-based store (plan 4).
  */
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import {
+  copyFile,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  unlink,
+} from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { MalformedJsonError, assertSafeRelPath } from '@bollette/core';
@@ -157,4 +169,68 @@ export class FsStore implements Store {
     }
     return { rel, file: current };
   }
+}
+
+/**
+ * The path on disk of `rel` under `root`, each existing segment found in whatever Unicode spelling
+ * (as `FsStore`); `undefined` when an existing segment is a symbolic link (never followed).
+ */
+async function locateNoLinks(root: string, rel: string): Promise<string | undefined> {
+  let current = root;
+  const segments = rel.split('/');
+  for (const [index, segment] of segments.entries()) {
+    const name = (await exists(join(current, segment)))
+      ? segment
+      : await findByNfcName(current, segment);
+    if (name === undefined) return join(current, ...segments.slice(index));
+    current = join(current, name);
+    if ((await lstat(current)).isSymbolicLink()) return undefined;
+  }
+  return current;
+}
+
+/**
+ * Moves the regular file `from` to `to`, both relative to `root` (NFC, checked with
+ * `assertSafeRelPath`, names found in any Unicode spelling, no symbolic link on the way:
+ * `unsafe-path`), creating the folders of `to`; never over an existing file (plan 17, R315):
+ * `target-exists` leaves both where they are; `missing` when `from` is no regular file. A hard
+ * link then the removal of the old name; where links are not allowed, an exclusive copy. If the
+ * old name cannot be removed, or the copy fails, the new name is removed again and the error
+ * goes up: the file is never in two places, nor half copied.
+ */
+export async function moveFileNoOverwrite(
+  root: string,
+  from: string,
+  to: string,
+): Promise<'moved' | 'target-exists' | 'missing' | 'unsafe-path'> {
+  const [fromPath, toPath] = [from.normalize('NFC'), to.normalize('NFC')];
+  assertSafeRelPath(fromPath);
+  assertSafeRelPath(toPath);
+  const source = await locateNoLinks(root, fromPath);
+  const target = await locateNoLinks(root, toPath);
+  if (source === undefined || target === undefined) return 'unsafe-path';
+  if (!(await exists(source)) || !(await lstat(source)).isFile()) return 'missing';
+  if (await exists(target)) return 'target-exists';
+  await mkdir(dirname(target), { recursive: true });
+  try {
+    await link(source, target);
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code === 'EEXIST') return 'target-exists';
+    if (code !== 'EPERM' && code !== 'ENOTSUP' && code !== 'EXDEV') throw error;
+    try {
+      await copyFile(source, target, constants.COPYFILE_EXCL);
+    } catch (copyError) {
+      if ((copyError as { code?: unknown } | null)?.code === 'EEXIST') return 'target-exists';
+      await rm(target, { force: true });
+      throw copyError;
+    }
+  }
+  try {
+    await unlink(source);
+  } catch (error) {
+    await rm(target, { force: true });
+    throw error;
+  }
+  return 'moved';
 }

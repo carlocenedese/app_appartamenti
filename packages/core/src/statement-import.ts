@@ -20,6 +20,7 @@ import {
   PaymentSchema,
   StatementSchema,
   TaxPaymentSchema,
+  TenantRecoverySchema,
   TransferSchema,
 } from './model';
 import type { BankTransaction, Statement } from './model';
@@ -400,6 +401,10 @@ export async function undoImport(
     ),
     // Plan 10: a live assignment of the movement to a tax.
     ...(await loadAll(store, 'taxPayment', TaxPaymentSchema)).records.filter(goes),
+    // Plan 17: a live recovery from tenants of the movement.
+    ...(await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records.filter(
+      (r) => r.transactionId !== undefined && goes({ transactionId: r.transactionId }),
+    ),
   ]
     .map((r) => r.id)
     .sort(compareText);

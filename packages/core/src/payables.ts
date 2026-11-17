@@ -19,6 +19,7 @@ import {
   MovementClassSchema,
   PayableSchema,
   StatementSchema,
+  TaxPaymentSchema,
 } from './model';
 import type {
   Apartment,
@@ -30,6 +31,7 @@ import type {
   MovementClass,
   Payable,
   PayableKind,
+  TaxPayment,
 } from './model';
 import { cents } from './money';
 import type { Cents } from './money';
@@ -77,10 +79,12 @@ export interface ContractEnd {
 
 export interface ScadenzarioInput {
   today: ISODate;
-  /** Days of the «in scadenza» window: not decided by user1, so only when the caller gives it. */
+  /** Days of the «in scadenza» window; `DEFAULT_SOON_DAYS` when absent (plan 17, R309). */
   soonDays?: number;
   apartments: Apartment[];
   imuYears: ImuYear[];
+  /** The other voci of a mixed F24, for the IMU part (plan 17, R307). */
+  taxPayments?: TaxPayment[];
   classes: MovementClass[];
   transactions: BankTransaction[];
   instalments: Instalment[];
@@ -90,6 +94,9 @@ export interface ScadenzarioInput {
   /** The periods covered by the statements, by apartment (`statementPeriodsOf`). */
   statementPeriods: { apartmentId: string; from: ISODate; to: ISODate }[];
 }
+
+/** The «in scadenza» window, 15 days (answer of user1, 17 November 2026): a default, not a rule. */
+export const DEFAULT_SOON_DAYS = 15;
 
 /**
  * `pagata` when paid; `in-ritardo` from the day after `dueDate`; `in-scadenza` when `soonDays` is
@@ -142,12 +149,14 @@ export function payableExpectedItems(input: {
   const classOf = new Map(live(input.classes).map((c) => [c.transactionId, c]));
   return live(input.payables)
     .sort((a, b) => compareText(a.id, b.id))
-    .flatMap((p) =>
-      p.kind === 'cedolare' || p.kind === 'registro'
+    .flatMap((p) => {
+      // A bollo, f24 or altro goes where user1 put it when creating it (plan 17, R303).
+      const voce = p.kind === 'cedolare' || p.kind === 'registro' ? p.kind : p.taxVoice;
+      return voce !== undefined
         ? [
             {
               apartmentId: p.apartmentId,
-              voce: p.kind,
+              voce,
               ...(p.taxYear === undefined ? {} : { year: String(p.taxYear).padStart(4, '0') }),
               ...(p.expected === undefined ? {} : { amount: p.expected }),
               ...(p.paid !== undefined && isPayablePaid(p, transactions, classOf)
@@ -160,8 +169,8 @@ export function payableExpectedItems(input: {
                 : {}),
             },
           ]
-        : [],
-    );
+        : [];
+    });
 }
 
 /** The items and the ends of the live contracts from the month of `today`; see the file comment. */
@@ -169,7 +178,8 @@ export function scadenzario(input: ScadenzarioInput): {
   items: PayableItem[];
   contractEnds: ContractEnd[];
 } {
-  const { today, soonDays } = input;
+  const { today } = input;
+  const soonDays = input.soonDays ?? DEFAULT_SOON_DAYS;
   const locatore = new Map(live(input.apartments).map((a) => [a.id, a.locatore]));
   const taxpayers = (ids: string[]) =>
     [...new Set(ids.flatMap((id) => locatore.get(id) ?? []))].sort(compareText);
@@ -185,6 +195,7 @@ export function scadenzario(input: ScadenzarioInput): {
     years: input.imuYears,
     classes: input.classes,
     transactions: input.transactions,
+    ...(input.taxPayments === undefined ? {} : { taxPayments: input.taxPayments }),
   }).map((r) => {
     const paidOn =
       r.transactionId === undefined ? undefined : transactions.get(r.transactionId)?.date;
@@ -219,7 +230,7 @@ export function scadenzario(input: ScadenzarioInput): {
     const paid = own.length > 0 && (i.shared !== undefined || debited === expected);
     const [paidOn] = own.map((m) => m.transactionDate).sort((a, b) => compareText(b, a));
     const payer = i.paidFromApartmentId ?? i.apartmentId;
-    // Only shown: whether such an item is paid or late is question 7, not decided here.
+    // Question 7, answered by user1 (17 November 2026): not paid, so late after its due date.
     const uncovered =
       own.length === 0 &&
       !input.statementPeriods.some(
@@ -301,6 +312,7 @@ export async function loadScadenzario(
       imuYears: (await loadAll(store, 'imuYear', ImuYearSchema, all)).records,
       classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
       transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
+      taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
       instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
       matches: (await loadAll(store, 'match', BillMatchSchema)).records,
       payables: (await loadAll(store, 'payable', PayableSchema)).records,

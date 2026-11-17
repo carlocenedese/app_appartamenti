@@ -56,6 +56,11 @@ Una volta: (0) «Run workflow» del ramo prima dell'unione (`gh workflow run bui
 
 ## Domande per user1
 
+**Risposte di user1 del 17 novembre 2026 (piano 17, R317):** domanda 1, le versioni si pubblicano
+nello stesso repository pubblico (nessun repository separato, nessun token in più); domanda 4,
+l'interruttore degli aggiornamenti è per computer e il controllo avviene a ogni avvio (come oggi).
+Le altre restano aperte.
+
 1. **Il repository è pubblico.** Le sezioni 37 e 40 dicono sorgente privato e versioni in un repository pubblico a parte. È voluto? Se sì, le release stanno nello stesso repository (nessun token in più). Se torna privato, serve un repository pubblico per le versioni e un token con scrittura su quello (un passo in più per user1).
 2. **«Login»** = primo avvio della sezione 36 («Unisciti a un gruppo», cartella Dropbox condivisa, scelta del profilo), senza account né password. Confermi? Oppure intendevi altro (per esempio un PIN locale)?
 3. **Approvazione:** oggi la release parte dopo il clic «Approve and deploy» di user1 sul job `sign` e poi si pubblica subito (non in bozza). Va bene un clic per versione?
