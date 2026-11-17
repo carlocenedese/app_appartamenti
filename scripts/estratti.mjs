@@ -105,6 +105,7 @@ import {
   loadDepositReturn,
   saveLegalRate,
   confirmTaxDiscrepancy,
+  saveTenantPersonal,
   saveTenant,
   setImuYear,
   setRentYear,
@@ -298,6 +299,7 @@ const MESSAGES = {
     'Da verificare: nessuna scadenza con anno di riferimento per questa voce e quest’anno; una scadenza senza anno va riscritta con «scadenza-nuova --id <id> --anno-riferimento <AAAA>».',
   'no-discrepancy': 'Rifiutato: la voce di quest’anno non ha una discrepanza da confermare.',
   'bad-note': 'Rifiutato: la nota è vuota.',
+  'invalid-personal': 'Rifiutato: i dati riservati dell’inquilino non sono validi.',
   'bad-voce': 'Rifiutato: voce delle tasse non valida.',
   'bad-voice': 'Rifiutato: una scadenza di cedolare o registro è già la sua voce: niente --voce.',
   'tax-discrepancy':
@@ -388,6 +390,14 @@ const OPTIONS = {
   telefono: { type: 'string' },
   email: { type: 'string' },
   note: { type: 'string' },
+  'codice-fiscale': { type: 'string' },
+  'luogo-nascita': { type: 'string' },
+  'data-nascita': { type: 'string' },
+  residenza: { type: 'string' },
+  documento: { type: 'string' },
+  'documento-ente': { type: 'string' },
+  'documento-rilascio': { type: 'string' },
+  'documento-scadenza': { type: 'string' },
   appartamenti: { type: 'string' },
   utenze: { type: 'string' },
   categorie: { type: 'string' },
@@ -460,6 +470,7 @@ const RECONCILE_KINDS = [
   'contact.save',
   'legal-rate.save',
   'tax.confirm',
+  'tenant.personal',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -783,6 +794,55 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw error;
     }
     return { status: 'decided', statementId: values.estratto, row: Number(values.riga), decision };
+  }
+
+  if (name === 'scheda-inquilino') {
+    // Plan 17, R311: the personal data of the tenant card, for the forms. Never echoed.
+    need(values, 'inquilino');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const document =
+      values.documento === undefined
+        ? {}
+        : {
+            idDocument: {
+              number: values.documento,
+              ...optional('issuer', values['documento-ente']),
+              ...(values['documento-rilascio'] === undefined
+                ? {}
+                : { issuedOn: day(values['documento-rilascio']) }),
+              ...(values['documento-scadenza'] === undefined
+                ? {}
+                : { expiresOn: day(values['documento-scadenza']) }),
+            },
+          };
+    if (
+      values.documento === undefined &&
+      ['documento-ente', 'documento-rilascio', 'documento-scadenza'].some(
+        (o) => values[o] !== undefined,
+      )
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const result = await saveTenantPersonal(
+      store,
+      {
+        tenantId: values.inquilino,
+        personal: {
+          ...optional('taxCode', values['codice-fiscale']),
+          ...optional('birthPlace', values['luogo-nascita']),
+          ...(values['data-nascita'] === undefined
+            ? {}
+            : { birthDate: day(values['data-nascita']) }),
+          ...optional('residence', values.residenza),
+          ...document,
+        },
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    return result;
   }
 
   if (name === 'inquilino') {
@@ -2458,6 +2518,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-copia',
         'tasse-assegna',
         'tasse-conferma',
+        'scheda-inquilino',
         'tasse',
         'bolletta',
         'annulla-bolletta',
@@ -2506,7 +2567,26 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       ],
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
-      inquilino: ['conferma', 'uscita-inquilino', 'presenza', 'subentro', 'caparra-restituzione'],
+      inquilino: [
+        'conferma',
+        'uscita-inquilino',
+        'presenza',
+        'subentro',
+        'caparra-restituzione',
+        'scheda-inquilino',
+      ],
+      ...Object.fromEntries(
+        [
+          'codice-fiscale',
+          'luogo-nascita',
+          'data-nascita',
+          'residenza',
+          'documento',
+          'documento-ente',
+          'documento-rilascio',
+          'documento-scadenza',
+        ].map((option) => [option, ['scheda-inquilino']]),
+      ),
       appartamento: [
         'conto',
         'uscita',

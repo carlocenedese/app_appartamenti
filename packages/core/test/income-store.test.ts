@@ -16,6 +16,7 @@ import {
   repairDiverged,
   runReconcile,
   saveTenant,
+  saveTenantPersonal,
   undoOperation,
   yearMonth,
 } from '../src/index';
@@ -626,5 +627,29 @@ describe('cancelAutomaticPayment (user1, 15 Nov 2026)', () => {
     expect(
       await cancelAutomaticPayment(store, 'pay-tx-bruno-2026-01-1', 'p1', clock, ids('y')),
     ).toEqual({ status: 'refused', reason: 'inconsistent-store' });
+  });
+});
+
+describe('saveTenantPersonal (plan 17, R311)', () => {
+  it('saves the card, then unchanged; refuses an unknown tenant or bad data, writing nothing', async () => {
+    const store = new MemoryStore();
+    await saveTenant(store, { id: 'ten-1', name: 'Anna Prova' }, 'p1', clock, ids('t'));
+    const save = (tenantId: string, personal: Record<string, unknown>, prefix: string) =>
+      saveTenantPersonal(store, { tenantId, personal }, 'p1', clock, ids(prefix));
+    expect(await save('ten-1', { taxCode: 'CODICE-PROVA' }, 'a')).toEqual({
+      status: 'saved',
+      operationId: 'a-1',
+    });
+    expect(await save('ten-1', { taxCode: 'CODICE-PROVA' }, 'b')).toEqual({ status: 'unchanged' });
+    const before = await snapshot(store);
+    expect(await save('ten-9', {}, 'c')).toEqual({ status: 'refused', reason: 'unknown-tenant' });
+    expect(await save('ten-1', { birthDate: '2005-13-01' }, 'd')).toEqual({
+      status: 'refused',
+      reason: 'invalid-personal',
+    });
+    expect(await snapshot(store)).toEqual(before);
+    // The name is written again: the card stays.
+    await saveTenant(store, { id: 'ten-1', name: 'Anna Prova Due' }, 'p1', clock, ids('e'));
+    expect(await save('ten-1', { taxCode: 'CODICE-PROVA' }, 'f')).toEqual({ status: 'unchanged' });
   });
 });

@@ -20,7 +20,7 @@ import {
   TenantSchema,
   TransferSchema,
 } from './model';
-import type { Payment } from './model';
+import type { Payment, Tenant } from './model';
 import type { Cents } from './money';
 import { movementUses } from './movements';
 import { parseOrThrow } from './parse';
@@ -41,7 +41,17 @@ export async function saveTenant(
   const before = (
     await loadAll(store, 'tenant', TenantSchema, { includeDeleted: true })
   ).records.find((t) => t.id === draft.id);
-  const after = parseOrThrow(TenantSchema, { ...draft, v: 1, rev: 1 }, 'tenant');
+  // The personal data have their own command (`saveTenantPersonal`, R311): kept here.
+  const after = parseOrThrow(
+    TenantSchema,
+    {
+      ...draft,
+      ...(before?.personal === undefined ? {} : { personal: before.personal }),
+      v: 1,
+      rev: 1,
+    },
+    'tenant',
+  );
   return commitChange(
     store,
     {
@@ -53,6 +63,54 @@ export async function saveTenant(
     clock,
     newId,
   );
+}
+
+export type SaveTenantPersonalResult =
+  | { status: 'saved'; operationId: string }
+  | { status: 'unchanged' }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-tenant' | 'invalid-personal' };
+
+/**
+ * Replaces the personal data of the live tenant `tenantId` (plan 17, R311): tax code, birth,
+ * residence, identity document, typed by user1 for the forms. One `tenant.personal` operation, no
+ * value in the summary. Refused without writing: `inconsistent-store`, `unknown-tenant`,
+ * `invalid-personal` (fields the schema refuses).
+ */
+export async function saveTenantPersonal(
+  store: Store,
+  input: { tenantId: string; personal: NonNullable<Tenant['personal']> },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<SaveTenantPersonalResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  const before = (await loadAll(store, 'tenant', TenantSchema)).records.find(
+    (t) => t.id === input.tenantId,
+  );
+  if (before === undefined) return { status: 'refused', reason: 'unknown-tenant' };
+  const parsed = TenantSchema.safeParse({ ...before, personal: input.personal });
+  if (!parsed.success) return { status: 'refused', reason: 'invalid-personal' };
+  if (JSON.stringify(parsed.data) === JSON.stringify(before)) return { status: 'unchanged' };
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'tenant.personal',
+      summary: 'Dati riservati dell’inquilino salvati.',
+      changes: [
+        {
+          path: recordPath('tenant', before.id),
+          before,
+          after: { ...parsed.data, rev: before.rev + 1 },
+        },
+      ],
+    },
+    clock,
+    newId,
+  );
+  return { status: 'saved', operationId: operation.id };
 }
 
 /**

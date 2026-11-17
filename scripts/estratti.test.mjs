@@ -800,6 +800,44 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
   );
 
   it(
+    'scheda-inquilino: dati riservati salvati senza stamparli, mantenuti da «inquilino» (R311)',
+    async () => {
+      const s = await incomeSetup();
+      const card = cli([
+        'scheda-inquilino',
+        ...s.common,
+        '--inquilino',
+        't1',
+        '--codice-fiscale',
+        'CODICE-PROVA',
+        '--data-nascita',
+        '2005-02-03',
+        '--documento',
+        'DOC-PROVA',
+        '--documento-scadenza',
+        '2030-01-31',
+      ]);
+      expect([card.code, card.json.status]).toEqual([0, 'saved']);
+      expect(card.out).not.toMatch(/CODICE-PROVA|DOC-PROVA|2005/);
+      const tenantFile = join(s.dir, '_app', 'dati', 'tenant', 't1.json');
+      expect(JSON.parse(readFileSync(tenantFile, 'utf8')).personal).toEqual({
+        taxCode: 'CODICE-PROVA',
+        birthDate: '2005-02-03',
+        idDocument: { number: 'DOC-PROVA', expiresOn: '2030-01-31' },
+      });
+      expect(cli(['inquilino', ...s.common, '--id', 't1', '--nome', NAME]).code).toBe(0);
+      expect(JSON.parse(readFileSync(tenantFile, 'utf8')).personal.taxCode).toBe('CODICE-PROVA');
+      expect(
+        cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--documento-ente', 'X']).code,
+      ).toBe(2);
+      expect(cli(['scheda-inquilino', ...s.common, '--inquilino', 't9']).json.reason).toBe(
+        'unknown-tenant',
+      );
+    },
+    TIMEOUT,
+  );
+
+  it(
     'argomenti mancanti o --lingua non valida = 2; un registro non coerente rifiuta e ripara si ripara',
     async () => {
       const s = await incomeSetup();

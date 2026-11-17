@@ -355,6 +355,27 @@ export type Tenancy = z.infer<typeof TenancySchema>;
 export const TenantSchema = RecordBaseSchema.extend({
   name: NonEmptyString,
   language: z.enum(['it', 'en']).optional(),
+  /**
+   * The personal data of the tenant's card (plan 17, R311), typed by user1: they fill the forms.
+   * Owners only: `_app/dati` is never shared with the tenants (section 7), never printed without
+   * `--dettagli`.
+   */
+  personal: z
+    .object({
+      taxCode: NonEmptyString.optional(),
+      birthPlace: NonEmptyString.optional(),
+      birthDate: ISODateSchema.optional(),
+      residence: NonEmptyString.optional(),
+      idDocument: z
+        .object({
+          number: NonEmptyString,
+          issuer: NonEmptyString.optional(),
+          issuedOn: ISODateSchema.optional(),
+          expiresOn: ISODateSchema.optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 export type Tenant = z.infer<typeof TenantSchema>;
 

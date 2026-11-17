@@ -89,25 +89,81 @@ describe('moduleValues', () => {
       registrato_il: '25/09/2023',
       regime_fiscale: 'cedolare',
       importo_caparra: '€ 500,00',
+      // From 08/2026, the later of entry and start, to 09/2027 (R312).
+      durata_residua_mesi: '14',
+      // The advance of the contract in the month of the document (R312).
+      acconto_spese_mensile: '€ 250,00',
     });
   });
 
-  it('gives the remaining duration only for a document prepared before the entry', () => {
-    // Section 26: from 08/2026 to the end of the contract, 09/2027, is 14 months.
+  it('remaining duration from the later of entry and contract start, to the end (R312)', () => {
+    // From 08/2026 to 09/2027: 14 months, whatever the day of the document.
     expect(moduleValues(data, isoDate('2026-07-20')).durata_residua_mesi).toBe('14');
-    expect(moduleValues(data, isoDate('2026-08-01')).durata_residua_mesi).toBe('14');
-    // After the entry, from the entry or from today? Question 9: typed by hand.
-    expect(moduleValues(data, today).durata_residua_mesi).toBeUndefined();
-    // A tenancy before the start of the contract: not counted either.
+    expect(moduleValues(data, today).durata_residua_mesi).toBe('14');
+    // A tenancy before the start of the contract: from the start, 10/2023 to 09/2027.
     const early = TenancySchema.parse({ ...tenancy, from: '2023-09' });
-    expect(
-      moduleValues({ ...data, tenancy: early }, isoDate('2023-01-01')).durata_residua_mesi,
-    ).toBeUndefined();
+    expect(moduleValues({ ...data, tenancy: early }, today).durata_residua_mesi).toBe('48');
+    // An entry after the end: nothing.
+    const late = TenancySchema.parse({ ...tenancy, from: '2027-10', to: undefined });
+    expect(moduleValues({ ...data, tenancy: late }, today)).not.toHaveProperty(
+      'durata_residua_mesi',
+    );
   });
 
-  it('never fills the expense advance: it is typed by hand (question 10)', () => {
-    expect(moduleValues(data, today)).not.toHaveProperty('acconto_spese_mensile');
-    expect(ASKED_FIELDS.contratto).toContain('acconto_spese_mensile');
+  it('the advance of the contract in the month of the document; none before its first entry', () => {
+    expect(moduleValues(data, isoDate('2026-09-30')).acconto_spese_mensile).toBe('€ 200,00');
+    expect(moduleValues(data, isoDate('2023-09-30'))).not.toHaveProperty('acconto_spese_mensile');
+  });
+
+  it('fills the asked fields of the tenant card when it has them (R311)', () => {
+    const card = TenantSchema.parse({
+      ...tenant,
+      personal: {
+        taxCode: 'CODICE-PROVA',
+        birthPlace: 'Città Inventata',
+        birthDate: '2005-02-03',
+        residence: 'Via Finta 2',
+        idDocument: { number: 'DOC-PROVA', issuer: 'Comune Inventato', expiresOn: '2030-01-31' },
+      },
+    });
+    expect(moduleValues({ ...data, tenant: card }, today)).toMatchObject({
+      codice_fiscale: 'CODICE-PROVA',
+      luogo_nascita: 'Città Inventata',
+      data_nascita: '03/02/2005',
+      residenza: 'Via Finta 2',
+      documento_numero: 'DOC-PROVA',
+      documento_ente: 'Comune Inventato',
+      documento_scadenza: '31/01/2030',
+    });
+    const typed = generateModule({
+      kind: 'promessa',
+      template: starterDocx('promessa'),
+      data: { ...data, tenant: card },
+      supplied: { codice_fiscale: 'ALTRO' },
+      today,
+      inflateRaw,
+    });
+    expect(typed).toEqual({
+      status: 'refused',
+      reason: 'field-from-app',
+      fields: ['codice_fiscale'],
+    });
+  });
+
+  it('an advance typed instead of the contract one needs a note (R312)', () => {
+    const run = (supplied: Record<string, string>) =>
+      generateModule({
+        kind: 'aumento-prezzi',
+        template: starterDocx('aumento-prezzi'),
+        data,
+        supplied: { nuovo_canone: 'x', ...supplied },
+        today,
+        inflateRaw,
+      }).status;
+    expect(run({ acconto_spese_mensile: '€ 30,00' })).toBe('refused');
+    expect(run({ acconto_spese_mensile: '€ 30,00', nota_acconto: 'Accordo del 1° novembre' })).toBe(
+      'ok',
+    );
   });
 
   it('leaves out what the records do not have', () => {
@@ -230,9 +286,7 @@ describe('starterDocx', () => {
   });
 
   it('fills with generateModule once every asked field is given', () => {
-    const supplied = Object.fromEntries(
-      [...ASKED_FIELDS.promessa, 'durata_residua_mesi'].map((f) => [f, 'x']),
-    );
+    const supplied = Object.fromEntries(ASKED_FIELDS.promessa.map((f) => [f, 'x']));
     const full = {
       ...supplied,
     };
