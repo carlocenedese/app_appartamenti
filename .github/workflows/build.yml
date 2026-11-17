@@ -4,9 +4,11 @@ name: Build
 # (Actions, Build, Run workflow), never on a push: macOS minutes cost ten times the Linux ones on
 # private repositories, and a Tauri build is the slowest job we have.
 # The installers are not signed: see apps/desktop/README.md for how to open them.
-# On a tag it also signs the update files with the TAURI_SIGNING_PRIVATE_KEY secret and publishes
-# a GitHub release with latest.json (job publish; docs/distribuzione.md). By hand it only builds
-# test installers, kept as artifacts of the run, without update files.
+# On a pushed v* tag it also publishes a release (docs/distribuzione.md): the builds run without
+# any key; the job sign, in the environment `release` (user1 approves it, its secret
+# TAURI_SIGNING_PRIVATE_KEY exists only there), signs the two update files with `tauri signer
+# sign`; the job publish checks the signatures and publishes. By hand (Run workflow, on any ref)
+# it only builds test installers, kept as artifacts of the run, and never publishes.
 on:
   push:
     tags: ['v*']
@@ -50,24 +52,20 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      # On a tag, stop before the long build when the installer could never update itself:
-      # versions, public key, updater plugin, signing secret (scripts/release.mjs).
+      # On a release, stop before the long build when the installer could never update itself:
+      # versions, public key, signed versions, updater plugin (scripts/release.mjs).
       - name: Check that the version can be published
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         shell: bash
-        env:
-          HAS_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
         run: node scripts/release.mjs preflight "$GITHUB_REF_NAME"
 
       # The address of latest.json comes from the name of this repository, so that no account
       # name is written in the repository. Merged into tauri.conf.json by `tauri build --config`.
       - name: Prepare the update configuration
-        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
-        run: |
-          conf="$RUNNER_TEMP/release.conf.json"
-          printf '{"bundle":{"createUpdaterArtifacts":true},"plugins":{"updater":{"endpoints":["https://github.com/%s/releases/latest/download/latest.json"]}}}\n' "$GITHUB_REPOSITORY" > "$conf"
-          echo "RELEASE_CONFIG_ARGS=--config $conf" >> "$GITHUB_ENV"
+        run: >
+          printf '{"plugins":{"updater":{"endpoints":["https://github.com/%s/releases/latest/download/latest.json"]}}}\n'
+          "$GITHUB_REPOSITORY" > "$RUNNER_TEMP/release.conf.json"
 
       # The action takes the toolchain from its "toolchain" input when it is pinned by commit
       # (the master branch); with a tag or branch name it would take it from the name.
@@ -114,12 +112,13 @@ jobs:
       - name: Bundle the Python interpreter
         run: node scripts/bundle-python.mjs
 
-      # The signing key reaches only the tagged build; the Tauri CLI assumes an empty password
-      # when none is given and stdin is not a terminal (the key of R31 has none).
+      # No signing key here: the update files are signed later, in the job sign.
       - name: Build the installers
+        shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-        run: pnpm --filter desktop tauri build ${{ matrix.tauri-args }} ${{ env.RELEASE_CONFIG_ARGS }} -- --locked
+          TAURI_ARGS: ${{ matrix.tauri-args }}
+        # TAURI_ARGS unquoted on purpose: it holds several arguments.
+        run: pnpm --filter desktop tauri build $TAURI_ARGS --config "$RUNNER_TEMP/release.conf.json" -- --locked
 
       # The NSIS installer, run silently, installs for the current user into
       # %LOCALAPPDATA%\App Bollette: a path with a space, as on the computers of the users.
@@ -205,42 +204,94 @@ jobs:
           path: installers/
           if-no-files-found: error
 
-      # The files of the release, with names without spaces (GitHub would turn a space into a dot)
-      # as scripts/release.mjs expects them. Windows: only the NSIS installer, which installs for
-      # the current user without administrator rights; it is also the file the updater runs.
+      # The files of the release, unsigned, with names without spaces (GitHub would turn a space
+      # into a dot) as scripts/release.mjs expects them. Windows: only the NSIS installer, which
+      # installs for the current user without administrator rights; the updater runs it too.
+      # macOS: the update archive is the .app in a tar.gz, the same one collected above.
       - name: Collect the files to publish
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
           mkdir release
           if [ "$RUNNER_OS" = Windows ]; then
-            nsis=apps/desktop/src-tauri/target/release/bundle/nsis
-            for suffix in '' .sig; do
-              cp "$nsis/App Bollette_${version}_x64-setup.exe$suffix" "release/App-Bollette_${version}_x64-setup.exe$suffix"
-            done
+            cp "apps/desktop/src-tauri/target/release/bundle/nsis/App Bollette_${version}_x64-setup.exe" "release/App-Bollette_${version}_x64-setup.exe"
           else
-            bundle=apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle
-            for suffix in '' .sig; do
-              cp "$bundle/macos/App Bollette.app.tar.gz$suffix" "release/App-Bollette_${version}_universal.app.tar.gz$suffix"
-            done
-            cp "$bundle/dmg/App Bollette_${version}_universal.dmg" "release/App-Bollette_${version}_universal.dmg"
+            cp installers/App-Bollette.app.tar.gz "release/App-Bollette_${version}_universal.app.tar.gz"
+            cp "apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg/App Bollette_${version}_universal.dmg" "release/App-Bollette_${version}_universal.dmg"
           fi
 
       - name: Upload the files to publish
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ matrix.artifact }}
           path: release/
           if-no-files-found: error
 
-  # Only after both builds succeed. This job has the write permission and no signing key; the
-  # build jobs have the key and no write permission.
+  # The only job that sees the signing key: a secret of the environment `release`, which waits
+  # for user1's approval and admits only v* tags (docs/distribuzione.md). Short on purpose: it
+  # signs two files that the builds made, binding each signature to the version
+  # (requireSignedVersion), and has no write permission.
+  sign:
+    name: sign
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Only the desktop app and its Tauri CLI, installed before the key is in any environment.
+      - name: Install the Tauri CLI
+        run: pnpm install --frozen-lockfile --filter desktop
+
+      - name: Download the files to publish
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      # The key of R31 has no password: the CLI assumes an empty one when stdin is not a terminal.
+      - name: Sign the update files
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "Manca il secret TAURI_SIGNING_PRIVATE_KEY dell'environment release: vedi docs/distribuzione.md." >&2
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          for file in "App-Bollette_${version}_x64-setup.exe" "App-Bollette_${version}_universal.app.tar.gz"; do
+            pnpm --filter desktop tauri signer sign --app-version "$version" "$PWD/release/$file" < /dev/null
+          done
+
+      - name: Upload the signed files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed
+          path: release/
+          if-no-files-found: error
+
+  # Only after the signature. This job has the write permission and no signing key.
   publish:
     name: publish
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: sign
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -259,18 +310,18 @@ jobs:
       - name: Download the files to publish
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: release-*
+          name: signed
           path: release
-          merge-multiple: true
 
-      # Checks names, signatures and sizes, then writes latest.json and SHA256SUMS.
+      # Checks names, sizes and every signature against the public key of tauri.conf.json, then
+      # writes latest.json and SHA256SUMS.
       - name: Write the update manifest
         run: >
           node scripts/release.mjs manifest release "$GITHUB_REF_NAME"
           "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
 
-      # Published at once (ruling R273): pushing the tag is already the decision. latest.json
-      # of the newest release is what every installed app reads.
+      # Published at once, after user1 approved the job sign (R273). latest.json of the newest
+      # release is what every installed app reads.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -278,4 +329,4 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
             --verify-tag --title "App Bollette $version" \
-            --notes "Windows: scaricare App-Bollette_${version}_x64-setup.exe. Mac con Apple Silicon: App-Bollette_${version}_universal.dmg. Istruzioni per la prima apertura in docs/distribuzione.md del repository."
+            --notes "Windows: scaricare App-Bollette_${version}_x64-setup.exe e aprirlo; se compare «Windows ha protetto il PC», scegliere «Maggiori informazioni», poi «Esegui comunque». Mac con Apple Silicon: App-Bollette_${version}_universal.dmg (tasto destro, Apri). Gli aggiornamenti successivi li propone l'app."

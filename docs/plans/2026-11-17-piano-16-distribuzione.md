@@ -12,20 +12,21 @@
 
 ## Task 2: `scripts/release.mjs` (preflight, manifest, controllo del pacchetto)
 
-- [x] `preflight <etichetta>`: etichetta `vX.Y.Z` uguale alla versione di `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `package.json`, `apps/desktop/package.json`; chiave pubblica non segnaposto; `tauri-plugin-updater` in `Cargo.toml`; secret di firma presente (`HAS_SIGNING_KEY=true`). Elenca tutti i problemi, esce con 1.
-- [x] `manifest <cartella> <etichetta> <indirizzo base>`: controlla che ci siano l'installer Windows e l'archivio macOS con le loro `.sig`, che nessun file superi il limite, scrive `latest.json` (piattaforme `windows-x86_64`, `darwin-aarch64`) e `SHA256SUMS`.
+- [x] `preflight <etichetta>`: etichetta `vX.Y.Z` uguale alla versione di `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `package.json`, `apps/desktop/package.json`; chiave pubblica non segnaposto; `requireSignedVersion: true`; `tauri-plugin-updater` in `Cargo.toml` e registrato in `lib.rs`. Elenca tutti i problemi, esce con 1.
+- [x] `manifest <cartella> <etichetta> <indirizzo base>`: controlla che ci siano l'installer Windows e l'archivio macOS con `.sig` non vuote e verificate con la chiave pubblica, che ci siano solo file e nessuno superi il limite, scrive `latest.json` (piattaforme `windows-x86_64`, `darwin-aarch64`) e `SHA256SUMS`.
 - [x] Test in `scripts/release.test.mjs` con cartelle temporanee.
 
 ## Task 3: `build.yml` e `tauri.conf.json`
 
-- [x] `tauri.conf.json`: `plugins.updater.pubkey` = segnaposto documentato; nessun indirizzo (`requireSignedVersion` arriva con il plugin nel piano 16b, perché dipende dalla sua versione).
-- [x] Su etichetta: preflight prima della build; sovrapposizione `--config` con `createUpdaterArtifacts` e l'indirizzo da `github.repository`; `TAURI_SIGNING_PRIVATE_KEY` solo da `secrets`; raccolta dei file della release con nomi senza spazi.
-- [x] Job `publish` (`contents: write`, senza il secret di firma): `release.mjs manifest`, `gh release create` con `GITHUB_TOKEN`.
-- [x] La build a mano resta com'era (artifact di prova, nessuna firma).
+- [x] `tauri.conf.json`: `plugins.updater.pubkey` = segnaposto documentato, `requireSignedVersion: true`; nessun indirizzo.
+- [x] Solo su etichetta `v*` spinta: preflight prima della build; build **senza chiave**, con l'indirizzo da `github.repository` (`--config`); raccolta dei file con nomi senza spazi.
+- [x] Job `sign` (environment `release`, approvazione di user1): `tauri signer sign --app-version` sui due file; unico job con la chiave.
+- [x] Job `publish` (`contents: write`, senza chiave): `release.mjs manifest` (verifica delle firme), `gh release create` con `GITHUB_TOKEN`.
+- [x] «Run workflow» non pubblica mai (artifact di prova, nessuna firma).
 
 ## Task 4: `scripts/setup-updater.mjs` (l'unico comando di user1)
 
-- [x] Trova una sola coppia `*.key` / `*.key.pub` nella cartella indicata; privata a `gh secret set TAURI_SIGNING_PRIVATE_KEY` su stdin; pubblica al posto del segnaposto in `tauri.conf.json`. Non genera chiavi, non stampa la privata.
+- [x] Trova una sola coppia `*.key` / `*.key.pub` nella cartella indicata; mostra il repository di `origin`; privata a `gh secret set TAURI_SIGNING_PRIVATE_KEY --env release --repo <repository>` su stdin; pubblica al posto del segnaposto in `tauri.conf.json`. Non genera chiavi, non stampa la privata.
 - [x] Test con un `gh` finto.
 
 ## Task 5: documentazione
@@ -34,7 +35,7 @@
 
 ## Piano 16b (dopo, serve Rust o una build in CI senza `--locked`)
 
-1. `tauri-plugin-updater` e `tauri-plugin-process` in `Cargo.toml` (versioni esatte), `@tauri-apps/plugin-updater` e `@tauri-apps/plugin-process` in `apps/desktop/package.json`; registrazione in `lib.rs`; permessi `updater:default` e `process:allow-restart` in `capabilities/default.json`; `plugins.updater.requireSignedVersion: true` se la versione del plugin lo conosce.
+1. `tauri-plugin-updater` e `tauri-plugin-process` in `Cargo.toml` (versioni esatte), `@tauri-apps/plugin-updater` e `@tauri-apps/plugin-process` in `apps/desktop/package.json`; registrazione in `lib.rs`; permessi `updater:default` e `process:allow-restart` in `capabilities/default.json`; controllare che la versione del plugin conosca `requireSignedVersion`.
 2. `Cargo.lock`: build a mano senza `--locked`, artifact `cargo-lock`, commit (`apps/desktop/README.md`, «Punti aperti»); `cargo deny` sulle licenze nuove.
 3. Interfaccia: controllo all'avvio, domanda «È disponibile la versione X: installarla?», interruttore nelle impostazioni (domanda 4), messaggi in italiano e inglese.
 4. Prima release vera `v0.2.0` (o quella scelta): si prova l'aggiornamento da una versione alla successiva su Windows (CI: installazione silenziosa della vecchia, poi lettura di `latest.json`; la prova completa la fa user1 sul proprio computer).

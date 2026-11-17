@@ -42,7 +42,8 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "SEGNAPOSTO-CHIAVE-PUBBLICA-vedi-docs-distribuzione.md"
+      "pubkey": "SEGNAPOSTO-CHIAVE-PUBBLICA-vedi-docs-distribuzione.md",
+      "requireSignedVersion": true
     },
     "fs": {
       "requireLiteralLeadingDot": false,

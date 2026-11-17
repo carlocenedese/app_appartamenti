@@ -49,7 +49,7 @@ La costruzione parte solo con un'etichetta di versione o a mano, mai a ogni push
 costano dieci volte quelli Linux):
 
 1. Per una prova: su GitHub, Actions, Build, Run workflow. Un'etichetta `vX.Y.Z` invece
-   **pubblica** una release con gli aggiornamenti firmati e parte solo quando tutto è pronto
+   **pubblica** una release con gli aggiornamenti firmati, dopo l'approvazione di user1, e parte solo quando tutto è pronto
    (`scripts/release.mjs preflight`; passi in `docs/distribuzione.md`).
 2. La prima volta dura circa 20-30 minuti (poi la cache di Rust accorcia). Le due build, Windows e
    macOS, vanno in parallelo; se una fallisce l'altra continua. Test e controllo delle licenze
@@ -81,7 +81,7 @@ Gli installer non sono firmati:
 - **Chiave di firma degli aggiornamenti**: generata l'11 novembre 2026, senza password, nella
   cartella iCloud di user1 `Personale/App_appartamenti/chiave-firma-aggiornamenti/` (con un
   `LEGGIMI.txt`). Non entra mai nel repository; `node scripts/setup-updater.mjs <cartella>`, eseguito
-  da user1, ne fa il secret `TAURI_SIGNING_PRIVATE_KEY` e scrive la pubblica in `tauri.conf.json`
+  da user1, ne fa il secret `TAURI_SIGNING_PRIVATE_KEY` dell'environment `release` e scrive la pubblica in `tauri.conf.json`
   al posto del segnaposto (`docs/distribuzione.md`). Conservarne una copia anche fuori da iCloud.
 - **Firma del codice**: nessun certificato Windows; su Mac, se l'app si rifiuta di partire su
   Apple Silicon serve almeno la firma ad hoc (`bundle.macOS.signingIdentity` impostato a `-`).

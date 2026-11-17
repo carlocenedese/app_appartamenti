@@ -2,19 +2,21 @@
 //
 //   node scripts/release.mjs preflight <tag>
 //     Before a tagged build: the tag is vX.Y.Z and equals the version of tauri.conf.json,
-//     Cargo.toml, Cargo.lock, package.json and apps/desktop/package.json; the updater public key is not the
-//     placeholder; tauri-plugin-updater is in Cargo.toml; the signing key secret is there
-//     (HAS_SIGNING_KEY=true, set by build.yml from secrets). An installer without all of them
-//     could never update itself, and user2 would need a manual reinstall. Prints every problem.
+//     Cargo.toml, Cargo.lock, package.json and apps/desktop/package.json; the updater public key
+//     is not the placeholder and requireSignedVersion is true; tauri-plugin-updater is in
+//     Cargo.toml and registered in lib.rs. An installer without all of them could never update
+//     itself, and user2 would need a manual reinstall. Prints every problem. (The signing key is
+//     a secret of the `release` environment, invisible here: the sign job checks it.)
 //
 //   node scripts/release.mjs manifest <folder> <tag> <base url>
-//     After the build, in the folder of the files to publish: checks that the Windows installer
-//     and the macOS update archive are there with their .sig, that no file is over the size
-//     limit, then writes latest.json (the updater manifest) and SHA256SUMS.
+//     After signing, in the folder of the files to publish: checks that the Windows installer
+//     and the macOS update archive are there with a .sig that the public key of tauri.conf.json
+//     verifies, that there are only files and none is over the size limit, then writes
+//     latest.json (the updater manifest) and SHA256SUMS.
 //
 // Only Node built-ins: no npm dependencies.
 
-import { createHash } from 'node:crypto';
+import { createHash, createPublicKey, verify } from 'node:crypto';
 import {
   existsSync,
   readFileSync,
@@ -53,7 +55,7 @@ export function readVersions(root) {
 }
 
 /** Every reason why `tag` must not be built and published; empty when all is ready. */
-export function preflightProblems(root, tag, hasSigningKey) {
+export function preflightProblems(root, tag) {
   const match = TAG.exec(tag);
   if (match === null) {
     return [`L'etichetta «${tag}» non è nella forma vX.Y.Z (per una prova: Run workflow a mano).`];
@@ -65,20 +67,62 @@ export function preflightProblems(root, tag, hasSigningKey) {
     }
   }
   const config = readJson(join(root, TAURI_DIR, 'tauri.conf.json'));
-  const pubkey = config.plugins?.updater?.pubkey;
+  const updater = config.plugins?.updater;
+  const pubkey = updater?.pubkey;
   if (typeof pubkey !== 'string' || pubkey === '' || pubkey === PUBKEY_PLACEHOLDER) {
     problems.push(
       'La chiave pubblica degli aggiornamenti in tauri.conf.json è ancora il segnaposto: vedi docs/distribuzione.md.',
     );
   }
-  const cargo = readFileSync(join(root, TAURI_DIR, 'Cargo.toml'), 'utf8');
-  if (!/^tauri-plugin-updater\s*=/m.test(cargo)) {
-    problems.push("tauri-plugin-updater non è in Cargo.toml: l'app non saprebbe aggiornarsi.");
+  if (updater?.requireSignedVersion !== true) {
+    problems.push(
+      'plugins.updater.requireSignedVersion non è true in tauri.conf.json: latest.json non è firmato, e solo così la firma lega anche la versione.',
+    );
   }
-  if (!hasSigningKey) {
-    problems.push('Manca il secret TAURI_SIGNING_PRIVATE_KEY: vedi docs/distribuzione.md.');
+  const cargo = readFileSync(join(root, TAURI_DIR, 'Cargo.toml'), 'utf8');
+  const lib = readFileSync(join(root, TAURI_DIR, 'src', 'lib.rs'), 'utf8');
+  if (!/^tauri-plugin-updater\s*=/m.test(cargo) || !lib.includes('tauri_plugin_updater')) {
+    problems.push(
+      "tauri-plugin-updater non è in Cargo.toml o non è registrato in lib.rs: l'app non saprebbe aggiornarsi.",
+    );
   }
   return problems;
+}
+
+/**
+ * Throws unless `signature` (a Tauri .sig: base64 of a minisign signature file) is a valid
+ * signature of `bytes` by `publicKey` (base64 of a minisign public key file, as in
+ * tauri.conf.json). Both the file signature and the global one over the trusted comment.
+ */
+export function verifyUpdateSignature(bytes, signature, publicKey) {
+  const lines = (text) => text.split(/\r?\n/).filter((line) => line !== '');
+  const decode = (text) => Buffer.from(text, 'base64');
+  const pub = decode(lines(decode(publicKey).toString('utf8'))[1] ?? '');
+  const sig = lines(decode(signature).toString('utf8'));
+  const head = decode(sig[1] ?? '');
+  const comment = sig[2]?.startsWith('trusted comment: ') ? sig[2].slice(17) : undefined;
+  const global = decode(sig[3] ?? '');
+  if (pub.length !== 42 || head.length !== 74 || comment === undefined || global.length !== 64) {
+    throw new Error('Firma o chiave pubblica non nel formato minisign.');
+  }
+  if (!head.subarray(2, 10).equals(pub.subarray(2, 10))) {
+    throw new Error("La firma è di un'altra chiave (key id diverso).");
+  }
+  const key = createPublicKey({
+    key: { kty: 'OKP', crv: 'Ed25519', x: pub.subarray(10).toString('base64url') },
+    format: 'jwk',
+  });
+  const algorithm = head.subarray(0, 2).toString('latin1');
+  // "ED": the file is hashed first with BLAKE2b-512 (minisign prehashed); "Ed": the file itself.
+  const message =
+    algorithm === 'ED' ? createHash('blake2b512').update(bytes).digest() : Buffer.from(bytes);
+  if (!['ED', 'Ed'].includes(algorithm) || !verify(null, message, key, head.subarray(10))) {
+    throw new Error('La firma non corrisponde al file.');
+  }
+  const trusted = Buffer.concat([head.subarray(10), Buffer.from(comment, 'utf8')]);
+  if (!verify(null, trusted, key, global)) {
+    throw new Error('La firma del commento fidato non corrisponde.');
+  }
 }
 
 /**
@@ -86,7 +130,7 @@ export function preflightProblems(root, tag, hasSigningKey) {
  * manifest. Names as build.yml writes them: App-Bollette_<version>_x64-setup.exe and
  * App-Bollette_<version>_universal.app.tar.gz, each with its .sig.
  */
-export function buildRelease(folder, tag, baseUrl, maxBytes = MAX_FILE_BYTES) {
+export function buildRelease(folder, tag, baseUrl, publicKey, maxBytes = MAX_FILE_BYTES) {
   const match = TAG.exec(tag);
   if (match === null) throw new Error(`L'etichetta «${tag}» non è nella forma vX.Y.Z.`);
   const version = match[1];
@@ -104,15 +148,24 @@ export function buildRelease(folder, tag, baseUrl, maxBytes = MAX_FILE_BYTES) {
     .filter((name) => name !== 'latest.json' && name !== 'SHA256SUMS')
     .sort();
   for (const name of names) {
-    const size = statSync(join(folder, name)).size;
+    const stat = statSync(join(folder, name));
+    if (!stat.isFile()) throw new Error(`${name} non è un file: la release contiene solo file.`);
+    const size = stat.size;
     if (size > maxBytes) throw new Error(`${name} è troppo grande: ${size} byte.`);
     console.log(`${name}: ${(size / 1024 / 1024).toFixed(1)} MB`);
   }
 
   const manifest = { version, notes: `App Bollette ${version}`, platforms: {} };
   for (const [platform, name] of Object.entries(updates)) {
+    const signature = readFileSync(join(folder, `${name}.sig`), 'utf8').trim();
+    if (signature === '') throw new Error(`${name}.sig è vuoto.`);
+    try {
+      verifyUpdateSignature(readFileSync(join(folder, name)), signature, publicKey);
+    } catch (error) {
+      throw new Error(`${name}: ${error.message}`, { cause: error });
+    }
     manifest.platforms[platform] = {
-      signature: readFileSync(join(folder, `${name}.sig`), 'utf8'),
+      signature,
       url: `${baseUrl}/${encodeURIComponent(name)}`,
     };
   }
@@ -135,12 +188,13 @@ if (isEntryPoint) {
   const root = fileURLToPath(new URL('..', import.meta.url));
   try {
     if (command === 'preflight' && args.length === 1) {
-      const problems = preflightProblems(root, args[0], process.env.HAS_SIGNING_KEY === 'true');
+      const problems = preflightProblems(root, args[0]);
       for (const problem of problems) console.error(problem);
       if (problems.length > 0) process.exitCode = 1;
       else console.log(`Pronta per la pubblicazione: ${args[0]}.`);
     } else if (command === 'manifest' && args.length === 3) {
-      buildRelease(args[0], args[1], args[2]);
+      const conf = readJson(join(root, TAURI_DIR, 'tauri.conf.json'));
+      buildRelease(args[0], args[1], args[2], conf.plugins?.updater?.pubkey ?? '');
     } else {
       console.error(
         'Uso: release.mjs preflight <etichetta> | manifest <cartella> <etichetta> <indirizzo>',
