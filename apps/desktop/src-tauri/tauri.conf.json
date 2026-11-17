@@ -41,6 +41,9 @@
     ]
   },
   "plugins": {
+    "updater": {
+      "pubkey": "SEGNAPOSTO-CHIAVE-PUBBLICA-vedi-docs-distribuzione.md"
+    },
     "fs": {
       "requireLiteralLeadingDot": false,
       "scopeDroppedPaths": false

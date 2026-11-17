@@ -18,7 +18,7 @@
 
 ## Task 3: `build.yml` e `tauri.conf.json`
 
-- [x] `tauri.conf.json`: `plugins.updater.pubkey` = segnaposto documentato, `requireSignedVersion: true`; nessun indirizzo.
+- [x] `tauri.conf.json`: `plugins.updater.pubkey` = segnaposto documentato; nessun indirizzo (`requireSignedVersion` arriva con il plugin nel piano 16b, perché dipende dalla sua versione).
 - [x] Su etichetta: preflight prima della build; sovrapposizione `--config` con `createUpdaterArtifacts` e l'indirizzo da `github.repository`; `TAURI_SIGNING_PRIVATE_KEY` solo da `secrets`; raccolta dei file della release con nomi senza spazi.
 - [x] Job `publish` (`contents: write`, senza il secret di firma): `release.mjs manifest`, `gh release create` con `GITHUB_TOKEN`.
 - [x] La build a mano resta com'era (artifact di prova, nessuna firma).
@@ -34,7 +34,7 @@
 
 ## Piano 16b (dopo, serve Rust o una build in CI senza `--locked`)
 
-1. `tauri-plugin-updater` e `tauri-plugin-process` in `Cargo.toml` (versioni esatte), `@tauri-apps/plugin-updater` e `@tauri-apps/plugin-process` in `apps/desktop/package.json`; registrazione in `lib.rs`; permessi `updater:default` e `process:allow-restart` in `capabilities/default.json`.
+1. `tauri-plugin-updater` e `tauri-plugin-process` in `Cargo.toml` (versioni esatte), `@tauri-apps/plugin-updater` e `@tauri-apps/plugin-process` in `apps/desktop/package.json`; registrazione in `lib.rs`; permessi `updater:default` e `process:allow-restart` in `capabilities/default.json`; `plugins.updater.requireSignedVersion: true` se la versione del plugin lo conosce.
 2. `Cargo.lock`: build a mano senza `--locked`, artifact `cargo-lock`, commit (`apps/desktop/README.md`, «Punti aperti»); `cargo deny` sulle licenze nuove.
 3. Interfaccia: controllo all'avvio, domanda «È disponibile la versione X: installarla?», interruttore nelle impostazioni (domanda 4), messaggi in italiano e inglese.
 4. Prima release vera `v0.2.0` (o quella scelta): si prova l'aggiornamento da una versione alla successiva su Windows (CI: installazione silenziosa della vecchia, poi lettura di `latest.json`; la prova completa la fa user1 sul proprio computer).

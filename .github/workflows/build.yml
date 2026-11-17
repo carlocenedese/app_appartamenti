@@ -4,6 +4,9 @@ name: Build
 # (Actions, Build, Run workflow), never on a push: macOS minutes cost ten times the Linux ones on
 # private repositories, and a Tauri build is the slowest job we have.
 # The installers are not signed: see apps/desktop/README.md for how to open them.
+# On a tag it also signs the update files with the TAURI_SIGNING_PRIVATE_KEY secret and publishes
+# a GitHub release with latest.json (job publish; docs/distribuzione.md). By hand it only builds
+# test installers, kept as artifacts of the run, without update files.
 on:
   push:
     tags: ['v*']
@@ -46,6 +49,25 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+
+      # On a tag, stop before the long build when the installer could never update itself:
+      # versions, public key, updater plugin, signing secret (scripts/release.mjs).
+      - name: Check that the version can be published
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          HAS_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: node scripts/release.mjs preflight "$GITHUB_REF_NAME"
+
+      # The address of latest.json comes from the name of this repository, so that no account
+      # name is written in the repository. Merged into tauri.conf.json by `tauri build --config`.
+      - name: Prepare the update configuration
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          conf="$RUNNER_TEMP/release.conf.json"
+          printf '{"bundle":{"createUpdaterArtifacts":true},"plugins":{"updater":{"endpoints":["https://github.com/%s/releases/latest/download/latest.json"]}}}\n' "$GITHUB_REPOSITORY" > "$conf"
+          echo "RELEASE_CONFIG_ARGS=--config $conf" >> "$GITHUB_ENV"
 
       # The action takes the toolchain from its "toolchain" input when it is pinned by commit
       # (the master branch); with a tag or branch name it would take it from the name.
@@ -92,8 +114,12 @@ jobs:
       - name: Bundle the Python interpreter
         run: node scripts/bundle-python.mjs
 
+      # The signing key reaches only the tagged build; the Tauri CLI assumes an empty password
+      # when none is given and stdin is not a terminal (the key of R31 has none).
       - name: Build the installers
-        run: pnpm --filter desktop tauri build ${{ matrix.tauri-args }} -- --locked
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+        run: pnpm --filter desktop tauri build ${{ matrix.tauri-args }} ${{ env.RELEASE_CONFIG_ARGS }} -- --locked
 
       # The NSIS installer, run silently, installs for the current user into
       # %LOCALAPPDATA%\App Bollette: a path with a space, as on the computers of the users.
@@ -178,3 +204,78 @@ jobs:
           name: ${{ matrix.artifact }}
           path: installers/
           if-no-files-found: error
+
+      # The files of the release, with names without spaces (GitHub would turn a space into a dot)
+      # as scripts/release.mjs expects them. Windows: only the NSIS installer, which installs for
+      # the current user without administrator rights; it is also the file the updater runs.
+      - name: Collect the files to publish
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir release
+          if [ "$RUNNER_OS" = Windows ]; then
+            nsis=apps/desktop/src-tauri/target/release/bundle/nsis
+            for suffix in '' .sig; do
+              cp "$nsis/App Bollette_${version}_x64-setup.exe$suffix" "release/App-Bollette_${version}_x64-setup.exe$suffix"
+            done
+          else
+            bundle=apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle
+            for suffix in '' .sig; do
+              cp "$bundle/macos/App Bollette.app.tar.gz$suffix" "release/App-Bollette_${version}_universal.app.tar.gz$suffix"
+            done
+            cp "$bundle/dmg/App Bollette_${version}_universal.dmg" "release/App-Bollette_${version}_universal.dmg"
+          fi
+
+      - name: Upload the files to publish
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.artifact }}
+          path: release/
+          if-no-files-found: error
+
+  # Only after both builds succeed. This job has the write permission and no signing key; the
+  # build jobs have the key and no write permission.
+  publish:
+    name: publish
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Download the files to publish
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      # Checks names, signatures and sizes, then writes latest.json and SHA256SUMS.
+      - name: Write the update manifest
+        run: >
+          node scripts/release.mjs manifest release "$GITHUB_REF_NAME"
+          "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+
+      # Published at once (ruling R273): pushing the tag is already the decision. latest.json
+      # of the newest release is what every installed app reads.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --title "App Bollette $version" \
+            --notes "Windows: scaricare App-Bollette_${version}_x64-setup.exe. Mac con Apple Silicon: App-Bollette_${version}_universal.dmg. Istruzioni per la prima apertura in docs/distribuzione.md del repository."
