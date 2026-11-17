@@ -69,7 +69,9 @@ Il ramo `feat/piano-16b-aggiornamenti` aggiunge all'app il controllo degli aggio
 
    ```sh
    run=$(gh run list --workflow cargo-lock.yml --branch feat/piano-16b-aggiornamenti --limit 1 --json databaseId -q '.[0].databaseId')
-   gh run download "$run" -n cargo-lock -D apps/desktop/src-tauri
+   tmp=$(mktemp -d)
+   gh run download "$run" -n cargo-lock -D "$tmp"
+   cp "$tmp/Cargo.lock" apps/desktop/src-tauri/Cargo.lock
    git diff --stat apps/desktop/src-tauri/Cargo.lock
    git commit -m "chore(desktop): Cargo.lock con i plugin di aggiornamento" apps/desktop/src-tauri/Cargo.lock
    git push

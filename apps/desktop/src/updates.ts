@@ -58,6 +58,7 @@ const TEXT = {
   installing: 'Scaricamento e installazione in corso…',
   installError:
     "Non è stato possibile installare l'aggiornamento. L'app resta com'era: riprova più tardi.",
+  restartError: "Aggiornamento installato: chiudi e riapri l'app.",
   saveError: 'Non è stato possibile salvare.',
 };
 
@@ -124,7 +125,11 @@ export async function renderUpdatesPanel(
       return;
     }
     // Windows: the installer has already closed the app. macOS: start the new version.
-    await updater.restart();
+    try {
+      await updater.restart();
+    } catch {
+      status.textContent = TEXT.restartError;
+    }
   }
 
   toggle.addEventListener('change', () => {

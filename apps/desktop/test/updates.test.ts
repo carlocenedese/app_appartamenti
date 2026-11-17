@@ -138,6 +138,16 @@ describe('renderUpdatesPanel', () => {
     expect(buttonNamed('Installa e riavvia')?.disabled).toBe(false);
   });
 
+  it('asks to reopen the app by hand when the restart fails after the installation', async () => {
+    restart.mockRejectedValue(new Error('restart'));
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    await renderUpdatesPanel(root, { settings, updater, checkAtStart: true });
+    click('Installa e riavvia');
+    await flush();
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(status()).toBe("Aggiornamento installato: chiudi e riapri l'app.");
+  });
+
   it('saves the switch without losing the other machine settings', async () => {
     save({ folder: '/Dropbox/Gruppo', userId: 'u-1' });
     const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });

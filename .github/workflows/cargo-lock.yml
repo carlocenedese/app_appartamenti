@@ -8,6 +8,8 @@ name: Cargo.lock
 # artifact and commit it». build.yml builds with --locked and would fail on a stale lock.
 on:
   push:
+    # Branches only: path filters are not applied to tag pushes, so v* tags would start it too.
+    branches: ['**']
     paths:
       - apps/desktop/src-tauri/Cargo.toml
       - apps/desktop/src-tauri/Cargo.lock
