@@ -32,6 +32,8 @@
 // month of a stay), subentro (a takeover inside a contract), stato-contratti (tenancies, takeovers,
 // deposits and checks of each contract) and caparra-restituzione (the return statement of a deposit,
 // read only, every figure typed by user1).
+// Plan 18 adds scambio-camera (two tenants of one contract swap rooms from a month, in one
+// operation; only tenancy ids and codes in the output).
 // Plan 10 adds tasse-stima (the start-of-year estimate of an apartment, year and voce typed by
 // user1), tasse-assegna (a «tasse» debit assigned to cedolare or registro and tax years),
 // tasse-copia (the estimates of the year before, copied only on this command) and tasse (the
@@ -100,6 +102,7 @@ import {
   setContractRent,
   saveTenancy,
   endTenancy,
+  recordRoomSwap,
   recordTakeover,
   loadContractStatus,
   loadDepositReturn,
@@ -254,6 +257,12 @@ const MESSAGES = {
     'Rifiutato: versamenti, recuperi o presenze nello stesso posto dipendono da questa operazione: annullarli prima.',
   'takeover-unlinked':
     'Rifiutato: il contratto ha un subentro: ripetere --presenze con le presenze del subentro.',
+  'no-room': 'Rifiutato: una delle due presenze non ha un posto.',
+  'same-room': 'Rifiutato: le due presenze sono nello stesso posto.',
+  'different-contract':
+    'Rifiutato: le due presenze sono in contratti diversi (domanda aperta del piano 18).',
+  'swap-rent-unchanged':
+    'Nota: i due posti hanno affitti diversi e almeno uno resta quello di prima: indicare --canone-a e --canone-b se cambiano.',
   'has-recoveries':
     'Rifiutato: l’inquilino ha un recupero in un periodo in cui non sarebbe più presente: correggere prima il recupero.',
   'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
@@ -395,6 +404,10 @@ const OPTIONS = {
   forfait: { type: 'string' },
   'caparra-attesa': { type: 'string' },
   presenza: { type: 'string' },
+  'presenza-a': { type: 'string' },
+  'presenza-b': { type: 'string' },
+  'canone-a': { type: 'string' },
+  'canone-b': { type: 'string' },
   tasso: { type: 'string', multiple: true },
   addebito: { type: 'string', multiple: true },
   lettura: { type: 'string' },
@@ -436,6 +449,7 @@ const RECONCILE_KINDS = [
   'tenancy.save',
   'tenancy.end',
   'tenancy.takeover',
+  'tenancy.swap',
   'tax.estimate',
   'tax.copy',
   'tax.assign',
@@ -1818,6 +1832,49 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'scambio-camera') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const v = values;
+    need(v, 'appartamento', 'presenza-a', 'presenza-b', 'mese');
+    const rent = (text) => {
+      if (text === undefined) return undefined;
+      const amount = euro(text);
+      if (amount < 0) throw invalid('bad-arguments');
+      return amount;
+    };
+    const result = await recordRoomSwap(
+      store,
+      {
+        apartmentId: v.appartamento,
+        tenancyIdA: v['presenza-a'],
+        tenancyIdB: v['presenza-b'],
+        month: month(v.mese),
+        ...optional('monthlyRentA', rent(v['canone-a'])),
+        ...optional('monthlyRentB', rent(v['canone-b'])),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') {
+      throw new Stop('rejected', result.reason, {
+        ...(result.reason === 'same-tenant'
+          ? { message: 'Rifiutato: nello scambio le due presenze sono dello stesso inquilino.' }
+          : {}),
+        ...optional('code', result.code),
+        ...optional('month', result.month),
+      });
+    }
+    return {
+      status: result.status,
+      tenancyIds: result.tenancyIds,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+      ...(result.warnings === undefined
+        ? {}
+        : { warnings: result.warnings, message: MESSAGES['swap-rent-unchanged'] }),
+    };
+  }
+
   if (name === 'stato-contratti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const result = await loadContractStatus(store, {
@@ -2389,6 +2446,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'presenza',
         'fine-presenza',
         'subentro',
+        'scambio-camera',
         'stato-contratti',
         'caparra-restituzione',
         'tasse-stima',
@@ -2449,6 +2507,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'condominio-stima',
         'recupero',
         'presenza',
+        'scambio-camera',
         'stato-contratti',
         'caparra-restituzione',
         'tasse-stima',
@@ -2487,7 +2546,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino', 'contratto', 'scadenze', 'scadenza-nuova', 'condominio-documento'],
-      mese: ['uscita-inquilino', 'fine-presenza', 'subentro'],
+      mese: ['uscita-inquilino', 'fine-presenza', 'subentro', 'scambio-camera'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],
       gambe: ['giroconto'],
@@ -2519,6 +2578,9 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       forfait: ['presenza', 'subentro'],
       'caparra-attesa': ['presenza', 'subentro'],
       presenza: ['fine-presenza', 'subentro'],
+      ...Object.fromEntries(
+        ['presenza-a', 'presenza-b', 'canone-a', 'canone-b'].map((o) => [o, ['scambio-camera']]),
+      ),
       tasso: ['caparra-restituzione'],
       addebito: ['caparra-restituzione'],
       ...Object.fromEntries(
