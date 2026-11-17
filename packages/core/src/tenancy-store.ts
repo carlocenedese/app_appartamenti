@@ -443,6 +443,161 @@ export async function recordTakeover(
   );
 }
 
+export interface RoomSwapInput {
+  apartmentId: string;
+  tenancyIdA: string;
+  tenancyIdB: string;
+  /** The first month in the new rooms; both stays end the month before. */
+  month: YearMonth;
+  /** The rent from `month`, when it changes (plan 18: data of user1, never derived). */
+  monthlyRentA?: Cents;
+  monthlyRentB?: Cents;
+}
+
+export type RoomSwapResult =
+  | {
+      status: 'saved';
+      operationId: string;
+      tenancyIds: [string, string];
+      warnings?: ['swap-rent-unchanged'];
+    }
+  | { status: 'unchanged'; tenancyIds: [string, string]; warnings?: ['swap-rent-unchanged'] }
+  | {
+      status: 'refused';
+      reason: TenancyRefusal | 'no-room' | 'same-room' | 'different-contract';
+      code?: SettlementInputErrorCode;
+      month?: YearMonth;
+    };
+
+/**
+ * Two tenants of one contract swap rooms from `month` in one `tenancy.swap` operation (plan 18):
+ * both stays end the month before; each tenant starts a stay `<old id>-<month>` in the other's room
+ * with their own end, flat charge and expected deposit (no new deposit) and the rent given, else
+ * their own; both join the contract's `tenancyIds`; the rent history and the takeovers are not
+ * touched. `swap-rent-unchanged` when a rent is not given and the two rents differ. The same
+ * request is `unchanged`. Refused without writing, in this order: `inconsistent-store`;
+ * `unknown-tenancy` (absent, deleted or of another apartment); `same-tenant`; `tenancy-exists` (a
+ * new id is a live tenancy: the same swap with other figures, or another stay); `no-room`;
+ * `same-room`; `invalid-tenancy` (`month` not after both starts, a stay not present in `month`,
+ * `month` after the contract's end, a negative rent, a new id over 64 characters); `no-contract`
+ * (a stay not in exactly one live contract); `different-contract` (question 2 of the design);
+ * `beds-conflict`.
+ */
+export async function recordRoomSwap(
+  store: Store,
+  input: RoomSwapInput,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<RoomSwapResult> {
+  const no = (reason: Extract<RoomSwapResult, { status: 'refused' }>['reason']) =>
+    ({ status: 'refused', reason }) as const;
+  if ((await checkConsistency(store)).length > 0) return no('inconsistent-store');
+  const state = await loadState(store);
+  const find = (id: string) =>
+    state.tenancies.find((t) => t.id === id && isLive(t) && t.apartmentId === input.apartmentId);
+  const a = find(input.tenancyIdA);
+  const b = find(input.tenancyIdB);
+  if (a === undefined || b === undefined) return no('unknown-tenancy');
+  if (a.id === b.id || a.tenantId === b.tenantId) return no('same-tenant');
+  const { month } = input;
+  const ids: [string, string] = [`${a.id}-${month}`, `${b.id}-${month}`];
+  const rentA = input.monthlyRentA ?? a.monthlyRent;
+  const rentB = input.monthlyRentB ?? b.monthlyRent;
+  const unchangedRent =
+    (input.monthlyRentA === undefined || input.monthlyRentB === undefined) &&
+    a.monthlyRent !== b.monthlyRent;
+  const warned = unchangedRent
+    ? { warnings: ['swap-rent-unchanged'] as ['swap-rent-unchanged'] }
+    : {};
+  // Each new stay: the tenant's own end, flat charge and expected deposit, the other's room.
+  const moved = ({ to, ...from }: Tenancy, id: string, room: string | undefined, rent: Cents) =>
+    ID.test(id)
+      ? tenancyRecord({
+          ...from,
+          // On a repeated request the old stay already ends before `month` (compared without `to`).
+          ...(to === undefined || to < month ? {} : { to }),
+          id,
+          rev: 1,
+          ...(room === undefined ? {} : { room }),
+          from: month,
+          monthlyRent: rent,
+        })
+      : undefined;
+  const newA = moved(a, ids[0], b.room, rentA);
+  const newB = moved(b, ids[1], a.room, rentB);
+  const storedA = state.tenancies.find((t) => t.id === ids[0]);
+  const storedB = state.tenancies.find((t) => t.id === ids[1]);
+  // Already written: the old stays end the month before and the new ones hold the same figures.
+  const sameAs = (stored: Tenancy | undefined, record: Tenancy | undefined, old: Tenancy) =>
+    isLive(stored) &&
+    record !== undefined &&
+    old.to === addMonths(month, -1) &&
+    JSON.stringify({ ...stored, rev: 1, to: undefined }) ===
+      JSON.stringify({ ...record, to: undefined });
+  if (sameAs(storedA, newA, a) && sameAs(storedB, newB, b)) {
+    return { status: 'unchanged', tenancyIds: ids, ...warned };
+  }
+  // A new id already live: this swap with other figures, or another stay.
+  if (isLive(storedA) || isLive(storedB)) return no('tenancy-exists');
+  if (a.room === undefined || b.room === undefined) return no('no-room');
+  if (a.room === b.room) return no('same-room');
+  const contractsOf = (t: Tenancy) =>
+    state.contracts.filter((c) => isLive(c) && (c.tenancyIds ?? []).includes(t.id));
+  const [contractA, ...moreA] = contractsOf(a);
+  const [contractB, ...moreB] = contractsOf(b);
+  if (
+    month <= a.from ||
+    month <= b.from ||
+    !isPresent(a, month) ||
+    !isPresent(b, month) ||
+    (contractA !== undefined && month > contractA.end) ||
+    newA === undefined ||
+    newB === undefined
+  ) {
+    return no('invalid-tenancy');
+  }
+  if (contractA === undefined || contractB === undefined || moreA.length + moreB.length > 0) {
+    return no('no-contract');
+  }
+  if (contractA.id !== contractB.id) return no('different-contract');
+  const last = addMonths(month, -1);
+  const endedA = parseOrThrow(TenancySchema, { ...a, to: last }, 'tenancy');
+  const endedB = parseOrThrow(TenancySchema, { ...b, to: last }, 'tenancy');
+  const apartment = state.apartments.find((x) => x.id === a.apartmentId);
+  const conflict =
+    apartment === undefined
+      ? undefined
+      : bedsConflict(apartment, state.tenancies, [endedA, endedB, newA, newB]);
+  if (conflict !== undefined) return refuseBeds(conflict);
+  const result = await write(
+    store,
+    ids[0],
+    [
+      { path: recordPath('tenancy', a.id), before: a, after: endedA },
+      { path: recordPath('tenancy', b.id), before: b, after: endedB },
+      { path: recordPath('tenancy', newA.id), before: storedA, after: newA },
+      { path: recordPath('tenancy', newB.id), before: storedB, after: newB },
+      {
+        path: recordPath('contract', contractA.id),
+        before: contractA,
+        after: linked(linked(contractA, newA.id), newB.id),
+      },
+    ],
+    {
+      kind: 'tenancy.swap',
+      summary: 'Registrato uno scambio di posto.',
+      apartmentId: a.apartmentId,
+      profileId,
+    },
+    clock,
+    newId,
+  );
+  return result.status === 'saved'
+    ? { status: 'saved', operationId: result.operationId, tenancyIds: ids, ...warned }
+    : { status: 'unchanged', tenancyIds: ids, ...warned };
+}
+
 /**
  * What stops the undo of an operation on tenancies (plan 11), sorted ids, empty when nothing
  * blocks: the live tenancies the restored ones would conflict with (`checkBeds`: for example an

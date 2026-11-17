@@ -24,5 +24,5 @@ lavoro su un periodo che contiene `M`; `depositChecks` uguale prima e dopo. Codi
 
 ## Task 2: riga di comando
 
-Test `scripts/estratti.test.mjs`: `scambio-camera` salvato, `unchanged`, rifiuto con `code`, annullo.
+Test `scripts/estratti.test.mjs`: `scambio-camera` salvato con avviso, `unchanged`, rifiuti (`tenancy-exists`, `same-tenant`, argomenti), annullo e nuovo scambio con i canoni.
 Codice `scripts/estratti.mjs` (`RECONCILE_KINDS`, messaggi, intestazione).

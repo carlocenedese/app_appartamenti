@@ -36,11 +36,12 @@ dato per posto sono gli affitti delle due presenze.
 ## Rifiuti (senza scrivere, in ordine)
 
 `inconsistent-store`; `unknown-tenancy` (una presenza assente, cancellata o di un altro appartamento);
-`same-tenant` (stessa presenza o stesso inquilino); `no-room` (una presenza senza posto); `same-room`;
+`same-tenant` (stessa presenza o stesso inquilino); `tenancy-exists` (un `id` derivato è già una
+presenza viva: lo stesso scambio con altri importi o un'altra presenza); `no-room` (una presenza senza posto); `same-room`;
 `invalid-tenancy` (`M` non successivo all'inizio di entrambe, una presenza non presente in `M`, `M` oltre
 la fine del contratto, canone negativo, `id` derivato non valido); `no-contract` (una presenza non è in
 esattamente un contratto vivo); `different-contract` (i due contratti sono diversi, domanda 2);
-`tenancy-exists`; `beds-conflict` (con `code` e `month`, le quattro presenze insieme).
+`beds-conflict` (con `code` e `month`, le quattro presenze insieme).
 
 Annullamento: `annulla-riconciliazione` accetta `tenancy.swap`; `tenancyUndoBlockers` (piano 11) blocca
 già un annullo che rimetterebbe due presenze nello stesso posto.

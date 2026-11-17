@@ -8,14 +8,21 @@ import {
   loadAll,
   recordPath,
   recordSchemas,
+  recordRoomSwap,
   recordTakeover,
   saveTenancy,
+  buildConguaglioWorkbook,
+  calcConguaglio,
+  collectedForfait,
+  depositChecks,
+  loadExcelInput,
   undoBlockedBy,
   settlementPeriods,
   undoOperation,
   yearMonth,
 } from '../src/index';
-import type { RecordKind, SaveTenancyInput, TakeoverInput } from '../src/index';
+import type { RecordKind, RoomSwapInput, SaveTenancyInput, TakeoverInput } from '../src/index';
+import { bill, match } from './helpers/conguaglio-builders';
 import { cents } from '../src/money';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
@@ -595,5 +602,328 @@ describe('undoing the tenancy operations (plan 11, task 2)', () => {
       'q',
     );
     expect(await undoBlockedBy(store, 'a-1')).toEqual([]);
+  });
+});
+
+// Plan 18: Anna (room A) and Bruno (room B) swap rooms from 2026-03. Invented names and amounts.
+async function swapStore(bruno: Record<string, unknown> = {}) {
+  const store = await fixtureStore();
+  await saveTenancy(
+    store,
+    {
+      ...arrival({
+        id: 'tcy-bruno',
+        tenantId: 'ten-bruno',
+        room: 'B',
+        from: yearMonth('2025-10'),
+        monthlyRent: cents(36000),
+        monthlyForfait: cents(2000),
+      }),
+      to: yearMonth('2026-09'),
+      ...bruno,
+    },
+    'p1',
+    clock,
+    ids('b'),
+  );
+  return store;
+}
+
+const swap = (extra: Partial<RoomSwapInput> = {}): RoomSwapInput => ({
+  apartmentId: 'pulci',
+  tenancyIdA: 'tcy-anna',
+  tenancyIdB: 'tcy-bruno',
+  month: yearMonth('2026-03'),
+  ...extra,
+});
+
+describe('recordRoomSwap (plan 18)', () => {
+  it('ends both stays the month before and starts both in the other room, in one operation', async () => {
+    const store = await swapStore();
+    const contractBefore = await contract(store);
+    const result = await recordRoomSwap(store, swap(), 'p1', clock, ids('w'));
+    expect(result).toEqual({
+      status: 'saved',
+      operationId: 'w-1',
+      tenancyIds: ['tcy-anna-2026-03', 'tcy-bruno-2026-03'],
+      warnings: ['swap-rent-unchanged'],
+    });
+    const byId = new Map((await tenancies(store)).map((t) => [t.id, t]));
+    expect(byId.get('tcy-anna')).toMatchObject({ room: 'A', to: '2026-02' });
+    expect(byId.get('tcy-bruno')).toMatchObject({ room: 'B', to: '2026-02' });
+    expect(byId.get('tcy-anna-2026-03')).toEqual({
+      ...base,
+      id: 'tcy-anna-2026-03',
+      apartmentId: 'pulci',
+      tenantId: 'ten-anna',
+      room: 'B',
+      from: '2026-03',
+      to: '2026-09',
+      monthlyRent: 35000,
+      monthlyForfait: 3000,
+    });
+    expect(byId.get('tcy-bruno-2026-03')).toEqual({
+      ...base,
+      id: 'tcy-bruno-2026-03',
+      apartmentId: 'pulci',
+      tenantId: 'ten-bruno',
+      room: 'A',
+      from: '2026-03',
+      to: '2026-09',
+      monthlyRent: 36000,
+      monthlyForfait: 2000,
+      expectedDeposit: 50000,
+    });
+    const after = await contract(store);
+    expect(after?.tenancyIds).toEqual([
+      'tcy-anna',
+      'tcy-bruno',
+      'tcy-anna-2026-03',
+      'tcy-bruno-2026-03',
+    ]);
+    expect(after?.rent).toEqual(contractBefore?.rent);
+    expect(after?.takeovers).toBeUndefined();
+    // The same request writes nothing and says the same.
+    const before = await snapshot(store);
+    expect(await recordRoomSwap(store, swap(), 'p1', clock, ids('x'))).toEqual({
+      status: 'unchanged',
+      tenancyIds: ['tcy-anna-2026-03', 'tcy-bruno-2026-03'],
+      warnings: ['swap-rent-unchanged'],
+    });
+    expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('takes the rents given from the month of the swap, without the warning', async () => {
+    const store = await swapStore();
+    const rents = { monthlyRentA: cents(36000), monthlyRentB: cents(35000) };
+    const result = await recordRoomSwap(store, swap(rents), 'p1', clock, ids('w'));
+    expect(result).toMatchObject({ status: 'saved' });
+    expect(result).not.toHaveProperty('warnings');
+    const byId = new Map((await tenancies(store)).map((t) => [t.id, t]));
+    expect(byId.get('tcy-anna')?.monthlyRent).toBe(35000);
+    expect(byId.get('tcy-anna-2026-03')?.monthlyRent).toBe(36000);
+    expect(byId.get('tcy-bruno-2026-03')?.monthlyRent).toBe(35000);
+    expect(await recordRoomSwap(store, swap(rents), 'p1', clock, ids('x'))).toMatchObject({
+      status: 'unchanged',
+    });
+    // The same swap with another rent is not the same request.
+    expect(
+      await recordRoomSwap(store, swap({ monthlyRentA: cents(1) }), 'p1', clock, ids('x')),
+    ).toEqual({ status: 'refused', reason: 'tenancy-exists' });
+  });
+
+  it('gives no warning when the two rents are equal', async () => {
+    const store = await swapStore({ monthlyRent: cents(35000) });
+    const result = await recordRoomSwap(store, swap(), 'p1', clock, ids('w'));
+    expect(result).toMatchObject({ status: 'saved' });
+    expect(result).not.toHaveProperty('warnings');
+  });
+
+  it('refuses without writing', async () => {
+    const store = await swapStore();
+    await seed(
+      store,
+      'tenancy',
+      [
+        tenancy('tcy-carla', { tenantId: 'ten-carla', from: '2026-10', to: '2027-09' }),
+        tenancy('tcy-lov', { apartmentId: 'lovarini', tenantId: 'ten-carla', room: undefined }),
+      ],
+      'c',
+    );
+    const before = await snapshot(store);
+    const cases: [Partial<RoomSwapInput>, string][] = [
+      [{ tenancyIdB: 'tcy-nope' }, 'unknown-tenancy'],
+      [{ apartmentId: 'lovarini' }, 'unknown-tenancy'],
+      [{ tenancyIdB: 'tcy-anna' }, 'same-tenant'],
+      [{ apartmentId: 'lovarini', tenancyIdA: 'tcy-lov', tenancyIdB: 'tcy-lov' }, 'same-tenant'],
+      [{ tenancyIdB: 'tcy-carla' }, 'same-room'],
+      [{ month: yearMonth('2025-10') }, 'invalid-tenancy'],
+      [{ month: yearMonth('2026-10') }, 'invalid-tenancy'],
+      [{ monthlyRentA: cents(-1) }, 'invalid-tenancy'],
+    ];
+    for (const [extra, reason] of cases) {
+      expect(await recordRoomSwap(store, swap(extra), 'p1', clock, ids('w'))).toEqual({
+        status: 'refused',
+        reason,
+      });
+    }
+    expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('refuses a stay without a room', async () => {
+    const store = await fixtureStore();
+    await seed(
+      store,
+      'tenancy',
+      ['ten-bruno', 'ten-carla'].map((tenantId) =>
+        tenancy(`tcy-${tenantId}`, { apartmentId: 'lovarini', tenantId, room: undefined }),
+      ),
+      'c',
+    );
+    const input = swap({
+      apartmentId: 'lovarini',
+      tenancyIdA: 'tcy-ten-bruno',
+      tenancyIdB: 'tcy-ten-carla',
+    });
+    expect(await recordRoomSwap(store, input, 'p1', clock, ids('w'))).toEqual({
+      status: 'refused',
+      reason: 'no-room',
+    });
+  });
+
+  it('refuses a stay outside the contract, two contracts, a taken id and a bed conflict', async () => {
+    const unlinked = await swapStore({ contractId: undefined });
+    expect(await recordRoomSwap(unlinked, swap(), 'p1', clock, ids('w'))).toEqual({
+      status: 'refused',
+      reason: 'no-contract',
+    });
+    await seed(
+      unlinked,
+      'contract',
+      [
+        {
+          ...base,
+          id: 'ctr-pulci-2',
+          apartmentId: 'pulci',
+          type: '1+1',
+          start: '2025-10',
+          end: '2026-09',
+          settlement: 'annuale',
+          tenancyIds: ['tcy-bruno'],
+        },
+      ],
+      'k',
+    );
+    expect(await recordRoomSwap(unlinked, swap(), 'p1', clock, ids('w'))).toEqual({
+      status: 'refused',
+      reason: 'different-contract',
+    });
+
+    const taken = await swapStore();
+    await seed(
+      taken,
+      'tenancy',
+      [tenancy('tcy-bruno-2026-03', { apartmentId: 'lovarini', room: undefined })],
+      'c',
+    );
+    expect(await recordRoomSwap(taken, swap(), 'p1', clock, ids('w'))).toEqual({
+      status: 'refused',
+      reason: 'tenancy-exists',
+    });
+
+    // Bruno leaves room B in June and Carla arrives there in July: Anna cannot move in until September.
+    const beds = await swapStore({ to: yearMonth('2026-06') });
+    await saveTenancy(
+      beds,
+      arrival({ room: 'B', from: yearMonth('2026-07'), to: yearMonth('2026-09') }),
+      'p1',
+      clock,
+      ids('c'),
+    );
+    expect(await recordRoomSwap(beds, swap(), 'p1', clock, ids('w'))).toEqual({
+      status: 'refused',
+      reason: 'beds-conflict',
+      code: 'room-overlap',
+      month: '2026-07',
+    });
+  });
+
+  it('is undone in one step, and an undo that puts two stays in a room is blocked', async () => {
+    const store = await swapStore();
+    const before = await tenancies(store);
+    const contractBefore = await contract(store);
+    await recordRoomSwap(store, swap(), 'p1', clock, ids('w'));
+    expect(await undoBlockedBy(store, 'w-1')).toEqual([]);
+    await undoOperation(store, 'w-1', 'p1', clock, ids('u'));
+    const after = new Map((await tenancies(store)).map((t) => [t.id, t]));
+    for (const t of before) expect({ ...after.get(t.id), rev: t.rev }).toEqual(t);
+    expect(after.get('tcy-anna-2026-03')).toMatchObject({ deleted: true });
+    expect(after.get('tcy-bruno-2026-03')).toMatchObject({ deleted: true });
+    expect({ ...(await contract(store)), rev: contractBefore?.rev }).toEqual(contractBefore);
+
+    // After the swap Anna leaves room B in May and Carla arrives there in June.
+    const blocked = await swapStore();
+    await recordRoomSwap(blocked, swap(), 'p1', clock, ids('w'));
+    await endTenancy(
+      blocked,
+      { tenancyId: 'tcy-anna-2026-03', lastMonth: yearMonth('2026-05') },
+      'p1',
+      clock,
+      ids('e'),
+    );
+    await saveTenancy(
+      blocked,
+      arrival({ room: 'B', from: yearMonth('2026-06'), to: yearMonth('2026-09') }),
+      'p1',
+      clock,
+      ids('c'),
+    );
+    expect(await undoBlockedBy(blocked, 'w-1')).toEqual(['tcy-carla']);
+  });
+
+  it('settles each tenant in the room of each month, rents and deposits as before', async () => {
+    const store = await swapStore();
+    const depositsBefore = depositChecks({ tenancies: await tenancies(store), payments: [] });
+    await recordRoomSwap(
+      store,
+      swap({ monthlyRentA: cents(36000), monthlyRentB: cents(35000) }),
+      'p1',
+      clock,
+      ids('w'),
+    );
+    expect(depositChecks({ tenancies: await tenancies(store), payments: [] })).toEqual(
+      depositsBefore,
+    );
+    const ctr = await contract(store);
+    if (ctr === undefined) throw new Error('no contract');
+    const [label] = settlementPeriods(ctr, { month: 10, day: 1 }).map((p) => p.label);
+    const loaded = await loadExcelInput(store, { apartmentId: 'pulci', periodLabel: label ?? '' });
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    // One bill of one month before the swap and one after: the odd cent goes to room A (R30).
+    const luce = (id: string, from: string, to: string) =>
+      bill(id, from, to, 10001, { apartmentId: 'pulci' });
+    const early = luce('luce-1', '2026-01-01', '2026-01-31');
+    const later = luce('luce-2', '2026-04-01', '2026-04-30');
+    const input = {
+      ...loaded.input,
+      bills: [early, later],
+      matches: [match(early, 10001), match(later, 10001)],
+    };
+    const result = calcConguaglio(input);
+    expect(result.tenants.map((t) => [t.tenantId, t.spese])).toEqual([
+      ['ten-anna', 5001 + 5000],
+      ['ten-bruno', 5000 + 5001],
+    ]);
+    const rows = collectedForfait({
+      tenancies: input.tenancies,
+      payments: [],
+      months: [yearMonth('2026-02'), yearMonth('2026-03')],
+    });
+    expect(rows.map((r) => [r.tenantId, r.month, r.rentDue, r.forfaitDue])).toEqual([
+      ['ten-anna', '2026-02', 35000, 3000],
+      ['ten-anna', '2026-03', 36000, 3000],
+      ['ten-bruno', '2026-02', 36000, 2000],
+      ['ten-bruno', '2026-03', 35000, 2000],
+    ]);
+    // The workbook: one row per stay in «Affitti versati», both rooms of each tenant in «Conguagli».
+    const { sheets } = buildConguaglioWorkbook(input);
+    const cells = (name: string, width: number) => {
+      const rows = sheets.find((x) => x.name === name)?.rows ?? [];
+      const start = rows.findIndex((r) => r[0]?.kind === 'text' && r[0].value === 'Posto') + 1;
+      return rows
+        .slice(start)
+        .filter((r) => r[1]?.kind === 'text' && r[1].value.startsWith('ten-'))
+        .map((r) => r.slice(0, width).map((c) => (c === null ? null : 'value' in c ? c.value : c)));
+    };
+    expect(cells('Affitti versati', 3)).toEqual([
+      ['A', 'ten-anna', 38000],
+      ['A', 'ten-bruno', 37000],
+      ['B', 'ten-bruno', 38000],
+      ['B', 'ten-anna', 39000],
+    ]);
+    expect(cells('Conguagli', 4).map((r) => [r[0], r[1], r[3]])).toEqual([
+      ['A, B', 'ten-anna', 12],
+      ['B, A', 'ten-bruno', 12],
+    ]);
   });
 });
