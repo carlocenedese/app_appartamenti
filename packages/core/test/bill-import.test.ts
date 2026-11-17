@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BillSchema,
   ExtractionResultSchema,
   PendingDocumentSchema,
   SupplierProfileSchema,
@@ -208,7 +209,7 @@ describe('importBill', () => {
 });
 
 describe('pendingDocuments', () => {
-  it('counts a whole file waiting as resolved once a part of it is registered', async () => {
+  it('keeps a whole file waiting when only a part of it is registered', async () => {
     const { store, input, clock } = await setup({ autoRegister: false });
     await importBill(store, input, 'u', clock, ids('a'));
     expect(await pendingDocuments(store)).toHaveLength(1);
@@ -221,7 +222,22 @@ describe('pendingDocuments', () => {
       ids('p'),
     );
     expect(result).toMatchObject({ status: 'confermata' });
-    expect(await pendingDocuments(store)).toEqual([]);
+    expect(await pendingDocuments(store)).toHaveLength(1);
+  });
+
+  it('reports a possible duplicate in auto mode and writes no document to review', async () => {
+    const { store, input, clock } = await setup({ autoRegister: false });
+    await importBill(store, { ...input, mode: 'manual' }, 'u', clock, ids('a'));
+    const again = new TextEncoder().encode('%PDF-1.7 bolletta sintetica, riscaricata');
+    const result = await importBill(
+      store,
+      { ...input, bytes: again, result: reading(await hashBytes(again)) },
+      'u',
+      clock,
+      ids('b'),
+    );
+    expect(result).toEqual({ status: 'possible-duplicate', existingId: 'a-1' });
+    expect((await loadAll(store, 'pendingDocument', PendingDocumentSchema)).records).toEqual([]);
   });
 });
 
@@ -272,7 +288,104 @@ describe('importBill of a TARI notice', () => {
     const result = await importBill(store, input, 'u', clock, ids('t'));
     expect(result.status === 'confermata' && result.ids).toHaveLength(2);
     const undone = await undoBillImport(store, tari.fileHash, 'u', clock, ids('u'));
-    expect(undone.status === 'undone' && undone.operations).toHaveLength(1);
+    expect(undone).toMatchObject({ status: 'undone', records: 2 });
+  });
+
+  it('refuses the undo while a live recovery uses an instalment', async () => {
+    const { store, clock } = await setup();
+    const bytes = new TextEncoder().encode('%PDF-1.7 avviso con recupero');
+    await store.writeJsonAtomic(recordPath('supply', 'sup-a'), {
+      id: 'sup-a',
+      v: 1,
+      rev: 1,
+      label: 'Uno',
+      apartments: [{ apartmentId: 'apt-1', weight: 10000 }],
+    });
+    const tari = reading(await hashBytes(bytes), {
+      kind: 'tari',
+      documentKind: 'tari',
+      category: null,
+      fields: {
+        supplier: field('Comune di Esempio'),
+        number: field('2026/1/00002'),
+        issueDate: field('2026-02-20'),
+        dueDate: field('2026-03-16'),
+        periodStart: field('2026-01-01'),
+        periodEnd: field('2026-04-30'),
+        amount: field(10075),
+      },
+      parts: [{ label: 'Uno', amount: 10075, source }],
+      identifiers: [],
+    });
+    const input: ImportBillInput = {
+      result: tari,
+      bytes,
+      apartmentId: 'apt-1',
+      knownCodes: [],
+      thresholds: { consumptionAnomalyPercent: 30 },
+      mode: 'manual',
+    };
+    const done = await importBill(store, input, 'u', clock, ids('r'));
+    const [instalmentId = ''] = done.status === 'confermata' ? done.ids : [];
+    await store.writeJsonAtomic(recordPath('tenantRecovery', 'rec-1'), {
+      id: 'rec-1',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt-1',
+      instalmentId,
+      amount: 100,
+      shares: [{ tenantId: 't-1', amount: 100 }],
+      status: 'da-recuperare',
+    });
+    expect(await undoBillImport(store, tari.fileHash, 'u', clock, ids('u'))).toEqual({
+      status: 'refused',
+      reason: 'has-dependents',
+      recordIds: ['rec-1'],
+    });
+  });
+});
+
+describe('undoBillImport of a file with two documents', () => {
+  it('asks which one, then takes back only that one', async () => {
+    const { store, input, clock } = await setup();
+    const part = (first: number, number: string) =>
+      reading(input.result.fileHash, {
+        pageRange: [first, first],
+        fields: Object.fromEntries(
+          Object.entries({ ...input.result.fields, number: field(number) }).map(([k, f]) => [
+            k,
+            { ...f, source: { ...source, page: first } },
+          ]),
+        ),
+      });
+    await importBill(
+      store,
+      { ...input, result: part(1, 'A-1'), mode: 'manual' },
+      'u',
+      clock,
+      ids('a'),
+    );
+    await importBill(
+      store,
+      { ...input, result: part(2, 'A-2'), mode: 'manual' },
+      'u',
+      clock,
+      ids('b'),
+    );
+    const hash = input.result.fileHash;
+    expect(await undoBillImport(store, hash, 'u', clock, ids('u'))).toEqual({
+      status: 'refused',
+      reason: 'several-documents',
+      documents: 2,
+    });
+    expect(
+      await undoBillImport(store, hash, 'u', clock, ids('v'), { pages: [1, 1] }),
+    ).toMatchObject({ status: 'undone', records: 1 });
+    expect((await loadAll(store, 'bill', BillSchema)).records.map((b) => b.id)).toEqual(['b-1']);
+    expect(await undoBillImport(store, hash, 'u', clock, ids('w'))).toMatchObject({
+      status: 'undone',
+      records: 1,
+    });
   });
 });
 
@@ -282,11 +395,13 @@ describe('undoBillImport', () => {
     await importBill(store, input, 'u', clock, ids('a'));
     await importBill(store, { ...input, mode: 'manual' }, 'u', clock, ids('c'));
     const undone = await undoBillImport(store, result.fileHash, 'u', clock, ids('u'));
+    expect(undone).toMatchObject({ status: 'undone', records: 2 });
     expect(undone.status === 'undone' && undone.operations).toHaveLength(2);
     expect((await loadAll(store, 'pendingDocument', PendingDocumentSchema)).records).toEqual([]);
     expect(await undoBillImport(store, result.fileHash, 'u', clock, ids('v'))).toEqual({
       status: 'undone',
       operations: [],
+      records: 0,
     });
     // A new reading registers again with new ids.
     expect(

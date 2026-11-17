@@ -1190,8 +1190,7 @@ export const PendingDocumentSchema = RecordBaseSchema.extend({
   /** The part of the file, when it is not the whole file. */
   pages: z.tuple([z.int().min(1), z.int().min(1)]).optional(),
   documentKind: DocumentKindSchema,
-  /** The codes of the checks that sent it to a person, sorted, without repeats. */
-  codes: z.array(NonEmptyString),
+  // No codes: they are made again at each reading (R260), a copy here would go stale.
 })
   .refine((d) => d.id.startsWith('doc-'), { message: 'The id must start with doc-', path: ['id'] })
   .refine((d) => d.pages === undefined || d.pages[0] <= d.pages[1], {

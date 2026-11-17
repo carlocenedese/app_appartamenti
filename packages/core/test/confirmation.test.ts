@@ -216,6 +216,7 @@ describe('decideRegistration', () => {
     expect(decideRegistration({ proposal, result, profile: profile() })).toEqual({
       action: 'auto-register',
       reasons: [],
+      codes: [],
     });
   });
 
@@ -249,6 +250,7 @@ describe('decideRegistration', () => {
     expect(decideRegistration({ proposal, result: mixed, profile: profile() })).toEqual({
       action: 'auto-register',
       reasons: [],
+      codes: [],
     });
   });
 
@@ -332,7 +334,11 @@ describe('decideRegistration', () => {
         result,
         profile: profile(),
       });
-      expect(decision).toEqual({ action: 'review', reasons: [`Controllo ${severity}.`] });
+      expect(decision).toEqual({
+        action: 'review',
+        reasons: [`Controllo ${severity}.`],
+        codes: ['extra'],
+      });
     }
   });
 

@@ -128,9 +128,14 @@ export async function loadDashboard(
 
   const status = await loadContractStatus(store, { asOf });
   if (status.status === 'refused') return refused;
-  const deposits = new Map(
-    status.contracts.flatMap((c) => c.deposits.map((d) => [`${d.apartmentId}/${d.tenantId}`, d])),
-  );
+  // A tenant in two contracts of one apartment is counted once; the state that is not
+  // `versata` wins, so nothing to check is hidden (R264).
+  const deposits = new Map<string, (typeof status.contracts)[number]['deposits'][number]>();
+  for (const d of status.contracts.flatMap((c) => c.deposits)) {
+    const key = `${d.apartmentId}/${d.tenantId}`;
+    const seen = deposits.get(key);
+    if (seen === undefined || seen.status === 'versata') deposits.set(key, d);
+  }
   for (const d of deposits.values()) {
     if (!DONE.has(d.status)) add(d.apartmentId, `caparra:${d.status}`);
   }

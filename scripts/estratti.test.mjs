@@ -4357,6 +4357,8 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     const undone = await run(['annulla-bolletta', ...common, pdf]);
     expect(undone.json.status).toBe('undone');
     expect(undone.json.operationIds).toHaveLength(2);
+    expect(undone.json.records).toBe(2);
+    expect((await run(['annulla-bolletta', ...common, '--pagine', '2-1', pdf])).code).toBe(2);
     const empty = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
     expect(empty.json.apartments).toEqual([{ apartmentId: 'pulci', counts: {} }]);
     expect((await run(['cruscotto', ...common, '--lettura', lettura])).code).toBe(2);

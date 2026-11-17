@@ -28,7 +28,6 @@ async function store() {
     apartmentId: 'apt-1',
     fileHash: 'H1',
     documentKind: 'bill',
-    codes: ['profile'],
   });
   // Waiting no more: a bill of the same file is registered.
   await put('pendingDocument', {
@@ -37,7 +36,6 @@ async function store() {
     apartmentId: 'apt-1',
     fileHash: 'H2',
     documentKind: 'bill',
-    codes: ['profile'],
   });
   await put('bill', {
     ...base,
@@ -99,6 +97,21 @@ async function store() {
     cedolareRateBp: 1000,
     tenancyIds: ['ten-1', 'ten-missing'],
   });
+  await put('instalment', {
+    ...base,
+    id: 'inst-1',
+    apartmentId: 'apt-2',
+    kind: 'condominio',
+    esercizio: '2026-27',
+    rateIndex: 1,
+    rateCount: 4,
+    dueDate: '2026-10-01',
+    rata: 30000,
+    quotaProprieta: 0,
+    conguaglioPrec: 0,
+    coversFrom: '2026-10',
+    coversTo: '2026-12',
+  });
   await put('payable', {
     ...base,
     id: 'scad-1',
@@ -128,10 +141,13 @@ describe('loadDashboard', () => {
           apartmentId: 'apt-2',
           counts: {
             'caparra:mancante': 1,
+            // The same instalment in both lists: the two families are not to be summed (R264).
+            'condominio:assunta': 1,
             'contratto:tenancy-outside-contract': 1,
             'contratto:unknown-tenancy': 1,
             'movimento-senza-uso': 1,
-            'scadenza:in-ritardo': 1,
+            'scadenza-controllo:periodo-senza-estratto': 1,
+            'scadenza:in-ritardo': 2,
           },
         },
       ],

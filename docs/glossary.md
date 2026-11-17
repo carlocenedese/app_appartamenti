@@ -151,3 +151,14 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | campo richiesto    | asked field (`ASKED_FIELDS`)             | testo libero dal file dei valori, mai controllato                      |
 | modello di prova   | starter template (`starterDocx`)         | titolo, testo inventato, elenco dei campi; nessun testo legale         |
 | file dei valori    | values file (`--valori`)                 | JSON di testi; i dati personali restano lì, non nella riga di comando  |
+
+## Piano 15: bollette e cruscotto
+
+| Italiano                   | Codice                                        | Note                                                                          |
+| -------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------- |
+| documento da rivedere      | pending document (`pendingDocument`)          | lettura che aspetta una persona; si risolve con un record delle stesse pagine |
+| importazione               | bill import (`importBill`)                    | proposta, politica di conferma, registrazione o «da rivedere»                 |
+| registrata automaticamente | `registrata-automaticamente`                  | passata la politica di conferma, annullabile                                  |
+| confermata                 | `confermata`                                  | registrata dopo la conferma di una persona                                    |
+| cruscotto                  | dashboard (`loadDashboard`)                   | conteggi per codice e appartamento, senza colori                              |
+| confronto consumi          | consumption comparison (`compareConsumption`) | provvisorio, non collegato; soglie dal chiamante                              |

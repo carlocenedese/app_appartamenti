@@ -51,13 +51,6 @@
         "tari",
         "unknown"
       ]
-    },
-    "codes": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
     }
   },
   "required": [
@@ -66,8 +59,7 @@
     "rev",
     "apartmentId",
     "fileHash",
-    "documentKind",
-    "codes"
+    "documentKind"
   ],
   "description": "id starts with doc-; pages[0] must not be after pages[1]."
 }

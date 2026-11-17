@@ -34,7 +34,7 @@ coerenza prima di scrivere, un annullamento che non lasci abbinamenti appesi, la
 3. **Stato del documento**: `pendingDocument` vivo senza un record registrato dello stesso file e
    pagine = «da rivedere»; con il record = «confermata». Nessun aggiornamento a parte: lo stato si
    deriva.
-4. **`compareConsumption`** (`consumption.ts`): per consumo, importo e prezzo unitario, il confronto
+4. **`compareConsumption`** (provvisorio, non collegato: R263) (`consumption.ts`): per consumo, importo e prezzo unitario, il confronto
    con lo stesso periodo dell'anno prima e con la media dei mesi precedenti (finestra data dal
    chiamante). Restituisce i due lati grezzi e la differenza in punti base; con soglie passate dal
    chiamante segna `over`. **Nessun livello giallo/rosso, nessuna soglia predefinita.**
@@ -60,7 +60,7 @@ coerenza prima di scrivere, un annullamento che non lasci abbinamenti appesi, la
 ## Decisioni (Ruling)
 
 - **R260** stato «da rivedere» come record `pendingDocument` minimo (id `doc-<id nuovo>`, uno per
-  file, pagine e appartamento): appartamento, impronta, pagine, tipo, codici dei controlli. Non contiene
+  file, pagine e appartamento): appartamento, impronta, pagine, tipo (i codici si ricalcolano a ogni lettura). Non contiene
   la lettura né la proposta: alla conferma si rilegge il PDF e la proposta si ricalcola (piano 4).
 - **R261** `knownCodes` è un argomento obbligatorio (nessun luogo li conserva oggi); con lista vuota il
   modo `auto` non registra mai e dà `da-rivedere` con il codice `apartment-codes-unknown`.

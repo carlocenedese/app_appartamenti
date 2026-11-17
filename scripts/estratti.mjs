@@ -277,6 +277,8 @@ const MESSAGES = {
   'bill-rejected': 'Rifiutato: niente da registrare, o file diverso da quello letto.',
   'duplicate-bill': 'Questo documento è già registrato.',
   'possible-duplicate-bill': 'Un documento con gli stessi dati è già registrato: controllare.',
+  'several-documents':
+    'Rifiutato: il file contiene più documenti; indicare quale con --pagine a-b (o --pagine intero).',
   'has-dependents-bill':
     'Rifiutato: un abbinamento o un recupero usa la bolletta; annullare prima quelli.',
 };
@@ -381,6 +383,7 @@ const OPTIONS = {
   codici: { type: 'string' },
   conferma: { type: 'boolean' },
   'periodo-conguaglio': { type: 'string', multiple: true },
+  pagine: { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -1857,16 +1860,43 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'annulla-bolletta') {
     if (positionals.length !== 1) throw invalid('bad-arguments');
-    const fileHash = await hashBytes(readBytes(positionals[0]));
-    const result = await undoBillImport(store, fileHash, who, clock, newId);
-    if (result.status === 'refused') {
-      throw new Stop(
-        'rejected',
-        result.reason === 'has-dependents' ? 'has-dependents-bill' : result.reason,
-        result.reason === 'has-dependents' ? { recordIds: result.recordIds } : {},
-      );
+    // `--pagine a-b` or `--pagine intero` picks one document of a file that holds several (R260).
+    let pages;
+    if (values.pagine !== undefined) {
+      const found = /^([0-9]{1,4})-([0-9]{1,4})$/.exec(values.pagine);
+      if (values.pagine === 'intero') pages = null;
+      else if (found !== null && Number(found[1]) >= 1 && Number(found[1]) <= Number(found[2])) {
+        pages = [Number(found[1]), Number(found[2])];
+      } else throw invalid('bad-arguments');
     }
-    return { status: 'undone', operationIds: result.operations.map((o) => o.id) };
+    const fileHash = await hashBytes(readBytes(positionals[0]));
+    let result;
+    try {
+      result = await undoBillImport(store, fileHash, who, clock, newId, optional('pages', pages));
+    } catch (error) {
+      const text = error instanceof Error ? error.message : '';
+      if (text.includes('depend on it')) throw new Stop('rejected', 'has-dependents-bill');
+      if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
+      throw error;
+    }
+    if (result.status === 'refused') {
+      if (result.reason === 'several-documents') {
+        throw new Stop('rejected', 'several-documents', { documents: result.documents });
+      }
+      if (result.reason === 'has-dependents') {
+        // Counts only: the ids are shown with --dettagli (R107).
+        throw new Stop('rejected', 'has-dependents-bill', {
+          dependents: result.recordIds.length,
+          ...(values.dettagli === true ? { recordIds: result.recordIds } : {}),
+        });
+      }
+      throw new Stop('rejected', result.reason);
+    }
+    return {
+      status: 'undone',
+      records: result.records,
+      operationIds: result.operations.map((o) => o.id),
+    };
   }
 
   if (name === 'cruscotto') {
@@ -2277,6 +2307,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'caparra-restituzione',
         'tasse',
         'bolletta',
+        'annulla-bolletta',
         'cruscotto',
       ],
       parte: ['conferma', 'abbina', 'tasse-assegna'],
@@ -2348,6 +2379,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       codici: ['bolletta'],
       conferma: ['bolletta'],
       'periodo-conguaglio': ['cruscotto'],
+      pagine: ['annulla-bolletta'],
       scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
       'ogni-anno': ['scadenza-nuova'],
       'anno-riferimento': ['scadenza-nuova', 'scadenza-ripeti'],

@@ -257,7 +257,6 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     apartmentId: 'apt-1',
     fileHash: 'H1',
     documentKind: 'bill',
-    codes: ['status'],
   },
   payable: {
     ...base,
@@ -1792,7 +1791,6 @@ describe('PendingDocumentSchema', () => {
     fileHash: 'H1',
     pages: [1, 2],
     documentKind: 'tari',
-    codes: ['status', 'apartment-codes'],
   };
   it('accepts a document to review', () => {
     expect(PendingDocumentSchema.parse(doc)).toEqual(doc);

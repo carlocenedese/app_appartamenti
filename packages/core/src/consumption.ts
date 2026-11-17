@@ -1,8 +1,13 @@
 /**
  * The comparison behind the «allarme consumi anomali» (section 21): a bill against the bill of the
  * same months a year before and against the bills of the months just before it. Only the
- * differences: no level, no colour and no default threshold (plan 15, questions 1 and 2). Exact
- * integer arithmetic on the decimal quantities, never a float.
+ * differences: no level, no colour and no default threshold. Exact integer arithmetic on the
+ * decimal quantities, never a float.
+ *
+ * PROVISIONAL and NOT CONNECTED: nothing calls `compareConsumption` yet (not `importBill`, not
+ * the command line). Its definitions (category rather than supplier, the window, the unit price)
+ * wait for the answers of user1 (R263, R265); only `yearBeforeBill` is in use, by the check
+ * `consumption-anomaly` of the proposal.
  */
 import type { Bill, Consumption } from './model';
 import { cents } from './money';
@@ -201,6 +206,7 @@ export function compareConsumption(
   if (values.some((n) => !Number.isSafeInteger(n) || n < 0)) {
     throw new RangeError('Months and thresholds must be whole numbers, not negative');
   }
+  if (bill.periodEnd < bill.periodStart) throw new RangeError('The period ends before it starts');
   const withConsumption = bill.consumption !== undefined;
   const current = sideOf([bill], withConsumption);
   const comparison: ConsumptionComparison = { current };
