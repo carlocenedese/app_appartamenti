@@ -233,7 +233,11 @@ const MESSAGES = {
     'Rifiutato: la voce non è una spesa condominiale straordinaria viva di questo appartamento.',
   'amount-too-high': 'Rifiutato: da recuperare più della spesa anticipata.',
   'bad-shares':
-    'Rifiutato: quote non valide (inquilino ripetuto o senza presenza, quota non positiva, somma diversa).',
+    'Rifiutato: quote non valide (inquilino ripetuto o senza presenza, quota zero o di segno diverso, somma diversa).',
+  'unknown-expense':
+    'Rifiutato: il movimento non è un’uscita viva classificata a questo appartamento.',
+  'missing-date':
+    'Rifiutato: senza spesa collegata servono la data della spesa (--data) o il periodo (--periodo).',
   'recovery-above-expense':
     'Avviso: i recuperi superano la spesa straordinaria, corretta dopo: controllare i recuperi.',
   'invalid-recovery': 'Rifiutato: i dati del recupero non sono validi.',
@@ -1220,7 +1224,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
   // recupero: the part of an extraordinary expense to recover from tenants chosen by user1, with
   // their shares (equal when --quote is absent); --stato set by user1 (plan 8, group B).
   if (name === 'recupero') {
-    need(values, 'id', 'appartamento', 'voce', 'importo', 'inquilini');
+    // Plan 17, R300: --voce (an extraordinary instalment) or --movimento (paid to a supplier) or
+    // neither (a negative amount: the tenant paid for the owners, with --data or --periodo).
+    need(values, 'id', 'appartamento', 'importo', 'inquilini');
     const tenants = idList(values.inquilini);
     const stato = values.stato ?? 'da-recuperare';
     if (
@@ -1238,7 +1244,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
       {
         id: values.id,
         apartmentId: values.appartamento,
-        instalmentId: values.voce,
+        ...optional('instalmentId', values.voce),
+        ...optional('transactionId', values.movimento),
+        ...(values.data === undefined ? {} : { date: day(values.data) }),
         amount,
         shares:
           quotes === undefined
@@ -2432,7 +2440,14 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       parte: ['conferma', 'abbina', 'tasse-assegna'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
       pagamento: ['annulla-pagamento'],
-      movimento: ['escludi', 'annulla-uscita', 'imu-f24', 'scadenza-pagata', 'tasse-assegna'],
+      movimento: [
+        'escludi',
+        'annulla-uscita',
+        'imu-f24',
+        'scadenza-pagata',
+        'tasse-assegna',
+        'recupero',
+      ],
       motivo: ['escludi'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: ['conferma', 'uscita-inquilino', 'presenza', 'subentro', 'caparra-restituzione'],
@@ -2500,7 +2515,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'recupero',
         'tasse-stima',
       ],
-      data: ['giroconto-manuale', 'scadenza-pagata'],
+      data: ['giroconto-manuale', 'scadenza-pagata', 'recupero'],
       entro: ['scadenze', 'cruscotto'],
       oggi: ['scadenze', 'tasse', 'cruscotto'],
       lettura: ['bolletta'],

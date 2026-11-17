@@ -3358,6 +3358,55 @@ describe('pnpm estratti condominio (piano 8)', () => {
     expect(undo.code).toBe(0);
   });
 
+  it('recupero negativo senza spesa: --data o --periodo, nessun importo in uscita (R300)', async () => {
+    const s = await setup([
+      ['apartment', apartment({ id: 'apt-a' })],
+      [
+        'tenancy',
+        {
+          id: 'tcy-1',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-a',
+          tenantId: 'ten-1',
+          from: '2026-10',
+          monthlyRent: 30000,
+          monthlyForfait: 3000,
+        },
+      ],
+    ]);
+    const rec = [
+      'recupero',
+      ...s.common,
+      '--id',
+      'rec-n',
+      '--appartamento',
+      'apt-a',
+      // A negative value goes with `=` (parseArgs).
+      '--importo=-40,00',
+      '--inquilini',
+      'ten-1',
+    ];
+    const missing = await run(rec);
+    expect([missing.code, missing.json.reason]).toEqual([1, 'missing-date']);
+    const saved = await run([...rec, '--data', '2026-12-10']);
+    expect([saved.code, saved.json.status]).toEqual([0, 'saved']);
+    expect(saved.out).not.toMatch(/4000|ten-/);
+    expect(stored(s, 'tenantRecovery', 'rec-n')).toMatchObject({
+      amount: -4000,
+      shares: [{ tenantId: 'ten-1', amount: -4000 }],
+      date: '2026-12-10',
+    });
+    const positive = await run([
+      ...rec.map((a) => (a === '--importo=-40,00' ? '--importo=40,00' : a)),
+      '--data',
+      '2026-12-10',
+    ]);
+    expect([positive.code, positive.json.reason]).toEqual([1, 'invalid-recovery']);
+    const movement = await run([...rec, '--movimento', 'tx-x']);
+    expect([movement.code, movement.json.reason]).toEqual([1, 'unknown-expense']);
+  });
+
   it('condominio-stima: copiata dall’esercizio prima, importi solo con --dettagli (R250)', async () => {
     const s = await setup([
       ['apartment', apartment({ id: 'apt-a' })],

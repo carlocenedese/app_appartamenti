@@ -1765,6 +1765,32 @@ describe('TenantRecoverySchema (plan 8, task 7)', () => {
   });
 });
 
+describe('TenantRecoverySchema (plan 17, R300)', () => {
+  const ok = (changes: Record<string, unknown>) =>
+    TenantRecoverySchema.safeParse(changed(validRecords.tenantRecovery, changes)).success;
+  const one = (amount: number) => ({ amount, shares: [{ tenantId: 'ten-1', amount }] });
+
+  it('accepts a movement instead of an instalment, a date, a negative amount without expense', () => {
+    expect(ok({ instalmentId: undefined, transactionId: 'tx-1', date: '2026-12-03' })).toBe(true);
+    expect(ok({ ...one(-4000), instalmentId: undefined, date: '2026-12-03' })).toBe(true);
+  });
+
+  it('refuses both expenses, a positive one without expense, shares of the other sign', () => {
+    expect(ok({ transactionId: 'tx-1' })).toBe(false);
+    expect(ok({ ...one(4000), instalmentId: undefined })).toBe(false);
+    expect(ok({ amount: -4000, shares: [{ tenantId: 'ten-1', amount: 4000 }] })).toBe(false);
+    expect(
+      ok({
+        amount: 0,
+        shares: [
+          { tenantId: 'ten-1', amount: 100 },
+          { tenantId: 'ten-2', amount: -100 },
+        ],
+      }),
+    ).toBe(false);
+  });
+});
+
 describe('ContactSchema (plan 14, R251)', () => {
   const ok = (changes: Record<string, unknown>) =>
     ContactSchema.safeParse(changed(validRecords.contact, changes)).success;

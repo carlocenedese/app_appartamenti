@@ -283,7 +283,7 @@ export async function undoBillImport(
     ids.has(m.itemId),
   );
   const recoveries = (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records.filter(
-    (r) => ids.has(r.instalmentId),
+    (r) => r.instalmentId !== undefined && ids.has(r.instalmentId),
   );
   const recordIds = [...matches, ...recoveries].map((r) => r.id).sort();
   if (recordIds.length > 0) return { status: 'refused', reason: 'has-dependents', recordIds };

@@ -7,7 +7,6 @@ import {
   CATEGORY_ORDER,
   allocateBillToMonths,
   allocateInstalment,
-  RECOVERY_WAITING,
   calcConguaglio,
   isPresent,
   previousToTenants,
@@ -347,21 +346,6 @@ export class ExcelInputError extends Error {
   }
 }
 
-/**
- * A period with a recovery from tenants (plan 8, R197): how it shows in the tenants' file is not
- * decided yet (question 10 of the plan 8 design), so the file is refused rather than wrong.
- */
-export class ExcelRecoveriesError extends Error {
-  readonly code = 'recoveries-not-supported';
-
-  constructor() {
-    super(
-      "Il periodo ha un recupero da un inquilino: l'Excel degli inquilini non lo mostra ancora.",
-    );
-    this.name = 'ExcelRecoveriesError';
-  }
-}
-
 const text = (value: string | undefined): XlsxCell | null =>
   value === undefined || value === '' ? null : { kind: 'text', value };
 const euro = (value: Cents): XlsxCell => ({ kind: 'euro', value });
@@ -384,12 +368,6 @@ const dayMonthYear = (day: ISODate): string =>
  */
 export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const result = calcConguaglio(input);
-  if (
-    result.tenants.some((t) => t.recupero !== undefined) ||
-    result.pending.some((p) => p.reason === RECOVERY_WAITING)
-  ) {
-    throw new ExcelRecoveriesError();
-  }
   const { apartment, period } = input;
   const names = new Map(live(input.tenants).map((t) => [t.id, t.name]));
   const missing = result.tenants.map((t) => t.tenantId).filter((id) => !names.has(id));
@@ -443,6 +421,14 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
       euro(total(items.map((item) => item[k]))),
     ),
   ]);
+  // Plan 17, R300 (plan 8 question 10): the recoveries from tenants, a section of their own after
+  // the total; in «Conguagli» they are in the column Spese.
+  const recovering = result.tenants.filter((t) => t.recupero !== undefined);
+  if (recovering.length > 0) {
+    bollette.push([], [text('Recuperi dagli inquilini')], [text('Inquilino'), text('Importo')]);
+    for (const t of recovering)
+      bollette.push([text(nameOf(t.tenantId)), euro(t.recupero ?? cents(0))]);
+  }
   // Question 6: the pending items are listed after the total, with no amount.
   interface PendingRow {
     id: string;
@@ -529,7 +515,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const columns = settlements.map((t) => {
     const versato = total(paidBy(t.tenantId).map((p) => p.amount));
     return [
-      t.spese + t.commissione,
+      t.spese + t.commissione + (t.recupero ?? 0),
       t.condominio.rata + t.condominio.conguaglioPrec,
       t.forfaitIncassato,
       t.due,

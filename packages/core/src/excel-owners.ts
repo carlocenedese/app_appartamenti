@@ -33,7 +33,10 @@ export interface OwnersItem {
   dueDate: ISODate;
   rata: Cents;
   conguaglioPrec: Cents;
-  /** Its part of the yearly owner share; an extraordinary instalment is the owner's in full (R3). */
+  /**
+   * Its part of the yearly owner share; an extraordinary instalment is the owner's in full (R3),
+   * less the live recoveries from tenants on it (plan 17, R300).
+   */
   ownerShare: Cents;
   /** `rata + conguaglioPrec` (R3). */
   expected: Cents;
@@ -90,6 +93,18 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
     (m) => m.deleted !== true && m.confirmed && m.itemType === 'instalment',
   );
   const toTenants = previousToTenants(apartment);
+  const recovered = (instalmentId: string) =>
+    total(
+      (input.recoveries ?? [])
+        .filter(
+          (r) =>
+            r.deleted !== true &&
+            r.instalmentId === instalmentId &&
+            r.status !== 'non-recuperabile' &&
+            r.amount > 0,
+        )
+        .map((r) => r.amount),
+    );
   const esercizioMonths = (instalment: Instalment): YearMonth[] => {
     if (instalment.conguaglioPrec === 0 || apartment.condominioStart === undefined) return [];
     const range = annualitaRange(instalment.esercizio, apartment.condominioStart);
@@ -126,8 +141,9 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
         rata: i.rata,
         conguaglioPrec: i.conguaglioPrec,
         // With `owner` (R193) last year's settlement is the owner's too.
+        // Plan 17, R300: an extraordinary one less what is to be recovered from tenants.
         ownerShare: straordinaria
-          ? expected
+          ? cents(expected - recovered(i.id))
           : cents(instalmentOwnerShare(i) + (toTenants ? 0 : i.conguaglioPrec)),
         expected,
         ...(real.length === 0 ? {} : { debited }),

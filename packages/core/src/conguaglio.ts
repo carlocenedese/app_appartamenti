@@ -555,7 +555,9 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   }
   const pending: PendingItem[] = [];
 
-  // Plan 8, R197: the recoveries user1 put in this period, on a live extraordinary expense.
+  // Plan 8, R197: the recoveries user1 put in this period, on a live extraordinary expense. Plan
+  // 17, R300: without a period, the period of the day of the expense; an expense paid to a
+  // supplier (a movement) or none (a negative recovery) counts too.
   const extraordinary = new Set(
     own(input.instalments)
       .filter((i) => i.kind === 'condominio' && i.straordinaria === true)
@@ -564,12 +566,16 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   const recoveries = own(input.recoveries ?? [])
     .filter(
       (r) =>
-        r.periodLabel === period.label &&
+        (r.periodLabel === undefined
+          ? r.date !== undefined && inPeriod.has(r.date.slice(0, 7) as YearMonth)
+          : r.periodLabel === period.label) &&
         r.status !== 'non-recuperabile' &&
-        extraordinary.has(r.instalmentId),
+        (r.instalmentId === undefined || extraordinary.has(r.instalmentId)),
     )
     .sort((a, b) => compareText(a.id, b.id));
   for (const recovery of recoveries) {
+    // A tenant already gone from the period of the expense: kept from the deposit (R300).
+    if (recovery.periodLabel === undefined) continue;
     const absent = recovery.shares.find((share) => !tallies.has(share.tenantId));
     if (absent !== undefined) {
       throw new SettlementInputError(
@@ -642,11 +648,16 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   const recovered = new Map<string, number>();
   const waiting = new Set<string>();
   for (const recovery of recoveries) {
-    if (matched.get(`instalment\u0000${recovery.instalmentId}`)?.hasAmount !== true) {
-      waiting.add(recovery.instalmentId);
+    const { instalmentId } = recovery;
+    if (
+      instalmentId !== undefined &&
+      matched.get(`instalment\u0000${instalmentId}`)?.hasAmount !== true
+    ) {
+      waiting.add(instalmentId);
       continue;
     }
     for (const share of recovery.shares) {
+      if (!tallies.has(share.tenantId)) continue;
       recovered.set(share.tenantId, (recovered.get(share.tenantId) ?? 0) + share.amount);
     }
   }

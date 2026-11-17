@@ -33,6 +33,12 @@ import { SEMVER_PATTERN } from './version';
 /** Whole euro cents, any sign. Parses to the branded `Cents`. */
 export const CentsSchema = z.int().transform((n): Cents => cents(n));
 
+/** Whole euro cents, any sign but zero. */
+const NonZeroCentsSchema = z
+  .int()
+  .refine((n) => n !== 0, { message: 'Not zero' })
+  .transform((n): Cents => cents(n));
+
 /** Whole euro cents, at least one. */
 const PositiveCentsSchema = z
   .int()
@@ -1282,11 +1288,25 @@ export type CondoDocument = z.infer<typeof CondoDocumentSchema>;
 export const TenantRecoverySchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,
   /** A live extraordinary condominium `Instalment` of the same apartment. */
-  instalmentId: NonEmptyString,
-  amount: PositiveCentsSchema,
-  shares: z.array(z.object({ tenantId: NonEmptyString, amount: PositiveCentsSchema })).min(1),
+  instalmentId: NonEmptyString.optional(),
+  /**
+   * Or a live outgoing movement classified to the apartment: an expense paid straight to a
+   * supplier (plan 17, R300).
+   */
+  transactionId: NonEmptyString.optional(),
+  /**
+   * Signed (plan 17, R300): negative when the tenant paid on behalf of the owners (a credit of the
+   * tenant). Never zero; every share has the sign of the amount.
+   */
+  amount: NonZeroCentsSchema,
+  shares: z.array(z.object({ tenantId: NonEmptyString, amount: NonZeroCentsSchema })).min(1),
   status: z.enum(['da-recuperare', 'recuperata', 'non-recuperabile']),
   periodLabel: NonEmptyString.optional(),
+  /**
+   * The day of the expense (plan 17, R300): its period is the default one when `periodLabel` is
+   * absent. Written from the instalment or the movement; typed by user1 without either.
+   */
+  date: ISODateSchema.optional(),
 })
   .refine((r) => unique(r.shares.map((s) => s.tenantId)), {
     message: 'A tenant appears once',
@@ -1296,9 +1316,21 @@ export const TenantRecoverySchema = RecordBaseSchema.extend({
     message: 'The shares add up to the amount',
     path: ['shares'],
   })
+  .refine((r) => r.shares.every((s) => s.amount > 0 === r.amount > 0), {
+    message: 'Every share has the sign of the amount',
+    path: ['shares'],
+  })
+  .refine((r) => r.instalmentId === undefined || r.transactionId === undefined, {
+    message: 'At most one expense: an instalment or a movement',
+    path: ['transactionId'],
+  })
+  .refine((r) => r.amount < 0 || r.instalmentId !== undefined || r.transactionId !== undefined, {
+    message: 'A positive recovery recovers an expense',
+    path: ['instalmentId'],
+  })
   .meta({
     description:
-      'amount and shares are positive cents; each tenant once; the shares add up to amount.',
+      'amount and shares are non-zero cents of one sign; each tenant once; the shares add up to amount; at most one of instalmentId and transactionId, one of them when amount is positive.',
   });
 export type TenantRecovery = z.infer<typeof TenantRecoverySchema>;
 

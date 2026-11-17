@@ -149,6 +149,44 @@ describe('buildOwnersWorkbook', () => {
     expect(rows.at(-1)?.slice(6)).toEqual([140000, 4000, 62000, 144000, 86000, 80]);
   });
 
+  it('lowers the owner share of an extraordinary one by what is recovered (plan 17, R300)', () => {
+    const input = fixtureInput();
+    input.instalments.push(
+      extra('inst-str', {
+        straordinaria: true,
+        rata: cents(50000),
+        conguaglioPrec: cents(0),
+        rateIndex: 1,
+        rateCount: 1,
+        coversFrom: '2027-02' as Instalment['coversFrom'],
+        coversTo: '2027-02' as Instalment['coversTo'],
+      }),
+    );
+    const tenantId = input.tenancies[0]?.tenantId ?? '';
+    const rec = (
+      id: string,
+      amount: number,
+      status: 'da-recuperare' | 'non-recuperabile' = 'da-recuperare',
+    ) => ({
+      id,
+      v: 1 as const,
+      rev: 1,
+      apartmentId: input.apartment.id,
+      instalmentId: 'inst-str',
+      amount: cents(amount),
+      shares: [{ tenantId, amount: cents(amount) }],
+      status,
+    });
+    const share = () => rowsOf(input).find((r) => r[2] === 'sì')?.[8];
+    expect(share()).toBe(50000);
+    input.recoveries = [
+      rec('r1', 20000),
+      rec('r2', 5000, 'non-recuperabile'),
+      { ...rec('r3', 1000), deleted: true },
+    ];
+    expect(share()).toBe(30000);
+  });
+
   it('says on top that it is provisional, with the instalments not paid (5b, D5)', () => {
     expect(top(fixtureInput())).toEqual([
       { kind: 'text', value: 'Conguaglio provvisorio: voci in attesa 0' },
