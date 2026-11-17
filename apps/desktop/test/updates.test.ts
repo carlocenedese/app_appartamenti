@@ -1,0 +1,161 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MachineSettings, SettingsBackend } from '../src/machine-settings';
+import { checkForUpdate, renderUpdatesPanel } from '../src/updates';
+import type { UpdateBackend } from '../src/updates';
+
+let saved: string | undefined;
+const settings: SettingsBackend = {
+  readText: () =>
+    saved === undefined ? Promise.reject(new Error('missing')) : Promise.resolve(saved),
+  writeText: (text) => {
+    saved = text;
+    return Promise.resolve();
+  },
+};
+const stored = (): MachineSettings => (saved === undefined ? {} : JSON.parse(saved));
+const save = (s: MachineSettings) => {
+  saved = JSON.stringify(s);
+};
+
+const install = vi.fn(() => Promise.resolve());
+const restart = vi.fn(() => Promise.resolve());
+/** A fake updater that offers `offer` (or nothing, or fails). */
+function fakeUpdater(offer: { version: string; currentVersion: string } | null | Error) {
+  const updater: UpdateBackend = {
+    check: vi.fn(() =>
+      offer instanceof Error
+        ? Promise.reject(offer)
+        : Promise.resolve(offer === null ? null : { ...offer, install }),
+    ),
+    restart,
+  };
+  return updater;
+}
+
+let root: HTMLElement;
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const status = () => root.querySelector('.updates-status')?.textContent ?? '';
+const buttonNamed = (label: string) =>
+  [...root.querySelectorAll('button')].find((b) => b.textContent === label);
+const click = (label: string) => {
+  const b = buttonNamed(label);
+  if (b === undefined) throw new Error(`no button ${label}`);
+  b.click();
+};
+const toggle = () => {
+  const t = root.querySelector<HTMLInputElement>('input[type=checkbox]');
+  if (t === null) throw new Error('no switch');
+  return t;
+};
+
+beforeEach(() => {
+  saved = undefined;
+  install.mockReset().mockResolvedValue(undefined);
+  restart.mockReset().mockResolvedValue(undefined);
+  root = document.createElement('section');
+});
+
+describe('checkForUpdate', () => {
+  it('makes no call when the switch is off', async () => {
+    save({ checkUpdates: false });
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    expect(await checkForUpdate(settings, updater)).toEqual({ kind: 'off' });
+    expect(updater.check).not.toHaveBeenCalled();
+  });
+
+  it('checks when the setting is missing (on by default, open question)', async () => {
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    expect((await checkForUpdate(settings, updater)).kind).toBe('available');
+  });
+
+  it('proposes nothing for the version in use', async () => {
+    expect(await checkForUpdate(settings, fakeUpdater(null))).toEqual({ kind: 'none' });
+    const same = fakeUpdater({ version: '0.1.0', currentVersion: '0.1.0' });
+    expect(await checkForUpdate(settings, same)).toEqual({ kind: 'none' });
+  });
+
+  it('turns a network error into a result, not an exception', async () => {
+    const updater = fakeUpdater(new Error('dns error: 192.0.2.1'));
+    expect(await checkForUpdate(settings, updater)).toEqual({ kind: 'error' });
+  });
+});
+
+describe('renderUpdatesPanel', () => {
+  it('makes no network call at start when the switch is off, and «Controlla ora» is disabled', async () => {
+    save({ checkUpdates: false });
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    await renderUpdatesPanel(root, { settings, updater, checkAtStart: true });
+    expect(updater.check).not.toHaveBeenCalled();
+    expect(toggle().checked).toBe(false);
+    expect(buttonNamed('Controlla ora')?.disabled).toBe(true);
+    expect(status()).toMatch(/disattivato/);
+  });
+
+  it('checks at start, shows the new version and installs only after the click', async () => {
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    await renderUpdatesPanel(root, { settings, updater, checkAtStart: true });
+    expect(updater.check).toHaveBeenCalledTimes(1);
+    expect(status()).toBe('È disponibile la versione 0.2.0 (in uso: 0.1.0).');
+    expect(install).not.toHaveBeenCalled();
+    expect(restart).not.toHaveBeenCalled();
+
+    click('Installa e riavvia');
+    await flush();
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not check at start unless asked; «Controlla ora» checks', async () => {
+    const updater = fakeUpdater(null);
+    await renderUpdatesPanel(root, { settings, updater });
+    expect(updater.check).not.toHaveBeenCalled();
+    expect(buttonNamed('Installa e riavvia')).toBeUndefined();
+    click('Controlla ora');
+    await flush();
+    expect(updater.check).toHaveBeenCalledTimes(1);
+    expect(status()).toBe('Stai usando la versione più recente.');
+    expect(buttonNamed('Installa e riavvia')).toBeUndefined();
+  });
+
+  it('shows a clear message on a network error, without the error text', async () => {
+    await renderUpdatesPanel(root, {
+      settings,
+      updater: fakeUpdater(new Error('dns error: 192.0.2.1')),
+      checkAtStart: true,
+    });
+    expect(status()).toMatch(/^Non è stato possibile controllare gli aggiornamenti/);
+    expect(status()).not.toMatch(/dns/);
+  });
+
+  it('keeps the app as it was when the installation fails', async () => {
+    install.mockRejectedValue(new Error('signature mismatch'));
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    await renderUpdatesPanel(root, { settings, updater, checkAtStart: true });
+    click('Installa e riavvia');
+    await flush();
+    expect(restart).not.toHaveBeenCalled();
+    expect(status()).toMatch(/^Non è stato possibile installare l'aggiornamento/);
+    expect(buttonNamed('Installa e riavvia')?.disabled).toBe(false);
+  });
+
+  it('saves the switch without losing the other machine settings', async () => {
+    save({ folder: '/Dropbox/Gruppo', userId: 'u-1' });
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    await renderUpdatesPanel(root, { settings, updater, checkAtStart: true });
+    expect(toggle().checked).toBe(true);
+
+    toggle().checked = false;
+    toggle().dispatchEvent(new Event('change'));
+    await flush();
+    expect(stored()).toEqual({ folder: '/Dropbox/Gruppo', userId: 'u-1', checkUpdates: false });
+    expect(buttonNamed('Installa e riavvia')).toBeUndefined();
+    expect(buttonNamed('Controlla ora')?.disabled).toBe(true);
+
+    toggle().checked = true;
+    toggle().dispatchEvent(new Event('change'));
+    await flush();
+    expect(stored().checkUpdates).toBe(true);
+    expect(buttonNamed('Controlla ora')?.disabled).toBe(false);
+    expect(updater.check).toHaveBeenCalledTimes(1);
+  });
+});
