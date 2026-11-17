@@ -13,6 +13,8 @@ export interface AvailableUpdate {
   currentVersion: string;
   /** Downloads, verifies the signature and installs. */
   install(): Promise<void>;
+  /** Frees the plugin's resource for an update that will not be installed. */
+  close(): Promise<void>;
 }
 
 /** The updater, injected so the panel is tested without Tauri (real one: updates-tauri.ts). */
@@ -28,21 +30,41 @@ export type CheckResult =
   | { kind: 'error' }
   | { kind: 'available'; update: AvailableUpdate };
 
-const isOn = async (settings: SettingsBackend) =>
-  (await loadMachineSettings(settings)).checkUpdates !== false;
+/**
+ * Whether the switch is on, read raw from the settings file: on only when the file is a JSON
+ * object whose `checkUpdates` is missing or true. A missing, unreadable or corrupt file means off
+ * (no network): the first start writes the file before the next launch checks (R286).
+ */
+export async function updatesOn(settings: SettingsBackend): Promise<boolean> {
+  try {
+    const parsed: unknown = JSON.parse(await settings.readText());
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return false;
+    const value = (parsed as { checkUpdates?: unknown }).checkUpdates;
+    return value === undefined || value === true;
+  } catch {
+    return false;
+  }
+}
+
+const discard = (update: AvailableUpdate | undefined) => {
+  void update?.close().catch(() => undefined);
+};
 
 /** Asks for a newer version, unless the switch is off; never throws. */
 export async function checkForUpdate(
   settings: SettingsBackend,
   updater: UpdateBackend,
 ): Promise<CheckResult> {
-  if (!(await isOn(settings))) return { kind: 'off' };
+  if (!(await updatesOn(settings))) return { kind: 'off' };
   try {
     const update = await updater.check();
+    if (update === null) return { kind: 'none' };
     // The plugin offers only newer versions; the same one again is ignored all the same.
-    return update === null || update.version === update.currentVersion
-      ? { kind: 'none' }
-      : { kind: 'available', update };
+    if (update.version === update.currentVersion) {
+      discard(update);
+      return { kind: 'none' };
+    }
+    return { kind: 'available', update };
   } catch {
     // The error text is neither shown nor logged: it may hold paths or addresses.
     return { kind: 'error' };
@@ -88,42 +110,61 @@ export async function renderUpdatesPanel(
   const checkNow = button('Controlla ora', () => void runCheck());
   root.replaceChildren(el('h2', '', 'Aggiornamenti'), label, actions, status);
 
+  /** The update on offer, closed when it is replaced or the switch goes off. */
+  let offered: AvailableUpdate | undefined;
+  let installButton: HTMLButtonElement | undefined;
   const show = (text: string, ...buttons: HTMLButtonElement[]) => {
     status.textContent = text;
     actions.replaceChildren(checkNow, ...buttons);
   };
+  const dropOffer = () => {
+    discard(offered);
+    offered = installButton = undefined;
+  };
+  /** Nothing can be clicked while a check, an installation or a save runs. */
+  const busy = (on: boolean) => {
+    toggle.disabled = on;
+    checkNow.disabled = on || !toggle.checked;
+    if (installButton !== undefined) installButton.disabled = on;
+  };
 
   async function runCheck(): Promise<void> {
-    checkNow.disabled = true;
+    dropOffer();
+    busy(true);
     show(TEXT.checking);
     const result = await checkForUpdate(settings, updater);
-    checkNow.disabled = result.kind === 'off';
+    busy(false);
+    // The switch is read again after the wait: an offer never outlives it.
+    if (result.kind === 'off' || !toggle.checked) {
+      if (result.kind === 'available') discard(result.update);
+      show(TEXT.off);
+      return;
+    }
     if (result.kind === 'available') {
-      const { update } = result;
-      const installButton = button(
-        'Installa e riavvia',
-        () => void runInstall(update, installButton),
-        true,
-      );
+      const update = result.update;
+      offered = update;
+      const install = button('Installa e riavvia', () => void runInstall(update), true);
+      installButton = install;
       show(
         `È disponibile la versione ${update.version} (in uso: ${update.currentVersion}).`,
-        installButton,
+        install,
       );
     } else {
-      show({ off: TEXT.off, none: TEXT.none, error: TEXT.checkError }[result.kind]);
+      show({ none: TEXT.none, error: TEXT.checkError }[result.kind]);
     }
   }
 
-  async function runInstall(update: AvailableUpdate, installButton: HTMLButtonElement) {
-    installButton.disabled = checkNow.disabled = true;
+  async function runInstall(update: AvailableUpdate) {
+    busy(true);
     status.textContent = TEXT.installing;
     try {
       await update.install();
     } catch {
-      installButton.disabled = checkNow.disabled = false;
+      busy(false);
       status.textContent = TEXT.installError;
       return;
     }
+    offered = undefined;
     // Windows: the installer has already closed the app. macOS: start the new version.
     try {
       await updater.restart();
@@ -135,6 +176,7 @@ export async function renderUpdatesPanel(
   toggle.addEventListener('change', () => {
     void (async () => {
       const on = toggle.checked;
+      busy(true);
       try {
         // Read again and merge: the first start writes the same file.
         await saveMachineSettings(settings, {
@@ -143,17 +185,20 @@ export async function renderUpdatesPanel(
         });
       } catch {
         toggle.checked = !on;
+        busy(false);
         status.textContent = TEXT.saveError;
         return;
       }
-      checkNow.disabled = !on;
-      show(on ? '' : TEXT.off);
+      if (!on) dropOffer();
+      busy(false);
+      if (!on) show(TEXT.off);
+      else if (offered === undefined) show('');
     })();
   });
 
-  const on = await isOn(settings);
+  const on = await updatesOn(settings);
   toggle.checked = on;
-  checkNow.disabled = !on;
+  busy(false);
   show(on ? '' : TEXT.off);
   if (on && input.checkAtStart === true) await runCheck();
 }

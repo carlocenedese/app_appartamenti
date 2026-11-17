@@ -62,28 +62,32 @@ Se la cartella contiene altri file `.key`, il comando si ferma: deve esserci una
 
 ### 3. Il plugin di aggiornamento nell'app (piano 16b, lo fanno gli agenti)
 
-Il ramo `feat/piano-16b-aggiornamenti` aggiunge all'app il controllo degli aggiornamenti (pannello «Aggiornamenti», interruttore, «Installa e riavvia»). Su questo Mac non c'è Rust, quindi `Cargo.lock` lo aggiorna GitHub. Dopo il push del ramo (lo fa user1, o un agente che user1 autorizza):
+Il ramo `feat/piano-16b-aggiornamenti` aggiunge all'app il controllo degli aggiornamenti (pannello «Aggiornamenti», interruttore, «Installa e riavvia»). `Cargo.lock` con i due plugin è **già committato** (dall'artifact della CI, 17 novembre 2026). Resta un solo passo prima dell'unione:
 
-1. Il workflow **Cargo.lock** parte da solo (ogni push che cambia `Cargo.toml`). Se è **rosso** con «Cargo.lock non è aggiornato», è normale la prima volta: ha preparato il file giusto. Se è rosso su «Check Rust dependency licences», c'è una licenza nuova: decide user1, non si committa nulla.
-2. Scaricare il file e committarlo (dalla cartella del repository, sul ramo):
+- Prova della build del ramo: `gh workflow run build.yml --ref feat/piano-16b-aggiornamenti`, poi `gh run watch`. Deve finire in verde (Windows e macOS). Solo allora si unisce in `main`.
+
+**Ogni volta che cambia `Cargo.toml`** (anche in futuro): su questo Mac non c'è Rust, quindi `Cargo.lock` lo prepara GitHub.
+
+1. Il workflow **Cargo.lock** parte da solo a ogni push di un ramo che cambia `Cargo.toml` o `Cargo.lock`. Se è **rosso** con «Cargo.lock non è aggiornato», ha preparato il file giusto. Se è rosso su «Check Rust dependency licences» o su «Check for new crates with licences outside the list», c'è un crate con una licenza fuori elenco (anche MPL-2.0, se è nuovo): decide user1, non si committa nulla e `deny.toml` non si tocca.
+2. Scaricare il file **dell'esecuzione di quel commit** e committarlo (dalla cartella del repository, sul ramo):
 
    ```sh
-   run=$(gh run list --workflow cargo-lock.yml --branch feat/piano-16b-aggiornamenti --limit 1 --json databaseId -q '.[0].databaseId')
+   run=$(gh run list --workflow cargo-lock.yml --commit "$(git rev-parse HEAD)" --status completed --limit 1 --json databaseId -q '.[0].databaseId')
    tmp=$(mktemp -d)
    gh run download "$run" -n cargo-lock -D "$tmp"
    cp "$tmp/Cargo.lock" apps/desktop/src-tauri/Cargo.lock
    git diff --stat apps/desktop/src-tauri/Cargo.lock
-   git commit -m "chore(desktop): Cargo.lock con i plugin di aggiornamento" apps/desktop/src-tauri/Cargo.lock
+   git commit -m "chore(desktop): Cargo.lock aggiornato" apps/desktop/src-tauri/Cargo.lock
    git push
    ```
 
-   Il diff deve solo **aggiungere** pacchetti (i plugin e le loro dipendenze), non cambiare le versioni di `tauri` o degli altri plugin. Dopo il push il workflow Cargo.lock torna verde.
+   Il diff deve solo **aggiungere** i pacchetti nuovi, non cambiare le versioni di `tauri` o degli altri plugin. Dopo il push il workflow torna verde.
 
-3. Prova della build del ramo: `gh workflow run build.yml --ref feat/piano-16b-aggiornamenti`, poi `gh run watch`. Deve finire in verde (Windows e macOS). Solo allora si unisce in `main`.
+3. Poi la prova della build del ramo, come sopra.
 
 Finché questo non è fatto, un'etichetta di versione **si ferma da sola** prima della build con un messaggio chiaro: è voluto, perché un installer senza aggiornamenti costringerebbe a reinstallare a mano sul computer di user2.
 
-Nell'app: il pannello «Aggiornamenti» controlla una volta all'avvio, se l'interruttore è acceso (lo è di default, domanda aperta), e propone la versione nuova; si installa solo con «Installa e riavvia». L'interruttore spento vuol dire nessuna connessione a internet. Vale per ogni computer separatamente.
+Nell'app: il pannello «Aggiornamenti» controlla una volta all'avvio, se l'interruttore è acceso (lo è di default, domanda aperta; con il file delle impostazioni assente o rovinato è spento, quindi al primissimo avvio non controlla), e propone la versione nuova; si installa solo con «Installa e riavvia». L'interruttore spento vuol dire nessuna connessione a internet. Vale per ogni computer separatamente.
 
 ## A ogni versione
 
@@ -114,7 +118,7 @@ Il link da mandare è quello della pagina Releases del repository, `https://gith
 
 ## Se qualcosa non va
 
-- **La build si ferma su «Check that the version can be published»**: il messaggio dice cosa manca (versione diversa in uno dei cinque file, chiave pubblica segnaposto, `requireSignedVersion` assente, plugin assente in `Cargo.toml` o `lib.rs`, permessi `updater:default` o `process:allow-restart` assenti in `capabilities/default.json`).
+- **La build si ferma su «Check that the version can be published»**: il messaggio dice cosa manca (versione diversa in uno dei cinque file, chiave pubblica segnaposto, `requireSignedVersion` assente, plugin assente in `Cargo.toml` o `lib.rs`, permessi `updater:allow-check`, `updater:allow-download-and-install` o `process:allow-restart` assenti, plugin assenti in `Cargo.lock` o a un'altra versione in `capabilities/default.json`).
 - **La build si ferma su «Build the installers» con un errore su `Cargo.lock` / `--locked`**: il lock non è aggiornato; punto 3.
 - **Si ferma su «Sign the update files» con «Manca il secret»**: il punto 2 non è stato fatto, o la chiave è stata messa nei secrets del repository invece che nell'environment `release`.
 - **Si ferma su «Write the update manifest»**: una firma non corrisponde alla chiave pubblica di `tauri.conf.json` (chiave privata e pubblica di coppie diverse): non si pubblica nulla.

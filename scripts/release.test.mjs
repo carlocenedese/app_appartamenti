@@ -29,7 +29,13 @@ function fakeRoot({
   plugin = true,
   registered = true,
   requireSignedVersion = true,
-  permissions = ['core:default', 'updater:default', 'process:allow-restart'],
+  permissions = [
+    'core:default',
+    'updater:allow-check',
+    'updater:allow-download-and-install',
+    'process:allow-restart',
+  ],
+  locked = { updater: '2.14.0', process: '2.4.0' },
 } = {}) {
   const tauri = join(dir, 'apps', 'desktop', 'src-tauri');
   mkdirSync(join(tauri, 'src'), { recursive: true });
@@ -44,7 +50,10 @@ function fakeRoot({
   );
   writeFileSync(
     join(tauri, 'Cargo.lock'),
-    `[[package]]\nname = "app-bollette"\nversion = "${version}"\n\n[[package]]\nname = "tauri"\nversion = "2.12.5"\n`,
+    `[[package]]\nname = "app-bollette"\nversion = "${version}"\n\n[[package]]\nname = "tauri"\nversion = "2.12.5"\n` +
+      Object.entries(locked)
+        .map(([name, v]) => `\n[[package]]\nname = "tauri-plugin-${name}"\nversion = "${v}"\n`)
+        .join(''),
   );
   writeFileSync(
     join(tauri, 'src', 'lib.rs'),
@@ -108,10 +117,26 @@ describe('preflightProblems', () => {
       fakeRoot({ permissions: ['core:default', { identifier: 'fs:allow-read-file' }] }),
       'v1.2.3',
     );
-    expect(problems).toEqual([expect.stringMatching(/updater:default, process:allow-restart/)]);
-    const restartOnly = fakeRoot({ permissions: [{ identifier: 'updater:default' }] });
+    expect(problems).toEqual([
+      expect.stringMatching(
+        /updater:allow-check, updater:allow-download-and-install, process:allow-restart/,
+      ),
+    ]);
+    const restartOnly = fakeRoot({
+      permissions: ['updater:allow-check', { identifier: 'updater:allow-download-and-install' }],
+    });
     expect(preflightProblems(restartOnly, 'v1.2.3')).toEqual([
       expect.stringMatching(/^Mancano i permessi process:allow-restart /),
+    ]);
+  });
+
+  it('wants both plugins in Cargo.lock at the version of Cargo.toml', () => {
+    expect(preflightProblems(fakeRoot({ locked: { process: '2.4.0' } }), 'v1.2.3')).toEqual([
+      expect.stringMatching(/^tauri-plugin-updater manca in Cargo\.lock/),
+    ]);
+    const old = fakeRoot({ locked: { updater: '2.13.3', process: '2.3.1' } });
+    expect(preflightProblems(old, 'v1.2.3')).toEqual([
+      expect.stringMatching(/^tauri-plugin-updater e tauri-plugin-process manca in Cargo\.lock/),
     ]);
   });
 

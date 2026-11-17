@@ -5,7 +5,8 @@
 //     Cargo.toml, Cargo.lock, package.json and apps/desktop/package.json; the updater public key
 //     is not the placeholder and requireSignedVersion is true; tauri-plugin-updater and
 //     tauri-plugin-process are in Cargo.toml and registered in lib.rs, and capabilities/default.json
-//     grants updater:default and process:allow-restart. An installer without all of them could never update
+//     grants updater:allow-check, updater:allow-download-and-install and process:allow-restart;
+//     both plugins are in Cargo.lock at the version of Cargo.toml. An installer without all of them could never update
 //     itself, and user2 would need a manual reinstall. Prints every problem. (The signing key is
 //     a secret of the `release` environment, invisible here: the sign job checks it.)
 //
@@ -91,13 +92,30 @@ export function preflightProblems(root, tag) {
       `${plugins.join(' e ')} non è in Cargo.toml o non è registrato in lib.rs: l'app non saprebbe aggiornarsi.`,
     );
   }
+  // build.yml builds with --locked: a plugin missing from Cargo.lock, or at another version,
+  // stops the build halfway (cargo-lock.yml prepares the lock, docs/distribuzione.md, point 3).
+  const lock = readFileSync(join(root, TAURI_DIR, 'Cargo.lock'), 'utf8');
+  const stale = ['tauri-plugin-updater', 'tauri-plugin-process'].filter((crate) => {
+    const wanted = new RegExp(`^${crate}\\s*=\\s*"=?([^"]+)"`, 'm').exec(cargo)?.[1];
+    const locked = new RegExp(`^name = "${crate}"\\nversion = "([^"]*)"`, 'm').exec(lock)?.[1];
+    return wanted !== undefined && locked !== wanted;
+  });
+  if (stale.length > 0) {
+    problems.push(
+      `${stale.join(' e ')} manca in Cargo.lock o ha un'altra versione che in Cargo.toml: vedi docs/distribuzione.md, punto 3.`,
+    );
+  }
   const capabilities = join(root, TAURI_DIR, 'capabilities', 'default.json');
   const granted = existsSync(capabilities)
     ? (readJson(capabilities).permissions ?? []).map((p) =>
         typeof p === 'string' ? p : p.identifier,
       )
     : [];
-  const missing = ['updater:default', 'process:allow-restart'].filter((p) => !granted.includes(p));
+  const missing = [
+    'updater:allow-check',
+    'updater:allow-download-and-install',
+    'process:allow-restart',
+  ].filter((p) => !granted.includes(p));
   if (missing.length > 0) {
     problems.push(
       `Mancano i permessi ${missing.join(', ')} in capabilities/default.json: l'app non potrebbe controllare o installare gli aggiornamenti.`,

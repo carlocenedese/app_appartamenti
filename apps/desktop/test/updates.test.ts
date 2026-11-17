@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MachineSettings, SettingsBackend } from '../src/machine-settings';
-import { checkForUpdate, renderUpdatesPanel } from '../src/updates';
+import { checkForUpdate, renderUpdatesPanel, updatesOn } from '../src/updates';
 import type { UpdateBackend } from '../src/updates';
 
 let saved: string | undefined;
@@ -19,13 +19,14 @@ const save = (s: MachineSettings) => {
 
 const install = vi.fn(() => Promise.resolve());
 const restart = vi.fn(() => Promise.resolve());
+const close = vi.fn(() => Promise.resolve());
 /** A fake updater that offers `offer` (or nothing, or fails). */
 function fakeUpdater(offer: { version: string; currentVersion: string } | null | Error) {
   const updater: UpdateBackend = {
     check: vi.fn(() =>
       offer instanceof Error
         ? Promise.reject(offer)
-        : Promise.resolve(offer === null ? null : { ...offer, install }),
+        : Promise.resolve(offer === null ? null : { ...offer, install, close }),
     ),
     restart,
   };
@@ -49,7 +50,9 @@ const toggle = () => {
 };
 
 beforeEach(() => {
-  saved = undefined;
+  // The first start has written the settings file, without the switch.
+  saved = '{}';
+  close.mockReset().mockResolvedValue(undefined);
   install.mockReset().mockResolvedValue(undefined);
   restart.mockReset().mockResolvedValue(undefined);
   root = document.createElement('section');
@@ -63,15 +66,33 @@ describe('checkForUpdate', () => {
     expect(updater.check).not.toHaveBeenCalled();
   });
 
-  it('checks when the setting is missing (on by default, open question)', async () => {
+  it('checks when the switch is missing from the file (on by default, open question)', async () => {
     const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
     expect((await checkForUpdate(settings, updater)).kind).toBe('available');
   });
 
-  it('proposes nothing for the version in use', async () => {
+  it('is off, with no call, for a missing, corrupt or odd settings file', async () => {
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    for (const text of [undefined, '{"checkUpdates": ', '[]', 'null', '{"checkUpdates": "si"}']) {
+      saved = text;
+      expect(await updatesOn(settings)).toBe(false);
+      expect(await checkForUpdate(settings, updater)).toEqual({ kind: 'off' });
+    }
+    expect(updater.check).not.toHaveBeenCalled();
+  });
+
+  it('reads the switch raw, whatever the other settings look like', async () => {
+    saved = '{"folder": 7, "checkUpdates": true}';
+    expect(await updatesOn(settings)).toBe(true);
+    saved = '{"folder": 7, "checkUpdates": false}';
+    expect(await updatesOn(settings)).toBe(false);
+  });
+
+  it('proposes nothing for the version in use, and frees what the plugin returned', async () => {
     expect(await checkForUpdate(settings, fakeUpdater(null))).toEqual({ kind: 'none' });
     const same = fakeUpdater({ version: '0.1.0', currentVersion: '0.1.0' });
     expect(await checkForUpdate(settings, same)).toEqual({ kind: 'none' });
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it('turns a network error into a result, not an exception', async () => {
@@ -148,6 +169,63 @@ describe('renderUpdatesPanel', () => {
     expect(status()).toBe("Aggiornamento installato: chiudi e riapri l'app.");
   });
 
+  it('locks the switch and the buttons while a check runs', async () => {
+    let answer: (value: null) => void = () => undefined;
+    const updater: UpdateBackend = {
+      check: () => new Promise((resolve) => (answer = resolve)),
+      restart,
+    };
+    await renderUpdatesPanel(root, { settings, updater });
+    click('Controlla ora');
+    await flush();
+    expect(toggle().disabled).toBe(true);
+    expect(buttonNamed('Controlla ora')?.disabled).toBe(true);
+    answer(null);
+    await flush();
+    expect(toggle().disabled).toBe(false);
+    expect(buttonNamed('Controlla ora')?.disabled).toBe(false);
+  });
+
+  it('locks the switch and both buttons while installing', async () => {
+    let done: () => void = () => undefined;
+    install.mockImplementation(() => new Promise<void>((resolve) => (done = resolve)));
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    await renderUpdatesPanel(root, { settings, updater, checkAtStart: true });
+    click('Installa e riavvia');
+    await flush();
+    expect(toggle().disabled).toBe(true);
+    expect(buttonNamed('Controlla ora')?.disabled).toBe(true);
+    expect(buttonNamed('Installa e riavvia')?.disabled).toBe(true);
+    done();
+    await flush();
+    expect(restart).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it('frees an offered update when a new check replaces it', async () => {
+    const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
+    await renderUpdatesPanel(root, { settings, updater, checkAtStart: true });
+    click('Controlla ora');
+    await flush();
+    expect(updater.check).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(buttonNamed('Installa e riavvia')).toBeDefined();
+  });
+
+  it('keeps the switch as it was when saving fails', async () => {
+    const failing: SettingsBackend = {
+      readText: settings.readText,
+      writeText: () => Promise.reject(new Error('disk')),
+    };
+    await renderUpdatesPanel(root, { settings: failing, updater: fakeUpdater(null) });
+    toggle().checked = false;
+    toggle().dispatchEvent(new Event('change'));
+    await flush();
+    expect(toggle().checked).toBe(true);
+    expect(toggle().disabled).toBe(false);
+    expect(status()).toBe('Non è stato possibile salvare.');
+  });
+
   it('saves the switch without losing the other machine settings', async () => {
     save({ folder: '/Dropbox/Gruppo', userId: 'u-1' });
     const updater = fakeUpdater({ version: '0.2.0', currentVersion: '0.1.0' });
@@ -159,6 +237,7 @@ describe('renderUpdatesPanel', () => {
     await flush();
     expect(stored()).toEqual({ folder: '/Dropbox/Gruppo', userId: 'u-1', checkUpdates: false });
     expect(buttonNamed('Installa e riavvia')).toBeUndefined();
+    expect(close).toHaveBeenCalledTimes(1);
     expect(buttonNamed('Controlla ora')?.disabled).toBe(true);
 
     toggle().checked = true;

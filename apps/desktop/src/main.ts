@@ -20,20 +20,21 @@ if (typeof document !== 'undefined') {
 
 // Updates panel, inside the app only (plan 16b): one check at start if the switch is on.
 if (typeof document !== 'undefined' && isTauri()) {
-  void Promise.all([
-    import('./updates'),
-    import('./updates-tauri'),
-    import('./machine-settings'),
-  ]).then(([updates, tauri, settings]) => {
-    const section = document.createElement('section');
-    section.className = 'updates';
-    document.querySelector('main')?.append(section);
-    return updates.renderUpdatesPanel(section, {
-      settings: settings.tauriSettingsBackend,
-      updater: tauri.tauriUpdateBackend,
-      checkAtStart: true,
+  void Promise.all([import('./updates'), import('./updates-tauri'), import('./machine-settings')])
+    .then(([updates, tauri, settings]) => {
+      const section = document.createElement('section');
+      section.className = 'updates';
+      document.querySelector('main')?.append(section);
+      return updates.renderUpdatesPanel(section, {
+        settings: settings.tauriSettingsBackend,
+        updater: tauri.tauriUpdateBackend,
+        checkAtStart: true,
+      });
+    })
+    .catch(() => {
+      // Only a fixed message: the error may hold paths.
+      console.error('Pannello degli aggiornamenti non disponibile.');
     });
-  });
 }
 
 // Local demo of the two supply screens (invented data), reached only with #utenze-demo in development builds.

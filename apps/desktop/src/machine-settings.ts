@@ -11,7 +11,10 @@ const MachineSettingsSchema = z.object({
   folder: z.string().min(1).optional(),
   userId: z.string().min(1).optional(),
   language: z.string().min(1).optional(),
-  /** The update check, the app's only network call; missing means on (open question R285). */
+  /**
+   * The update check, the app's only network call: missing means on (R285); updates.ts reads it
+   * raw, and a missing or corrupt file means off (R286).
+   */
   checkUpdates: z.boolean().optional(),
   /** Ids fixed by «Crea gruppo» before writing, reused by a retry on the same folder. */
   pendingWorkspace: z
