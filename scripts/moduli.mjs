@@ -68,6 +68,8 @@ const MESSAGES = {
     'Rifiutato: nel modello c’è un «{{» fuori dal testo che l’app riempie (commenti, proprietà, grafici o codici di campo).',
   'field-from-app':
     'Rifiutato: questi campi vengono dalla scheda e non si danno nel file dei valori.',
+  'advance-without-note':
+    'Rifiutato: un acconto spese diverso da quello del contratto va dato con «nota_acconto».',
   'missing-fields': 'Rifiutato: mancano i valori di questi campi: aggiungerli al file dei valori.',
   'bad-value': 'Rifiutato: il valore di questi campi ha caratteri non ammessi.',
   failed: 'Operazione non riuscita: ripetere il comando.',
@@ -184,7 +186,11 @@ export async function main(
     if (result.status !== 'ok') {
       throw rejected(
         result.reason,
-        result.reason === 'unknown-values' ? { count: result.count } : { fields: result.fields },
+        result.reason === 'unknown-values'
+          ? { count: result.count }
+          : 'fields' in result
+            ? { fields: result.fields }
+            : {},
       );
     }
 

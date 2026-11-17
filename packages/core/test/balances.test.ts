@@ -27,6 +27,7 @@ import type {
   MatchItemRef,
   MovementClass,
   RecordKind,
+  TaxPayment,
   Transfer,
 } from '../src/index';
 import { clock, ids, snapshot } from './helpers/income-year';
@@ -149,6 +150,7 @@ const example = {
   classes: [cls('t-forn', { kind: 'altro', apartmentId: 'berchet' })],
   transfers: [transfer('tr-1')],
   imuYears: [] as ImuYear[],
+  taxPayments: [] as TaxPayment[],
 };
 type Input = Parameters<typeof accountBalances>[0];
 const withExtra = (extra: Partial<{ [K in keyof Input]: Input[K] }>): Input => ({
@@ -202,6 +204,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
       ],
       toSplit: [],
       unverified: [],
+      mixedF24: [],
     });
   });
 
@@ -588,6 +591,31 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
     // Its rate gone (the expected undone): no expected known.
     expect(run(100000, 1, []).toSplit).toEqual(split('imu-importo-mancante'));
     expect(run(100000, 1, []).pairs).toEqual(accountBalances(example).pairs);
+  });
+
+  it('a mixed F24 shares only its IMU part; the rest stays out, listed (R307)', () => {
+    const mixed = accountBalances(
+      withExtra({
+        transactions: [tx('t-imu', 'acc-berchet', '2027-06-14', -110500)],
+        classes: [cls('t-imu', imu(1))],
+        imuYears: [imuYear('berchet', 60000), imuYear('lovarini', 40000)],
+        taxPayments: [
+          {
+            id: 'taxp-t-imu',
+            v: 1,
+            rev: 1,
+            transactionId: 't-imu',
+            parts: [{ voce: 'cedolare', year: '2027', amount: cents(10000) }],
+          },
+        ],
+      }),
+    );
+    expect(mixed.mixedF24).toEqual([
+      { transactionId: 't-imu', apartmentId: 'berchet', amount: 10000 },
+    ]);
+    expect(mixed.pairs[0]?.items).toContainEqual(
+      expect.objectContaining({ kind: 'imu', forApartmentId: 'lovarini', amount: 40200 }),
+    );
   });
 
   it('a paid rate is split: the share of the other apartment is an imu item (task 4)', () => {

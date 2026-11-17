@@ -19,9 +19,11 @@ import {
   MovementClassSchema,
   PayableSchema,
   RentYearSchema,
+  TaxConfirmationSchema,
   TaxEstimateSchema,
   TaxPaymentSchema,
   TaxVoiceSchema,
+  TenantRecoverySchema,
   YearSchema,
 } from './model';
 import type { Apartment, Contract, TaxPayment, TaxVoice } from './model';
@@ -217,7 +219,6 @@ export type AssignTaxPaymentResult =
         | 'bad-parts'
         | 'unknown-transaction'
         | 'not-tax-debit'
-        | 'imu-assigned'
         | 'sum-mismatch';
     };
 
@@ -227,8 +228,9 @@ export type AssignTaxPaymentResult =
  * (the schema refuses them: none, a voce other than cedolare or registro, a year not `AAAA`, an
  * amount not positive, a voce and year twice); `unknown-transaction` (absent or deleted);
  * `not-tax-debit` (not booked, not a debit, or its live class is not `tasse` for an apartment);
- * `imu-assigned` (the class pays an IMU rate, R134: question 8); `sum-mismatch` (the parts do not
- * add up to the debit, R2). The same parts are `unchanged`.
+ * `sum-mismatch` (the parts do not add up to the debit, R2; on an F24 that also pays an IMU rate,
+ * R134, they must leave a positive IMU part: the F24 is split, answer of user1 of 17 November
+ * 2026, R307). The same parts are `unchanged`.
  */
 export async function assignTaxPayment(
   store: Store,
@@ -257,8 +259,8 @@ export async function assignTaxPayment(
   if (tx.booked === false || tx.amount >= 0 || cls?.kind !== 'tasse') {
     return refuse('not-tax-debit');
   }
-  if (cls.imu !== undefined) return refuse('imu-assigned');
-  if (parsed.data.parts.reduce((sum, p) => sum + p.amount, 0) !== -tx.amount) {
+  const sum = parsed.data.parts.reduce((total, p) => total + p.amount, 0);
+  if (cls.imu === undefined ? sum !== -tx.amount : sum >= -tx.amount) {
     return refuse('sum-mismatch');
   }
   const before = (await loadAll(store, 'taxPayment', TaxPaymentSchema, withDeleted)).records.find(
@@ -285,6 +287,87 @@ export async function assignTaxPayment(
     newId,
   );
   return { status: 'assigned', operationId: operation.id, taxPaymentId: id };
+}
+
+export type ConfirmTaxDiscrepancyResult =
+  | { status: 'confirmed'; operationId: string; confirmationId: string }
+  | { status: 'unchanged'; confirmationId: string }
+  | {
+      status: 'refused';
+      reason: 'inconsistent-store' | 'bad-year' | 'bad-voce' | 'bad-note' | 'no-discrepancy';
+    };
+
+/**
+ * Confirms with a note the discrepancy of the row `voce` of `year` of the taxpayer of
+ * `apartmentId` (plan 17, R304): `taxc-<apartmentId>-<year>-<voce>` (a confirmed row keeps its id,
+ * and a new note replaces the old one) keeps the difference of today, so a new difference warns
+ * again. One `tax.confirm` operation, undone with
+ * the journal. Refused without writing: `inconsistent-store`; `bad-year`; `bad-voce`; `bad-note`
+ * (empty); `no-discrepancy` (the row is not a discrepancy now, or the apartment is in no table).
+ */
+export async function confirmTaxDiscrepancy(
+  store: Store,
+  input: { apartmentId: string; year: string; voce: string; note: string },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<ConfirmTaxDiscrepancyResult> {
+  const refuse = (reason: Extract<ConfirmTaxDiscrepancyResult, { status: 'refused' }>['reason']) =>
+    ({ status: 'refused', reason }) as const;
+  const table = await loadTaxTable(store, {
+    year: input.year,
+    today: `${input.year}-01-01` as ISODate,
+  });
+  if (table.status === 'refused') return refuse(table.reason);
+  const voce = TaxVoiceSchema.safeParse(input.voce);
+  if (!voce.success) return refuse('bad-voce');
+  if (input.note.trim() === '') return refuse('bad-note');
+  const own = table.tables.find((t) => t.apartmentIds.includes(input.apartmentId));
+  const row = own?.rows.find((r) => r.voce === voce.data);
+  if (row === undefined || row.difference === undefined) return refuse('no-discrepancy');
+  // A confirmed row keeps the id it has (its note can be changed); else the apartment given.
+  const id = row.confirmationId ?? `taxc-${input.apartmentId}-${input.year}-${voce.data}`;
+  if (row.state !== 'discrepanza' && row.state !== 'confermata') return refuse('no-discrepancy');
+  const before = (
+    await loadAll(store, 'taxConfirmation', TaxConfirmationSchema, withDeleted)
+  ).records.find((c) => c.id === id);
+  const first = before?.apartmentId ?? input.apartmentId;
+  if (
+    row.state === 'confermata' &&
+    before !== undefined &&
+    before.deleted !== true &&
+    before.note === input.note.trim()
+  ) {
+    return { status: 'unchanged', confirmationId: id };
+  }
+  const after = parseOrThrow(
+    TaxConfirmationSchema,
+    {
+      id,
+      v: 1,
+      rev: (before?.rev ?? 0) + 1,
+      apartmentId: first,
+      year: input.year,
+      voce: voce.data,
+      difference: row.difference,
+      ...(row.annualDifference === undefined ? {} : { annualDifference: row.annualDifference }),
+      note: input.note.trim(),
+    },
+    'taxConfirmation',
+  );
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'tax.confirm',
+      apartmentId: first,
+      summary: 'Confermata una differenza delle tasse.',
+      changes: [{ path: recordPath('taxConfirmation', id), before, after }],
+    },
+    clock,
+    newId,
+  );
+  return { status: 'confirmed', operationId: operation.id, confirmationId: id };
 }
 
 export type LoadTaxTableResult =
@@ -325,6 +408,8 @@ export async function loadTaxTable(
       transactions,
       classes,
     }),
+    confirmations: (await loadAll(store, 'taxConfirmation', TaxConfirmationSchema)).records,
+    recoveries: (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records,
   });
   const warnings = taxYearWarnings({ today: options.today, apartments, estimates });
   return { status: 'computed', tables, warnings };

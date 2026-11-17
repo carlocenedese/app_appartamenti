@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import {
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
@@ -9,12 +10,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   ContractSchema,
+  billFileMove,
   commitChange,
   hashBytes,
   recordPath,
@@ -795,6 +797,47 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       expect(once.json.paymentIds).toHaveLength(2);
       expect(once.json.payerId).toBeUndefined();
       expect(registerSize(s.dir)).toBe(2);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'scheda-inquilino: scheda riservata da un file, mai negli argomenti né in uscita (R311)',
+    async () => {
+      const s = await incomeSetup();
+      const valori = join(s.dir, 'scheda.json');
+      writeFileSync(
+        valori,
+        JSON.stringify({
+          codice_fiscale: 'CODICE-PROVA',
+          data_nascita: '2005-02-03',
+          documento_numero: 'DOC-PROVA',
+          documento_scadenza: '2030-01-31',
+        }),
+      );
+      const card = cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--valori', valori]);
+      expect([card.code, card.json.status]).toEqual([0, 'saved']);
+      expect(card.out).not.toMatch(/CODICE-PROVA|DOC-PROVA|2005/);
+      const cardFile = join(s.dir, '_app', 'dati', 'tenantCard', 't1.json');
+      expect(JSON.parse(readFileSync(cardFile, 'utf8'))).toMatchObject({
+        taxCode: 'CODICE-PROVA',
+        birthDate: '2005-02-03',
+        idDocument: { number: 'DOC-PROVA', expiresOn: '2030-01-31' },
+      });
+      // The tenant record never holds it.
+      const tenantFile = join(s.dir, '_app', 'dati', 'tenant', 't1.json');
+      expect(JSON.parse(readFileSync(tenantFile, 'utf8'))).not.toHaveProperty('taxCode');
+      writeFileSync(valori, JSON.stringify({ documento_ente: 'X' }));
+      expect(
+        cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--valori', valori]).code,
+      ).toBe(2);
+      writeFileSync(valori, JSON.stringify({}));
+      expect(
+        cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--valori', valori]).json.reason,
+      ).toBe('invalid-card');
+      expect(
+        cli(['scheda-inquilino', ...s.common, '--inquilino', 't1', '--codice-fiscale', 'X']).code,
+      ).toBe(2);
     },
     TIMEOUT,
   );
@@ -3358,6 +3401,55 @@ describe('pnpm estratti condominio (piano 8)', () => {
     expect(undo.code).toBe(0);
   });
 
+  it('recupero negativo senza spesa: --data o --periodo, nessun importo in uscita (R300)', async () => {
+    const s = await setup([
+      ['apartment', apartment({ id: 'apt-a' })],
+      [
+        'tenancy',
+        {
+          id: 'tcy-1',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-a',
+          tenantId: 'ten-1',
+          from: '2026-10',
+          monthlyRent: 30000,
+          monthlyForfait: 3000,
+        },
+      ],
+    ]);
+    const rec = [
+      'recupero',
+      ...s.common,
+      '--id',
+      'rec-n',
+      '--appartamento',
+      'apt-a',
+      // A negative value goes with `=` (parseArgs).
+      '--importo=-40,00',
+      '--inquilini',
+      'ten-1',
+    ];
+    const missing = await run(rec);
+    expect([missing.code, missing.json.reason]).toEqual([1, 'missing-date']);
+    const saved = await run([...rec, '--data', '2026-12-10']);
+    expect([saved.code, saved.json.status]).toEqual([0, 'saved']);
+    expect(saved.out).not.toMatch(/4000|ten-/);
+    expect(stored(s, 'tenantRecovery', 'rec-n')).toMatchObject({
+      amount: -4000,
+      shares: [{ tenantId: 'ten-1', amount: -4000 }],
+      date: '2026-12-10',
+    });
+    const positive = await run([
+      ...rec.map((a) => (a === '--importo=-40,00' ? '--importo=40,00' : a)),
+      '--data',
+      '2026-12-10',
+    ]);
+    expect([positive.code, positive.json.reason]).toEqual([1, 'invalid-recovery']);
+    const movement = await run([...rec, '--movimento', 'tx-x']);
+    expect([movement.code, movement.json.reason]).toEqual([1, 'unknown-expense']);
+  });
+
   it('condominio-stima: copiata dall’esercizio prima, importi solo con --dettagli (R250)', async () => {
     const s = await setup([
       ['apartment', apartment({ id: 'apt-a' })],
@@ -3635,7 +3727,8 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
           id: bollo.json.payableId,
           kind: 'bollo',
           apartmentIds: ['pulci'],
-          state: 'da-pagare',
+          // Within the default 15 days (R309).
+          state: 'in-scadenza',
           repeatYearly: true,
         },
       ],
@@ -4055,6 +4148,58 @@ describe('pnpm estratti tasse (piano 10)', () => {
     expect(imu(details)).toMatchObject({ paid: 123457, difference: 0, annualDifference: 57 });
   });
 
+  it('tasse-conferma: una discrepanza confermata con una nota non avvisa più (R304)', async () => {
+    const s = await setup();
+    await run([
+      'tasse-stima',
+      ...s.common,
+      '--appartamento',
+      'nord',
+      '--anno',
+      '2026',
+      '--voce',
+      'tari',
+      '--importo',
+      '50,00',
+    ]);
+    const row = async () =>
+      (await run(['tasse', ...s.common, '--anno', '2026'])).json.tables[0].rows.find(
+        (r) => r.voce === 'tari',
+      );
+    expect((await row()).state).toBe('discrepanza');
+    const confirm = [
+      'tasse-conferma',
+      ...s.common,
+      '--appartamento',
+      'nord',
+      '--anno',
+      '2026',
+      '--voce',
+      'tari',
+      '--note',
+      'Nota di prova',
+    ];
+    const done = await run(confirm);
+    expect([done.code, done.json.status, done.json.confirmationId]).toEqual([
+      0,
+      'confirmed',
+      'taxc-nord-2026-tari',
+    ]);
+    expect(done.out).not.toMatch(/Nota di prova|5000/);
+    expect((await row()).state).toBe('confermata');
+    expect((await run(confirm.map((a) => (a === 'tari' ? 'imu' : a)))).json.reason).toBe(
+      'no-discrepancy',
+    );
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      done.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect((await row()).state).toBe('discrepanza');
+  });
+
   it('tasse a gennaio avvisa dell’anno vuoto; tasse-copia copia l’anno prima solo a comando', async () => {
     const s = await setup();
     const january = ['--cartella', s.dir, '--ora', '2027-01-10T09:00:00.000Z'];
@@ -4073,7 +4218,7 @@ describe('pnpm estratti tasse (piano 10)', () => {
     const warned = await run(['tasse', ...january, '--anno', '2027']);
     expect(warned.json.warnings).toEqual([
       {
-        apartmentId: 'nord',
+        apartmentIds: ['nord'],
         year: '2027',
         canCopy: true,
         message:
@@ -4121,7 +4266,7 @@ describe('pnpm estratti tasse (piano 10)', () => {
     // --oggi gives the day instead of the clock (as scadenze).
     const byDay = await run(['tasse', ...s.common, '--anno', '2028', '--oggi', '2028-01-02']);
     expect(byDay.json.warnings).toMatchObject([
-      { apartmentId: 'nord', year: '2028', canCopy: true },
+      { apartmentIds: ['nord'], year: '2028', canCopy: true },
     ]);
     expect((await run(['tasse', ...s.common, '--anno', '2028', '--oggi', '2028-13-01'])).code).toBe(
       2,
@@ -4245,14 +4390,6 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     'pulci',
     '--inquilino',
     'ten-anna',
-    '--dal',
-    '2025-09-25',
-    '--al',
-    '2026-02-28',
-    '--tasso',
-    '2025:2',
-    '--tasso',
-    '2026:2',
     '--conguaglio',
     '40,00',
     '--addebito',
@@ -4305,6 +4442,14 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       monthlyRent: 36000,
     });
 
+    for (const year of ['2025', '2026']) {
+      const rate = await go(['tasso-legale', ...s.common, '--anno', year, '--tasso', '2']);
+      expect([rate.code, rate.json.status, rate.json.rateId]).toEqual([
+        0,
+        'saved',
+        `tasso-${year}`,
+      ]);
+    }
     const draft = await go(restituzione(s));
     expect([draft.code, draft.json.status, draft.json.lines]).toEqual([0, 'ok', 4]);
     const full = await run(restituzione(s, '--dettagli'));
@@ -4347,7 +4492,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     ]);
     expect((await run(subentro(s, '--inquilino', 'ten-anna'))).json.reason).toBe('same-tenant');
     expect((await run(restituzione(s, '--inquilino', 'ten-bruno'))).json.reason).toBe('no-deposit');
-    expect((await run(restituzione(s, '--al', '2027-01-31'))).json.reason).toBe('missing-rate');
+    expect((await run(restituzione(s))).json.reason).toBe('missing-rate');
     for (const args of [
       presenza(s, '--affitto', '-1,00'),
       presenza(s, '--caparra-attesa', '0'),
@@ -4355,8 +4500,10 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       presenza(s, '--prova'),
       ['fine-presenza', ...s.common, '--presenza', 'tcy-anna'],
       ['subentro', ...s.common, '--presenza', 'tcy-anna', '--mese', '2026-02'],
-      restituzione(s, '--tasso', '2025'),
-      restituzione(s, '--tasso', '2025:3'),
+      restituzione(s, '--dal', '2025-09-25'),
+      restituzione(s, '--tasso', '2'),
+      ['tasso-legale', ...s.common, '--anno', '2025', '--tasso', '2', '--tasso', '3'],
+      ['tasso-legale', ...s.common, '--anno', '25', '--tasso', '2'],
       restituzione(s, '--addebito', 'senza-importo'),
       ['caparra-restituzione', ...s.common, '--appartamento', 'pulci'],
       ['stato-contratti', ...s.common, '--posto', 'A'],
@@ -4486,18 +4633,142 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     ]);
 
     const confirmed = await run(['bolletta', ...args, '--soglia-consumi', '30', '--conferma']);
-    expect(confirmed.json).toMatchObject({ status: 'confermata' });
-    const duplicate = await run(['bolletta', ...args, '--soglia-consumi', '30', '--conferma']);
+    expect(confirmed.json).toMatchObject({ status: 'confermata', file: 'moved' });
+    // Plan 17, R315: the PDF is now in the Bollette folder of the apartment.
+    const { filePath } = JSON.parse(
+      readFileSync(join(dir, '_app', 'dati', 'bill', `${confirmed.json.ids[0]}.json`), 'utf8'),
+    );
+    const plan = billFileMove(apartment({ id: 'pulci' }), filePath);
+    const moved = join(dir, ...plan.filed.split('/'));
+    expect([existsSync(pdf), existsSync(moved)]).toEqual([false, true]);
+    const movedArgs = args.map((a) => (a === pdf ? moved : a));
+    const duplicate = await run(['bolletta', ...movedArgs, '--soglia-consumi', '30', '--conferma']);
     expect(duplicate.code).toBe(1);
     expect(duplicate.json).toMatchObject({ reason: 'duplicate-bill' });
 
-    const undone = await run(['annulla-bolletta', ...common, pdf]);
+    const undone = await run(['annulla-bolletta', ...common, moved]);
     expect(undone.json.status).toBe('undone');
+    // Back to Da_smistare, never over another file.
+    expect(undone.json.file).toBe('moved');
+    const inbox = join(dir, ...plan.inbox.split('/'));
+    expect([existsSync(moved), existsSync(inbox)]).toEqual([false, true]);
     expect(undone.json.operationIds).toHaveLength(2);
     expect(undone.json.records).toBe(2);
     expect((await run(['annulla-bolletta', ...common, '--pagine', '2-1', pdf])).code).toBe(2);
     const empty = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
     expect(empty.json.apartments).toEqual([{ apartmentId: 'pulci', counts: {} }]);
     expect((await run(['cruscotto', ...common, '--lettura', lettura])).code).toBe(2);
+
+    // A file outside the shared folder stays where it is; a taken place is never written over.
+    const outside = join(root, `fuori-${String((counter += 1))}.pdf`);
+    writeFileSync(outside, readFileSync(inbox));
+    const outsideArgs = [...common, '--appartamento', 'pulci', '--lettura', lettura, outside];
+    const kept = await run(['bolletta', ...outsideArgs, '--soglia-consumi', '30', '--conferma']);
+    expect([kept.json.status, kept.json.file]).toEqual(['confermata', 'outside-folder']);
+    expect(existsSync(outside)).toBe(true);
+    await run(['annulla-bolletta', ...common, outside]);
+    mkdirSync(dirname(moved), { recursive: true });
+    writeFileSync(moved, 'già qui');
+    const taken = await run([
+      'bolletta',
+      ...args.map((a) => (a === pdf ? inbox : a)),
+      '--soglia-consumi',
+      '30',
+      '--conferma',
+    ]);
+    expect([taken.json.status, taken.json.file]).toEqual(['confermata', 'target-exists']);
+    expect([existsSync(inbox), readFileSync(moved, 'utf8')]).toEqual([true, 'già qui']);
+  });
+});
+
+describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 17)', () => {
+  let n = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `p17-${String((n += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+
+  it('soglie inserite da user1, livello solo con le soglie, importi solo con --dettagli', async () => {
+    const dir = join(root, `p17-${String((counter += 1))}`);
+    mkdirSync(dir);
+    let k = 0;
+    const bill = (id, start, end, quantity) => ({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'pulci',
+      supplier: 'Fornitore-Inventato-Gas',
+      category: 'gas',
+      periodStart: start,
+      periodEnd: end,
+      amount: 4321,
+      consumption: { quantity, unit: 'Smc' },
+      includedInConguaglio: true,
+      sharedWithTenants: true,
+      filePath: `${id}.pdf`,
+      fileHash: `h-${id}`,
+    });
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          { path: recordPath('apartment', 'pulci'), after: apartment({ id: 'pulci' }) },
+          {
+            path: recordPath('bill', 'b-prev'),
+            after: bill('b-prev', '2025-01-01', '2025-01-31', '100'),
+          },
+          {
+            path: recordPath('bill', 'b-now'),
+            after: bill('b-now', '2026-01-01', '2026-01-31', '160'),
+          },
+        ],
+      },
+      () => ORA,
+      () => `seed-${String((k += 1))}`,
+    );
+    const common = ['--cartella', dir, '--ora', ORA];
+    const plain = await run(['consumi', ...common, '--bolletta', 'b-now']);
+    expect([plain.code, plain.json.thresholds]).toEqual([0, false]);
+    expect(plain.json.yearBefore.differences[0]).toEqual({
+      metric: 'consumption',
+      differenceBp: 6000,
+    });
+    expect(plain.out).not.toMatch(/4321|160/);
+    const saved = await run([
+      'soglie-consumi',
+      ...common,
+      '--giallo',
+      'consumi:30',
+      '--rosso',
+      'consumi:50,importo:80',
+    ]);
+    expect([saved.code, saved.json.status, saved.json.settingsId]).toEqual([
+      0,
+      'saved',
+      'soglie-consumi',
+    ]);
+    const leveled = await run(['consumi', ...common, '--bolletta', 'b-now', '--dettagli']);
+    expect(leveled.json.yearBefore.differences[0].level).toBe('rosso');
+    expect(leveled.json.current.amount).toBe(4321);
+    for (const bad of [
+      ['soglie-consumi', ...common],
+      ['soglie-consumi', ...common, '--giallo', 'acqua:30'],
+      ['soglie-consumi', ...common, '--giallo', 'consumi:30,consumi:40'],
+      ['consumi', ...common],
+    ]) {
+      expect((await run(bad)).code).toBe(2);
+    }
+    const codes = await run(['appartamento', ...common, '--id', 'pulci', '--codici', 'POD-PROVA']);
+    expect([codes.code, codes.json.status]).toEqual([0, 'updated']);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...common,
+      '--operazione',
+      saved.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
   });
 });

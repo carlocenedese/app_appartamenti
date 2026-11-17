@@ -241,6 +241,9 @@ export function condoDifferences(
     );
 }
 
+/** The form of a fiscal year, digits as `0` (`2026-27` → `0000-00`): one per apartment (R310). */
+export const esercizioForm = (esercizio: string): string => esercizio.replace(/[0-9]/g, '0');
+
 export interface CondoEstimate {
   apartmentId: string;
   esercizio: string;
@@ -266,8 +269,8 @@ export function condoEstimate(
 ): CondoEstimate | undefined {
   const own = documents.filter((d) => d.deleted !== true && d.apartmentId === apartmentId);
   // A copy only between numeric fiscal years of the same form (`2026`, `2026-27`): there the text
-  // order is the order of the years; other forms are never converted (question 3).
-  const form = (e: string) => e.replace(/[0-9]/g, '0');
+  // order is the order of the years; other forms are never converted (question 3, R310).
+  const form = esercizioForm;
   const numeric = /^0+(?:-0+)*$/.test(form(esercizio));
   const from = own
     .map((d) => d.esercizio)
@@ -304,4 +307,27 @@ export function equalShares(
     tenantIds.map(() => 1),
   );
   return tenantIds.map((tenantId, i) => ({ tenantId, amount: parts[i] as Cents }));
+}
+
+/**
+ * The movements a recovery may recover (plan 17, R300): live, booked, outgoing, with a live class
+ * of `apartmentId` that is not an exclusion.
+ */
+export function recoverableMovements(input: {
+  apartmentId: string;
+  transactions: readonly BankTransaction[];
+  classes: readonly MovementClass[];
+}): Set<string> {
+  const classed = new Set(
+    input.classes
+      .filter(
+        (c) => c.deleted !== true && c.kind !== 'escluso' && c.apartmentId === input.apartmentId,
+      )
+      .map((c) => c.transactionId),
+  );
+  return new Set(
+    input.transactions
+      .filter((t) => t.deleted !== true && t.booked !== false && t.amount < 0 && classed.has(t.id))
+      .map((t) => t.id),
+  );
 }

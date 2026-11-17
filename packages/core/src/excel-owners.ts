@@ -10,7 +10,7 @@ import { instalmentOwnerShare, previousToTenants } from './conguaglio';
 import type { ConguaglioInput } from './conguaglio';
 import { expectedDebit } from './match';
 import { apartmentFolder } from './accounts';
-import type { Apartment, Instalment } from './model';
+import type { Apartment, Instalment, TenantRecovery } from './model';
 import { safeWord } from './proposal';
 import { cents } from './money';
 import type { Cents } from './money';
@@ -33,7 +33,10 @@ export interface OwnersItem {
   dueDate: ISODate;
   rata: Cents;
   conguaglioPrec: Cents;
-  /** Its part of the yearly owner share; an extraordinary instalment is the owner's in full (R3). */
+  /**
+   * Its part of the yearly owner share; an extraordinary instalment is the owner's in full (R3),
+   * less the live recoveries from tenants on it (plan 17, R300).
+   */
   ownerShare: Cents;
   /** `rata + conguaglioPrec` (R3). */
   expected: Cents;
@@ -79,6 +82,35 @@ const monthRange = (from: YearMonth, to: YearMonth): YearMonth[] =>
   monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`));
 
 /**
+ * The owners' part of a condominium instalment (R3, R8): an extraordinary one in full, less the
+ * live recoveries from tenants on it (plan 17, R300); an ordinary one its part of the yearly owner
+ * share, plus last year's settlement with `condoDifferenceTo: 'owner'` (R193). The «Quota
+ * proprietà» of the owners' file and the condominio row of the tax table (R305).
+ */
+export function ownerShareOf(
+  instalment: Instalment,
+  apartment: Apartment,
+  recoveries: readonly TenantRecovery[],
+): Cents {
+  if (instalment.straordinaria === true) {
+    const recovered = recoveries
+      .filter(
+        (r) =>
+          r.deleted !== true &&
+          r.instalmentId === instalment.id &&
+          r.status !== 'non-recuperabile' &&
+          r.amount > 0,
+      )
+      .reduce((sum, r) => sum + r.amount, 0);
+    return cents(expectedDebit(instalment) - recovered);
+  }
+  return cents(
+    instalmentOwnerShare(instalment) +
+      (previousToTenants(apartment) ? 0 : instalment.conguaglioPrec),
+  );
+}
+
+/**
  * The rows of the sheet: the live condominium instalments of the apartment whose months touch the
  * period, with the criterion of the sheet «Bollette» (R153) but with the extraordinary and the
  * pending ones; sorted by `coversFrom`, then `id`.
@@ -89,7 +121,6 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
   const matches = input.matches.filter(
     (m) => m.deleted !== true && m.confirmed && m.itemType === 'instalment',
   );
-  const toTenants = previousToTenants(apartment);
   const esercizioMonths = (instalment: Instalment): YearMonth[] => {
     if (instalment.conguaglioPrec === 0 || apartment.condominioStart === undefined) return [];
     const range = annualitaRange(instalment.esercizio, apartment.condominioStart);
@@ -126,9 +157,7 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
         rata: i.rata,
         conguaglioPrec: i.conguaglioPrec,
         // With `owner` (R193) last year's settlement is the owner's too.
-        ownerShare: straordinaria
-          ? expected
-          : cents(instalmentOwnerShare(i) + (toTenants ? 0 : i.conguaglioPrec)),
+        ownerShare: ownerShareOf(i, apartment, input.recoveries ?? []),
         expected,
         ...(real.length === 0 ? {} : { debited }),
         commission: total(own.filter((m) => m.part === 'commission').map((m) => m.amount)),
@@ -184,6 +213,34 @@ export function buildOwnersWorkbook(
     items.some((i) => i.debited !== undefined) ? sum((i) => i.debited) : null,
     sum((i) => i.commission),
   ]);
+  // Plan 17, R300: every recovery of the period, a negative one as the tenant's credit; no tenant.
+  const months = new Set(monthRange(input.period.from, input.period.to));
+  const recoveries = (input.recoveries ?? [])
+    .filter(
+      (r) =>
+        r.deleted !== true &&
+        r.apartmentId === input.apartment.id &&
+        r.status !== 'non-recuperabile' &&
+        (r.periodLabel === undefined
+          ? r.date !== undefined && months.has(r.date.slice(0, 7) as YearMonth)
+          : r.periodLabel === input.period.label),
+    )
+    .sort((a, b) => compareText(a.id, b.id));
+  if (recoveries.length > 0) {
+    rows.push(
+      [],
+      [text('Recuperi dagli inquilini')],
+      ['Recupero', 'Data', 'Importo', 'Nota'].map(text),
+    );
+    for (const r of recoveries) {
+      rows.push([
+        text(r.id),
+        r.date === undefined ? null : date(r.date),
+        euro(r.amount),
+        text(r.amount < 0 ? 'credito dell’inquilino' : ''),
+      ]);
+    }
+  }
   const header = OWNERS_HEADERS.map((value): XlsxCell => ({ kind: 'text', value }));
   // 5b D5, R184: as the tenants' file (R171), every period is open; N = instalments not paid.
   const waiting = items.filter((i) =>

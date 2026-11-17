@@ -5,6 +5,7 @@
  * tax is computed here (no rate in the code); the cedolare estimate of R182 is only shown beside.
  */
 import { cedolareExpected, cedolareRateForYear } from './contract';
+import { ownerShareOf } from './excel-owners';
 import { imuRates } from './imu';
 import { expectedDebit } from './match';
 import { TAX_VOICES, YearSchema } from './model';
@@ -17,9 +18,11 @@ import type {
   Instalment,
   MovementClass,
   RentYear,
+  TaxConfirmation,
   TaxEstimate,
   TaxPayment,
   TaxVoice,
+  TenantRecovery,
 } from './model';
 import { cents } from './money';
 import type { Cents } from './money';
@@ -30,7 +33,8 @@ import type { XlsxCell, XlsxWorkbook } from './xlsx-write';
 /** Answer 7 of user1 (14 November 2026): confirm discrepancies above 0,10 €. A threshold, not a rate. */
 export const TAX_DISCREPANCY_TOLERANCE: Cents = cents(10);
 
-export type TaxRowState = 'in-linea' | 'discrepanza' | 'da-verificare';
+/** `confermata`: a discrepancy user1 confirmed with a note (plan 17, R304), no longer a warning. */
+export type TaxRowState = 'in-linea' | 'discrepanza' | 'confermata' | 'da-verificare';
 
 /** Why a row is `da-verificare`: an input is missing or ambiguous, or a rule is not decided. */
 export type TaxReason =
@@ -80,6 +84,8 @@ export interface TaxRow {
   annualDifference?: Cents;
   /** The cedolare estimates of R182, to be confirmed: never in the other amounts. */
   cedolareProposals?: { apartmentId: string; amount: Cents }[];
+  /** The `taxConfirmation` that confirms a discrepancy (plan 17, R304). */
+  confirmationId?: string;
 }
 
 export interface TaxpayerTable {
@@ -105,6 +111,10 @@ export interface TaxTableInput {
   rentYears: RentYear[];
   /** From `payableExpectedItems` (plan 13); absent: cedolare and registro `no-expected-source`. */
   expectedItems?: TaxExpectedItem[];
+  /** Discrepancies confirmed by user1 (plan 17, R304). */
+  confirmations?: TaxConfirmation[];
+  /** For the owners' part of an extraordinary condominium instalment (plan 17, R300, R305). */
+  recoveries?: TenantRecovery[];
 }
 
 const live = <T extends { deleted?: boolean }>(records: readonly T[]): T[] =>
@@ -129,13 +139,15 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
   const classOf = new Map(classes.map((c) => [c.transactionId, c]));
   const taxPayments = live(input.taxPayments);
   const assigned = new Set(taxPayments.map((p) => p.transactionId));
-  const matches = live(input.matches).filter(
-    (m) => m.itemType === 'instalment' && m.confirmed && m.part === 'amount',
+  const instalmentMatches = live(input.matches).filter(
+    (m) => m.itemType === 'instalment' && m.confirmed,
   );
+  const matches = instalmentMatches.filter((m) => m.part === 'amount');
   const rates = imuRates({
     years: input.imuYears,
     classes: input.classes,
     transactions: input.transactions,
+    taxPayments,
   }).filter((r) => r.year === year);
   const taxpayers = [...new Set(apartments.map(taxpayerOf))].sort(compareText);
 
@@ -177,15 +189,40 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     }
 
     // TARI: the tax year is the esercizio of the instalment (answer of user1, plan 13); the
-    // commission stays out and the paid is not checked against the instalment (R241).
+    // paid is not checked against the instalment (R241) and the bank commission is in it (answer
+    // of user1, 17 November 2026, R306).
     for (const instalment of live(input.instalments)) {
       if (instalment.kind !== 'tari' || instalment.esercizio !== year) continue;
       if (!mine.has(instalment.apartmentId)) continue;
       const own = matches.filter((m) => m.itemId === instalment.id);
       const real = own.filter((m) => m.by !== 'assumed');
       if (own.length > real.length) flag('tari', 'assumed-payment');
-      if (real.length > 0) at('tari').paid += real.reduce((sum, m) => sum + m.amount, 0);
-      else if (own.length === 0) at('tari').expected += expectedDebit(instalment);
+      if (real.length > 0) {
+        at('tari').paid += instalmentMatches
+          .filter((m) => m.itemId === instalment.id && m.by !== 'assumed')
+          .reduce((sum, m) => sum + m.amount, 0);
+      } else if (own.length === 0) at('tari').expected += expectedDebit(instalment);
+    }
+
+    // Condominio, the owners' part (R305): the tax year is the year of the debit (answer of
+    // user1, 17 November 2026), the latest when in parts; not debited yet, the year of the due date.
+    // The amount (the «Quota proprietà» of the owners' file) is not decided: `rule-undecided`.
+    const apartmentOf = new Map(apartments.map((a) => [a.id, a]));
+    for (const instalment of live(input.instalments)) {
+      const apartment = apartmentOf.get(instalment.apartmentId);
+      if (instalment.kind !== 'condominio' || apartment === undefined) continue;
+      if (!mine.has(instalment.apartmentId)) continue;
+      const own = matches.filter((m) => m.itemId === instalment.id);
+      const real = own.filter((m) => m.by !== 'assumed');
+      const share = ownerShareOf(instalment, apartment, input.recoveries ?? []);
+      if (real.length > 0) {
+        const [debited] = real.map((m) => m.transactionDate).sort((a, b) => compareText(b, a));
+        if (debited?.startsWith(`${year}-`) === true) at('condominio').paid += share;
+        continue;
+      }
+      if (!instalment.dueDate.startsWith(`${year}-`)) continue;
+      if (own.length > 0) flag('condominio', 'assumed-payment');
+      else at('condominio').expected += share;
     }
 
     // Cedolare and registro: the parts of the year of the assigned «tasse» debits.
@@ -196,7 +233,13 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       const cls = classOf.get(payment.transactionId);
       const apartmentId = cls?.apartmentId ?? tx?.apartmentId;
       if (apartmentId === undefined || !mine.has(apartmentId)) continue;
-      const valid = isDebit(tx) && cls?.kind === 'tasse' && cls.imu === undefined;
+      // An F24 that also pays an IMU rate is split (plan 17, R307): its parts count here; parts
+      // that no longer make the whole debit without an IMU rate are stale.
+      const parts = payment.parts.reduce((sum, p) => sum + p.amount, 0);
+      const valid =
+        isDebit(tx) &&
+        cls?.kind === 'tasse' &&
+        (cls.imu !== undefined ? parts < -tx.amount : parts === -tx.amount);
       for (const part of payment.parts.filter((p) => p.year === year)) {
         if (valid) {
           at(part.voce).paid += part.amount;
@@ -205,7 +248,15 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       }
     }
 
-    // A «tasse» debit of the year with no assignment could belong to any of these.
+    // A «tasse» debit of the year with no assignment could belong to any of these, unless a
+    // payable marked paid with it says what it is (R303).
+    const payableDebits = new Set(
+      (input.expectedItems ?? []).flatMap((i) =>
+        i.paid?.transactionId !== undefined && mine.has(i.apartmentId)
+          ? [i.paid.transactionId]
+          : [],
+      ),
+    );
     const unassigned = classes.some(
       (c) =>
         c.kind === 'tasse' &&
@@ -213,6 +264,7 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
         c.apartmentId !== undefined &&
         mine.has(c.apartmentId) &&
         !assigned.has(c.transactionId) &&
+        !payableDebits.has(c.transactionId) &&
         isDebit(transactions.get(c.transactionId)) &&
         transactions.get(c.transactionId)?.date.startsWith(`${year}-`) === true,
     );
@@ -223,7 +275,9 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     }
 
     // The payables of plan 9 (R243): without one of the taxpayer for the voce and year the
-    // expected is not known (never zero); a paid one must be in the paid of the table.
+    // expected is not known (never zero). A paid one is in the paid (answer of user1, 17 November
+    // 2026, R303): by its assigned movement, else by its amount; a movement assigned elsewhere is
+    // to be checked.
     for (const voce of ['cedolare', 'registro'] as const) {
       const own = (input.expectedItems ?? []).filter(
         (i) => i.voce === voce && mine.has(i.apartmentId),
@@ -235,7 +289,13 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       for (const item of ofYear) {
         if (item.paid !== undefined) {
           const tx = item.paid.transactionId;
-          if (tx === undefined || !counted.has(key(tx, voce))) flag(voce, 'payable-paid-outside');
+          if (tx !== undefined && counted.has(key(tx, voce))) continue;
+          if (tx !== undefined && assigned.has(tx)) flag(voce, 'payable-paid-outside');
+          // Paid by hand beside an assigned payment of the same voce, year and apartment: it could
+          // be the same money, never added twice.
+          else if (counted.has(key(item.apartmentId, voce))) flag(voce, 'payable-and-payment');
+          else if (item.amount === undefined) flag(voce, 'expected-amount-missing');
+          else at(voce).paid += item.amount;
           continue;
         }
         if (counted.has(key(item.apartmentId, voce))) flag(voce, 'payable-and-payment');
@@ -243,7 +303,7 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
         else at(voce).expected += item.amount;
       }
     }
-    flag('condominio', 'rule-undecided'); // question 1 of the design
+    flag('condominio', 'rule-undecided');
     const annual = [...annualGroups.values()];
     if (annual.some((g) => g.paid === undefined)) flag('imu', 'imu-year-open');
     const annualDifference =
@@ -269,25 +329,35 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
       if (!complete) flag(voce, 'missing-estimate');
       const estimate = complete ? cents(own.reduce((sum, e) => sum + e.amount, 0)) : undefined;
       const { paid, expected, reasons } = at(voce);
-      const amounts =
-        voce === 'condominio'
-          ? {}
-          : {
-              paid: cents(paid),
-              ...(reasons.has('no-expected-source') ? {} : { expected: cents(expected) }),
-            };
+      const amounts = {
+        paid: cents(paid),
+        ...(reasons.has('no-expected-source') ? {} : { expected: cents(expected) }),
+      };
       const sorted = [...reasons].sort(compareText);
       const difference =
         sorted.length === 0 && estimate !== undefined
           ? cents(paid + expected - estimate)
           : undefined;
       const annualCheck = voce === 'imu' && difference !== undefined ? annualDifference : undefined;
-      const state: TaxRowState =
+      const measured: TaxRowState =
         difference === undefined
           ? 'da-verificare'
           : Math.abs(difference) > tolerance || Math.abs(annualCheck ?? 0) > tolerance
             ? 'discrepanza'
             : 'in-linea';
+      // Confirmed only for the same figures: a new difference warns again (R304).
+      const confirmation =
+        measured === 'discrepanza'
+          ? live(input.confirmations ?? []).find(
+              (c) =>
+                mine.has(c.apartmentId) &&
+                c.year === year &&
+                c.voce === voce &&
+                c.difference === difference &&
+                c.annualDifference === annualCheck,
+            )
+          : undefined;
+      const state: TaxRowState = confirmation === undefined ? measured : 'confermata';
       return {
         voce,
         state,
@@ -297,6 +367,7 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
         ...(difference === undefined ? {} : { difference }),
         ...(annualCheck === undefined ? {} : { annualDifference: annualCheck }),
         ...(voce === 'cedolare' && proposals.length > 0 ? { cedolareProposals: proposals } : {}),
+        ...(confirmation === undefined ? {} : { confirmationId: confirmation.id }),
       };
     });
     return { taxpayer, apartmentIds, rows };
@@ -304,32 +375,38 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
 }
 
 export interface TaxYearWarning {
-  apartmentId: string;
+  /** The live apartments of one taxpayer, sorted (the taxpayer is a name: never here). */
+  apartmentIds: string[];
   year: string;
-  /** The apartment has live estimates in the year before (`copyPreviousTaxYear`). */
+  /** One of them has live estimates in the year before (`copyPreviousTaxYear`). */
   canCopy: boolean;
 }
 
 /**
- * In January only (section 34), the live apartments without a live estimate in the year of
- * `today`, by id (R213). A warning: the copy is a separate, explicit command.
+ * The start-of-year warning (section 34; answer of user1, 17 November 2026, R308): for each
+ * taxpayer with no live estimate in the year of `today` on any of its apartments, whatever the
+ * month, until one is typed. A warning: the copy is a separate, explicit command.
  */
 export function taxYearWarnings(input: {
   today: ISODate;
   apartments: Apartment[];
   estimates: TaxEstimate[];
 }): TaxYearWarning[] {
-  if (input.today.slice(5, 7) !== '01') return [];
   const year = input.today.slice(0, 4);
   const previous = String(Number(year) - 1).padStart(4, '0');
   const estimates = live(input.estimates);
-  const has = (apartmentId: string, y: string) =>
-    estimates.some((e) => e.apartmentId === apartmentId && e.year === y);
-  return live(input.apartments)
-    .map((a) => a.id)
-    .sort(compareText)
-    .filter((id) => !has(id, year))
-    .map((apartmentId) => ({ apartmentId, year, canCopy: has(apartmentId, previous) }));
+  const has = (ids: string[], y: string) =>
+    estimates.some((e) => ids.includes(e.apartmentId) && e.year === y);
+  const byTaxpayer = new Map<string, string[]>();
+  for (const a of live(input.apartments)) {
+    const taxpayer = a.locatore.trim().normalize('NFC');
+    byTaxpayer.set(taxpayer, [...(byTaxpayer.get(taxpayer) ?? []), a.id]);
+  }
+  return [...byTaxpayer.values()]
+    .map((ids) => [...ids].sort(compareText))
+    .filter((ids) => !has(ids, year))
+    .sort((a, b) => compareText(a[0] ?? '', b[0] ?? ''))
+    .map((apartmentIds) => ({ apartmentIds, year, canCopy: has(apartmentIds, previous) }));
 }
 
 const TAX_EXPORT_HEADERS = {

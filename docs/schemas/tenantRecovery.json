@@ -26,9 +26,13 @@
       "type": "string",
       "minLength": 1
     },
+    "transactionId": {
+      "type": "string",
+      "minLength": 1
+    },
     "amount": {
       "type": "integer",
-      "minimum": 1,
+      "minimum": -9007199254740991,
       "maximum": 9007199254740991
     },
     "shares": {
@@ -43,7 +47,7 @@
           },
           "amount": {
             "type": "integer",
-            "minimum": 1,
+            "minimum": -9007199254740991,
             "maximum": 9007199254740991
           }
         },
@@ -64,6 +68,12 @@
     "periodLabel": {
       "type": "string",
       "minLength": 1
+    },
+    "date": {
+      "format": "date",
+      "description": "Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists in the month needs a \"format\": \"date\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
     }
   },
   "required": [
@@ -71,10 +81,9 @@
     "v",
     "rev",
     "apartmentId",
-    "instalmentId",
     "amount",
     "shares",
     "status"
   ],
-  "description": "amount and shares are positive cents; each tenant once; the shares add up to amount."
+  "description": "amount and shares are non-zero cents of one sign; each tenant once; the shares add up to amount; at most one of instalmentId and transactionId, one of them when amount is positive."
 }

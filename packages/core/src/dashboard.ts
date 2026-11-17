@@ -15,6 +15,7 @@ import {
   ApartmentSchema,
   BankTransactionSchema,
   BillMatchSchema,
+  ContractSchema,
   MovementClassSchema,
   PaymentSchema,
   TransferSchema,
@@ -22,19 +23,23 @@ import {
 import type { Cents } from './money';
 import { movementUses } from './movements';
 import { loadScadenzario } from './payables';
-import { yearMonth } from './period';
-import type { ISODate } from './period';
+import { settlementPeriods, yearMonth } from './period';
+import type { ISODate, YearMonth } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
 import { loadTaxTable } from './tax-store';
+import { compareText } from './text';
 
 export interface DashboardOptions {
   today: ISODate;
-  /** Days of the «in scadenza» window: not decided by user1, so only when given. */
+  /** Days of the «in scadenza» window; `DEFAULT_SOON_DAYS` when absent (R309). */
   soonDays?: number;
   /** The tax year of the table of «Tasse e stime»; without it the taxes are left out. */
   taxYear?: string;
-  /** The settlement periods to look at (which one is current is not decided: question 5). */
+  /**
+   * The settlement periods to look at; absent, the period in course of each live apartment (the
+   * one of its live contracts that holds the month of `today`: answer of user1, R316).
+   */
   settlements?: { apartmentId: string; periodLabel: string }[];
 }
 
@@ -61,7 +66,36 @@ export type DashboardResult =
 
 // States that mean nothing is left to do, so they are not counted. `assunta` is counted: whether
 // an instalment without a statement is paid is open (R204, question 7).
-const DONE = new Set(['pagata', 'versata', 'in-linea']);
+const DONE = new Set(['pagata', 'versata', 'in-linea', 'confermata']);
+
+/** The settlement period in course of each live apartment, by apartment and label (R316). */
+async function currentSettlements(
+  store: Store,
+  month: YearMonth,
+): Promise<{ apartmentId: string; periodLabel: string }[]> {
+  const contracts = (await loadAll(store, 'contract', ContractSchema)).records;
+  const rows = new Map<string, { apartmentId: string; periodLabel: string }>();
+  for (const apartment of (await loadAll(store, 'apartment', ApartmentSchema)).records) {
+    for (const contract of contracts.filter((c) => c.apartmentId === apartment.id)) {
+      let periods;
+      try {
+        periods = settlementPeriods(contract, apartment.annualitaStart);
+      } catch {
+        continue; // a contract the settlement cannot read: «contratto:» says it already
+      }
+      for (const p of periods.filter((p) => p.from <= month && month <= p.to)) {
+        rows.set(`${apartment.id}\u0000${p.label}`, {
+          apartmentId: apartment.id,
+          periodLabel: p.label,
+        });
+      }
+    }
+  }
+  return [...rows.values()].sort(
+    (a, b) =>
+      compareText(a.apartmentId, b.apartmentId) || compareText(a.periodLabel, b.periodLabel),
+  );
+}
 
 /**
  * The counts of every live apartment, by id (R264: any loader refused refuses it all):
@@ -72,9 +106,10 @@ const DONE = new Set(['pagata', 'versata', 'in-linea']);
  * (`loadContractStatus`, once per tenant), `condominio:<stato>` and
  * `condominio:recupero-oltre-spesa` (`loadCondo` on `today`), `tasse:<stato>` and
  * `tasse:stima-mancante` (`loadTaxTable`, only with `taxYear`, for each apartment of the taxpayer),
- * and for each settlement period given `conguaglio:voci-in-attesa` (the pending items),
+ * and for each settlement period given (else the one in course of each apartment, R316)
+ * `conguaglio:voci-in-attesa` (the pending items),
  * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`.
- * States that mean done (`pagata`, `versata`, `in-linea`) are not counted.
+ * States that mean done (`pagata`, `versata`, `in-linea`, `confermata`) are not counted.
  */
 export async function loadDashboard(
   store: Store,
@@ -159,11 +194,14 @@ export async function loadDashboard(
         for (const id of table.apartmentIds) add(id, `tasse:${row.state}`);
       }
     }
-    for (const w of taxes.warnings) add(w.apartmentId, 'tasse:stima-mancante');
+    for (const w of taxes.warnings) {
+      for (const id of w.apartmentIds) add(id, 'tasse:stima-mancante');
+    }
   }
 
   const settlements: SettlementStatusRow[] = [];
-  for (const { apartmentId, periodLabel } of options.settlements ?? []) {
+  for (const { apartmentId, periodLabel } of options.settlements ??
+    (await currentSettlements(store, asOf))) {
     const loaded = await loadExcelInput(store, { apartmentId, periodLabel });
     if (loaded.status === 'refused') {
       if (loaded.reason === 'inconsistent-store') return refused;

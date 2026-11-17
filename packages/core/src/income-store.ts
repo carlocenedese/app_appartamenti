@@ -17,10 +17,11 @@ import {
   PaymentSchema,
   StatementSchema,
   TenancySchema,
+  TenantCardSchema,
   TenantSchema,
   TransferSchema,
 } from './model';
-import type { Payment } from './model';
+import type { Payment, TenantCard } from './model';
 import type { Cents } from './money';
 import { movementUses } from './movements';
 import { parseOrThrow } from './parse';
@@ -53,6 +54,62 @@ export async function saveTenant(
     clock,
     newId,
   );
+}
+
+export type SaveTenantCardResult =
+  | { status: 'saved'; operationId: string }
+  | { status: 'unchanged' }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-tenant' | 'invalid-card' };
+
+/**
+ * Replaces the whole reserved card of the live tenant `tenantId` (plan 17, R311): a field left out
+ * is removed. One `tenant.card` operation, no value in the summary. Refused without writing:
+ * `inconsistent-store`, `unknown-tenant`, `invalid-card` (empty, or fields the schema refuses).
+ */
+export async function saveTenantCard(
+  store: Store,
+  input: { tenantId: string; card: Omit<TenantCard, 'id' | 'v' | 'rev' | 'deleted'> },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<SaveTenantCardResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  if (
+    !(await loadAll(store, 'tenant', TenantSchema)).records.some((t) => t.id === input.tenantId)
+  ) {
+    return { status: 'refused', reason: 'unknown-tenant' };
+  }
+  if (Object.values(input.card).every((v) => v === undefined)) {
+    return { status: 'refused', reason: 'invalid-card' };
+  }
+  const before = (
+    await loadAll(store, 'tenantCard', TenantCardSchema, { includeDeleted: true })
+  ).records.find((c) => c.id === input.tenantId);
+  const record = (rev: number) =>
+    TenantCardSchema.safeParse({ ...input.card, id: input.tenantId, v: 1, rev });
+  const parsed = record((before?.rev ?? 0) + 1);
+  if (!parsed.success) return { status: 'refused', reason: 'invalid-card' };
+  if (
+    before !== undefined &&
+    before.deleted !== true &&
+    JSON.stringify(record(before.rev).data) === JSON.stringify(before)
+  ) {
+    return { status: 'unchanged' };
+  }
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'tenant.card',
+      summary: 'Scheda riservata dell’inquilino salvata.',
+      changes: [{ path: recordPath('tenantCard', input.tenantId), before, after: parsed.data }],
+    },
+    clock,
+    newId,
+  );
+  return { status: 'saved', operationId: operation.id };
 }
 
 /**
