@@ -29,6 +29,7 @@ function fakeRoot({
   plugin = true,
   registered = true,
   requireSignedVersion = true,
+  permissions = ['core:default', 'updater:default', 'process:allow-restart'],
 } = {}) {
   const tauri = join(dir, 'apps', 'desktop', 'src-tauri');
   mkdirSync(join(tauri, 'src'), { recursive: true });
@@ -39,7 +40,7 @@ function fakeRoot({
   writeFileSync(
     join(tauri, 'Cargo.toml'),
     `[package]\nname = "x"\nversion = "${version}"\n\n[dependencies]\ntauri = { version = "=2.12.5" }\n` +
-      (plugin ? 'tauri-plugin-updater = "=2.10.0"\n' : ''),
+      (plugin ? 'tauri-plugin-updater = "=2.14.0"\ntauri-plugin-process = "=2.4.0"\n' : ''),
   );
   writeFileSync(
     join(tauri, 'Cargo.lock'),
@@ -47,8 +48,12 @@ function fakeRoot({
   );
   writeFileSync(
     join(tauri, 'src', 'lib.rs'),
-    registered ? '.plugin(tauri_plugin_updater::Builder::new().build())\n' : '\n',
+    registered
+      ? '.plugin(tauri_plugin_updater::Builder::new().build())\n.plugin(tauri_plugin_process::init())\n'
+      : '\n',
   );
+  mkdirSync(join(tauri, 'capabilities'), { recursive: true });
+  writeFileSync(join(tauri, 'capabilities', 'default.json'), JSON.stringify({ permissions }));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
   writeFileSync(join(dir, 'apps', 'desktop', 'package.json'), JSON.stringify({ version }));
   return dir;
@@ -89,6 +94,18 @@ describe('preflightProblems', () => {
   it('wants the plugin registered in lib.rs, not only in Cargo.toml', () => {
     expect(preflightProblems(fakeRoot({ registered: false }), 'v1.2.3')).toEqual([
       expect.stringMatching(/lib\.rs/),
+    ]);
+  });
+
+  it('wants the permissions to check and install in the capabilities', () => {
+    const problems = preflightProblems(
+      fakeRoot({ permissions: ['core:default', { identifier: 'fs:allow-read-file' }] }),
+      'v1.2.3',
+    );
+    expect(problems).toEqual([expect.stringMatching(/updater:default, process:allow-restart/)]);
+    const restartOnly = fakeRoot({ permissions: [{ identifier: 'updater:default' }] });
+    expect(preflightProblems(restartOnly, 'v1.2.3')).toEqual([
+      expect.stringMatching(/^Mancano i permessi process:allow-restart /),
     ]);
   });
 

@@ -60,9 +60,28 @@ Se dice «Fatto», resta solo da committare `tauri.conf.json` di quella stessa c
 
 Se la cartella contiene altri file `.key`, il comando si ferma: deve esserci una sola coppia.
 
-### 3. Il plugin di aggiornamento nell'app (lo fanno gli agenti)
+### 3. Il plugin di aggiornamento nell'app (piano 16b, lo fanno gli agenti)
 
-Piano 16b: plugin nell'app e `Cargo.lock` rigenerato con una build a mano su GitHub. Finché non c'è, un'etichetta di versione **si ferma da sola** prima della build con un messaggio chiaro: è voluto, perché un installer senza aggiornamenti costringerebbe a reinstallare a mano sul computer di user2.
+Il ramo `feat/piano-16b-aggiornamenti` aggiunge all'app il controllo degli aggiornamenti (pannello «Aggiornamenti», interruttore, «Installa e riavvia»). Su questo Mac non c'è Rust, quindi `Cargo.lock` lo aggiorna GitHub. Dopo il push del ramo (lo fa user1, o un agente che user1 autorizza):
+
+1. Il workflow **Cargo.lock** parte da solo (ogni push che cambia `Cargo.toml`). Se è **rosso** con «Cargo.lock non è aggiornato», è normale la prima volta: ha preparato il file giusto. Se è rosso su «Check Rust dependency licences», c'è una licenza nuova: decide user1, non si committa nulla.
+2. Scaricare il file e committarlo (dalla cartella del repository, sul ramo):
+
+   ```sh
+   run=$(gh run list --workflow cargo-lock.yml --branch feat/piano-16b-aggiornamenti --limit 1 --json databaseId -q '.[0].databaseId')
+   gh run download "$run" -n cargo-lock -D apps/desktop/src-tauri
+   git diff --stat apps/desktop/src-tauri/Cargo.lock
+   git commit -m "chore(desktop): Cargo.lock con i plugin di aggiornamento" apps/desktop/src-tauri/Cargo.lock
+   git push
+   ```
+
+   Il diff deve solo **aggiungere** pacchetti (i plugin e le loro dipendenze), non cambiare le versioni di `tauri` o degli altri plugin. Dopo il push il workflow Cargo.lock torna verde.
+
+3. Prova della build del ramo: `gh workflow run build.yml --ref feat/piano-16b-aggiornamenti`, poi `gh run watch`. Deve finire in verde (Windows e macOS). Solo allora si unisce in `main`.
+
+Finché questo non è fatto, un'etichetta di versione **si ferma da sola** prima della build con un messaggio chiaro: è voluto, perché un installer senza aggiornamenti costringerebbe a reinstallare a mano sul computer di user2.
+
+Nell'app: il pannello «Aggiornamenti» controlla una volta all'avvio, se l'interruttore è acceso (lo è di default, domanda aperta), e propone la versione nuova; si installa solo con «Installa e riavvia». L'interruttore spento vuol dire nessuna connessione a internet. Vale per ogni computer separatamente.
 
 ## A ogni versione
 
@@ -93,7 +112,8 @@ Il link da mandare è quello della pagina Releases del repository, `https://gith
 
 ## Se qualcosa non va
 
-- **La build si ferma su «Check that the version can be published»**: il messaggio dice cosa manca (versione diversa in uno dei cinque file, chiave pubblica segnaposto, `requireSignedVersion` assente, plugin assente in `Cargo.toml` o `lib.rs`).
+- **La build si ferma su «Check that the version can be published»**: il messaggio dice cosa manca (versione diversa in uno dei cinque file, chiave pubblica segnaposto, `requireSignedVersion` assente, plugin assente in `Cargo.toml` o `lib.rs`, permessi `updater:default` o `process:allow-restart` assenti in `capabilities/default.json`).
+- **La build si ferma su «Build the installers» con un errore su `Cargo.lock` / `--locked`**: il lock non è aggiornato; punto 3.
 - **Si ferma su «Sign the update files» con «Manca il secret»**: il punto 2 non è stato fatto, o la chiave è stata messa nei secrets del repository invece che nell'environment `release`.
 - **Si ferma su «Write the update manifest»**: una firma non corrisponde alla chiave pubblica di `tauri.conf.json` (chiave privata e pubblica di coppie diverse): non si pubblica nulla.
 - **Se la firma non funziona** (errore sulla chiave nel passo «Sign the update files»): la coppia potrebbe essere di quelle difettose della CLI di Tauri tra 2.9.3 e 2.10.0. Si crea una coppia nuova in una cartella vuota, `pnpm --filter desktop tauri signer generate --ci -w "<cartella nuova>/app-bollette.key"`, si rimette il segnaposto in `tauri.conf.json` (o lo si chiede a un agente) e si rilancia il comando del punto 2 con la cartella nuova. Si può fare solo **prima** di dare un installer a user2: dopo, una chiave nuova vuol dire reinstallare a mano.
