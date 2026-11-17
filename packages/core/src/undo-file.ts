@@ -8,7 +8,8 @@ import type { Store } from './store/store';
  * `before`) whose `fileHash` is `fileHash`, with `undoOperation` and no cascade. Returns the undo
  * operations; an empty list when there is nothing left to undo, so it can be repeated. An error
  * of `undoOperation` (e.g. a dependent operation) is thrown and the undos already made stay: a
- * second call undoes only what is left. Operations of other files are never touched.
+ * second call undoes only what is left. Operations of other files are never touched. With
+ * `options.only`, only the operations that created such a record for which it is true.
  */
 export async function undoFile(
   store: Store,
@@ -16,6 +17,9 @@ export async function undoFile(
   profileId: string,
   clock: () => string,
   newId: () => string,
+  options: {
+    only?: (after: { fileDocument?: { pages: number[] }; pages?: number[] }) => boolean;
+  } = {},
 ): Promise<Operation[]> {
   const { operations } = await readJournal(store);
   const targets = operations.flatMap((op) => {
@@ -26,7 +30,8 @@ export async function undoFile(
           before === undefined &&
           typeof after === 'object' &&
           after !== null &&
-          (after as { fileHash?: unknown }).fileHash === fileHash,
+          (after as { fileHash?: unknown }).fileHash === fileHash &&
+          (options.only === undefined || options.only(after)),
       )
     )
       return [];

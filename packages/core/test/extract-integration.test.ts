@@ -200,6 +200,7 @@ describe.skipIf(!availability.available)('core and the Python reader', () => {
       ).toEqual({
         action: 'auto-register',
         reasons: [],
+        codes: [],
       });
       const registered = await registerProposal(
         store,

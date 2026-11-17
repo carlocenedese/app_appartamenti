@@ -26,6 +26,7 @@ import {
   NoteSchema,
   PayableKindSchema,
   PayableSchema,
+  PendingDocumentSchema,
   PaymentSchema,
   SupplierProfileSchema,
   SupplySchema,
@@ -251,6 +252,13 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     f24Group: 'gruppo-1',
     rates: [{ index: 1 }, { index: 2, expected: 60000 }],
   },
+  pendingDocument: {
+    ...base,
+    id: 'doc-H1',
+    apartmentId: 'apt-1',
+    fileHash: 'H1',
+    documentKind: 'bill',
+  },
   payable: {
     ...base,
     id: 'scad-1',
@@ -408,6 +416,7 @@ describe('recordSchemas', () => {
         'rentYear',
         'imuRule',
         'payable',
+        'pendingDocument',
         'condoDocument',
         'tenantRecovery',
         'taxEstimate',
@@ -435,6 +444,7 @@ describe('recordSchemas', () => {
     expect(recordSchemas.imuYear).toBe(ImuYearSchema);
     expect(recordSchemas.imuRule).toBe(ImuRuleSchema);
     expect(recordSchemas.payable).toBe(PayableSchema);
+    expect(recordSchemas.pendingDocument).toBe(PendingDocumentSchema);
     expect(recordSchemas.condoDocument).toBe(CondoDocumentSchema);
     expect(recordSchemas.tenantRecovery).toBe(TenantRecoverySchema);
     expect(recordSchemas.taxEstimate).toBe(TaxEstimateSchema);
@@ -1808,5 +1818,24 @@ describe('TaxEstimateSchema and TaxPaymentSchema (plan 10, task 1)', () => {
     const part = { voce: 'cedolare', year: '2026', amount: 100 };
     expect(okPayment({ parts: [part, part] })).toBe(false);
     expect(okPayment({ id: 'taxp-tx-2' })).toBe(false);
+  });
+});
+
+describe('PendingDocumentSchema', () => {
+  const doc = {
+    id: 'doc-H1-p1-2',
+    v: 1,
+    rev: 1,
+    apartmentId: 'apt-1',
+    fileHash: 'H1',
+    pages: [1, 2],
+    documentKind: 'tari',
+  };
+  it('accepts a document to review', () => {
+    expect(PendingDocumentSchema.parse(doc)).toEqual(doc);
+  });
+  it('wants an id starting with doc- and pages in order', () => {
+    expect(PendingDocumentSchema.safeParse({ ...doc, id: 'x' }).success).toBe(false);
+    expect(PendingDocumentSchema.safeParse({ ...doc, pages: [3, 2] }).success).toBe(false);
   });
 });

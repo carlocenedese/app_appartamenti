@@ -16,6 +16,7 @@ import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   ContractSchema,
   commitChange,
+  hashBytes,
   recordPath,
   recordSchemas,
   settlementPeriods,
@@ -4397,5 +4398,106 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       'Rifiutato: il contratto ha un subentro: ripetere --presenze con le presenze del subentro.',
     ]);
     expect((await run(contratto('--presenze', 'tcy-anna,tcy-bruno'))).code).toBe(0);
+  });
+});
+
+describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () => {
+  // Invented supplier, amounts and codes (fixtures/README.md); main() in process.
+  let n = 0;
+  const run = async (args) => {
+    const r = await main(args, { now: () => ORA, newId: () => `p15-${String((n += 1))}` });
+    return { code: r.code, out: r.output, json: JSON.parse(r.output) };
+  };
+  const field = (value) => ({
+    value,
+    confidence: 'high',
+    source: { page: 1, box: [0, 0, 1, 1], text: 'x' },
+  });
+
+  it('da rivedere, confermata, doppione, annullata, contata nel cruscotto', async () => {
+    const dir = join(root, `p15-${String((counter += 1))}`);
+    mkdirSync(dir);
+    let k = 0;
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [{ path: recordPath('apartment', 'pulci'), after: apartment({ id: 'pulci' }) }],
+      },
+      () => ORA,
+      () => `seed-${String((k += 1))}`,
+    );
+    const pdf = join(dir, 'bolletta.pdf');
+    writeFileSync(pdf, '%PDF-1.7 bolletta inventata');
+    const reading = {
+      v: 1,
+      engineVersion: '0.1.0',
+      fileHash: await hashBytes(readFileSync(pdf)),
+      fileName: 'bolletta.pdf',
+      pages: 1,
+      pageRange: [1, 1],
+      status: 'riconosciuta',
+      profileId: 'prof-inventato',
+      profileRev: 1,
+      kind: 'bill',
+      documentKind: 'bill',
+      category: 'gas',
+      fields: {
+        supplier: field('Fornitore-Inventato-Gas'),
+        number: field('2026/0099'),
+        issueDate: field('2026-10-05'),
+        dueDate: field('2026-10-25'),
+        periodStart: field('2026-08-01'),
+        periodEnd: field('2026-09-30'),
+        amount: field(4321),
+      },
+      parts: [],
+      identifiers: [],
+      checks: [],
+      warnings: [],
+      textSource: 'pdf',
+      ocrPages: [],
+    };
+    const lettura = join(dir, 'lettura.json');
+    writeFileSync(lettura, JSON.stringify(reading));
+    const common = ['--cartella', dir, '--ora', ORA];
+    const args = [...common, '--appartamento', 'pulci', '--lettura', lettura, pdf];
+
+    expect((await run(['bolletta', ...args])).code).toBe(2); // no threshold: not decided (R262)
+    const first = await run(['bolletta', ...args, '--soglia-consumi', '30']);
+    expect(first.code).toBe(0);
+    expect(first.json).toMatchObject({ status: 'da-rivedere' });
+    expect(first.json.codes).toContain('apartment-codes-unknown');
+    expect(first.json.codes).toContain('profile');
+    expect(first.json.operationId).toBeDefined();
+    for (const secret of ['Fornitore-Inventato-Gas', '43,21', '4321', '2026-08']) {
+      expect(first.out).not.toContain(secret);
+    }
+    const again = await run(['bolletta', ...args, '--soglia-consumi', '30']);
+    expect(again.json).toMatchObject({ status: 'da-rivedere', pendingId: first.json.pendingId });
+    expect(again.json.operationId).toBeUndefined();
+
+    const board = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
+    expect(board.code).toBe(0);
+    expect(board.json.apartments).toEqual([
+      { apartmentId: 'pulci', counts: { 'documento-da-rivedere': 1 } },
+    ]);
+
+    const confirmed = await run(['bolletta', ...args, '--soglia-consumi', '30', '--conferma']);
+    expect(confirmed.json).toMatchObject({ status: 'confermata' });
+    const duplicate = await run(['bolletta', ...args, '--soglia-consumi', '30', '--conferma']);
+    expect(duplicate.code).toBe(1);
+    expect(duplicate.json).toMatchObject({ reason: 'duplicate-bill' });
+
+    const undone = await run(['annulla-bolletta', ...common, pdf]);
+    expect(undone.json.status).toBe('undone');
+    expect(undone.json.operationIds).toHaveLength(2);
+    expect(undone.json.records).toBe(2);
+    expect((await run(['annulla-bolletta', ...common, '--pagine', '2-1', pdf])).code).toBe(2);
+    const empty = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
+    expect(empty.json.apartments).toEqual([{ apartmentId: 'pulci', counts: {} }]);
+    expect((await run(['cruscotto', ...common, '--lettura', lettura])).code).toBe(2);
   });
 });

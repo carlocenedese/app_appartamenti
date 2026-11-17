@@ -19,7 +19,7 @@ import { hasOcrReading } from './extraction';
 import type { ExtractedField, ExtractionResult } from './extraction';
 import { commitChange } from './journal';
 import { BillSchema, InstalmentSchema, SupplierProfileSchema } from './model';
-import type { Instalment, SupplierProfile } from './model';
+import type { FileDocument, Instalment, SupplierProfile } from './model';
 import { parseOrThrow } from './parse';
 import { FIELD_LABELS } from './proposal';
 import type { Proposal } from './proposal';
@@ -40,7 +40,18 @@ function operationId(prefix: string, at: string): string {
   return `${prefix}-${compactTimestamp(at)}`;
 }
 
-export type RegistrationDecision = { action: 'auto-register' | 'review'; reasons: string[] };
+/**
+ * `reasons` are the Italian messages; `codes` the same reasons as codes, sorted, without repeats:
+ * `profile`, `ocr`, `reading-status`, `field:<name>`, the code of each check not `ok` (`none` for
+ * a proposal with nothing to register, with the codes of its failed checks).
+ */
+export type RegistrationDecision = {
+  action: 'auto-register' | 'review';
+  reasons: string[];
+  codes: string[];
+};
+
+type Reason = { code: string; message: string };
 
 /** The messages of the checks that failed, for a proposal that has nothing to register. */
 function noneReason(proposal: Proposal): string {
@@ -54,15 +65,27 @@ function noneReason(proposal: Proposal): string {
  * looked at here; an optional field that was not read counts too), a check that is `warn` or
  * `fail`. Empty when the proposal can go by itself.
  */
-function proposalReasons(proposal: Proposal, result: ExtractionResult): string[] {
-  if (proposal.kind === 'none') return [noneReason(proposal)];
-  const reasons: string[] = [];
+function proposalReasons(proposal: Proposal, result: ExtractionResult): Reason[] {
+  if (proposal.kind === 'none') {
+    const failed = proposal.checks.filter((c) => c.severity === 'fail').map((c) => c.code);
+    return [
+      { code: 'none', message: noneReason(proposal) },
+      ...failed.map((code) => ({ code, message: '' })),
+    ];
+  }
+  const reasons: Reason[] = [];
   // A text PDF with a scanned page is decided by the fields read from that page, not by the page.
   if (result.textSource === 'ocr' || (result.textSource === 'mixed' && hasOcrReading(result))) {
-    reasons.push('Il testo è stato letto con la scansione (OCR): va controllato a mano.');
+    reasons.push({
+      code: 'ocr',
+      message: 'Il testo è stato letto con la scansione (OCR): va controllato a mano.',
+    });
   }
   if (result.status !== 'riconosciuta') {
-    reasons.push(`La lettura è «${result.status}», non «riconosciuta».`);
+    reasons.push({
+      code: 'reading-status',
+      message: `La lettura è «${result.status}», non «riconosciuta».`,
+    });
   }
   for (const [name, field] of Object.entries(result.fields) as [
     keyof typeof FIELD_LABELS,
@@ -71,22 +94,22 @@ function proposalReasons(proposal: Proposal, result: ExtractionResult): string[]
     if (field === undefined) continue;
     const label = FIELD_LABELS[name];
     if (field.confidence === 'missing' || field.value === null) {
-      reasons.push(`Il campo «${label}» non è stato letto.`);
+      reasons.push({ code: `field:${name}`, message: `Il campo «${label}» non è stato letto.` });
     } else if (field.confidence !== 'high') {
-      reasons.push(`Il campo «${label}» è dubbio.`);
+      reasons.push({ code: `field:${name}`, message: `Il campo «${label}» è dubbio.` });
     }
   }
   for (const check of proposal.checks) {
-    if (check.severity !== 'ok') reasons.push(check.message);
+    if (check.severity !== 'ok') reasons.push({ code: check.code, message: check.message });
   }
   return reasons;
 }
 
 /**
  * Whether the proposal made from `result` is registered without asking (`auto-register`) or goes
- * to a person (`review`, with the reasons in Italian). It is `auto-register` only when the profile
- * is the one the reading was made with (same id and `rev`), is `confermato` and has
- * `autoRegister`, the reading is `riconosciuta`, every field it has is `high` and no check is
+ * to a person (`review`, with the reasons in Italian and as codes). It is `auto-register` only
+ * when the profile is the one the reading was made with (same id and `rev`), is `confermato` and
+ * has `autoRegister`, the reading is `riconosciuta`, every field it has is `high` and no check is
  * `warn` or `fail`. A proposal `none` always goes to review.
  */
 export function decideRegistration(input: {
@@ -95,24 +118,27 @@ export function decideRegistration(input: {
   profile: SupplierProfile | undefined;
 }): RegistrationDecision {
   const { proposal, result, profile } = input;
-  const reasons: string[] = [];
+  const reasons: Reason[] = [];
+  const add = (message: string) => reasons.push({ code: 'profile', message });
   if (profile === undefined) {
-    reasons.push('Nessun profilo di fornitore confermato: la prima lettura va confermata a mano.');
+    add('Nessun profilo di fornitore confermato: la prima lettura va confermata a mano.');
   } else {
     if (profile.status !== 'confermato') {
-      reasons.push('Il profilo del fornitore è in bozza: va confermato con la prima lettura.');
+      add('Il profilo del fornitore è in bozza: va confermato con la prima lettura.');
     }
-    if (!profile.autoRegister) {
-      reasons.push('Per questo fornitore è impostato «conferma sempre».');
-    }
+    if (!profile.autoRegister) add('Per questo fornitore è impostato «conferma sempre».');
     if (result.profileId !== profile.id) {
-      reasons.push('La lettura non è stata fatta con il profilo di questo fornitore.');
+      add('La lettura non è stata fatta con il profilo di questo fornitore.');
     } else if (result.profileRev !== profile.rev) {
-      reasons.push('Il profilo del fornitore è cambiato dopo la lettura.');
+      add('Il profilo del fornitore è cambiato dopo la lettura.');
     }
   }
   reasons.push(...proposalReasons(proposal, result));
-  return { action: reasons.length === 0 ? 'auto-register' : 'review', reasons };
+  return {
+    action: reasons.length === 0 ? 'auto-register' : 'review',
+    reasons: reasons.map((r) => r.message).filter((m) => m !== ''),
+    codes: [...new Set(reasons.map((r) => r.code))].sort(),
+  };
 }
 
 export type RegisterProposalResult =
@@ -200,7 +226,7 @@ async function writeInstalments(
  * when the reading names none, there is no such record, it is deleted, or its file is not a valid
  * profile: `decideRegistration` then sends the reading to a person.
  */
-async function readSupplierProfile(
+export async function readSupplierProfile(
   store: Store,
   result: ExtractionResult,
 ): Promise<SupplierProfile | undefined> {
@@ -218,6 +244,35 @@ async function readSupplierProfile(
     return undefined;
   }
   return parsed.data;
+}
+
+/** The part of the file read: only a part gets a `fileDocument`; the whole file has none. */
+export function fileDocumentOf(result: ExtractionResult): FileDocument | undefined {
+  const range = result.pageRange;
+  return range !== null && !(range[0] === 1 && range[1] === result.pages)
+    ? { pages: range, documentKind: result.documentKind }
+    : undefined;
+}
+
+/**
+ * The duplicate `registerProposal` would report for `proposal`, read from the file of
+ * `result.fileHash`, without writing anything (`undefined` when none, and for `none`).
+ */
+export async function findProposalDuplicate(
+  store: Store,
+  proposal: Proposal,
+  result: ExtractionResult,
+): Promise<{ status: 'duplicate' | 'possible-duplicate'; existingId: string } | undefined> {
+  const fileDocument = fileDocumentOf(result);
+  const extra = { v: 1, rev: 1, fileHash: result.fileHash, ...(fileDocument && { fileDocument }) };
+  if (proposal.kind === 'none') return undefined;
+  if (proposal.kind === 'tari') {
+    const records = proposal.instalments.map((i) =>
+      parseOrThrow(InstalmentSchema, { ...i, ...extra }, 'instalment'),
+    );
+    return records.length === 0 ? undefined : findInstalmentDuplicate(store, records);
+  }
+  return findBillDuplicate(store, parseOrThrow(BillSchema, { ...proposal.bill, ...extra }, 'bill'));
 }
 
 /**
@@ -268,12 +323,7 @@ export async function registerProposal(
   if (fileHash !== result.fileHash) {
     return { status: 'rejected', reason: 'Il file non è quello letto: va letto di nuovo.' };
   }
-  // Only a part of the file gets a `fileDocument`; the whole file stays as before.
-  const fileDocument =
-    result.pageRange !== null &&
-    !(result.pageRange[0] === 1 && result.pageRange[1] === result.pages)
-      ? { pages: result.pageRange, documentKind: result.documentKind }
-      : undefined;
+  const fileDocument = fileDocumentOf(result);
   const suffix = mode === 'auto' ? '-auto' : '';
   const autoReasons =
     mode === 'auto'

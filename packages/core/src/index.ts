@@ -68,3 +68,14 @@ export * from './condo-store';
 export * from './contact-store';
 export * from './taxes';
 export * from './tax-store';
+export { compareConsumption, yearBeforeBill } from './consumption';
+export type {
+  Comparable,
+  ConsumptionComparison,
+  ConsumptionMetric,
+  ConsumptionSide,
+  ConsumptionThresholds,
+  MetricDifference,
+} from './consumption';
+export * from './bill-import';
+export * from './dashboard';

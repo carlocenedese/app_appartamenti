@@ -1,0 +1,303 @@
+/**
+ * The import of one read PDF as a procedure of the core (section 22, steps 3 to 8; plan 15): the
+ * context of the proposal is read from the store, the proposal is made, and the confirmation policy
+ * decides between registering it and leaving it «da rivedere» as a `pendingDocument` (R260). The
+ * pieces are those of plans 2a and 2b (`proposalFromExtraction`, `decideRegistration`,
+ * `registerProposal`, `undoFile`); here they are put together, after `checkConsistency`.
+ *
+ * Pure: the clock and the ids come from the caller.
+ */
+import {
+  decideRegistration,
+  fileDocumentOf,
+  findProposalDuplicate,
+  readSupplierProfile,
+  registerProposal,
+} from './confirmation';
+import { hashBytes, samePages } from './dedupe';
+import type { ExtractionResult } from './extraction';
+import { checkConsistency, commitChange } from './journal';
+import type { Operation } from './journal';
+import {
+  ApartmentSchema,
+  BillMatchSchema,
+  BillSchema,
+  InstalmentSchema,
+  PendingDocumentSchema,
+  SupplySchema,
+  TenancySchema,
+  TenantRecoverySchema,
+} from './model';
+import type { PendingDocument } from './model';
+import { parseOrThrow } from './parse';
+import { proposalFromExtraction } from './proposal';
+import type { ProposalCheck } from './proposal';
+import { loadAll } from './store/load';
+import { recordPath } from './store/records';
+import type { Store } from './store/store';
+import { undoFile } from './undo-file';
+
+export type ImportBillResult =
+  | {
+      status: 'registrata-automaticamente' | 'confermata';
+      ids: string[];
+      operationId: string;
+      checks: ProposalCheck[];
+    }
+  | {
+      status: 'da-rivedere';
+      pendingId: string;
+      /** Absent when the same document was already waiting: nothing was written. */
+      operationId?: string;
+      /** Sorted codes of what sends it to a person; `reasons` are the Italian messages. */
+      codes: string[];
+      reasons: string[];
+      checks: ProposalCheck[];
+    }
+  | { status: 'duplicate' | 'possible-duplicate'; existingId: string }
+  | { status: 'rejected'; reason: string; checks: ProposalCheck[] }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-apartment' };
+
+export interface ImportBillInput {
+  result: ExtractionResult;
+  bytes: Uint8Array;
+  apartmentId: string;
+  /** POD, PDR and customer codes of the apartment (R261): no record keeps them yet. */
+  knownCodes: string[];
+  /** From the user's configuration, never from the code (R262). */
+  thresholds: { consumptionAnomalyPercent: number };
+  /** `auto`: the policy decides; `manual`: a person confirmed the proposal. */
+  mode: 'auto' | 'manual';
+}
+
+/** How two page ranges of one file compare (`samePages` of `dedupe.ts`; absent = whole file). */
+const pagesCompare = (a?: [number, number], b?: [number, number]) =>
+  samePages(
+    a === undefined ? undefined : { pages: a, documentKind: 'unknown' },
+    b === undefined ? undefined : { pages: b, documentKind: 'unknown' },
+  );
+
+/** The live bills and instalments registered from `fileHash`. */
+async function registeredFrom(store: Store, fileHash: string) {
+  const bills = (await loadAll(store, 'bill', BillSchema)).records;
+  const instalments = (await loadAll(store, 'instalment', InstalmentSchema)).records;
+  return [...bills, ...instalments].filter((r) => r.fileHash === fileHash);
+}
+
+/**
+ * Imports the PDF `bytes`, read as `input.result`, for `input.apartmentId`:
+ *
+ * - `refused` while `checkConsistency` reports a problem, or for an apartment that is not live;
+ * - `rejected` for bytes that are not the file read, or with `manual` for a proposal with nothing
+ *   to register; nothing is written;
+ * - with `auto`, when `decideRegistration` calls it `auto-register` and `knownCodes` is not empty
+ *   (R261), the registration of `registerProposal` (`registrata-automaticamente`); otherwise the
+ *   duplicate `registerProposal` would report (`findProposalDuplicate`: `duplicate` or
+ *   `possible-duplicate`, nothing written), else `da-rivedere` with the codes of
+ *   `decideRegistration` (plus `apartment-codes-unknown`): a `pendingDocument` is created with one
+ *   operation `document.review`, or, when a live one of the same file, pages and apartment is
+ *   there, nothing is written (idempotent);
+ * - with `manual`, `registerProposal` in mode `manual` (`confermata`).
+ *
+ * Undo with `undoBillImport`.
+ */
+export async function importBill(
+  store: Store,
+  input: ImportBillInput,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<ImportBillResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  const { result, bytes, apartmentId, mode } = input;
+  const apartment = (await loadAll(store, 'apartment', ApartmentSchema)).records.find(
+    (a) => a.id === apartmentId,
+  );
+  if (apartment === undefined) return { status: 'refused', reason: 'unknown-apartment' };
+  if ((await hashBytes(bytes)) !== result.fileHash) {
+    return {
+      status: 'rejected',
+      reason: 'Il file non è quello letto: va letto di nuovo.',
+      checks: [],
+    };
+  }
+
+  const proposal = proposalFromExtraction(
+    result,
+    {
+      apartment: { id: apartmentId, knownCodes: input.knownCodes },
+      bills: (await loadAll(store, 'bill', BillSchema)).records,
+      instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
+      tenancies: (await loadAll(store, 'tenancy', TenancySchema)).records,
+      supplies: (await loadAll(store, 'supply', SupplySchema)).records,
+      thresholds: input.thresholds,
+    },
+    newId,
+  );
+  const { checks } = proposal;
+  const register = async (how: 'auto' | 'manual'): Promise<ImportBillResult> => {
+    const written = await registerProposal(
+      store,
+      { proposal, result, bytes, profileId, mode: how },
+      clock,
+    );
+    if (written.status === 'rejected') return { ...written, checks };
+    if (written.status !== 'registered') return written;
+    return {
+      status: how === 'auto' ? 'registrata-automaticamente' : 'confermata',
+      ids: written.ids,
+      operationId: written.operationId,
+      checks,
+    };
+  };
+  if (mode === 'manual') return register('manual');
+
+  const profile = await readSupplierProfile(store, result);
+  const decision = decideRegistration({ proposal, result, profile });
+  const noCodes = input.knownCodes.length === 0;
+  if (decision.action === 'auto-register' && !noCodes) return register('auto');
+
+  const known = await findProposalDuplicate(store, proposal, result);
+  if (known !== undefined) return known;
+  const codes = noCodes ? [...decision.codes, 'apartment-codes-unknown'].sort() : decision.codes;
+  const reasons = noCodes
+    ? [...decision.reasons, "Nessun codice dell'appartamento noto: la lettura va controllata."]
+    : decision.reasons;
+  const pages = fileDocumentOf(result)?.pages;
+  const waiting = (await loadAll(store, 'pendingDocument', PendingDocumentSchema)).records.find(
+    (d) =>
+      d.fileHash === result.fileHash &&
+      d.apartmentId === apartmentId &&
+      pagesCompare(d.pages, pages) === 'same',
+  );
+  if (waiting !== undefined) {
+    return { status: 'da-rivedere', pendingId: waiting.id, codes, reasons, checks };
+  }
+  const record = parseOrThrow(
+    PendingDocumentSchema,
+    {
+      id: `doc-${newId()}`,
+      v: 1,
+      rev: 1,
+      apartmentId,
+      fileHash: result.fileHash,
+      ...(pages === undefined ? {} : { pages }),
+      documentKind: result.documentKind,
+    },
+    'pending document',
+  );
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'document.review',
+      apartmentId,
+      summary: 'Documento da rivedere',
+      changes: [
+        { path: recordPath('pendingDocument', record.id), before: undefined, after: record },
+      ],
+    },
+    clock,
+    newId,
+  );
+  return {
+    status: 'da-rivedere',
+    pendingId: record.id,
+    operationId: operation.id,
+    codes,
+    reasons,
+    checks,
+  };
+}
+
+/**
+ * The live documents still «da rivedere»: a `pendingDocument` with no live bill or instalment
+ * of the same file and the same pages (R260), sorted by id. A record of other pages that overlap
+ * (a whole file waiting, registered by parts) does not resolve it: a person looks again.
+ */
+export async function pendingDocuments(store: Store): Promise<PendingDocument[]> {
+  const docs = (await loadAll(store, 'pendingDocument', PendingDocumentSchema)).records;
+  const bills = (await loadAll(store, 'bill', BillSchema)).records;
+  const instalments = (await loadAll(store, 'instalment', InstalmentSchema)).records;
+  const registered = [...bills, ...instalments];
+  return docs.filter(
+    (d) =>
+      !registered.some(
+        (r) => r.fileHash === d.fileHash && pagesCompare(r.fileDocument?.pages, d.pages) === 'same',
+      ),
+  );
+}
+
+export type UndoBillImportResult =
+  | { status: 'undone'; operations: Operation[]; records: number }
+  | { status: 'refused'; reason: 'inconsistent-store' }
+  /** The file holds several documents: say which with `pages` (`null` for the whole file). */
+  | { status: 'refused'; reason: 'several-documents'; documents: number }
+  /** A live match or recovery uses a record of the file: undo those first. */
+  | { status: 'refused'; reason: 'has-dependents'; recordIds: string[] };
+
+const pagesKey = (pages?: readonly number[]) => (pages === undefined ? 'whole' : pages.join('-'));
+
+/**
+ * Takes back what the import of `fileHash` created (bills, instalments, the document to review),
+ * with `undoFile`; `records` counts the records the undos took back (0 when nothing was left).
+ * When the live records and documents to review of the file have more than one page range, the
+ * range must be given (`pages`, `null` for the whole file), else `several-documents`; only that
+ * document is taken back. Refused while `checkConsistency` reports a problem, and while a live
+ * `match` or `tenantRecovery` points at one of the records taken back (the journal only sees
+ * paths, so `undoFile` would leave them pointing at a deleted record). Errors of `undoFile` go
+ * through.
+ */
+export async function undoBillImport(
+  store: Store,
+  fileHash: string,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+  options: { pages?: [number, number] | null } = {},
+): Promise<UndoBillImportResult> {
+  if ((await checkConsistency(store)).length > 0) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  const registered = await registeredFrom(store, fileHash);
+  const waiting = (await loadAll(store, 'pendingDocument', PendingDocumentSchema)).records.filter(
+    (d) => d.fileHash === fileHash,
+  );
+  const keys = new Set([
+    ...registered.map((r) => pagesKey(r.fileDocument?.pages)),
+    ...waiting.map((d) => pagesKey(d.pages)),
+  ]);
+  const { pages } = options;
+  if (pages === undefined && keys.size > 1) {
+    return { status: 'refused', reason: 'several-documents', documents: keys.size };
+  }
+  const wanted = pages === undefined ? undefined : pagesKey(pages ?? undefined);
+  const ids = new Set(
+    registered
+      .filter((r) => wanted === undefined || pagesKey(r.fileDocument?.pages) === wanted)
+      .map((r) => r.id),
+  );
+  const matches = (await loadAll(store, 'match', BillMatchSchema)).records.filter((m) =>
+    ids.has(m.itemId),
+  );
+  const recoveries = (await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records.filter(
+    (r) => ids.has(r.instalmentId),
+  );
+  const recordIds = [...matches, ...recoveries].map((r) => r.id).sort();
+  if (recordIds.length > 0) return { status: 'refused', reason: 'has-dependents', recordIds };
+  const operations = await undoFile(store, fileHash, profileId, clock, newId, {
+    ...(wanted === undefined
+      ? {}
+      : {
+          only: (after: { fileDocument?: { pages: number[] }; pages?: number[] }) =>
+            pagesKey(after.fileDocument?.pages ?? after.pages) === wanted,
+        }),
+  });
+  return {
+    status: 'undone',
+    operations,
+    records: operations.reduce((n, op) => n + op.changes.length, 0),
+  };
+}
