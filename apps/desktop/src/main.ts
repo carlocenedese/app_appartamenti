@@ -1,4 +1,5 @@
 import { CORE_VERSION } from '@bollette/core';
+import { isTauri } from '@tauri-apps/api/core';
 
 /** The line the window shows: the app name and the version of the calculation engine. */
 export function renderVersion(): string {
@@ -15,6 +16,25 @@ export function showVersion(element: { textContent: string | null }): void {
 if (typeof document !== 'undefined') {
   const element = document.getElementById('version');
   if (element !== null) showVersion(element);
+}
+
+// Updates panel, inside the app only (plan 16b): one check at start if the switch is on.
+if (typeof document !== 'undefined' && isTauri()) {
+  void Promise.all([import('./updates'), import('./updates-tauri'), import('./machine-settings')])
+    .then(([updates, tauri, settings]) => {
+      const section = document.createElement('section');
+      section.className = 'updates';
+      document.querySelector('main')?.append(section);
+      return updates.renderUpdatesPanel(section, {
+        settings: settings.tauriSettingsBackend,
+        updater: tauri.tauriUpdateBackend,
+        checkAtStart: true,
+      });
+    })
+    .catch(() => {
+      // Only a fixed message: the error may hold paths.
+      console.error('Pannello degli aggiornamenti non disponibile.');
+    });
 }
 
 // Local demo of the two supply screens (invented data), reached only with #utenze-demo in development builds.

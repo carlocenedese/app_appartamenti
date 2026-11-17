@@ -111,7 +111,8 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
           input.clock,
           input.newId,
         );
-        const done = { ...settings, folder, userId: pending.userId };
+        // Read again: the updates switch may have been saved while the group was being created.
+        const done = { ...(await load()), folder, userId: pending.userId };
         delete done.pendingWorkspace;
         await saveMachineSettings(input.settings, done);
         open(folder);

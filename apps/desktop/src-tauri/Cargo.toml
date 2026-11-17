@@ -23,6 +23,10 @@ tauri = { version = "=2.12.5", features = [] }
 tauri-plugin-fs = "=2.7.1"
 tauri-plugin-dialog = "=2.8.4"
 tauri-plugin-persisted-scope = "=2.4.2"
+# Updates (plan 16b): the check, download and signature verification, and the restart after it.
+# Same versions as the npm packages @tauri-apps/plugin-updater and @tauri-apps/plugin-process.
+tauri-plugin-updater = "=2.14.0"
+tauri-plugin-process = "=2.4.0"
 # Needed by the code `tauri::generate_context!` writes for the `plugins` section of tauri.conf.json.
 serde_json = "=1.0.140"
 

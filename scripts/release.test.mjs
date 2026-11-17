@@ -29,6 +29,13 @@ function fakeRoot({
   plugin = true,
   registered = true,
   requireSignedVersion = true,
+  permissions = [
+    'core:default',
+    'updater:allow-check',
+    'updater:allow-download-and-install',
+    'process:allow-restart',
+  ],
+  locked = { updater: '2.14.0', process: '2.4.0' },
 } = {}) {
   const tauri = join(dir, 'apps', 'desktop', 'src-tauri');
   mkdirSync(join(tauri, 'src'), { recursive: true });
@@ -39,16 +46,23 @@ function fakeRoot({
   writeFileSync(
     join(tauri, 'Cargo.toml'),
     `[package]\nname = "x"\nversion = "${version}"\n\n[dependencies]\ntauri = { version = "=2.12.5" }\n` +
-      (plugin ? 'tauri-plugin-updater = "=2.10.0"\n' : ''),
+      (plugin ? 'tauri-plugin-updater = "=2.14.0"\ntauri-plugin-process = "=2.4.0"\n' : ''),
   );
   writeFileSync(
     join(tauri, 'Cargo.lock'),
-    `[[package]]\nname = "app-bollette"\nversion = "${version}"\n\n[[package]]\nname = "tauri"\nversion = "2.12.5"\n`,
+    `[[package]]\nname = "app-bollette"\nversion = "${version}"\n\n[[package]]\nname = "tauri"\nversion = "2.12.5"\n` +
+      Object.entries(locked)
+        .map(([name, v]) => `\n[[package]]\nname = "tauri-plugin-${name}"\nversion = "${v}"\n`)
+        .join(''),
   );
   writeFileSync(
     join(tauri, 'src', 'lib.rs'),
-    registered ? '.plugin(tauri_plugin_updater::Builder::new().build())\n' : '\n',
+    registered
+      ? '.plugin(tauri_plugin_updater::Builder::new().build())\n.plugin(tauri_plugin_process::init())\n'
+      : '\n',
   );
+  mkdirSync(join(tauri, 'capabilities'), { recursive: true });
+  writeFileSync(join(tauri, 'capabilities', 'default.json'), JSON.stringify({ permissions }));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
   writeFileSync(join(dir, 'apps', 'desktop', 'package.json'), JSON.stringify({ version }));
   return dir;
@@ -66,6 +80,12 @@ describe('readVersions', () => {
 describe('preflightProblems', () => {
   it('passes with matching versions, a real public key, signed versions and the plugin', () => {
     expect(preflightProblems(fakeRoot(), 'v1.2.3')).toEqual([]);
+  });
+
+  it('finds nothing missing in the repository except, until user1 writes it, the public key', () => {
+    const tag = `v${readVersions(repoRoot)['tauri.conf.json']}`;
+    const problems = preflightProblems(repoRoot, tag).filter((p) => !/segnaposto/.test(p));
+    expect(problems).toEqual([]);
   });
 
   it('lists every problem at once', () => {
@@ -89,6 +109,34 @@ describe('preflightProblems', () => {
   it('wants the plugin registered in lib.rs, not only in Cargo.toml', () => {
     expect(preflightProblems(fakeRoot({ registered: false }), 'v1.2.3')).toEqual([
       expect.stringMatching(/lib\.rs/),
+    ]);
+  });
+
+  it('wants the permissions to check and install in the capabilities', () => {
+    const problems = preflightProblems(
+      fakeRoot({ permissions: ['core:default', { identifier: 'fs:allow-read-file' }] }),
+      'v1.2.3',
+    );
+    expect(problems).toEqual([
+      expect.stringMatching(
+        /updater:allow-check, updater:allow-download-and-install, process:allow-restart/,
+      ),
+    ]);
+    const restartOnly = fakeRoot({
+      permissions: ['updater:allow-check', { identifier: 'updater:allow-download-and-install' }],
+    });
+    expect(preflightProblems(restartOnly, 'v1.2.3')).toEqual([
+      expect.stringMatching(/^Mancano i permessi process:allow-restart /),
+    ]);
+  });
+
+  it('wants both plugins in Cargo.lock at the version of Cargo.toml', () => {
+    expect(preflightProblems(fakeRoot({ locked: { process: '2.4.0' } }), 'v1.2.3')).toEqual([
+      expect.stringMatching(/^tauri-plugin-updater manca in Cargo\.lock/),
+    ]);
+    const old = fakeRoot({ locked: { updater: '2.13.3', process: '2.3.1' } });
+    expect(preflightProblems(old, 'v1.2.3')).toEqual([
+      expect.stringMatching(/^tauri-plugin-updater e tauri-plugin-process manca in Cargo\.lock/),
     ]);
   });
 

@@ -1,6 +1,6 @@
 /**
- * Settings of this machine only: which folder, «who am I», the language and an unfinished group
- * creation. They live in the app's config folder, never in the shared folder (design of plan 6,
+ * Settings of this machine only: which folder, «who am I», the language, the update switch and an
+ * unfinished group creation. They live in the app's config folder, never in the shared folder (design of plan 6,
  * choices 3 and 4).
  */
 import { appConfigDir, join } from '@tauri-apps/api/path';
@@ -11,6 +11,11 @@ const MachineSettingsSchema = z.object({
   folder: z.string().min(1).optional(),
   userId: z.string().min(1).optional(),
   language: z.string().min(1).optional(),
+  /**
+   * The update check, the app's only network call: missing means on (R285); updates.ts reads it
+   * raw, and a missing or corrupt file means off (R286).
+   */
+  checkUpdates: z.boolean().optional(),
   /** Ids fixed by «Crea gruppo» before writing, reused by a retry on the same folder. */
   pendingWorkspace: z
     .object({
