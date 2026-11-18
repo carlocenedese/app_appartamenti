@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BillSchema,
-  CORE_SCHEMA_VERSION,
+  DATA_FORMAT,
   CORE_VERSION,
   DEFAULT_CONFLICT_RULES,
   DROPBOX_CONFLICT_RULE,
@@ -16,7 +16,7 @@ import type { ConflictNameRule } from '../src/index';
 import { WORKSPACE_PATH } from '../src/store/store';
 import { MemoryStore } from './helpers/memory-store';
 
-const app = { version: CORE_VERSION, schemaVersion: CORE_SCHEMA_VERSION };
+const app = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
 const clock = () => '2026-11-13T09:00:00.000Z';
 function ids(): () => string {
   let n = 0;
@@ -25,7 +25,7 @@ function ids(): () => string {
 const workspace = (extra: Record<string, unknown> = {}) => ({
   workspaceId: 'ws-1',
   name: 'Casa',
-  schemaVersion: CORE_SCHEMA_VERSION,
+  schemaVersion: DATA_FORMAT,
   minAppVersion: CORE_VERSION,
   createdAt: clock(),
   ...extra,
@@ -67,7 +67,7 @@ describe('assessWorkspace', () => {
   });
 
   it('is read-only for a folder with a newer schemaVersion', async () => {
-    const store = await cleanFolder({ schemaVersion: CORE_SCHEMA_VERSION + 1 });
+    const store = await cleanFolder({ schemaVersion: DATA_FORMAT + 1 });
     expect(await assessWorkspace(store, app)).toMatchObject({
       compat: 'readonly',
       sync: 'ok',
@@ -76,7 +76,7 @@ describe('assessWorkspace', () => {
   });
 
   it('is upgrade-needed for an older schemaVersion', async () => {
-    const newerApp = { ...app, schemaVersion: CORE_SCHEMA_VERSION + 1 };
+    const newerApp = { ...app, schemaVersion: DATA_FORMAT + 1 };
     expect(await assessWorkspace(await cleanFolder(), newerApp)).toMatchObject({
       compat: 'upgrade-needed',
       writable: false,

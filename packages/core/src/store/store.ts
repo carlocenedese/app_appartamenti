@@ -60,6 +60,8 @@ export type Problem = {
    *   id is loaded, and none of them when no single file is (see `loadAll`).
    * - `diverged`: the record differs from what the last operation in the journal says (a crash
    *   between journal and record); reported by the journal checks, not by `loadAll`.
+   * - `unknown-fields`: a record with keys this app does not know (a newer app added a field). It
+   *   is loaded and can be read, but `commitChange` refuses to write over it.
    * - `forked`: two operations of the journal left the latest `rev` of the record with different
    *   content (two people changed it at once); the person chooses which to keep (`resolveFork`).
    */
@@ -71,10 +73,30 @@ export type Problem = {
     | 'id-mismatch'
     | 'duplicate-id'
     | 'diverged'
-    | 'forked';
+    | 'forked'
+    | 'unknown-fields';
   /** For `conflicted-copy`: the file the copy was made from, when its name can be worked out. */
   originalPath?: string;
 };
+
+/**
+ * Thrown by `commitChange` when it would write over data a newer app wrote: a record with a `v`
+ * above 1 or with fields this app does not know, or a folder whose `workspace.json` has a data
+ * format above `DATA_FORMAT`. Nothing is written. The message is for the screen, in Italian, and
+ * names only the relative path (ids, no personal data).
+ */
+export class NewerDataError extends Error {
+  /** Path of the record, or of `workspace.json`, relative to the workspace root. */
+  readonly path: string;
+
+  constructor(path: string) {
+    super(
+      `${path}: dato scritto da una versione più nuova dell'app; aggiorna l'app per modificarlo`,
+    );
+    this.name = 'NewerDataError';
+    this.path = path;
+  }
+}
 
 /**
  * Thrown by `Store.readJson` for a file that exists but is not valid JSON. It is its own class so

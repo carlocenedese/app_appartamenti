@@ -5,8 +5,8 @@
  * User names are shown on screen only, never logged.
  */
 import {
-  CORE_SCHEMA_VERSION,
   CORE_VERSION,
+  DATA_FORMAT,
   assessWorkspace,
   createUser,
   createWorkspace,
@@ -38,7 +38,7 @@ export interface FirstRunInput {
   presenceWindowMinutes?: number;
 }
 
-const APP = { version: CORE_VERSION, schemaVersion: CORE_SCHEMA_VERSION };
+const APP = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
 
 /** Draws the first-start screens into `root`; `stop` ends the presence signal. */
 export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop: () => void } {

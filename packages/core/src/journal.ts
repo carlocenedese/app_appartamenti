@@ -11,19 +11,29 @@
  * whose last operation went through the file on disk is equal to that `after`.
  */
 import { z } from 'zod';
-import { TimestampSchema } from './model';
+import type { ZodType } from 'zod';
+import { TimestampSchema, WorkspaceSchema, recordSchemas } from './model';
 import {
   DEFAULT_CONFLICT_RULES,
   compareText,
   conflictProblem,
   isSafePath,
+  dropsKeys,
   loadDir,
 } from './store/load';
 import type { ConflictNameRule } from './store/load';
 import { StaleWriteError, currentRev, writeRecord } from './store/records';
-import { MalformedJsonError, assertSafeRelPath, assertSafeSegment } from './store/store';
+import {
+  DATA_DIR,
+  MalformedJsonError,
+  NewerDataError,
+  WORKSPACE_PATH,
+  assertSafeRelPath,
+  assertSafeSegment,
+} from './store/store';
 import type { Problem, Store } from './store/store';
 import { compactTimestamp, compareByTime, compareTimestamps } from './time';
+import { DATA_FORMAT } from './version';
 
 /** Folder with the operation files, relative to the workspace root. */
 export const JOURNAL_DIR = '_app/journal';
@@ -112,6 +122,36 @@ function journalPath(operation: Pick<Operation, 'at' | 'profileId' | 'id'>): str
 
 // --- Writing ---------------------------------------------------------------------------------
 
+/** Throws `NewerDataError` when `workspace.json` says the folder has a newer data format. */
+async function refuseNewerFormat(store: Store): Promise<void> {
+  let raw: unknown;
+  try {
+    raw = await store.readJson(WORKSPACE_PATH);
+  } catch (error) {
+    if (error instanceof MalformedJsonError) return; // assessWorkspace reports it as invalid
+    throw error;
+  }
+  const workspace = WorkspaceSchema.safeParse(raw);
+  if (workspace.success && workspace.data.schemaVersion > DATA_FORMAT) {
+    throw new NewerDataError(WORKSPACE_PATH);
+  }
+}
+
+/**
+ * Throws `NewerDataError` when the record on disk at `path` was written by a newer app: a `v`
+ * above 1, or keys its schema does not know (writing over it would drop them). Only records of a
+ * kind in `recordSchemas` are checked by schema; the `v` check holds for every record.
+ */
+function refuseNewerRecord(path: string, raw: unknown): void {
+  if (!isRecord(raw)) return;
+  if (typeof raw.v === 'number' && raw.v > 1) throw new NewerDataError(path);
+  const kind = path.startsWith(`${DATA_DIR}/`) ? path.split('/')[2] : undefined;
+  const schemas: Record<string, ZodType> = recordSchemas;
+  const schema = kind !== undefined && Object.hasOwn(schemas, kind) ? schemas[kind] : undefined;
+  const parsed = schema?.safeParse(raw);
+  if (parsed?.success === true && dropsKeys(raw, parsed.data)) throw new NewerDataError(path);
+}
+
 /**
  * Checks one change of an operation about to be written and fills in its `after` as it will be on
  * disk: `{...after, rev}` with `rev` one above the one in `before` (1 for a new record), or, when
@@ -198,10 +238,12 @@ export async function commitChange(
   if ((await store.readJson(file)) !== undefined) {
     throw new Error(`The journal already has ${file}: an operation file is never overwritten`);
   }
+  await refuseNewerFormat(store);
   for (const { path, before } of changes) {
     const expected = before?.rev ?? null;
     const actual = await currentRev(store, path);
     if (actual !== expected) throw new StaleWriteError(path, expected, actual);
+    refuseNewerRecord(path, await store.readJson(path));
   }
 
   await store.writeJsonAtomic(file, operation);

@@ -10,8 +10,9 @@
  *
  * Unknown keys: the schemas are not strict. A parsed record drops keys it does not know instead of
  * failing, because a later app version may add a field to `v: 1` records and an older app must
- * still read them. Rewriting a record that has such keys would lose them: that is why a change that
- * older apps must not write over raises `minAppVersion`, which makes them read-only (`checkCompat`).
+ * still read them. Rewriting a record that has such keys would lose them: `loadAll` reports such a
+ * record as `unknown-fields` and `commitChange` refuses to write over it, and a change of the
+ * schemas raises `DATA_FORMAT` (see `version.ts`), which makes older apps read-only.
  * `v` stays literal 1: a record with another `v` is a future shape, and the store decides what to
  * do with it before it ever reaches these schemas.
  *

@@ -101,6 +101,22 @@ export function conflictProblem(dir: string, name: string): Problem {
 }
 
 /**
+ * Whether parsing `raw` into `parsed` dropped a key, at any depth: a key of an object in `raw`
+ * that the object at the same place in `parsed` does not have. That is a field written by a newer
+ * app (the schemas drop keys they do not know). Keys that `parsed` adds (defaults) do not count.
+ * Shared with the journal; not part of the public API.
+ */
+export function dropsKeys(raw: unknown, parsed: unknown): boolean {
+  if (Array.isArray(raw)) {
+    return Array.isArray(parsed) && raw.some((item, index) => dropsKeys(item, parsed[index]));
+  }
+  if (!isObject(raw) || !isObject(parsed)) return false;
+  return Object.entries(raw).some(
+    ([key, value]) => !Object.hasOwn(parsed, key) || dropsKeys(value, parsed[key]),
+  );
+}
+
+/**
  * Reads every record of one kind from `_app/dati/<kind>/` and returns the records and the
  * problems, without throwing for a file that is not right. Only `*.json` files are looked at
  * (temporary `.tmp-*` files and anything else are ignored). Each file is sorted into exactly one
@@ -123,7 +139,10 @@ export function conflictProblem(dir: string, name: string): Problem {
  *    a deleted record back): if exactly one of those files is named after the id, that one is
  *    kept and the others are reported as `duplicate-id`; otherwise all of them are reported as
  *    `duplicate-id` and none is loaded, since which one is right is for the user to decide;
- * 8. otherwise a record. One with `deleted: true` is left out unless `includeDeleted` is set.
+ * 8. otherwise a record. One with `deleted: true` is left out unless `includeDeleted` is set. A
+ *    record with keys the schema does not know (at any depth: a field a newer app added) is
+ *    loaded and also reported as `unknown-fields`: it can be read, but writing it back would lose
+ *    those keys, so `commitChange` refuses to.
  *
  * Records come back sorted by `id`, problems by path, both by code unit, so the result does not depend on the order the store lists files in. Records are what
  * `schema` returns, so keys it does not know are dropped (see the notes in `model.ts`).
@@ -203,6 +222,8 @@ export async function loadDir<T extends { id: string }>(
       problems.push({ path, reason: 'schema-mismatch' });
       continue;
     }
+    // A newer app added a field this one does not know: readable, but never to be written over.
+    if (dropsKeys(raw, parsed.data)) problems.push({ path, reason: 'unknown-fields' });
     const deleted = isObject(raw) && raw.deleted === true;
     loaded.push({
       path,

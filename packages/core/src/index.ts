@@ -3,7 +3,7 @@ export * from './iban';
 export * from './money';
 export * from './period';
 export * from './version';
-export { MalformedJsonError, assertSafeRelPath } from './store/store';
+export { MalformedJsonError, NewerDataError, assertSafeRelPath } from './store/store';
 export type { Problem, Store } from './store/store';
 export { StaleWriteError, recordPath, writeRecord } from './store/records';
 export {

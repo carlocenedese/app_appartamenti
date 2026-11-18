@@ -70,7 +70,8 @@ const READ_ONLY_MESSAGES: Record<ReadOnlyCode, string> = {
     'ripristinalo dalla cronologia delle versioni di Dropbox; se è dimostrato che non ha lasciato ' +
     'effetti, si può mettere da parte.',
   'newer-data':
-    "Alcuni dati sono stati scritti da una versione più nuova dell'app: aggiorna l'app per modificarli.",
+    "Alcuni dati sono stati scritti da una versione più nuova dell'app: aggiorna l'app per " +
+    'modificarli. Fino ad allora la cartella è in sola lettura, anche per gli annullamenti.',
 };
 
 /** The order of the reasons: what to fix first. */
@@ -95,7 +96,8 @@ function blockingCode(problem: Problem, inJournal: boolean): ReadOnlyCode | unde
     case 'diverged':
       return 'diverged';
     case 'future-version':
-      return inJournal ? 'newer-data' : undefined;
+    case 'unknown-fields':
+      return 'newer-data';
     case 'malformed-json':
     case 'schema-mismatch':
       return inJournal ? 'damaged-journal' : undefined;
