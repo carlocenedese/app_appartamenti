@@ -13,6 +13,7 @@ import {
   MovementClassSchema,
   PaymentSchema,
   PeriodCloseSchema,
+  SupplySchema,
   TenancySchema,
   TenantRecoverySchema,
   checkConsistency,
@@ -380,29 +381,61 @@ describe('closed period guard, second review', () => {
     await write(store, 'payment', { ...p, amount: 5200 }, p, later, 'fix');
   });
 
-  it('B: beds and the shares of a supply of the apartment are refused; another apartment is not', async () => {
+  it('B: beds are refused naming every closed period to reopen; another field passes', async () => {
     const store = await closed();
     const apt = await one(store, 'apartment', ApartmentSchema, 'apt');
-    await expect(write(store, 'apartment', { ...apt, posti: 2 }, apt, later, 'x')).rejects.toThrow(
-      ClosedPeriodError,
-    );
+    const refused = write(store, 'apartment', { ...apt, posti: 2 }, apt, later, 'x');
+    await expect(refused).rejects.toThrow(ClosedPeriodError);
+    await expect(refused).rejects.toThrow(/riapri .*i periodi chiusi dell'appartamento: 2025-26/);
     await write(store, 'apartment', { ...apt, address: 'Indirizzo inventato' }, apt, later, 'x');
-    const supply = (apartments: { apartmentId: string; weight: number }[]) => ({
-      id: 'sup-1',
+  });
+
+  it('finding 2: a new supply is always linked; an existing one changes unless a counted notice uses it', async () => {
+    const supply = (id: string, apartments: { apartmentId: string; weight: number }[]) => ({
+      id,
       v: 1,
       rev: 1,
-      label: 'UTENZA-1',
+      label: id.toUpperCase(),
       apartments,
     });
-    await expect(
-      write(store, 'supply', supply([{ apartmentId: 'apt', weight: 10000 }]), undefined, later),
-    ).rejects.toThrow(ClosedPeriodError);
+    // The December notice the closing waits for (R3), of the supply `sup-tari`.
+    const notice = instalment('tari-dic', {
+      kind: 'tari',
+      esercizio: '2025',
+      rateIndex: 3,
+      rateCount: 3,
+      dueDate: isoDate('2025-12-16'),
+      rata: cents(3000),
+      coversFrom: yearMonth('2025-09'),
+      coversTo: yearMonth('2025-12'),
+      supplyId: 'sup-tari',
+    });
+    const store = await closed([
+      ['supply', supply('sup-libera', [{ apartmentId: 'apt', weight: 10000 }])],
+      ['supply', supply('sup-tari', [{ apartmentId: 'apt', weight: 10000 }])],
+      ['instalment', notice],
+      ['match', match(notice, 3000, { transactionDate: isoDate('2025-12-16') })],
+    ]);
+    // A bill with an unknown code: its supply is linked after the closing.
     await write(
       store,
       'supply',
-      supply([{ apartmentId: 'apt-2', weight: 10000 }]),
+      supply('sup-nuova', [{ apartmentId: 'apt', weight: 10000 }]),
       undefined,
       later,
+    );
+    const halves = [
+      { apartmentId: 'apt', weight: 6000 },
+      { apartmentId: 'apt-2', weight: 4000 },
+    ];
+    const free = await one(store, 'supply', SupplySchema, 'sup-libera');
+    await write(store, 'supply', { ...free, apartments: halves }, free, later, 'x');
+    const used = await one(store, 'supply', SupplySchema, 'sup-tari');
+    await expect(
+      write(store, 'supply', { ...used, apartments: halves }, used, later, 'x'),
+    ).rejects.toThrow(ClosedPeriodError);
+    await expect(write(store, 'supply', undefined, used, later, 'del')).rejects.toThrow(
+      ClosedPeriodError,
     );
   });
 

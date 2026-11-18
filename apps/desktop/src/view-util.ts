@@ -1,3 +1,5 @@
+import { ClosedPeriodError, ClosingUndoError } from '@bollette/core';
+
 /** Basis points from what the user typed («33,33»): at most two decimals, empty means 0. */
 export function parsePercent(text: string): number | undefined {
   const t = text.trim();
@@ -13,11 +15,16 @@ export function formatPercent(basisPoints: number): string {
   return `${Math.trunc(basisPoints / 100)},${String(basisPoints % 100).padStart(2, '0')}%`;
 }
 
-/** The message under a failed save; the text of the error is never shown. */
+/**
+ * The message under a failed save. The text of an error is never shown, except the Italian
+ * messages of the core written for the user: a closed period (F5) and a refused undo of a closing.
+ */
 export function saveErrorMessage(error: unknown): string {
-  return error instanceof Error && error.name === 'StaleWriteError'
-    ? "Un'altra persona ha cambiato questa utenza. Ricarica e riprova."
-    : 'Non è stato possibile salvare.';
+  if (error instanceof Error && error.name === 'StaleWriteError') {
+    return "Un'altra persona ha cambiato questa utenza. Ricarica e riprova.";
+  }
+  if (error instanceof ClosedPeriodError || error instanceof ClosingUndoError) return error.message;
+  return 'Non è stato possibile salvare.';
 }
 
 /** Creates an element with a class and text. */

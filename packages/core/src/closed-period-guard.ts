@@ -33,16 +33,26 @@ export class ClosedPeriodError extends Error {
   readonly apartmentId: string;
   readonly periodLabel: string;
 
-  constructor(path: string, apartmentId: string, periodLabel: string) {
+  /** Every closed period to reopen (a field of the apartment without a date reaches them all). */
+  readonly periodLabels: string[];
+
+  /** `others` (a field of the apartment): the message lists every closed period to reopen. */
+  constructor(path: string, apartmentId: string, periodLabel: string, others?: string[]) {
+    const labels = [periodLabel, ...(others ?? [])];
     super(
-      `Il periodo di conguaglio ${periodLabel} dell'appartamento ${apartmentId} è chiuso: ` +
-        `questa modifica (${path}) cambierebbe ciò che conteneva alla chiusura. Per farla riapri ` +
-        'il periodo con il motivo («riapri-periodo»).',
+      others === undefined
+        ? `Il periodo di conguaglio ${periodLabel} dell'appartamento ${apartmentId} è chiuso: ` +
+            `questa modifica (${path}) cambierebbe ciò che conteneva alla chiusura. Per farla ` +
+            'riapri il periodo con il motivo («riapri-periodo»).'
+        : `L'appartamento ${apartmentId} ha periodi di conguaglio chiusi e questa modifica ` +
+            `(${path}) vale per tutti. Per farla riapri con il motivo («riapri-periodo») i ` +
+            `periodi chiusi dell'appartamento: ${labels.join(', ')}.`,
     );
     this.name = 'ClosedPeriodError';
     this.path = path;
     this.apartmentId = apartmentId;
     this.periodLabel = periodLabel;
+    this.periodLabels = labels;
   }
 }
 
@@ -91,8 +101,11 @@ const GUARDED: readonly string[] = [
   'transaction',
   'movementClass',
 ];
-/** Refused even when the record is new: they change the presences, rents or shares. */
-const NEW_REFUSED = new Set(['apartment', 'supply', 'tenancy', 'contract']);
+/**
+ * Refused even when the record is new: they change the presences or rents. A new supply is always
+ * accepted (finding 2 of the third review: linking the code of a new bill is routine).
+ */
+const NEW_REFUSED = new Set(['apartment', 'tenancy', 'contract']);
 
 const kindOf = (path: string): string | undefined =>
   /^_app\/dati\/([^/]+)\/[^/]+\.json$/.exec(path)?.[1];
@@ -122,6 +135,7 @@ async function liveRaw(store: Store, kind: string): Promise<Json[]> {
 class Context {
   private readonly spans = new Map<string, Span[]>();
   private links?: { matches: Json[]; recoveries: Json[] };
+  private notices?: Json[];
 
   constructor(readonly store: Store) {}
 
@@ -144,6 +158,12 @@ class Context {
       });
     this.spans.set(apartmentId, spans);
     return spans;
+  }
+
+  /** The live instalments, for the supplies they are linked to (finding 2). */
+  async instalments(): Promise<Json[]> {
+    this.notices ??= await liveRaw(this.store, 'instalment');
+    return this.notices;
   }
 
   /** The live matches and recoveries, for the movements that back them (answer J). */
@@ -188,8 +208,14 @@ async function viewIn(
       ]);
       break;
     case 'supply': {
+      // Only a supply that a notice counted in the period is linked to (finding 2).
+      let linked = false;
+      for (const notice of await ctx.instalments()) {
+        if (linked || notice.supplyId !== value.id) continue;
+        linked = (await viewIn(ctx, 'instalment', notice, close)) !== undefined;
+      }
+      if (!linked) break;
       const apartments = Array.isArray(value.apartments) ? (value.apartments as Json[]) : [];
-      if (!apartments.some((a) => a.apartmentId === close.apartmentId)) break;
       view = {
         apartments: [...apartments].sort((a, b) =>
           compareText(str(a.apartmentId), str(b.apartmentId)),
@@ -440,6 +466,7 @@ export async function refuseClosedPeriodChanges(
         (await viewIn(ctx, kind, change.after, close)) !== undefined;
       if (touches) throw new ClosedPeriodError(change.path, close.apartmentId, close.periodLabel);
     }
+    const refusing: Close[] = [];
     for (const close of closes) {
       const was = await viewIn(ctx, kind, change.before, close);
       const will = await viewIn(ctx, kind, change.after, close);
@@ -447,7 +474,17 @@ export async function refuseClosedPeriodChanges(
       if (!NEW_REFUSED.has(kind) && !existedAt(operations, change.path, close, change.before)) {
         continue;
       }
-      throw new ClosedPeriodError(change.path, close.apartmentId, close.periodLabel);
+      refusing.push(close);
+    }
+    const [first, ...others] = refusing.sort((a, b) => compareText(a.from, b.from));
+    if (first !== undefined) {
+      // A field of the apartment reaches every closed period: the message names them all.
+      throw new ClosedPeriodError(
+        change.path,
+        first.apartmentId,
+        first.periodLabel,
+        kind === 'apartment' ? others.map((c) => c.periodLabel) : undefined,
+      );
     }
   }
 }
