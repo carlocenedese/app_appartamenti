@@ -22,7 +22,7 @@
 import { imuRateKey, imuRates, imuShares } from './imu';
 import type { ImuRate } from './imu';
 import type { MatchItemRef, MatchItemType } from './match';
-import { checkConsistency } from './journal';
+import { writesBlocked } from './journal';
 import { planMatch } from './match-store';
 import {
   AccountSchema,
@@ -311,7 +311,7 @@ export type LoadAccountBalancesResult =
  * while `checkConsistency` reports a problem: a write left half done could count a movement twice.
  */
 export async function loadAccountBalances(store: Store): Promise<LoadAccountBalancesResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const all = { includeDeleted: true };

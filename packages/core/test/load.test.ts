@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { BillSchema, NoteSchema } from '../src/model';
-import { MalformedJsonError, findWorkspace, loadAll } from '../src/index';
+import { MalformedJsonError, UnreadableRecordsError, findWorkspace, loadAll } from '../src/index';
 import type { Problem, Store } from '../src/index';
 import { MemoryStore } from './helpers/memory-store';
+
+/** These tests look at what loadAll reports; without it, a file that holds no record throws. */
+const TOLERANT = { tolerant: true };
 
 const DIR = '_app/dati/bill';
 
@@ -32,6 +35,34 @@ function putBill(store: MemoryStore, name: string, bill: Record<string, unknown>
 const ids = (records: readonly { id: string }[]): string[] => records.map((record) => record.id);
 
 describe('loadAll', () => {
+  it('throws UnreadableRecordsError for a file that holds no usable record, unless tolerant (G6)', async () => {
+    const store = new MemoryStore();
+    putBill(store, 'good.json', billJson('good'));
+    store.putRaw('_app/dati/bill/cut.json', '{"id": "cut", "v": 1, "re');
+    putBill(store, 'future.json', { ...billJson('future'), v: 2 });
+    putBill(store, 'good (conflicted copy).json', billJson('good'));
+    const failure = loadAll(store, 'bill', BillSchema);
+    await expect(failure).rejects.toBeInstanceOf(UnreadableRecordsError);
+    await expect(failure).rejects.toMatchObject({
+      kind: 'bill',
+      records: [
+        { id: 'cut', path: '_app/dati/bill/cut.json', reason: 'malformed-json' },
+        { id: 'future', path: '_app/dati/bill/future.json', reason: 'future-version' },
+      ],
+    });
+    // A conflict copy, or a copy of a record that is loaded, does not throw.
+    const copies = new MemoryStore();
+    putBill(copies, 'good.json', billJson('good'));
+    putBill(copies, 'good (conflicted copy).json', billJson('good'));
+    putBill(copies, 'good - Copia.json', billJson('good'));
+    expect(ids((await loadAll(copies, 'bill', BillSchema)).records)).toEqual(['good']);
+    // Two files with one id, none named after it: the record is missing.
+    const twins = new MemoryStore();
+    putBill(twins, 'a.json', billJson('x'));
+    putBill(twins, 'b.json', billJson('x'));
+    await expect(loadAll(twins, 'bill', BillSchema)).rejects.toBeInstanceOf(UnreadableRecordsError);
+  });
+
   it('reads a folder with a good file, broken files and two conflict copies without throwing', async () => {
     const store = new MemoryStore();
     putBill(store, 'good.json', billJson('good'));
@@ -40,7 +71,7 @@ describe('loadAll', () => {
     putBill(store, 'x (conflicted copy 2026-11-05).json', billJson('x'));
     putBill(store, 'x (Copia in conflitto di user2 2026-11-05).json', billJson('x'));
 
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
 
     expect(ids(records)).toEqual(['good']);
     expect(problems).toEqual([
@@ -62,7 +93,7 @@ describe('loadAll', () => {
   it('returns the records parsed by the schema (branded amounts, unknown keys dropped)', async () => {
     const store = new MemoryStore();
     putBill(store, 'good.json', billJson('good', { addedByANewerApp: 'x' }));
-    const { records } = await loadAll(store, 'bill', BillSchema);
+    const { records } = await loadAll(store, 'bill', BillSchema, TOLERANT);
     expect(records).toHaveLength(1);
     expect(records[0]?.amount).toBe(9846);
     expect(records[0]).not.toHaveProperty('addedByANewerApp');
@@ -70,9 +101,17 @@ describe('loadAll', () => {
 
   it('gives nothing for a folder that does not exist or is empty', async () => {
     const store = new MemoryStore();
-    expect(await loadAll(store, 'bill', BillSchema)).toEqual({ records: [], problems: [] });
+    expect(await loadAll(store, 'bill', BillSchema, TOLERANT)).toEqual({
+      records: [],
+      problems: [],
+      missing: [],
+    });
     store.putRaw('_app/dati/apartment/a.json', '{}');
-    expect(await loadAll(store, 'bill', BillSchema)).toEqual({ records: [], problems: [] });
+    expect(await loadAll(store, 'bill', BillSchema, TOLERANT)).toEqual({
+      records: [],
+      problems: [],
+      missing: [],
+    });
   });
 
   describe('conflict copies', () => {
@@ -80,7 +119,7 @@ describe('loadAll', () => {
       const store = new MemoryStore();
       putBill(store, 'x.json', billJson('x'));
       putBill(store, "x (user1's conflicted copy 2026-11-05).json", billJson('x-copy'));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['x']);
       expect(problems).toEqual([
         {
@@ -106,7 +145,7 @@ describe('loadAll', () => {
     ])('recognises %s and gives %s as the original', async (name, original) => {
       const store = new MemoryStore();
       store.putRaw(`${DIR}/${name}`, '{}');
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(records).toEqual([]);
       expect(problems).toEqual([
         { path: `${DIR}/${name}`, reason: 'conflicted-copy', originalPath: `${DIR}/${original}` },
@@ -118,7 +157,7 @@ describe('loadAll', () => {
       async (name) => {
         const store = new MemoryStore();
         store.putRaw(`${DIR}/${name}`, '{}');
-        const { problems } = await loadAll(store, 'bill', BillSchema);
+        const { problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
         expect(problems).toEqual([{ path: `${DIR}/${name}`, reason: 'conflicted-copy' }]);
         expect(problems[0]).not.toHaveProperty('originalPath');
       },
@@ -127,7 +166,7 @@ describe('loadAll', () => {
     it('does not mistake a file that only looks like a conflict copy elsewhere in the folder name', async () => {
       const store = new MemoryStore();
       store.putRaw(`_app/dati/conflicted copy/a.json`, JSON.stringify(billJson('a')));
-      const { records, problems } = await loadAll(store, 'conflicted copy', BillSchema);
+      const { records, problems } = await loadAll(store, 'conflicted copy', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['a']);
       expect(problems).toEqual([]);
     });
@@ -139,7 +178,7 @@ describe('loadAll', () => {
       async (text) => {
         const store = new MemoryStore();
         store.putRaw(`${DIR}/a.json`, text);
-        const { records, problems } = await loadAll(store, 'bill', BillSchema);
+        const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
         expect(records).toEqual([]);
         expect(problems).toEqual([{ path: `${DIR}/a.json`, reason: 'malformed-json' }]);
       },
@@ -148,7 +187,7 @@ describe('loadAll', () => {
     it.each([2, 3, 99, 1.5])('reports v %s as future-version', async (v) => {
       const store = new MemoryStore();
       putBill(store, 'a.json', billJson('a', { v }));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(records).toEqual([]);
       expect(problems).toEqual([{ path: `${DIR}/a.json`, reason: 'future-version' }]);
     });
@@ -156,7 +195,7 @@ describe('loadAll', () => {
     it('checks the version on the raw JSON, before the schema: a future record with another shape is future-version', async () => {
       const store = new MemoryStore();
       store.putRaw(`${DIR}/a.json`, '{"v": 2, "id": 7, "somethingNew": [1, 2]}');
-      const { problems } = await loadAll(store, 'bill', BillSchema);
+      const { problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(problems).toEqual([{ path: `${DIR}/a.json`, reason: 'future-version' }]);
     });
 
@@ -174,7 +213,7 @@ describe('loadAll', () => {
     ])('reports %s as schema-mismatch', async (_label, content) => {
       const store = new MemoryStore();
       putBill(store, 'a.json', content);
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(records).toEqual([]);
       expect(problems).toEqual([{ path: `${DIR}/a.json`, reason: 'schema-mismatch' }]);
     });
@@ -184,7 +223,7 @@ describe('loadAll', () => {
       async (text) => {
         const store = new MemoryStore();
         store.putRaw(`${DIR}/a.json`, text);
-        const { records, problems } = await loadAll(store, 'bill', BillSchema);
+        const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
         expect(records).toEqual([]);
         expect(problems).toEqual([{ path: `${DIR}/a.json`, reason: 'schema-mismatch' }]);
       },
@@ -197,7 +236,7 @@ describe('loadAll', () => {
       putBill(store, 'c.json', billJson('c', { v: 2 }));
       putBill(store, 'd.json', billJson('d', { amount: 'x' }));
       putBill(store, 'e.json', billJson('e'));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['b', 'e']);
       expect(problems.map((problem) => problem.reason)).toEqual([
         'malformed-json',
@@ -213,7 +252,7 @@ describe('loadAll', () => {
       putBill(store, 'a.json', billJson('a'));
       putBill(store, 'b.json', billJson('b', { deleted: true }));
       putBill(store, 'c.json', billJson('c', { deleted: false }));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['a', 'c']);
       expect(problems).toEqual([]);
     });
@@ -222,17 +261,23 @@ describe('loadAll', () => {
       const store = new MemoryStore();
       putBill(store, 'a.json', billJson('a'));
       putBill(store, 'b.json', billJson('b', { deleted: true }));
-      const { records } = await loadAll(store, 'bill', BillSchema, { includeDeleted: true });
+      const { records } = await loadAll(store, 'bill', BillSchema, {
+        includeDeleted: true,
+        tolerant: true,
+      });
       expect(ids(records)).toEqual(['a', 'b']);
       expect(records[1]?.deleted).toBe(true);
-      const withFalse = await loadAll(store, 'bill', BillSchema, { includeDeleted: false });
+      const withFalse = await loadAll(store, 'bill', BillSchema, {
+        includeDeleted: false,
+        tolerant: true,
+      });
       expect(ids(withFalse.records)).toEqual(['a']);
     });
 
     it('still reports a deleted record that is broken', async () => {
       const store = new MemoryStore();
       putBill(store, 'a.json', billJson('a', { deleted: true, amount: 'x' }));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(records).toEqual([]);
       expect(problems).toEqual([{ path: `${DIR}/a.json`, reason: 'schema-mismatch' }]);
     });
@@ -248,7 +293,7 @@ describe('loadAll', () => {
       store.putRaw(`${DIR}/a.JSON`, '{');
       store.putRaw(`${DIR}/json`, '{');
       store.putRaw(`${DIR}/x (conflicted copy 2026-11-05).txt`, 'hello');
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['a']);
       expect(problems).toEqual([]);
     });
@@ -262,7 +307,7 @@ describe('loadAll', () => {
         readBytes: (path) => store.readBytes(path),
         list: () => Promise.resolve(['.tmp-1.json', 'a.json']),
       };
-      const { records, problems } = await loadAll(listing, 'bill', BillSchema);
+      const { records, problems } = await loadAll(listing, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['a']);
       expect(problems).toEqual([]);
     });
@@ -272,7 +317,7 @@ describe('loadAll', () => {
       putBill(store, 'a.json', billJson('a'));
       store.putRaw('_app/dati/bill/sub/b.json', JSON.stringify(billJson('b')));
       store.putRaw('_app/dati/payment/c.json', JSON.stringify(billJson('c')));
-      const { records } = await loadAll(store, 'bill', BillSchema);
+      const { records } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['a']);
     });
   });
@@ -286,7 +331,7 @@ describe('loadAll', () => {
       store.putRaw(`${DIR}/z-broken.json`, '{');
       store.putRaw(`${DIR}/b-broken.json`, '{');
       putBill(store, 'm-future.json', billJson('m', { v: 2 }));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['apple', 'banana', 'cherry']);
       expect(problems.map((problem) => problem.path)).toEqual([
         `${DIR}/b-broken.json`,
@@ -307,8 +352,8 @@ describe('loadAll', () => {
         readBytes: (path) => store.readBytes(path),
         list: async (dir) => (await store.list(dir)).reverse(),
       };
-      const expected = await loadAll(store, 'bill', BillSchema);
-      const actual = await loadAll(reversed, 'bill', BillSchema);
+      const expected = await loadAll(store, 'bill', BillSchema, TOLERANT);
+      const actual = await loadAll(reversed, 'bill', BillSchema, TOLERANT);
       expect(actual).toEqual(expected);
       expect(ids(actual.records)).toEqual(['a', 'b']);
     });
@@ -317,7 +362,7 @@ describe('loadAll', () => {
       const store = new MemoryStore();
       for (const id of ['b', 'B', '\u00e8', 'a', '10', '9'])
         putBill(store, `${id}.json`, billJson(id));
-      const { records } = await loadAll(store, 'bill', BillSchema);
+      const { records } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['10', '9', 'B', 'a', 'b', '\u00e8']);
     });
   });
@@ -327,7 +372,7 @@ describe('loadAll', () => {
       const store = new MemoryStore();
       putBill(store, 'good.json', billJson('good'));
       putBill(store, 'renamed.json', billJson('other'));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['good']);
       expect(problems).toEqual<Problem[]>([{ path: `${DIR}/renamed.json`, reason: 'id-mismatch' }]);
     });
@@ -337,7 +382,7 @@ describe('loadAll', () => {
       putBill(store, 'bill-1.json', billJson('bill-1', { supplier: 'Original' }));
       putBill(store, 'bill-1 - Copia.json', billJson('bill-1', { supplier: 'Copy' }));
       putBill(store, 'bill-1 copy.json', billJson('bill-1', { supplier: 'Copy 2' }));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(records.map((record) => record.supplier)).toEqual(['Original']);
       expect(problems).toEqual<Problem[]>([
         { path: `${DIR}/bill-1 - Copia.json`, reason: 'duplicate-id' },
@@ -349,7 +394,7 @@ describe('loadAll', () => {
       const store = new MemoryStore();
       putBill(store, 'a.json', billJson('same'));
       putBill(store, 'b.json', billJson('same'));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(records).toEqual([]);
       expect(problems).toEqual<Problem[]>([
         { path: `${DIR}/a.json`, reason: 'duplicate-id' },
@@ -361,7 +406,7 @@ describe('loadAll', () => {
       const store = new MemoryStore();
       putBill(store, 'bill-1.json', billJson('bill-1', { deleted: true, rev: 2 }));
       putBill(store, 'bill-1 - Copia.json', billJson('bill-1'));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(records).toEqual([]);
       expect(problems).toEqual<Problem[]>([
         { path: `${DIR}/bill-1 - Copia.json`, reason: 'duplicate-id' },
@@ -371,7 +416,7 @@ describe('loadAll', () => {
     it('compares the name with the id in NFC', async () => {
       const store = new MemoryStore();
       store.putRaw(`${DIR}/Perche\u0301.json`, JSON.stringify(billJson('Perch\u00e9')));
-      const { records, problems } = await loadAll(store, 'bill', BillSchema);
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['Perch\u00e9']);
       expect(problems).toEqual([]);
     });
@@ -381,7 +426,7 @@ describe('loadAll', () => {
     it('reports problem paths in NFC, with forward slashes', async () => {
       const store = new MemoryStore();
       store.putRaw(`${DIR}/Perche\u0301.json`, '{');
-      const { problems } = await loadAll(store, 'bill', BillSchema);
+      const { problems } = await loadAll(store, 'bill', BillSchema, TOLERANT);
       expect(problems).toEqual([{ path: `${DIR}/Perch\u00e9.json`, reason: 'malformed-json' }]);
     });
 
@@ -403,7 +448,7 @@ describe('loadAll', () => {
         readBytes: () => Promise.resolve(new Uint8Array()),
         list: () => Promise.resolve(['a.json', 'a:b.json', 'nul.json', 'q?.json']),
       };
-      const { records, problems } = await loadAll(odd, 'bill', BillSchema);
+      const { records, problems } = await loadAll(odd, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['a']);
       expect(read).toEqual([`${DIR}/a.json`]);
       expect(problems).toEqual([
@@ -422,7 +467,7 @@ describe('loadAll', () => {
         readBytes: () => Promise.resolve(new Uint8Array()),
         list: () => Promise.resolve(['a.json', 'gone.json']),
       };
-      const { records, problems } = await loadAll(gone, 'bill', BillSchema);
+      const { records, problems } = await loadAll(gone, 'bill', BillSchema, TOLERANT);
       expect(ids(records)).toEqual(['a']);
       expect(problems).toEqual([]);
     });
@@ -435,10 +480,10 @@ describe('loadAll', () => {
         readBytes: () => Promise.resolve(new Uint8Array()),
         list: () => Promise.resolve(['a.json']),
       };
-      await expect(loadAll(broken, 'bill', BillSchema)).rejects.toBe(denied);
+      await expect(loadAll(broken, 'bill', BillSchema, TOLERANT)).rejects.toBe(denied);
 
       const unlistable: Store = { ...broken, list: () => Promise.reject(denied) };
-      await expect(loadAll(unlistable, 'bill', BillSchema)).rejects.toBe(denied);
+      await expect(loadAll(unlistable, 'bill', BillSchema, TOLERANT)).rejects.toBe(denied);
     });
 
     it('treats a MalformedJsonError from any store as a malformed-json problem', async () => {
@@ -448,7 +493,7 @@ describe('loadAll', () => {
         readBytes: () => Promise.resolve(new Uint8Array()),
         list: () => Promise.resolve(['a.json']),
       };
-      const { problems } = await loadAll(custom, 'bill', BillSchema);
+      const { problems } = await loadAll(custom, 'bill', BillSchema, TOLERANT);
       expect(problems).toEqual<Problem[]>([{ path: `${DIR}/a.json`, reason: 'malformed-json' }]);
     });
   });
@@ -468,7 +513,7 @@ describe('loadAll', () => {
         at: '2026-11-10T20:15:00.000Z',
       }),
     );
-    const { records, problems } = await loadAll(store, 'note', NoteSchema);
+    const { records, problems } = await loadAll(store, 'note', NoteSchema, TOLERANT);
     expect(problems).toEqual([]);
     expect(records).toHaveLength(1);
     expect(records[0]?.visibleToTenants).toBe(false);

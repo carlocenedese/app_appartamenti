@@ -3,7 +3,7 @@
  * repayment recorded by hand, each one operation of the journal. Proposals are computed again at
  * every run. Nothing is written while `checkConsistency` reports a problem (R113).
  */
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import {
   AccountSchema,
   BankTransactionSchema,
@@ -91,7 +91,7 @@ export async function runTransfers(
   newId: () => string,
   options: { dryRun?: boolean; alsoUsed?: ReadonlySet<string> } = {},
 ): Promise<TransferRunResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const state = await loadTransferState(store, options.alsoUsed);
@@ -149,7 +149,7 @@ export async function confirmTransfer(
 ): Promise<ConfirmTransferResult> {
   const refuse = (reason: Extract<ConfirmTransferResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const state = await loadTransferState(store);
   const proposal = state.result.proposals.find((p) => p.id === input.proposalId);
   if (proposal === undefined) return refuse('unknown-proposal');
@@ -223,7 +223,7 @@ export async function recordManualTransfer(
 ): Promise<ManualTransferResult> {
   const refuse = (reason: Extract<ManualTransferResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const accounts = new Set(
     (await loadAll(store, 'account', AccountSchema)).records.map((a) => a.id),
   );

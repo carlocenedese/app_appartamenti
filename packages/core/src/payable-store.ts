@@ -3,7 +3,7 @@
  * Each write is one operation of the journal (undone with `undoOperation`), nothing written while
  * `checkConsistency` reports a problem (R113); no amount, date or name in a summary.
  */
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import {
   ApartmentSchema,
   BankTransactionSchema,
@@ -128,7 +128,7 @@ export async function savePayable(
   const refuse = <R extends Extract<SavePayableResult, { status: 'refused' }>['reason']>(
     reason: R,
   ) => ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
   const live = await livePayables(store);
@@ -211,7 +211,7 @@ export async function repeatPayable(
   const refuse = <R extends Extract<RepeatPayableResult, { status: 'refused' }>['reason']>(
     reason: R,
   ) => ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const payables = await livePayables(store);
   const previous = payables.find((p) => p.id === input.payableId);
   if (previous === undefined) return refuse('unknown-payable');
@@ -262,7 +262,7 @@ export async function setPayablePaid(
   const refuse = <R extends Extract<SetPayablePaidResult, { status: 'refused' }>['reason']>(
     reason: R,
   ) => ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const payables = await livePayables(store);
   const before = payables.find((p) => p.id === input.payableId);
   if (before === undefined) return refuse('unknown-payable');

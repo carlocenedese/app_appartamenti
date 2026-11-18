@@ -19,7 +19,7 @@ import type { ConsumptionComparison, ConsumptionMetric } from './consumption';
 import { consumptionThresholdsFor } from './consumption-store';
 import { hashBytes, samePages } from './dedupe';
 import type { ExtractionResult } from './extraction';
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import type { Operation } from './journal';
 import {
   ApartmentSchema,
@@ -173,7 +173,7 @@ export async function importBill(
   clock: () => string,
   newId: () => string,
 ): Promise<ImportBillResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const { result, bytes, apartmentId, mode } = input;
@@ -351,7 +351,7 @@ export async function undoBillImport(
   newId: () => string,
   options: { pages?: [number, number] | null } = {},
 ): Promise<UndoBillImportResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const registered = await registeredFrom(store, fileHash);

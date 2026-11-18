@@ -79,6 +79,12 @@ import {
   cancelAutomaticClass,
   cancelAutomaticPayment,
   checkConsistency,
+  FileAccessError,
+  forkVersions,
+  InconsistentRecordError,
+  NewerDataError,
+  resolveFork,
+  UnreadableRecordsError,
   confirmIncome,
   confirmMatch,
   confirmOutgoing,
@@ -211,7 +217,17 @@ export const MESSAGES = {
   'empty-parts': 'Rifiutato: nessuna parte, o una parte senza importo positivo.',
   'sum-mismatch': 'Rifiutato: la somma delle parti non è l’importo del movimento.',
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
-  'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
+  'repair-refused':
+    'Non riparato: il dato sul disco non è uno stato da cui parte il registro. Se è biforcato, scegliere con «scegli-versione»; altrimenti attendere che Dropbox finisca la sincronizzazione e riprovare.',
+  'newer-data': 'Rifiutato: dati scritti da una versione più nuova dell’app: aggiornare l’app.',
+  'unreadable-records':
+    'Rifiutato: alcuni dati non si possono usare (rovinati, di un’altra versione, biforcati o non leggibili): vedere «paths».',
+  'file-access':
+    'Rifiutato: un file non si può usare ora (aperto in un altro programma, permessi, Dropbox): chiuderlo e riprovare.',
+  'inconsistent-record':
+    'Rifiutato: il dato non è come dice il registro: «ripara», o «scegli-versione» se è stato modificato in due posti.',
+  'not-forked':
+    'Rifiutato: il file non ha due versioni da scegliere, o l’operazione non è una di quelle.',
   'not-reconcile-operation':
     'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti, appartamenti, condominio, scadenze, tasse, presenze, rubrica).',
   'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
@@ -470,6 +486,7 @@ const OPTIONS = {
   tieni: { type: 'boolean' },
   escludi: { type: 'boolean' },
   dettagli: { type: 'boolean' },
+  file: { type: 'string' },
   id: { type: 'string' },
   nome: { type: 'string' },
   lingua: { type: 'string' },
@@ -3112,16 +3129,50 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'ripara') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    // Writes each record as its latest operation in the journal says; one that is newer on disk is left.
+    // Repairs every diverged record it can and reports the rest (a fork, a record newer on disk,
+    // a conflict copy): those need a person (revisione 2026-11-18).
     const problems = await checkConsistency(store);
+    let repaired = 0;
+    const left = [];
     for (const problem of problems) {
-      try {
-        await repairDiverged(store, problem.path);
-      } catch {
-        throw new Stop('rejected', 'repair-refused');
+      if (problem.reason === 'diverged') {
+        try {
+          await repairDiverged(store, problem.path);
+          repaired += 1;
+          continue;
+        } catch {
+          left.push({ path: problem.path, reason: 'repair-refused' });
+          continue;
+        }
       }
+      left.push({ path: problem.path, reason: problem.reason });
     }
-    return { status: 'repaired', repaired: problems.length };
+    return { status: 'repaired', repaired, ...(left.length > 0 ? { left } : {}) };
+  }
+
+  if (name === 'scegli-versione') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    need(values, 'file');
+    const versions = await forkVersions(store, values.file);
+    if (values.operazione === undefined) {
+      if (versions.length === 0) throw new Stop('rejected', 'not-forked');
+      // Operation ids, times and profile ids only; the content with --dettagli.
+      return {
+        status: 'versions',
+        versions: versions.map((op) => ({
+          operationId: op.id,
+          at: op.at,
+          profileId: op.profileId,
+          ...(values.dettagli === true
+            ? { record: op.changes.find((change) => change.path === values.file)?.after }
+            : {}),
+        })),
+      };
+    }
+    if (!versions.some((op) => op.id === values.operazione))
+      throw new Stop('rejected', 'not-forked');
+    const operation = await resolveFork(store, values.file, values.operazione, who, clock, newId);
+    return { status: 'resolved', operationId: operation.id };
   }
 
   // annulla
@@ -3215,6 +3266,7 @@ export const COMMAND_NAMES = [
   'impostazioni',
   'chiudi-periodo',
   'conguaglio-supplementare',
+  'scegli-versione',
   'aiuto',
 ];
 
@@ -3254,6 +3306,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     const only = {
       prova: ['riconcilia'],
       dettagli: [
+        'scegli-versione',
         'consumi',
         'riconcilia',
         'importa',
@@ -3433,6 +3486,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         ].map((option) => [option, ['appartamento']]),
       ),
       conguaglio: ['contratto', 'caparra-restituzione'],
+      file: ['scegli-versione'],
       contratto: ['contratto-canone', 'presenza'],
       canone: ['contratto-canone'],
       acconto: ['contratto-canone'],
@@ -3481,6 +3535,24 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         message: MESSAGES[error.reason],
         ...error.extra,
       });
+    }
+    // The typed refusals of the core carry relative paths and ids only (revisione 2026-11-18).
+    const refusal =
+      error instanceof NewerDataError || error instanceof FileAccessError
+        ? {
+            reason: error instanceof NewerDataError ? 'newer-data' : 'file-access',
+            paths: [error.path],
+          }
+        : error instanceof InconsistentRecordError
+          ? { reason: 'inconsistent-record', paths: [error.path], state: error.reason }
+          : error instanceof UnreadableRecordsError
+            ? { reason: 'unreadable-records', paths: error.records.map((r) => r.path) }
+            : undefined;
+    if (refusal !== undefined) {
+      // The core's text for unreadable records names the ids and, for a fork, «scegli-versione».
+      const message =
+        error instanceof UnreadableRecordsError ? error.message : MESSAGES[refusal.reason];
+      return done(1, { status: 'rejected', ...refusal, message });
     }
     // Never the message or the stack: they could hold a path or a value.
     return done(3, { status: 'failed', reason: 'failed', message: MESSAGES.failed });

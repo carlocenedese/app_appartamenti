@@ -204,9 +204,10 @@ describe('renderFirstRun: «Crea gruppo»', () => {
 describe('renderFirstRun: opening a folder', () => {
   it('with sync behind: read-only message, no write, and «Ripara» repairs once, only on click', async () => {
     await existingGroup();
-    // The record is not as the journal says (a half-synchronised folder).
+    // The record is not as the journal says (cut short: a half-synchronised folder). A record at
+    // the same rev with other content is a fork and is not repaired (revisione 2026-11-18, G1).
     const userFile = `${ROOT}/_app/dati/user/u-1.json`;
-    fs.put(userFile, JSON.stringify({ id: 'u-1', v: 1, rev: 1, name: 'Altro' }));
+    fs.put(userFile, '{"id": "u-1", "v": 1, "re');
     renderFirstRun(root, input());
     await screen('Sola lettura');
     expect(root.textContent).toContain('sincronizzazione in corso o incompleta');
@@ -278,6 +279,18 @@ describe('renderFirstRun: opening a folder', () => {
     go.click();
     await screen('Gruppo pronto');
     expect((await liveUsers(store)).filter((u) => u.name === 'Lucia')).toHaveLength(1);
+  });
+
+  it('a conflict copy: says what it is and lists it, never «sincronizzazione in corso»', async () => {
+    await existingGroup();
+    const copy = '_app/dati/user/u-1 (Copia in conflitto di PC 2026-11-18).json';
+    fs.put(`${ROOT}/${copy}`, await fs.readText(`${ROOT}/_app/dati/user/u-1.json`));
+    renderFirstRun(root, input());
+    await screen('Sola lettura');
+    expect(root.textContent).toContain('copie in conflitto');
+    expect(root.textContent).toContain(copy);
+    expect(root.textContent).not.toContain('sincronizzazione in corso');
+    expect(buttonNamed('Ripara')).toBeUndefined();
   });
 
   it('with only a cut-short journal file: no «Ripara», the wait message and a way to check again', async () => {

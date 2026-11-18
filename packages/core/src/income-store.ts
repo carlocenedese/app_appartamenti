@@ -6,7 +6,7 @@
 import { isPresent } from './conguaglio';
 import { reconcileIncome, rentArrears } from './income';
 import type { IncomeProposal, RentArrear } from './income';
-import { checkConsistency, commitChange, latestOperationByPath, readJournal } from './journal';
+import { commitChange, latestOperationByPath, readJournal, writesBlocked } from './journal';
 import type { Operation } from './journal';
 import {
   AccountSchema,
@@ -85,7 +85,7 @@ export async function saveTenantCard(
   clock: () => string,
   newId: () => string,
 ): Promise<SaveTenantCardResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   if (
@@ -184,7 +184,7 @@ export async function runReconcile(
   newId: () => string,
   options: { dryRun?: boolean; alsoUsed?: ReadonlySet<string> } = {},
 ): Promise<ReconcileRunResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const { state, payments, result } = await planIncome(store, options.alsoUsed);
@@ -288,7 +288,7 @@ export async function confirmIncome(
 ): Promise<ConfirmIncomeResult> {
   const refuse = (reason: Extract<ConfirmIncomeResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const state = await loadIncomeState(store);
   const income = reconcileIncome(state);
   const proposal = income.proposals.find((p) => p.id === input.proposalId);
@@ -433,7 +433,7 @@ export async function cancelAutomaticPayment(
 ): Promise<CancelPaymentResult> {
   const refuse = (reason: Extract<CancelPaymentResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const payment = (await loadAll(store, 'payment', PaymentSchema)).records.find(
     (p) => p.id === paymentId,
   );

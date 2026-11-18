@@ -157,6 +157,30 @@ describe('saveApartment (plan 8, task 2)', () => {
   });
 });
 
+describe('apartment ids that Windows or a case-insensitive disk cannot tell apart (G11)', () => {
+  it('refuses a device name and an id that differs from another only by case', async () => {
+    const store = new MemoryStore();
+    const fields = {
+      name: 'Nord',
+      locatore: 'L',
+      posti: 3,
+      annualitaStart: { month: 9, day: 1 },
+      condoDifferenceTo: 'tenants',
+    } as const;
+    const save = (id: string) =>
+      saveApartment(
+        store,
+        { id, ...fields },
+        'u1',
+        () => '2026-11-18T09:00:00.000Z',
+        () => `op-${id}`,
+      );
+    expect(await save('CON')).toEqual({ status: 'refused', reason: 'invalid-apartment' });
+    expect((await save('Nord')).status).toBe('created');
+    expect(await save('nord')).toEqual({ status: 'refused', reason: 'invalid-apartment' });
+  });
+});
+
 describe('saveApartment under live stays (review of 18 Nov 2026, U13)', () => {
   const stay = (id: string, room: string, from = '2027-01') =>
     TenancySchema.parse({

@@ -72,5 +72,7 @@ export const COMMAND_HELP = {
   'chiudi-periodo': 'Chiude un periodo di conguaglio con l’istantanea.',
   'conguaglio-supplementare':
     'Mostra il conguaglio supplementare di un periodo chiuso (importi con --dettagli).',
+  'scegli-versione':
+    'Sceglie quale versione tenere di un record con due versioni diverse (biforcazione).',
   aiuto: 'Mostra questo aiuto; «aiuto <comando>» le opzioni del comando.',
 };

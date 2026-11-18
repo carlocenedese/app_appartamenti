@@ -7,7 +7,7 @@
  */
 import { cedolareExpected, cedolareRateForYear, contractChecks } from './contract';
 import type { ContractCheck } from './contract';
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import {
   ApartmentSchema,
   ContractSchema,
@@ -123,7 +123,7 @@ export async function saveContract(
 ): Promise<SaveContractResult> {
   const refuse = (reason: Extract<SaveContractResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   // A constant refusal, never a ZodError: the rent history and the takeovers have their own writes.
   if (
     'rent' in input ||
@@ -211,7 +211,7 @@ export async function setContractRent(
 ): Promise<SetContractRentResult> {
   const refuse = (reason: Extract<SetContractRentResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const before = (await contractsWithDeleted(store)).find((c) => c.id === input.contractId);
   if (before === undefined || before.deleted === true) return refuse('unknown-contract');
   if (input.from < before.start || input.from > before.end) {
@@ -250,7 +250,7 @@ export async function loadContractChecks(
   store: Store,
   options: { asOf: YearMonth; apartmentId?: string },
 ): Promise<LoadContractChecksResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const all = (await loadAll(store, 'contract', ContractSchema)).records.sort((a, b) =>
@@ -292,7 +292,7 @@ export async function setRentYear(
 ): Promise<SetRentYearResult> {
   const refuse = (reason: Extract<SetRentYearResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
   if (!YearSchema.safeParse(input.year).success) return refuse('bad-year');
@@ -357,7 +357,7 @@ export async function loadRentYears(
   store: Store,
   options: { apartmentId?: string },
 ): Promise<LoadRentYearsResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const contracts = (await loadAll(store, 'contract', ContractSchema)).records;

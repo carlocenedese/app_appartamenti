@@ -2,7 +2,7 @@
  * The data of the forms of one tenancy, read from the store (plan 12, R232). Writes nothing.
  */
 import type { ZodType } from 'zod';
-import { checkConsistency } from './journal';
+import { writesBlocked } from './journal';
 import {
   AccountSchema,
   ApartmentSchema,
@@ -39,7 +39,7 @@ export async function loadModuleData(
 ): Promise<LoadModuleDataResult> {
   const refuse = (reason: Extract<LoadModuleDataResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   // `loadAll` leaves deleted records out.
   const live = async <T extends { id: string }>(kind: string, schema: ZodType<T>) =>
     (await loadAll(store, kind, schema)).records;

@@ -4,7 +4,7 @@
  * separate the apartments, «Mie scelte» 2), and the split of a paid F24 between them (task 4,
  * answers of user1 of 16 November 2026). Pure.
  */
-import { checkConsistency } from './journal';
+import { writesBlocked } from './journal';
 import {
   BankTransactionSchema,
   ImuYearSchema,
@@ -234,7 +234,7 @@ export async function loadImuRates(
   store: Store,
   options: { year?: string } = {},
 ): Promise<LoadImuRatesResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const all = { includeDeleted: true };

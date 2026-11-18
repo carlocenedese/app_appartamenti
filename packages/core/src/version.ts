@@ -10,10 +10,19 @@ import type { Workspace } from './model';
 export const CORE_VERSION = '0.1.0';
 
 /**
- * Layout version of the workspace folder this core writes (`Workspace.schemaVersion`); the app
- * passes it as `schemaVersion` to `checkCompat` and `assessWorkspace`.
+ * The format of the data this core reads and writes: the shape of every record, of the operations
+ * of the journal and of `workspace.json`, as one integer, separate from the version of the app.
+ * It is stored in `workspace.json` as `schemaVersion`; the app passes it as `schemaVersion` to
+ * `checkCompat` and `assessWorkspace`, and `commitChange` refuses to write into a folder whose
+ * format is newer than this one.
+ *
+ * Rule for whoever changes a schema (docs/revisione-2026-11-18-dati.md): any change to the
+ * structure of docs/schemas (a field, a value of an enum, a bound) raises it by one, together
+ * with its fingerprint in `test/data-format.test.ts`, which fails otherwise. Only additive changes
+ * are allowed without a migration: an older app keeps reading the folder and goes read-only, and
+ * the newer app raises the folder's number with `raiseDataFormat` before its first write.
  */
-export const CORE_SCHEMA_VERSION = 1;
+export const DATA_FORMAT = 1;
 
 /**
  * A plain `MAJOR.MINOR.PATCH` version: three numbers without leading zeros, digits `0-9` only

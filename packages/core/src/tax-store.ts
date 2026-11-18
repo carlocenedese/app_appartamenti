@@ -5,7 +5,7 @@
  * journal, nothing written while `checkConsistency` reports a problem (R113), nothing for the
  * same request on the same state, no amount or name in a summary.
  */
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import { payableExpectedItems } from './payables';
 import { TAX_DISCREPANCY_TOLERANCE, taxTable, taxYearWarnings } from './taxes';
 import type { TaxYearWarning, TaxpayerTable } from './taxes';
@@ -81,7 +81,7 @@ export async function setTaxEstimate(
 ): Promise<SetTaxEstimateResult> {
   const refuse = (reason: Extract<SetTaxEstimateResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   if (!(await liveApartment(store, input.apartmentId))) return refuse('unknown-apartment');
   if (!YearSchema.safeParse(input.year).success) return refuse('bad-year');
   if (!TaxVoiceSchema.safeParse(input.voce).success) return refuse('bad-voce');
@@ -151,7 +151,7 @@ export async function copyPreviousTaxYear(
 ): Promise<CopyPreviousTaxYearResult> {
   const refuse = (reason: Extract<CopyPreviousTaxYearResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   if (!YearSchema.safeParse(input.year).success || input.year === '0000') {
     return refuse('bad-year');
   }
@@ -242,7 +242,7 @@ export async function assignTaxPayment(
 ): Promise<AssignTaxPaymentResult> {
   const refuse = (reason: Extract<AssignTaxPaymentResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const id = `taxp-${input.transactionId}`;
   // By voce and year: the same parts in another order are the same assignment.
   const parts = [...input.parts].sort((a, b) =>
@@ -383,7 +383,7 @@ export async function loadTaxTable(
   store: Store,
   options: { year: string; today: ISODate },
 ): Promise<LoadTaxTableResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   if (!YearSchema.safeParse(options.year).success) return { status: 'refused', reason: 'bad-year' };
@@ -423,7 +423,7 @@ export type LoadTaxExportResult =
 
 /** The live apartments and contracts of `buildTaxWorkbook` (R215). Read only. */
 export async function loadTaxExport(store: Store): Promise<LoadTaxExportResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   return {

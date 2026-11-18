@@ -35,6 +35,11 @@ export class MemoryStore implements Store {
     this.files.set(key(path), bytes.slice());
   }
 
+  /** Removes the file at `path`, as a file that never arrived. */
+  delete(path: string): void {
+    this.files.delete(key(path));
+  }
+
   /** The text stored at `path`, or `undefined` when there is no such file. */
   getRaw(path: string): string | undefined {
     const bytes = this.files.get(key(path));
