@@ -81,6 +81,16 @@ const bill = (path: string, amount: number) => ({
  * so a version left later by another computer with the same content counts as well.
  */
 class Model {
+  /** The operations the user was told succeeded. */
+  readonly confirmed = new Set<string>();
+  /** Confirmed operations a repair wrote over without carrying them. */
+  readonly overwritten: string[] = [];
+  /**
+   * The same, when the version written over has the content of a write that the head supersedes
+   * (a failed write, a choice's other version): the journal cannot tell them apart until the file
+   * of the other operation arrives, and then the record is a fork. Checked after the synchronisation.
+   */
+  readonly excused = new Set<string>();
   private readonly made = new Map<string, { ids: Set<string>; over: Set<string> }>();
   add(key: string, over: Iterable<string>, id: string): void {
     const node = this.made.get(key) ?? { ids: new Set(), over: new Set() };
@@ -109,6 +119,9 @@ class Replica extends MemoryStore {
   readonly seen = new Map<string, number>();
   failNext = false;
   resolving = false;
+  repairing = false;
+  /** Writes the journal as an app without `supersedes` did. */
+  legacy = false;
 
   constructor(
     readonly name: string,
@@ -130,12 +143,51 @@ class Replica extends MemoryStore {
         if (this.resolving) over.push(...(await this.afters(change.path)));
         this.model.add(keyOf(change.after), over, operation.id);
       }
+      if (this.legacy) {
+        value = {
+          ...operation,
+          changes: operation.changes.map((change) => {
+            const old: Partial<typeof change> = { ...change };
+            delete old.supersedes;
+            return old;
+          }),
+        };
+      }
+    } else if (this.repairing) {
+      // «Ripara» never writes over a confirmed change that the version it writes does not carry.
+      const kept = this.model.carried(keyOf(value));
+      const disk = keyOf(await this.readJson(path));
+      const superseded = await this.superseded(path);
+      for (const id of this.model.carried(disk)) {
+        if (!this.model.confirmed.has(id) || kept.has(id)) continue;
+        if (superseded.has(disk)) this.model.excused.add(id);
+        else this.model.overwritten.push(id);
+      }
     } else if (this.failNext) {
       this.failNext = false;
       throw new Error('EIO');
     }
     await super.writeJsonAtomic(path, value);
     this.dirty.add(path);
+  }
+
+  /** The versions of `path` that a change in the journal here explicitly supersedes. */
+  async superseded(path: string): Promise<Set<string>> {
+    const operations = (await this.list(JOURNAL_DIR)).map(
+      (name) => JSON.parse(this.getRaw(`${JOURNAL_DIR}/${name}`) ?? '{}') as Operation,
+    );
+    const ids = new Set(
+      operations.flatMap(({ changes }) =>
+        changes.filter((change) => change.path === path).flatMap((c) => c.supersedes ?? []),
+      ),
+    );
+    return new Set(
+      operations
+        .filter(({ id }) => ids.has(id))
+        .flatMap(({ changes }) =>
+          changes.filter((c) => c.path === path).map((c) => keyOf(c.after)),
+        ),
+    );
   }
 
   /** The versions of `path` the journal files on this computer know. */
@@ -205,6 +257,25 @@ const flagged = async (store: Replica) =>
 
 type Confirmed = { id: string; paths: string[] };
 
+/** The records whose disk is the version with the highest rev in the journal of `replica`. */
+async function newest(replica: Replica): Promise<string[]> {
+  const top = new Map<string, { rev: number; key: string; count: number }>();
+  for (const name of await replica.list(JOURNAL_DIR)) {
+    const operation = JSON.parse(replica.getRaw(`${JOURNAL_DIR}/${name}`) ?? '') as Operation;
+    for (const { path, after } of operation.changes) {
+      const rev = (after as { rev: number }).rev;
+      const seen = top.get(path);
+      if (seen === undefined || rev > seen.rev) top.set(path, { rev, key: keyOf(after), count: 1 });
+      else if (rev === seen.rev && keyOf(after) !== seen.key) seen.count++;
+    }
+  }
+  const paths: string[] = [];
+  for (const [path, { key, count }] of top) {
+    if (count === 1 && keyOf(await replica.readJson(path)) === key) paths.push(path);
+  }
+  return paths;
+}
+
 /** The changes to `path` in the journal of `replica` and its record, to read a failing seed. */
 async function dump(replica: Replica, path: string): Promise<string> {
   const show = (r: unknown) =>
@@ -227,9 +298,12 @@ async function dump(replica: Replica, path: string): Promise<string> {
 
 /**
  * One history. `owned`: each record is changed by one computer only (no concurrency on a record),
- * and then `forked` must never appear.
+ * and then `forked` must never appear, nor any problem on a record whose disk is its newest
+ * version. `legacy`: the first half is written as an app without `supersedes` wrote it; the old
+ * choices and retries then may hide a branch (a known limit), so only «Ripara» is checked.
  */
-async function history(seed: number, owned: boolean): Promise<void> {
+async function history(seed: number, mode: 'free' | 'owned' | 'legacy'): Promise<void> {
+  const owned = mode === 'owned';
   const random = generator(seed);
   const model = new Model();
   const cloud = new Cloud();
@@ -274,6 +348,7 @@ async function history(seed: number, owned: boolean): Promise<void> {
     for (const name of added) {
       const operation = JSON.parse(replica.getRaw(`${JOURNAL_DIR}/${name}`) ?? '') as Operation;
       confirmed.push({ id: operation.id, paths: operation.changes.map(({ path }) => path) });
+      model.confirmed.add(operation.id);
     }
   };
 
@@ -302,8 +377,20 @@ async function history(seed: number, owned: boolean): Promise<void> {
     }
   };
 
+  const repair = async (replica: Replica, path: string, what: string) => {
+    replica.repairing = true;
+    await run(replica, `${what} ${path}`, () => repairDiverged(replica, path));
+    replica.repairing = false;
+    if (model.overwritten.length > 0) {
+      expect.fail(
+        `seed ${String(seed)} ${mode}: ${model.overwritten.join(',')} overwritten\n${log.join('\n')}\n${await dump(replica, path)}`,
+      );
+    }
+  };
+
   const steps = 10 + random.int(30);
   for (let step = 0; step < steps; step++) {
+    for (const each of replicas) each.legacy = mode === 'legacy' && step < steps / 2;
     const replica = random.pick(replicas) as Replica;
     const roll = random.next();
     if (roll < 0.25) {
@@ -346,7 +433,7 @@ async function history(seed: number, owned: boolean): Promise<void> {
       }
     } else if (roll < 0.57) {
       for (const path of await flagged(replica)) {
-        await run(replica, `repair ${path}`, () => repairDiverged(replica, path));
+        await repair(replica, path, 'repair');
       }
     } else if (roll < 0.62 && !owned) {
       for (const { path, reason } of await checkConsistency(replica)) {
@@ -384,8 +471,18 @@ async function history(seed: number, owned: boolean): Promise<void> {
     }
     if (owned) {
       for (const each of replicas) {
-        const forked = (await checkConsistency(each)).filter(({ reason }) => reason === 'forked');
-        expect(forked, `seed ${String(seed)} owned, ${each.name}\n${log.join('\n')}`).toEqual([]);
+        const problems = await checkConsistency(each);
+        const at = `seed ${String(seed)} owned, ${each.name}\n${log.join('\n')}`;
+        expect(
+          problems.filter(({ reason }) => reason === 'forked'),
+          at,
+        ).toEqual([]);
+        for (const path of await newest(each)) {
+          expect(
+            problems.filter((problem) => problem.path === path),
+            at,
+          ).toEqual([]);
+        }
       }
     }
   }
@@ -415,6 +512,24 @@ async function history(seed: number, owned: boolean): Promise<void> {
   };
 
   cloud.syncAll(replicas, random);
+  if (mode === 'legacy') {
+    for (const replica of replicas) {
+      for (const path of await flagged(replica)) await repair(replica, path, 'final repair');
+    }
+    cloud.syncAll(replicas, random);
+  }
+  // A change that a repair wrote over is in the record or reported, once everything has arrived.
+  for (const replica of replicas) {
+    const marked = await flagged(replica);
+    for (const { id, paths } of confirmed) {
+      if (!model.excused.has(id)) continue;
+      for (const path of paths) {
+        const kept = marked.has(path) || model.carried(keyOf(await replica.readJson(path))).has(id);
+        expect(kept, where(`${replica.name}: ${id} written over on ${path}`)).toBe(true);
+      }
+    }
+  }
+  if (mode === 'legacy') return;
   await oracle(true);
 
   // The person chooses and repairs on one computer, then everything is synchronised.
@@ -428,7 +543,7 @@ async function history(seed: number, owned: boolean): Promise<void> {
           resolveFork(first, path, version?.id ?? '', 'pa', clockOf(first), newId(first)),
         );
       } else if (reason === 'diverged') {
-        await run(first, `final repair ${path}`, () => repairDiverged(first, path));
+        await repair(first, path, 'final repair');
       }
     }
   }
@@ -445,10 +560,14 @@ const FIRST = Number(process.env.JOURNAL_MODEL_FIRST ?? '1');
 
 describe('the journal against a model of the computers (fork detection)', () => {
   it(`keeps every confirmed change or reports it, over ${String(SEEDS)} seeds`, async () => {
-    for (let seed = FIRST; seed < FIRST + SEEDS; seed++) await history(seed, false);
+    for (let seed = FIRST; seed < FIRST + SEEDS; seed++) await history(seed, 'free');
   }, 600_000);
 
   it(`never reports a fork when no record is changed in two places, over ${String(SEEDS)} seeds`, async () => {
-    for (let seed = FIRST; seed < FIRST + SEEDS; seed++) await history(seed + 1_000_000, true);
+    for (let seed = FIRST; seed < FIRST + SEEDS; seed++) await history(seed + 1_000_000, 'owned');
+  }, 600_000);
+
+  it(`«Ripara» never loses a confirmed change after a journal of an older app, over ${String(SEEDS)} seeds`, async () => {
+    for (let seed = FIRST; seed < FIRST + SEEDS; seed++) await history(seed + 2_000_000, 'legacy');
   }, 600_000);
 });

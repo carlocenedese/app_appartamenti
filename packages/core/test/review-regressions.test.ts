@@ -15,6 +15,7 @@ import {
   repairDiverged,
   resolveFork,
   undoOperation,
+  writesBlocked,
 } from '../src/index';
 import { MemoryStore } from './helpers/memory-store';
 
@@ -424,7 +425,81 @@ describe('a record that no operation created (written before the journal)', () =
     for (const name of [first, third]) {
       b.putRaw(`${JOURNAL_DIR}/${name ?? ''}`, a.getRaw(`${JOURNAL_DIR}/${name ?? ''}`) ?? '');
     }
-    b.putRaw(P, a.getRaw(P) ?? '');
+    // The record has not arrived either.
     expect(await checkConsistency(b)).toEqual([{ path: P, reason: 'diverged' }]);
+  });
+});
+
+describe('«Ripara» never writes over a change that an old choice or retry did not see', () => {
+  /** On `to`: the record of `from` first (last writer wins), then its operation files. */
+  async function recordThenJournal(from: MemoryStore, to: MemoryStore): Promise<void> {
+    to.putRaw(P, from.getRaw(P) ?? '');
+    await copyJournal(from, to);
+  }
+
+  it('after a choice made by an app without `supersedes`', async () => {
+    const a = new MemoryStore();
+    await commitChange(a, op('pa', undefined, bill()), clock, id);
+    const c = await cloneOf(a);
+    const d = await cloneOf(a);
+    const r1 = await a.readJson(P);
+    await commitChange(a, op('pa', r1, bill({ amount: 2 })), clock, id);
+    await commitChange(c, op('pc', r1, bill({ amount: 3 })), clock, id);
+    await copyJournal(c, a);
+    const [first] = await forkVersions(a, P);
+    await resolveFork(a, P, first?.id ?? '', 'pa', clock, id);
+    await asOldApp(a);
+    await commitChange(d, op('pd', r1, bill({ amount: 9 })), clock, id);
+    await recordThenJournal(d, a);
+    await expect(repairDiverged(a, P)).rejects.toThrow(/not a state/);
+    expect(await a.readJson(P)).toMatchObject({ amount: 9 });
+    expect(await checkConsistency(a)).toEqual([{ path: P, reason: 'diverged' }]);
+  });
+
+  it('after a retry made by an app without `supersedes`, the same person on two computers', async () => {
+    class Failing extends MemoryStore {
+      fail = true;
+      override async writeJsonAtomic(path: string, value: unknown): Promise<void> {
+        if (this.fail && path === P) {
+          this.fail = false;
+          throw new Error('EIO');
+        }
+        await super.writeJsonAtomic(path, value);
+      }
+    }
+    const a = new Failing();
+    a.fail = false;
+    await commitChange(a, op('pa', undefined, bill()), clock, id);
+    const d = await cloneOf(a);
+    const r1 = await a.readJson(P);
+    a.fail = true;
+    await expect(commitChange(a, op('pa', r1, bill({ amount: 2 })), clock, id)).rejects.toThrow();
+    await commitChange(a, op('pa', r1, bill({ amount: 2 })), clock, id);
+    await asOldApp(a);
+    await commitChange(d, op('pa', r1, bill({ amount: 9 })), clock, id);
+    await recordThenJournal(d, a);
+    await expect(repairDiverged(a, P)).rejects.toThrow(/not a state/);
+    expect(await a.readJson(P)).toMatchObject({ amount: 9 });
+  });
+});
+
+describe('an operation file in the middle that has not arrived', () => {
+  it('blocks only its record, not the folder, while the disk is at the newest version', async () => {
+    const a = new MemoryStore();
+    await commitChange(a, op('pa', undefined, bill()), clock, id);
+    await commitChange(a, op('pa', await a.readJson(P), bill({ amount: 2 })), clock, id);
+    await commitChange(a, op('pa', await a.readJson(P), bill({ amount: 3 })), clock, id);
+    const [first, , third] = await a.list(JOURNAL_DIR);
+    const b = new MemoryStore();
+    for (const name of [first, third]) {
+      b.putRaw(`${JOURNAL_DIR}/${name ?? ''}`, a.getRaw(`${JOURNAL_DIR}/${name ?? ''}`) ?? '');
+    }
+    b.putRaw(P, a.getRaw(P) ?? '');
+    expect(await checkConsistency(b)).toEqual([]);
+    expect(await writesBlocked(b)).toBe(false);
+    await expect(repairDiverged(b, P)).rejects.toThrow(/has not arrived/);
+    await expect(
+      commitChange(b, op('pb', await b.readJson(P), bill({ amount: 4 })), clock, id),
+    ).rejects.toMatchObject({ name: 'InconsistentRecordError', reason: 'diverged' });
   });
 });

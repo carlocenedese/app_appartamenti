@@ -1432,11 +1432,7 @@ describe('damaged operation files (revisione 2026-11-18, G4)', () => {
     await commit(changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 3 })));
     store.putRaw(await opFile(store, 1), '{"id": "op');
     const [file] = await damagedJournalFiles(store, kinds);
-    // Without the damaged operation the record has two heads, one cut off: not as the journal says.
-    expect(file).toMatchObject({
-      safeToSetAside: false,
-      blockedBy: ['broken-chain', 'records-differ'],
-    });
+    expect(file).toMatchObject({ safeToSetAside: false, blockedBy: ['broken-chain'] });
   });
 
   it('lists nothing for a sound journal, nor for a file from a newer app', async () => {
