@@ -1,12 +1,12 @@
 # Piano 19: chiudere i punti lasciati aperti dal piano 17 (disegno)
 
 Stato: **implementato** (18 novembre 2026; domande in R332). Ramo `feat/piano-19-consumi-import`. R nuovi da R330.
-Solo decisioni già prese da Carlo (R313, R315, R316, R307); nessuna regola nuova. Solo core e riga
+Solo decisioni già prese da user1 (R313, R315, R316, R307); nessuna regola nuova. Solo core e riga
 di comando, niente schermate.
 
 ## 1. Allarme consumi nell'importazione e nel cruscotto (R313)
 
-Decisioni di Carlo: media dei 12 mesi prima, per giorno; confronto per tipo di bolletta; soglie
+Decisioni di user1: media dei 12 mesi prima, per giorno; confronto per tipo di bolletta; soglie
 uguali per tutti con eccezione per appartamento (`consumptionSettings`); livelli giallo/rosso solo
 se le soglie li definiscono; nessun valore nel codice.
 
@@ -49,7 +49,7 @@ Nessun codice: la parte non IMU resta fuori dal saldo con l'avviso `mixed-f24-ou
 Un test della riga di comando: stato delle soglie, periodo di conguaglio in corso (R316) e conteggi
 `consumi:*`.
 
-## Domande per Carlo (non decise nel codice)
+## Domande per user1 (non decise nel codice)
 
 1. Un livello **giallo** deve fermare la registrazione automatica (oggi: sì, come il rosso)? Vale
    anche per i cali.
