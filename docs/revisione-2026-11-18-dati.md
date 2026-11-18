@@ -51,20 +51,30 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
 
 ## Terzo giro
 
-- **Biforcazione sotto il rev più alto (S2).** A salva due volte offline e C una volta, dallo stesso stato. Ora è `forked` su tutti e due i computer, anche dopo l'arrivo del record dell'altro.
-  - È biforcato ogni record che ha nel registro una modifica in vigore che l'ultima operazione non assorbe nella sua catena di `before`.
-  - Non contano come rami:
-    - una ripresa sullo stesso Store (stesso `before`, rev saltato);
-    - un'operazione annullata con la sua inversa;
-    - ciò che una scelta `fork.resolve` ha sistemato (tutto fino al rev da cui ha scelto);
-    - ciò che sta sotto un buco del registro (file rovinato o mancante).
-  - `forkVersions` offre le teste dei rami.
-- **Nessun falso `forked` nei dati esistenti.** Per tutta la suite (3189 test, compresi i test della CLI) un controllo temporaneo dopo ogni `commitChange` cercava biforcazioni nuove: zero. Lo stesso controllo, insieme alla scansione finale della cartella conservata, sul ciclo completo end-to-end copiato fuori dal repository: zero. Le sole biforcazioni trovate stanno in cartelle di prova create apposta dal revisore.
-- **`resolveFork`** scrive sopra il rev più alto delle versioni. Rifiuta («attendere la sincronizzazione») se sul disco c'è un rev ancora più alto, cioè il registro di un terzo computer non ancora arrivato.
+- **Rifiuto della scelta.** `resolveFork` rifiuta («attendere la sincronizzazione») se sul disco c'è un rev più alto delle versioni da scegliere, cioè il salvataggio di un terzo computer il cui registro non è ancora arrivato.
 - **Messaggi.**
   - `forked` dice che il desktop resta in sola lettura e indica il comando `scegli-versione`; la schermata arriverà.
   - `repair-refused` e il pulsante «Ripara» non dicono più «più recente del registro».
   - La CLI, per `unreadable-records`, mostra il messaggio del core, che nomina `scegli-versione`.
+
+## Quarto giro
+
+- **Ritirato il rilevamento per rami del terzo giro.** Segnalava S2, ma non segnalava più un annullo fatto su un altro computer insieme a una modifica (tornava `diverged`, e il record più nuovo arrivato da Dropbox lo cancellava in silenzio). Il rilevamento delle biforcazioni è tornato quello del secondo giro: stesso `rev` massimo, contenuto diverso. Restano del terzo giro i messaggi e il rifiuto di `resolveFork` con un rev più alto sul disco.
+- **Prove.** Storie legittime casuali (300 semi, due computer, riprese, annulli, sincronizzazioni parziali, «Ripara»): nessun falso `forked`. Annullo contro modifica e ripristino contro modifica, nei due ordini: `forked` su tutti e due i computer (test in `review-regressions.test.ts`). S2 e B2 restano test attesi in errore.
+- **Su main** le stesse prove perdono S2 e B2 in silenzio, e anche le biforcazioni allo stesso rev: main non ha ancora `forked`.
+
+## Limiti noti
+
+- **S2: un ramo più corto dell'altro.** A salva due volte senza rete, C una volta, partendo dallo stesso dato. Quando i registri si incontrano, la modifica di C sta sotto il rev più alto di A e non si vede come biforcazione: C vede `diverged` con «Ripara» rifiutato, e quando arriva il file del record di A la modifica di C sparisce senza avviso. Lo stesso succede se C, invece di modificare, annulla. Come su main.
+- **B2: tre computer, la scelta fatta troppo presto.** A, C e D modificano lo stesso dato. A vede la biforcazione con C e sceglie. Poi arriva il registro di D: la scelta l'ha già superata, e la modifica di D si perde senza avviso. Come su main.
+- Fino al ridisegno: chi lavora senza rete su più computer controlla a mano, dopo la sincronizzazione, i dati modificati in più posti.
+
+## Ridisegno previsto
+
+- **Un solo invariante.** Per ogni record le operazioni si collegano `before` → `after` in un grafo. Lo stato è pulito solo se il grafo ha una sola testa e il disco coincide con quella testa; altrimenti è biforcato (più teste) o da completare (una testa, disco indietro).
+- **L'annullo è un arco normale**: va dalla testa che annulla al nuovo stato, senza regole a parte.
+- **`fork.resolve` registra le teste che ha fuso.** Un ramo che la scelta non ha visto (B2) resta una testa, e quindi una biforcazione.
+- **Cancello: un property test modello.** Storie casuali su più computer (salvataggi, annulli, riprese, sincronizzazioni parziali) confrontate con un modello semplice delle teste: nessun falso `forked`, nessuna modifica persa senza avviso. Il ridisegno entra solo quando questo test passa, S2 e B2 compresi.
 
 ## Da agganciare (passo successivo)
 
@@ -74,12 +84,13 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
   - Per `conflict-copies`, un confronto «tieni questa / tieni l'altra».
 - **Tauri/Rust.** Il plugin dei file non ha fsync: serve un comando con `sync_all` sul file temporaneo prima del rename, e un rename senza sovrascrittura. I codici di errore di `TauriStore` si riconoscono dal testo «os error 5/13/32/33»: va verificato su Windows.
 - **CLI.** `damagedJournalFiles` non è ancora esposto.
+  - La CLI non guarda il formato della cartella: `older-format` non la mette in sola lettura (quindi non serve un comando `aggiorna-formato` per uscirne), ma dopo un aumento di `DATA_FORMAT` scriverebbe dati nuovi in una cartella che le app più vecchie credono del loro formato. Da decidere: chiamare `raiseDataFormat` prima della prima scrittura, o rifiutare come il desktop.
 - **Release (`scripts/release.mjs`, non toccato).** `CORE_VERSION` resta ferma a 0.1.0 e `minAppVersion` non sale mai. La protezione ora passa da `DATA_FORMAT`. Resta da decidere se `release.mjs` debba allineare `CORE_VERSION` al tag.
 
 ## Ruling
 
 - Un record con lo stesso `rev` del registro ma un contenuto diverso non si ripara più in automatico. Un crash tra registro e record lascia sempre il record a un `rev` più basso, mancante o troncato.
-- Una biforcazione si segnala solo sul `rev` massimo. Se dopo la biforcazione qualcuno ha già scritto un `rev` più alto, la biforcazione resta nella storia e non blocca.
+- Una biforcazione si segnala solo sul `rev` massimo. Se dopo la biforcazione qualcuno ha già scritto un `rev` più alto, la biforcazione resta nella storia e non blocca (vedi «Limiti noti»: S2 e B2).
 - `raiseDataFormat` scrive `workspace.json` fuori dal registro, come fa `createWorkspace`. Due computer che lo alzano insieme scrivono lo stesso contenuto. Se Dropbox crea comunque una copia di conflitto, quella blocca la cartella (G2) finché non la si toglie.
 - Anche le letture (Excel, cruscotto) rifiutano con una copia di conflitto, perché fanno già il controllo `checkConsistency`.
 - Il ciclo end-to-end ha un fallimento in più rispetto al rapporto del revisore: l'annullo di `apartment.save` è rifiutato con `has-dependents`. Viene dalla #69 (riferimenti), non da questo ramo. Gli altri 6 fallimenti erano già su main.
