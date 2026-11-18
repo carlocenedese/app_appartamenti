@@ -30,5 +30,5 @@ Ramo `fix/revisione-annullo`. Lavoro interrotto per il limite d'uso: qui sotto c
 
 - **e2e**: `ciclo-completo.test.mjs` ora vede `apartment.save` fra gli annulli rifiutati. È voluto, per U1: il conto e l'utenza dell'appartamento non hanno annullo (U12). Va aggiunto all'elenco atteso.
 - **U3** (altro scrittore): per un movimento ci sono `recoveriesUsing` e `taxPaymentsUsing`, oppure `recordDependents(store, [{ type: 'transaction', id }])`.
-- **U5** (payer, non provato), **U8** (estratti.mjs), **U9** (unificare `undoImport`, `undoBillImport` e `cancelAutomaticClass`: non è una sostituzione sicura, la semantica è diversa), **U10** (`removeSupply` senza controlli), **U11** (note), **U12**, **U14** (regola di calcolo, decide Carlo).
-- **Domanda 12 del disegno** (riscrittura intera della presenza) resta da confermare con Carlo. Per ora vale il rifiuto prudente.
+- **U5** (payer, non provato), **U8** (estratti.mjs), **U9** (unificare `undoImport`, `undoBillImport` e `cancelAutomaticClass`: non è una sostituzione sicura, la semantica è diversa), **U10** (`removeSupply` senza controlli), **U11** (note), **U12**, **U14** (regola di calcolo, decide user1).
+- **Domanda 12 del disegno** (riscrittura intera della presenza) resta da confermare con user1. Per ora vale il rifiuto prudente.
