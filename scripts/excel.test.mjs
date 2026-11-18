@@ -107,6 +107,24 @@ describe('pnpm excel', () => {
   );
 
   it(
+    'refuses a folder written by a newer app and writes nothing',
+    async () => {
+      const store = new FsStore(data);
+      await store.writeJsonAtomic('_app/workspace.json', { schemaVersion: 999 });
+      try {
+        const file = join(out, 'Nuovo.xlsx');
+        const run = excel(['--periodo', '2026-27', '--uscita', file]);
+        expect(run.code).toBe(1);
+        expect(run.json).toMatchObject({ status: 'rejected', reason: 'newer-data' });
+        expect(existsSync(file)).toBe(false);
+      } finally {
+        rmSync(join(data, '_app', 'workspace.json'));
+      }
+    },
+    TIMEOUT,
+  );
+
+  it(
     'refuses an output that is not a safe .xlsx in an existing folder',
     () => {
       for (const target of [
