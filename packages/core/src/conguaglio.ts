@@ -205,7 +205,8 @@ export type SettlementInputErrorCode =
   | 'unknown-room'
   | 'too-many-tenants'
   | 'missing-condominio-start'
-  | 'recovery-tenant-absent';
+  | 'recovery-tenant-absent'
+  | 'owner-share-inconsistent';
 
 /**
  * Input that cannot be settled: tenancies that do not fit the beds, or a condominium instalment
@@ -512,6 +513,19 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     .filter((instalment) => instalment.straordinaria !== true)
     .sort((a, b) => compareText(a.id, b.id));
   const toTenants = previousToTenants(apartment);
+  // The distinct (owner share, rate count) of the ordinary condominium rates of each esercizio; a
+  // record with `rata` 0 carries no owner share (R-C8) and is left out.
+  const ownerShareKinds = new Map<string, number>();
+  {
+    const seen = new Map<string, Set<string>>();
+    for (const i of instalments) {
+      if (i.kind !== 'condominio') continue;
+      const set = seen.get(i.esercizio) ?? new Set<string>();
+      if (i.rata !== 0) set.add(`${String(i.quotaProprieta)}/${String(i.rateCount)}`);
+      seen.set(i.esercizio, set);
+    }
+    for (const [esercizio, set] of seen) ownerShareKinds.set(esercizio, Math.max(set.size, 1));
+  }
   for (const instalment of instalments) {
     if (
       toTenants &&
@@ -652,6 +666,16 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
         ? monthsInPeriod(esercizio.from, esercizio.to)
         : [];
     if (!touchesPeriod([...covered, ...previousYear])) continue;
+    if (instalment.kind === 'condominio' && ownerShareKinds.get(instalment.esercizio) !== 1) {
+      // R3, I5: one yearly owner share per apartment and esercizio, split over `rateCount`
+      // rates. Records that disagree cannot be settled without guessing which one is right.
+      throw new SettlementInputError(
+        'owner-share-inconsistent',
+        `Le rate del condominio ${instalment.esercizio} di ${apartment.name} non hanno la stessa ` +
+          `quota della proprietà o lo stesso numero di rate: correggi le rate, poi rifai il conguaglio.`,
+        { instalmentId: instalment.id },
+      );
+    }
     const paid = matched.get(`instalment\u0000${instalment.id}`);
     if (paid === undefined || !paid.hasAmount) {
       pending.push({ itemType: 'instalment', itemId: instalment.id });

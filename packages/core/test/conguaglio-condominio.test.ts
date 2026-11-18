@@ -198,6 +198,30 @@ describe('Step 3: condominium instalments (R3)', () => {
     expect(sum(result.tenants.map((t) => t.condominio.conguaglioPrec))).toBe(4800);
   });
 
+  it('I5: refuses rates of one esercizio with different owner shares or rate counts', () => {
+    for (const other of [
+      rata(2, { quotaProprieta: cents(0) }),
+      rata(2, { rateCount: 3, coversFrom: yearMonth('2026-09'), coversTo: yearMonth('2026-12') }),
+    ]) {
+      const items = [rata(1), other];
+      expect(() =>
+        calc(
+          items,
+          items.map((item) => match(item, item.rata + item.conguaglioPrec)),
+        ),
+      ).toThrow(expect.objectContaining({ code: 'owner-share-inconsistent' }));
+    }
+    // A record with rata 0 carries no owner share (R-C8): its value is not compared.
+    const zero = rata(2, { rata: cents(0), quotaProprieta: cents(0), conguaglioPrec: cents(100) });
+    const items = [rata(1), zero];
+    expect(
+      calc(
+        items,
+        items.map((item) => match(item, item.rata + item.conguaglioPrec)),
+      ).pending,
+    ).toEqual([]);
+  });
+
   it('keeps pending an instalment smaller than its owner share', () => {
     const small = rata(1, { rata: cents(500), conguaglioPrec: cents(0) });
     const result = calc([small], [match(small, 500)]);
