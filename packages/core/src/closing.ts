@@ -74,16 +74,25 @@ export function tenantBalance(
   if ((close.settled ?? []).some((s) => s.tenantId === tenantId)) {
     return { status: 'saldato', due, remaining: cents(0), fni: cents(0) };
   }
-  // The latest earlier closing with a mark for the tenant: what it settled is not due again (G).
+  // What earlier closings settled is not due again (G, finding 1 of the third review): newest to
+  // oldest, every supplementary marked settled, down to the first closing whose main settlement
+  // was marked, whose due at that closing counts too (that mark stays valid for its snapshot).
+  let base = 0;
+  let marked = false;
   for (const earlier of [...(close.history ?? [])].reverse()) {
-    const settled = (earlier.settled ?? []).some((s) => s.tenantId === tenantId);
     const supplementary = (earlier.supplementarySettled ?? []).find((s) => s.tenantId === tenantId);
-    if (!settled && supplementary === undefined) continue;
-    const then = earlier.snapshot.tenants.find((t) => t.tenantId === tenantId);
-    const base =
-      (settled && then !== undefined ? snapshotDue(then) : 0) + (supplementary?.amount ?? 0);
-    return { status: 'differenza', due, remaining: cents(due - base), fni };
+    if (supplementary !== undefined) {
+      base += supplementary.amount;
+      marked = true;
+    }
+    if ((earlier.settled ?? []).some((s) => s.tenantId === tenantId)) {
+      const then = earlier.snapshot.tenants.find((t) => t.tenantId === tenantId);
+      base += then === undefined ? 0 : snapshotDue(then);
+      marked = true;
+      break;
+    }
   }
+  if (marked) return { status: 'differenza', due, remaining: cents(due - base), fni };
   return { status: 'da-saldare', due, remaining: due, fni };
 }
 
