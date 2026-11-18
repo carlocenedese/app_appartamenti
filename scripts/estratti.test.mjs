@@ -1316,8 +1316,9 @@ describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, t
         written: 3,
         yielded: 0,
         proposals: [],
-        pending: 0,
-        assumed: 1,
+        // C1: the February bill's window reaches the March statement: pending, not assumed.
+        pending: 1,
+        assumed: 0,
         invalidGroups: 0,
         operationId: matchOp.id,
       });
