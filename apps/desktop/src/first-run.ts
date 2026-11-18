@@ -5,13 +5,17 @@
  * User names are shown on screen only, never logged.
  */
 import {
-  CORE_SCHEMA_VERSION,
   CORE_VERSION,
+  DATA_FORMAT,
   assessWorkspace,
   createUser,
+  FileAccessError,
+  UnreadableRecordsError,
   createWorkspace,
   liveUsers,
   othersActive,
+  raiseDataFormat,
+  readOnlyMessage,
   readPresence,
   repairDiverged,
   writePresence,
@@ -39,7 +43,7 @@ export interface FirstRunInput {
   presenceWindowMinutes?: number;
 }
 
-const APP = { version: CORE_VERSION, schemaVersion: CORE_SCHEMA_VERSION };
+const APP = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
 const TOO_BROAD =
   'La cartella scelta è troppo ampia (la cartella principale del disco o la cartella home): ' +
   "l'app avrebbe accesso a tutti i file che contiene. Scegli una cartella dentro, per esempio in Dropbox.";
@@ -79,8 +83,11 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
     show(title, el('p', '', text), button("Scegli un'altra cartella", showJoin, true));
   }
   const open = (folder: string, note = ''): void => {
-    openFolder(folder, note).catch(() =>
-      message('Cartella non raggiungibile', 'Non è stato possibile leggere la cartella.'),
+    openFolder(folder, note).catch((error: unknown) =>
+      // These errors carry a relative path and say what to do; any other stays generic.
+      error instanceof FileAccessError || error instanceof UnreadableRecordsError
+        ? message('Sola lettura', error.message)
+        : message('Cartella non raggiungibile', 'Non è stato possibile leggere la cartella.'),
     );
   };
 
@@ -210,66 +217,65 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
     assessment: WorkspaceAssessment,
     note: string,
   ): void {
-    if (assessment.compat === 'readonly') {
-      message(
-        'Sola lettura',
-        "La cartella è stata scritta da una versione più nuova dell'app: è aperta in sola lettura. " +
-          "Aggiorna l'app per modificarla.",
+    // Every reason with what to do and its files (paths relative to the folder: on screen only).
+    const reasons = assessment.reasons.map(({ code, paths }) => {
+      const box = el('div', 'reason');
+      box.append(el('p', '', readOnlyMessage(code)));
+      if (!paths.every((path) => path === '_app/workspace.json')) {
+        const list = el('ul');
+        for (const path of paths) list.append(el('li', '', path));
+        box.append(list);
+      }
+      return box;
+    });
+    const has = (code: string) => assessment.reasons.some((reason) => reason.code === code);
+    const actions: HTMLElement[] = [];
+    if (has('older-format') && assessment.reasons.length === 1) {
+      const raise = button(
+        'Aggiorna i dati della cartella',
+        () => {
+          raise.disabled = true;
+          raiseDataFormat(store).then(
+            () => open(folder),
+            () => open(folder, 'Non è stato possibile aggiornare i dati della cartella.'),
+          );
+        },
+        true,
       );
-      return;
+      actions.push(raise);
     }
-    if (assessment.compat === 'upgrade-needed') {
-      message(
-        'Sola lettura',
-        'I dati della cartella sono di una versione precedente e vanno aggiornati: per ora è aperta in sola lettura.',
-      );
-      return;
-    }
-    // compat ok, so the folder is behind. Only a diverged record can be repaired, and only when
-    // the user asks; a journal file cut short or from a newer app just has to arrive.
-    if (!assessment.problems.some((x) => x.reason === 'diverged')) {
-      show(
-        'Sola lettura',
-        el(
-          'p',
-          '',
-          'La cartella è aperta in sola lettura: sincronizzazione in corso o incompleta. ' +
-            'Aspetta che Dropbox finisca, poi ricontrolla.',
-        ),
-        errorLine(note),
-        link('Ricontrolla', () => open(folder)),
-      );
-      return;
-    }
-    const repair = button(
-      'Ripara',
-      () => {
-        repair.disabled = true;
-        void (async () => {
-          let failed = '';
-          for (const p of assessment.problems.filter((x) => x.reason === 'diverged')) {
-            try {
-              await repairDiverged(store, p.path);
-            } catch {
-              failed =
-                'Alcuni dati non si possono riparare: sono più nuovi di quanto dice il registro.';
+    if (has('diverged')) {
+      // Only a diverged record is repaired, and only when the user asks; the rest is reported.
+      const repair = button(
+        'Ripara',
+        () => {
+          repair.disabled = true;
+          void (async () => {
+            let failed = '';
+            for (const p of assessment.problems.filter((x) => x.reason === 'diverged')) {
+              try {
+                await repairDiverged(store, p.path);
+              } catch {
+                failed =
+                  'Alcuni dati non si possono riparare da soli: il dato sul disco non è uno stato ' +
+                  'da cui parte il registro. Aspetta che Dropbox finisca la sincronizzazione e ' +
+                  'ricontrolla; se resta, serve scegliere a mano.';
+              }
             }
-          }
-          open(folder, failed);
-        })();
-      },
-      true,
-    );
+            open(folder, failed);
+          })();
+        },
+        true,
+      );
+      actions.push(repair);
+    }
     show(
       'Sola lettura',
-      el(
-        'p',
-        '',
-        'La cartella è aperta in sola lettura: sincronizzazione in corso o incompleta. ' +
-          'Aspetta che Dropbox finisca; se il messaggio resta, usa «Ripara».',
-      ),
+      ...reasons,
       errorLine(note),
-      repair,
+      ...actions,
+      link('Ricontrolla', () => open(folder)),
+      link("Scegli un'altra cartella", showJoin),
     );
   }
 

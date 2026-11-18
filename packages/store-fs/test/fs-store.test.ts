@@ -15,7 +15,13 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BillSchema,
+  CORE_VERSION,
+  DATA_FORMAT,
+  FileAccessError,
   MalformedJsonError,
+  assessWorkspace,
+  commitChange,
+  damagedJournalFiles,
   StaleWriteError,
   findWorkspace,
   loadAll,
@@ -32,6 +38,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return {
     ...actual,
     rename: vi.fn(actual.rename),
+    readFile: vi.fn(actual.readFile),
     link: vi.fn(actual.link),
     unlink: vi.fn(actual.unlink),
   };
@@ -78,7 +85,7 @@ describe('FsStore: JSON files', () => {
   it('writes a Bill and reads it back', async () => {
     await store.writeJsonAtomic('_app/dati/bill/bill-1.json', bill);
     expect(await store.readJson('_app/dati/bill/bill-1.json')).toEqual(bill);
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
     expect(problems).toEqual([]);
     expect(records).toEqual([bill]);
   });
@@ -281,7 +288,7 @@ describe('FsStore: an interrupted write never leaves a partial .json file', () =
 
     expect(await store.list('_app/dati/bill')).toEqual(['bill-1.json']);
     expect(await store.readJson('_app/dati/bill/bill-2.json')).toBeUndefined();
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
     expect(records).toEqual([bill]);
     expect(problems).toEqual([]);
   });
@@ -310,12 +317,15 @@ describe('FsStore: an interrupted write never leaves a partial .json file', () =
   });
 
   it('leaves no .json file and no temporary file when the rename fails on a new file', async () => {
-    vi.mocked(rename).mockRejectedValueOnce(
+    vi.mocked(rename).mockRejectedValue(
       Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }),
     );
     await expect(store.writeJsonAtomic('dati/a.json', bill)).rejects.toMatchObject({
+      name: 'FileAccessError',
       code: 'EPERM',
+      path: 'dati/a.json',
     });
+    vi.mocked(rename).mockReset();
     expect(await readdir(join(root, 'dati'))).toEqual([]);
     expect(await store.readJson('dati/a.json')).toBeUndefined();
     expect(await store.list('dati')).toEqual([]);
@@ -356,7 +366,7 @@ describe('FsStore with the engine', () => {
     await seed('.tmp-0190e5c6-1f2a', '{"partial');
     await seed('notes.txt', 'hello');
 
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
 
     const dir = '_app/dati/bill';
     expect(records).toEqual([bill]);
@@ -381,7 +391,7 @@ describe('FsStore with the engine', () => {
     await seed('bill-1 - Copia.json', JSON.stringify({ ...bill, supplier: 'Copia' }));
     await seed('renamed.json', JSON.stringify({ ...bill, id: 'bill-9' }));
 
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
 
     const dir = '_app/dati/bill';
     expect(records).toEqual([bill]);
@@ -477,5 +487,104 @@ describe('moveFileNoOverwrite, the edges (plan 17, R315)', () => {
     await expect(moveFileNoOverwrite(root, 'a.pdf', 'b/a.pdf')).rejects.toThrow('no');
     expect(await namesIn()).toEqual(['a.pdf', 'b']);
     expect(await namesIn('b')).toEqual([]);
+  });
+});
+
+describe('a damaged operation file set aside (revisione 2026-11-18, G4)', () => {
+  it('unblocks the folder only when it left no effect', async () => {
+    await store.writeJsonAtomic('_app/workspace.json', {
+      workspaceId: 'ws-1',
+      name: 'Casa',
+      schemaVersion: DATA_FORMAT,
+      minAppVersion: CORE_VERSION,
+      createdAt: '2026-11-18T09:00:00.000Z',
+    });
+    await commitChange(
+      store,
+      {
+        profileId: 'u1',
+        kind: 'k',
+        summary: 's',
+        changes: [{ path: recordPath('bill', 'bill-1'), after: bill }],
+      },
+      () => '2026-11-18T09:00:00.000Z',
+      () => 'op-1',
+    );
+    await mkdir(join(root, '_app/journal'), { recursive: true });
+    await writeFile(join(root, '_app/journal/20261118T090100000Z-u9-zzz.json'), '');
+    const app = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
+    expect((await assessWorkspace(store, app)).reasons.map(({ code }) => code)).toEqual([
+      'damaged-journal',
+    ]);
+    const [file] = await damagedJournalFiles(store);
+    expect(file?.safeToSetAside).toBe(true);
+    expect(await moveFileNoOverwrite(root, file?.path ?? '', file?.setAsideTo ?? '')).toBe('moved');
+    expect(await assessWorkspace(store, app)).toMatchObject({ writable: true, reasons: [] });
+  });
+});
+
+describe('files held open or without permission (revisione 2026-11-18, G5, G8)', () => {
+  const busy = () => Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' });
+
+  it('tries a refused rename again, and the write goes through', async () => {
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    vi.mocked(rename)
+      .mockRejectedValueOnce(busy())
+      .mockRejectedValueOnce(busy())
+      .mockImplementation(actual.rename);
+    await store.writeJsonAtomic('dati/a.json', { id: 'a' });
+    expect(await store.readJson('dati/a.json')).toEqual({ id: 'a' });
+    expect(vi.mocked(rename)).toHaveBeenCalledTimes(3);
+  });
+
+  it('gives up with a FileAccessError on the relative path, leaving no temporary file', async () => {
+    vi.mocked(rename).mockRejectedValue(busy());
+    const failure = store.writeJsonAtomic('dati/a.json', { id: 'a' });
+    await expect(failure).rejects.toBeInstanceOf(FileAccessError);
+    await expect(failure).rejects.toMatchObject({ code: 'EBUSY', path: 'dati/a.json' });
+    vi.mocked(rename).mockReset();
+    expect(await readdir(join(root, 'dati'))).toEqual([]);
+  });
+
+  it('does not try again a rename that failed for another reason', async () => {
+    vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'ENOSPC' }));
+    await expect(store.writeJsonAtomic('dati/a.json', { id: 'a' })).rejects.toMatchObject({
+      code: 'ENOSPC',
+    });
+    expect(vi.mocked(rename)).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a file it cannot read as unreadable, and the folder still opens (T5b)', async () => {
+    await store.writeJsonAtomic('_app/dati/bill/bill-1.json', bill);
+    await store.writeJsonAtomic('_app/dati/bill/bill-2.json', { ...bill, id: 'bill-2' });
+    const denied = Object.assign(new Error(`EACCES: ${root}`), { code: 'EACCES' });
+    vi.mocked(readFile).mockImplementation(async (file, options) => {
+      if (String(file).endsWith('bill-2.json')) throw denied;
+      const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+      return actual.readFile(file, options as 'utf8');
+    });
+    try {
+      await expect(store.readJson('_app/dati/bill/bill-2.json')).rejects.toMatchObject({
+        name: 'FileAccessError',
+        path: '_app/dati/bill/bill-2.json',
+      });
+      const { records, problems } = await loadAll(
+        store,
+        'bill',
+        BillSchema,
+        { tolerant: true },
+        [],
+      );
+      expect(records.map(({ id }) => id)).toEqual(['bill-1']);
+      expect(problems).toEqual([{ path: '_app/dati/bill/bill-2.json', reason: 'unreadable' }]);
+      const app = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
+      expect((await assessWorkspace(store, app)).reasons).toContainEqual({
+        code: 'unreadable-files',
+        paths: ['_app/dati/bill/bill-2.json'],
+      });
+    } finally {
+      const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+      vi.mocked(readFile).mockImplementation(actual.readFile);
+    }
   });
 });

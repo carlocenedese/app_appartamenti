@@ -24,7 +24,8 @@ export interface Store {
   /**
    * The parsed JSON at `path`, or `undefined` when there is no such file. Throws a
    * `MalformedJsonError` when the file exists but does not hold valid JSON (so that `loadAll` can
-   * tell a broken file from a missing one) and any other error as it is.
+   * tell a broken file from a missing one), a `FileAccessError` when it exists but cannot be read
+   * now, and any other error as it is.
    */
   readJson(path: string): Promise<unknown | undefined>;
 
@@ -60,6 +61,11 @@ export type Problem = {
    *   id is loaded, and none of them when no single file is (see `loadAll`).
    * - `diverged`: the record differs from what the last operation in the journal says (a crash
    *   between journal and record); reported by the journal checks, not by `loadAll`.
+   * - `unreadable`: the file exists but cannot be read now (see `FileAccessError`).
+   * - `unknown-fields`: a record with keys this app does not know (a newer app added a field). It
+   *   is loaded and can be read, but `commitChange` refuses to write over it.
+   * - `forked`: two operations of the journal left the latest `rev` of the record with different
+   *   content (two people changed it at once); the person chooses which to keep (`resolveFork`).
    * - `dangling-reference`: a live record holds the id of a record that is missing or deleted
    *   (see `referenceProblems`); the path is the one of the record holding it.
    */
@@ -71,10 +77,67 @@ export type Problem = {
     | 'id-mismatch'
     | 'duplicate-id'
     | 'diverged'
+    | 'forked'
+    | 'unknown-fields'
+    | 'unreadable'
     | 'dangling-reference';
   /** For `conflicted-copy`: the file the copy was made from, when its name can be worked out. */
   originalPath?: string;
 };
+
+/**
+ * Thrown by `commitChange` when it would write over data a newer app wrote: a record with a `v`
+ * above 1 or with fields this app does not know, or a folder whose `workspace.json` has a data
+ * format above `DATA_FORMAT`. Nothing is written. The message is for the screen, in Italian, and
+ * names only the relative path (ids, no personal data).
+ */
+export class NewerDataError extends Error {
+  /** Path of the record, or of `workspace.json`, relative to the workspace root. */
+  readonly path: string;
+
+  constructor(path: string) {
+    super(
+      `${path}: dato scritto da una versione più nuova dell'app; aggiorna l'app per modificarlo`,
+    );
+    this.name = 'NewerDataError';
+    this.path = path;
+  }
+}
+
+/** The error codes of a file that exists but cannot be used now (permissions, held open, I/O). */
+export const FILE_ACCESS_CODES = ['EACCES', 'EPERM', 'EBUSY', 'EIO'] as const;
+export type FileAccessCode = (typeof FILE_ACCESS_CODES)[number] | 'unknown';
+
+/**
+ * Thrown by a store for a file that exists but cannot be read or replaced now: no permission
+ * (`EACCES`, `EPERM`), held open by another program (`EBUSY`, `EPERM` on Windows: Excel, an
+ * antivirus, Dropbox), a disk error (`EIO`), or a Dropbox file that is only online while offline.
+ * `path` is relative to the workspace root (no user folder, so no personal data); the message, in
+ * Italian, says what to try.
+ */
+export class FileAccessError extends Error {
+  readonly path: string;
+  readonly code: FileAccessCode;
+
+  constructor(path: string, code: FileAccessCode, options?: { cause?: unknown }) {
+    super(
+      `${path}: il file non si può usare ora (${code}). Chiudilo se è aperto in un altro ` +
+        "programma (Excel, l'antivirus), controlla che Dropbox lo tenga su questo computer e " +
+        'che tu abbia i permessi, poi riprova.',
+      options,
+    );
+    this.name = 'FileAccessError';
+    this.path = path;
+    this.code = code;
+  }
+}
+
+/** Whether `error` is a failure to use a file that exists (see `FileAccessError`). */
+export function isFileAccessError(error: unknown): boolean {
+  if (error instanceof FileAccessError) return true;
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && (FILE_ACCESS_CODES as readonly string[]).includes(code);
+}
 
 /**
  * Thrown by `Store.readJson` for a file that exists but is not valid JSON. It is its own class so

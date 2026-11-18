@@ -7,7 +7,7 @@
  */
 import { SettlementInputError, checkBeds, isPresent } from './conguaglio';
 import type { SettlementInputErrorCode } from './conguaglio';
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import type { Operation } from './journal';
 import {
   ApartmentSchema,
@@ -260,7 +260,7 @@ export async function saveTenancy(
   clock: () => string,
   newId: () => string,
 ): Promise<TenancyWriteResult> {
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const { contractId, ...fields } = input;
   const record = ID.test(input.id) ? tenancyRecord({ ...fields, rev: 1 }) : undefined;
   if (record === undefined) return refuse('invalid-tenancy');
@@ -343,7 +343,7 @@ export async function endTenancy(
   clock: () => string,
   newId: () => string,
 ): Promise<TenancyWriteResult> {
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const state = await loadState(store);
   const before = state.tenancies.find((t) => t.id === input.tenancyId);
   if (!isLive(before)) return refuse('unknown-tenancy');
@@ -393,7 +393,7 @@ export async function recordTakeover(
   clock: () => string,
   newId: () => string,
 ): Promise<TenancyWriteResult> {
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const state = await loadState(store);
   const out = state.tenancies.find((t) => t.id === input.outTenancyId);
   if (!isLive(out)) return refuse('unknown-tenancy');
@@ -547,7 +547,7 @@ export async function recordRoomSwap(
   newId: () => string,
 ): Promise<RoomSwapResult> {
   const no = (reason: RoomSwapRefusal) => ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return no('inconsistent-store');
+  if (await writesBlocked(store)) return no('inconsistent-store');
   const state = await loadState(store);
   const find = (id: string) =>
     state.tenancies.find((t) => t.id === id && isLive(t) && t.apartmentId === input.apartmentId);

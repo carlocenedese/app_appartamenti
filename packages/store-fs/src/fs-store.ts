@@ -18,7 +18,13 @@ import {
 } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { MalformedJsonError, assertSafeRelPath } from '@bollette/core';
+import {
+  FileAccessError,
+  MalformedJsonError,
+  assertSafeRelPath,
+  isFileAccessError,
+} from '@bollette/core';
+import type { FileAccessCode } from '@bollette/core';
 import type { Store } from '@bollette/core';
 
 /** Temporary files of a write in progress. They have no `.json` extension, so a reader of the data
@@ -30,6 +36,35 @@ const BYTE_ORDER_MARK = '\ufeff';
 function isMissing(error: unknown): boolean {
   const code = (error as { code?: unknown } | null)?.code;
   return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
+/** `error` as a `FileAccessError` on `rel` when it is one (see `isFileAccessError`), else as is. */
+function asAccessError(error: unknown, rel: string): unknown {
+  if (!isFileAccessError(error) || error instanceof FileAccessError) return error;
+  // No `cause`: the error of node:fs has the absolute path, which can hold the user's name.
+  return new FileAccessError(rel, (error as { code: FileAccessCode }).code);
+}
+
+/** The waits before each new attempt of a rename that a busy file refused (Windows). */
+const RENAME_RETRY_MS = [20, 50, 100, 200, 400];
+
+/**
+ * `rename`, tried again a few times when Windows refuses it because another program holds the
+ * target open (`EBUSY`, `EPERM`, `EACCES`: Dropbox, an antivirus, Excel), as is common there.
+ */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const wait = RENAME_RETRY_MS[attempt];
+      const code = (error as { code?: unknown } | null)?.code;
+      const busy = code === 'EBUSY' || code === 'EPERM' || code === 'EACCES';
+      if (!busy || wait === undefined) throw error;
+      await new Promise((done) => setTimeout(done, wait));
+    }
+  }
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -58,6 +93,22 @@ async function findByNfcName(dir: string, name: string): Promise<string | undefi
 }
 
 /**
+ * Flushes the folder entry of a rename to disk, so that a power cut does not bring back the old
+ * file. Best effort: Windows cannot open a folder this way, and there NTFS journals the rename.
+ */
+async function syncDir(dir: string): Promise<void> {
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(dir, 'r');
+    await handle.sync();
+  } catch {
+    // not supported on this platform (EISDIR, EPERM on Windows)
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
+
+/**
  * A `Store` on a folder: every path is relative to `root`, with `/` separators.
  *
  * - Every incoming path is NFC-normalised and checked with `assertSafeRelPath` (a `RangeError`
@@ -68,8 +119,11 @@ async function findByNfcName(dir: string, name: string): Promise<string | undefi
  *   NFC-normalised names of its folder, so a file saved by a Mac is found by a Windows machine
  *   and the other way round. Writing to a name that exists in the other spelling replaces that
  *   file instead of creating a twin. Names listed come back in NFC.
+ * - A file that exists but cannot be used now (`EACCES`, `EPERM`, `EBUSY`, `EIO`) gives a
+ *   `FileAccessError` with the relative path. A rename that a busy target refuses is tried again
+ *   a few times over about a second first (Windows: Dropbox, an antivirus or Excel holding it).
  * - Writes go to a `.tmp-<uuid>` file in the same folder, are flushed to disk, and then replace
- *   the target with a rename, so a reader never sees a partly written `.json` file and a process
+ *   the target with a rename (the folder is flushed too where the platform allows), so a reader never sees a partly written `.json` file and a process
  *   that stops half way leaves only a `.tmp-*` file, which `list` hides.
  */
 export class FsStore implements Store {
@@ -86,7 +140,7 @@ export class FsStore implements Store {
       text = await readFile(file, 'utf8');
     } catch (error) {
       if (isMissing(error)) return undefined;
-      throw error;
+      throw asAccessError(error, rel);
     }
     try {
       return JSON.parse(text.startsWith(BYTE_ORDER_MARK) ? text.slice(1) : text);
@@ -100,7 +154,7 @@ export class FsStore implements Store {
     const json = JSON.stringify(value, null, 2);
     if (json === undefined) throw new TypeError('Value cannot be written as JSON');
 
-    const { file } = await this.locate(path);
+    const { rel, file } = await this.locate(path);
     const dir = dirname(file);
     await mkdir(dir, { recursive: true });
 
@@ -112,12 +166,13 @@ export class FsStore implements Store {
       await handle.sync();
       await handle.close();
       handle = undefined;
-      await rename(temp, file);
+      await renameWithRetry(temp, file);
+      await syncDir(dir);
     } catch (error) {
       // A failed write leaves the target as it was and no temporary file behind.
       await handle?.close().catch(() => undefined);
       await rm(temp, { force: true }).catch(() => undefined);
-      throw error;
+      throw asAccessError(error, rel);
     }
   }
 
@@ -138,8 +193,10 @@ export class FsStore implements Store {
   }
 
   async readBytes(path: string): Promise<Uint8Array> {
-    const { file } = await this.locate(path);
-    const bytes = await readFile(file);
+    const { rel, file } = await this.locate(path);
+    const bytes = await readFile(file).catch((error: unknown) => {
+      throw asAccessError(error, rel);
+    });
     return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   }
 

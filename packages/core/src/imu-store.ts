@@ -4,7 +4,7 @@
  * (R113), and nothing for the same request on the same state. No amount or name in a summary.
  */
 import { imuDependents } from './imu';
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import {
   AccountSchema,
   ApartmentSchema,
@@ -62,7 +62,7 @@ export async function setImuYear(
   const refuse = (
     reason: Exclude<Extract<SetImuYearResult, { status: 'refused' }>['reason'], 'has-dependents'>,
   ) => ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
   const { rates, annualTotal } = input;
@@ -188,7 +188,7 @@ export async function assignImuF24(
 ): Promise<AssignImuF24Result> {
   const refuse = (reason: Extract<AssignImuF24Result, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const all = { includeDeleted: true };
   const tx = (await loadAll(store, 'transaction', BankTransactionSchema)).records.find(
     (t) => t.id === input.transactionId,

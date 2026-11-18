@@ -11,13 +11,31 @@
  * whose last operation went through the file on disk is equal to that `after`.
  */
 import { z } from 'zod';
-import { TimestampSchema } from './model';
-import { DROPBOX_CONFLICT_RULE, compareText, isSafePath, loadDir } from './store/load';
+import type { ZodType } from 'zod';
+import { TimestampSchema, WorkspaceSchema, recordSchemas } from './model';
+import {
+  DEFAULT_CONFLICT_RULES,
+  compareText,
+  conflictProblem,
+  isSafePath,
+  dropsKeys,
+  loadDir,
+  noteForkedPaths,
+} from './store/load';
 import type { ConflictNameRule } from './store/load';
 import { StaleWriteError, currentRev, writeRecord } from './store/records';
-import { MalformedJsonError, assertSafeRelPath, assertSafeSegment } from './store/store';
+import {
+  DATA_DIR,
+  MalformedJsonError,
+  NewerDataError,
+  WORKSPACE_PATH,
+  assertSafeRelPath,
+  assertSafeSegment,
+  isFileAccessError,
+} from './store/store';
 import type { Problem, Store } from './store/store';
 import { compactTimestamp, compareByTime, compareTimestamps } from './time';
+import { DATA_FORMAT } from './version';
 
 /** Folder with the operation files, relative to the workspace root. */
 export const JOURNAL_DIR = '_app/journal';
@@ -106,6 +124,36 @@ function journalPath(operation: Pick<Operation, 'at' | 'profileId' | 'id'>): str
 
 // --- Writing ---------------------------------------------------------------------------------
 
+/** Throws `NewerDataError` when `workspace.json` says the folder has a newer data format. */
+async function refuseNewerFormat(store: Store): Promise<void> {
+  let raw: unknown;
+  try {
+    raw = await store.readJson(WORKSPACE_PATH);
+  } catch (error) {
+    if (error instanceof MalformedJsonError) return; // assessWorkspace reports it as invalid
+    throw error;
+  }
+  const workspace = WorkspaceSchema.safeParse(raw);
+  if (workspace.success && workspace.data.schemaVersion > DATA_FORMAT) {
+    throw new NewerDataError(WORKSPACE_PATH);
+  }
+}
+
+/**
+ * Throws `NewerDataError` when the record on disk at `path` was written by a newer app: a `v`
+ * above 1, or keys its schema does not know (writing over it would drop them). Only records of a
+ * kind in `recordSchemas` are checked by schema; the `v` check holds for every record.
+ */
+function refuseNewerRecord(path: string, raw: unknown): void {
+  if (!isRecord(raw)) return;
+  if (typeof raw.v === 'number' && raw.v > 1) throw new NewerDataError(path);
+  const kind = path.startsWith(`${DATA_DIR}/`) ? path.split('/')[2] : undefined;
+  const schemas: Record<string, ZodType> = recordSchemas;
+  const schema = kind !== undefined && Object.hasOwn(schemas, kind) ? schemas[kind] : undefined;
+  const parsed = schema?.safeParse(raw);
+  if (parsed?.success === true && dropsKeys(raw, parsed.data)) throw new NewerDataError(path);
+}
+
 /**
  * Checks one change of an operation about to be written and fills in its `after` as it will be on
  * disk: `{...after, rev}` with `rev` one above the one in `before` (1 for a new record), or, when
@@ -171,6 +219,21 @@ export async function commitChange(
   clock: () => string,
   newId: () => string,
 ): Promise<Operation> {
+  return commitOperation(store, input, clock, newId, false);
+}
+
+/**
+ * `commitChange`, and with `resolving` the write of `resolveFork`: the `before` of each change is
+ * then the journal's latest version, not what is on disk (which may be one of the forked versions,
+ * cut short or missing), and the record is written without the `rev` checks.
+ */
+async function commitOperation(
+  store: Store,
+  input: Omit<Operation, 'id' | 'v' | 'at'>,
+  clock: () => string,
+  newId: () => string,
+  resolving: boolean,
+): Promise<Operation> {
   assertSafeSegment(input.profileId);
   const id = newId();
   assertSafeSegment(id);
@@ -186,23 +249,116 @@ export async function commitChange(
       .join('; ');
     throw new Error(`Not a valid operation (${issues})`, { cause: parsed.error });
   }
-  const operation = parsed.data;
+  const parsedOperation = parsed.data;
 
-  const file = journalPath(operation);
+  const file = journalPath(parsedOperation);
   if ((await store.readJson(file)) !== undefined) {
     throw new Error(`The journal already has ${file}: an operation file is never overwritten`);
   }
+  await refuseNewerFormat(store);
+  if (resolving) {
+    for (const { path } of changes) refuseNewerRecord(path, await readTolerant(store, path));
+    await store.writeJsonAtomic(file, parsedOperation);
+    for (const { path, after } of changes) await store.writeJsonAtomic(path, after);
+    return parsedOperation;
+  }
+  const { operations } = await readJournal(store);
+  const touches = touchesByPath(operations);
+  const forked = forkedPaths(operations);
+  /** For each path written on top of the journal's latest rev rather than the one on disk. */
+  const realigned = new Map<string, number>();
   for (const { path, before } of changes) {
     const expected = before?.rev ?? null;
     const actual = await currentRev(store, path);
     if (actual !== expected) throw new StaleWriteError(path, expected, actual);
+    const onDisk = await store.readJson(path);
+    refuseNewerRecord(path, onDisk);
+    // A record not as the journal leaves it is never written over at the same rev: that would
+    // fork it (revisione 2026-11-18, G1-bis).
+    if (forked.has(path)) throw new InconsistentRecordError(path, 'forked');
+    const latest = touches.get(path)?.at(-1);
+    if (latest === undefined || jsonEqual(onDisk, latest.after)) continue;
+    // The journal is ahead of the record. Only when the operation ahead is one whose record write
+    // failed through this very store, and the record is still as that operation found it, is it
+    // known that the change never landed: this one replaces it, on top of its rev. Anything else
+    // (the same person on another computer, a record still on its way through Dropbox) is
+    // refused: `repairDiverged` applies what the journal says without losing it.
+    const failed = failedOperations.get(store)?.has(latest.operation.id) === true;
+    const found = latest.operation.changes.find((change) => change.path === path)?.before;
+    if (!failed || !jsonEqual(onDisk, found)) {
+      throw new InconsistentRecordError(path, 'diverged');
+    }
+    realigned.set(path, latest.after.rev + 1);
   }
+  const operation: Operation = {
+    ...parsedOperation,
+    changes: parsedOperation.changes.map((change) => {
+      const rev = realigned.get(change.path);
+      return rev === undefined
+        ? change
+        : { ...change, after: { ...(change.after as JsonRecord), rev } };
+    }),
+  };
 
   await store.writeJsonAtomic(file, operation);
-  for (const { path, before, after } of changes) {
-    await writeRecord(store, path, after, { expectedRev: before?.rev ?? null });
+  try {
+    for (const { path, before, after } of changes) {
+      const expectedRev = before?.rev ?? null;
+      const rev = realigned.get(path);
+      if (rev === undefined) {
+        await writeRecord(store, path, after, { expectedRev });
+        continue;
+      }
+      const actual = await currentRev(store, path);
+      if (actual !== expectedRev) throw new StaleWriteError(path, expectedRev, actual);
+      await store.writeJsonAtomic(path, { ...after, rev });
+    }
+  } catch (error) {
+    // The operation is in the journal but its records are not (all) written: a retry through this
+    // store may go on top of it (see above).
+    const failed = failedOperations.get(store) ?? new Set<string>();
+    failed.add(operation.id);
+    failedOperations.set(store, failed);
+    throw error;
   }
   return operation;
+}
+
+/**
+ * The operations whose record writes failed through each store, in this session. Only those are
+ * known not to have landed; a journal ahead of the records for any other reason is never written
+ * over (revisione 2026-11-18, second review).
+ */
+const failedOperations = new WeakMap<Store, Set<string>>();
+
+/**
+ * Thrown by `commitChange`, writing nothing, when a record it would change is not as the journal
+ * leaves it: `forked` (two versions to choose from with `resolveFork`) or `diverged` (to repair
+ * with `repairDiverged` first). The message, in Italian, names only the relative path.
+ */
+export class InconsistentRecordError extends Error {
+  readonly path: string;
+  readonly reason: 'forked' | 'diverged';
+
+  constructor(path: string, reason: 'forked' | 'diverged') {
+    super(
+      reason === 'forked'
+        ? `${path}: il dato è stato modificato in due posti; scegli prima la versione da tenere`
+        : `${path}: il dato non è come dice il registro; ripara la cartella prima di modificarlo`,
+    );
+    this.name = 'InconsistentRecordError';
+    this.path = path;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Whether the stores must refuse to write: `checkConsistency` reports a problem other than a
+ * fork. A fork blocks only the writes to its own record (`commitChange` refuses them) and the
+ * reads of its kind (`loadAll`), so the rest of the folder stays usable while the person chooses.
+ */
+export async function writesBlocked(store: Store): Promise<boolean> {
+  return (await checkConsistency(store)).some(({ reason }) => reason !== 'forked');
 }
 
 /**
@@ -215,7 +371,7 @@ export async function commitChange(
  */
 export async function readJournal(
   store: Store,
-  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
+  conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
 ): Promise<{ operations: Operation[]; problems: Problem[] }> {
   const naming = { stemOf: journalStem, strict: false };
   const { records, problems } = await loadDir(
@@ -232,7 +388,7 @@ export async function readJournal(
 // --- Order of the operations on a record -----------------------------------------------------
 
 /** What one operation leaves in one record file: the `after` of its change to that path. */
-type Touch = { operation: Operation; after: JsonRecord & { rev: number } };
+type Touch = { operation: Operation; before: unknown; after: JsonRecord & { rev: number } };
 
 /**
  * Orders what two operations did to the same record: by the `rev` they leave in it, then by time,
@@ -254,10 +410,10 @@ function compareTouches(a: Touch, b: Touch): number {
 function touchesByPath(operations: readonly Operation[]): Map<string, Touch[]> {
   const byPath = new Map<string, Touch[]>();
   for (const operation of operations) {
-    for (const { path, after } of operation.changes) {
+    for (const { path, before, after } of operation.changes) {
       if (!hasRev(after)) continue; // not in a file that passed the schema
       const touches = byPath.get(path) ?? [];
-      touches.push({ operation, after });
+      touches.push({ operation, before, after });
       byPath.set(path, touches);
     }
   }
@@ -510,6 +666,18 @@ export async function undoOperation(
     );
   }
 
+  // A fork, a conflict copy or a file that cannot be read blocks an undo as it blocks every store
+  // (R113); a diverged record blocks it only when the undo would write it (below).
+  // A fork blocks the undo only where it writes: commitChange refuses its paths.
+  const blocking = (await checkConsistency(store)).filter(
+    ({ reason }) => reason !== 'diverged' && reason !== 'forked',
+  );
+  if (blocking.length > 0) {
+    throw new Error(
+      `Cannot undo: the folder has ${String(blocking.length)} problem(s) to resolve first ` +
+        `(${[...new Set(blocking.map(({ reason }) => reason))].join(', ')})`,
+    );
+  }
   await refuseIfDiverged(store, operations, [target, ...dependents]);
 
   // Each round undoes one dependent that nothing else depends on, then looks again with the new
@@ -535,14 +703,6 @@ function latestAfter(operations: readonly Operation[]): Map<string, JsonRecord &
     if (last !== undefined) latest.set(path, last.after);
   }
   return latest;
-}
-
-/** The same for the journal in `store`. */
-async function latestAfterByPath(
-  store: Store,
-  conflictRules?: readonly ConflictNameRule[],
-): Promise<Map<string, JsonRecord & { rev: number }>> {
-  return latestAfter((await readJournal(store, conflictRules)).operations);
 }
 
 /** Structural equality of two JSON values; the order of the keys of an object does not matter. */
@@ -576,48 +736,301 @@ async function readTolerant(store: Store, path: string): Promise<unknown> {
   }
 }
 
+/** As `readTolerant`, with `UNREADABLE` for a file that exists but cannot be read now. */
+const UNREADABLE = Symbol('unreadable');
+async function readOrMark(store: Store, path: string): Promise<unknown> {
+  try {
+    return await readTolerant(store, path);
+  } catch (error) {
+    if (isFileAccessError(error)) return UNREADABLE;
+    throw error;
+  }
+}
+
 /**
- * Compares every record in the journal with its latest operation and reports each one that is not
- * as that operation's `after` says as `diverged`, by path. The latest operation on a record is
- * the one that leaves the highest `rev`, not the one with the latest time: the clocks of two
- * machines can disagree, and the `rev`s of a record are in the order of its changes. (Only when
- * two operations leave the same `rev` does the later time decide, then the higher `id`.) A record
- * is also `diverged` when its file is missing or cut short. This is what an interruption
- * between the journal and the record leaves, or an edit by hand. Only these problems are
- * returned: the files of the journal that cannot be read are in `readJournal`'s `problems`.
+ * The paths whose latest `rev` is left by two operations or more with different content: a fork.
+ * Two machines (or two windows) changed the same record from the same `rev` at once, and both
+ * operation files reached the journal. Which one is right is for the person to decide
+ * (`resolveFork`); the clock does not decide it.
  */
-export async function checkConsistency(
+function forkedPaths(operations: readonly Operation[]): Set<string> {
+  const forked = new Set<string>();
+  for (const [path, touches] of touchesByPath(operations)) {
+    const last = touches.at(-1);
+    if (last === undefined) continue;
+    const top = touches.filter(({ after }) => after.rev === last.after.rev);
+    if (top.some(({ after }) => !jsonEqual(after, last.after))) forked.add(path);
+  }
+  return forked;
+}
+
+/**
+ * The conflict copies (see `ConflictNameRule`) next to the records the journal knows and next to
+ * `workspace.json`. A record has a conflict copy only if it exists, and it exists only through
+ * an operation, so the folders of the paths in the journal are the ones to look in.
+ */
+async function conflictCopies(
   store: Store,
-  conflictRules?: readonly ConflictNameRule[],
+  paths: Iterable<string>,
+  conflictRules: readonly ConflictNameRule[],
 ): Promise<Problem[]> {
-  const latest = await latestAfterByPath(store, conflictRules);
+  const dirs = new Set(['_app']);
+  for (const path of paths) dirs.add(path.slice(0, path.lastIndexOf('/')));
   const problems: Problem[] = [];
-  for (const [path, after] of [...latest].sort(([a], [b]) => compareText(a, b))) {
-    if (!jsonEqual(await readTolerant(store, path), after)) {
-      problems.push({ path, reason: 'diverged' });
+  for (const dir of [...dirs].sort(compareText)) {
+    for (const name of await store.list(dir)) {
+      if (!name.endsWith('.json') || !conflictRules.some((rule) => rule.isConflictName(name))) {
+        continue;
+      }
+      if (dir === '_app' && !name.includes('workspace')) continue;
+      problems.push(conflictProblem(dir, name));
     }
   }
   return problems;
 }
 
 /**
+ * Compares every record in the journal with its latest operation and reports each one that is not
+ * as that operation's `after` says as `diverged`, by path. The latest operation on a record is
+ * the one that leaves the highest `rev`, not the one with the latest time: the clocks of two
+ * machines can disagree, and the `rev`s of a record are in the order of its changes. A record
+ * is also `diverged` when its file is missing or cut short. This is what an interruption
+ * between the journal and the record leaves, or an edit by hand.
+ *
+ * A record whose highest `rev` is left by two operations with different content is `forked`
+ * instead (see `forkedPaths`), whatever is on disk: `repairDiverged` refuses it and the person
+ * chooses with `resolveFork`. Every conflict copy of a record, of an operation file or of
+ * `workspace.json` is reported too (`conflicted-copy`): until the person has compared it and set
+ * it aside, nothing is written, since the copy may hold a change that is confirmed nowhere else.
+ * The other files of the journal that cannot be read are in `readJournal`'s `problems`, not here.
+ */
+export async function checkConsistency(
+  store: Store,
+  conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
+): Promise<Problem[]> {
+  const { operations, problems: journalProblems } = await readJournal(store, conflictRules);
+  const latest = latestAfter(operations);
+  const forked = forkedPaths(operations);
+  noteForkedPaths(store, forked);
+  const problems: Problem[] = await conflictCopies(store, latest.keys(), conflictRules);
+  // A conflict copy of an operation file, or one that cannot be read now, is reported by
+  // readJournal; it blocks as the others do.
+  problems.push(
+    ...journalProblems.filter(
+      ({ reason }) => reason === 'conflicted-copy' || reason === 'unreadable',
+    ),
+  );
+  for (const [path, after] of [...latest].sort(([a], [b]) => compareText(a, b))) {
+    if (forked.has(path)) {
+      problems.push({ path, reason: 'forked' });
+      continue;
+    }
+    const onDisk = await readOrMark(store, path);
+    if (onDisk === UNREADABLE) problems.push({ path, reason: 'unreadable' });
+    else if (!jsonEqual(onDisk, after)) problems.push({ path, reason: 'diverged' });
+  }
+  return problems.sort((a, b) => compareText(a.path, b.path));
+}
+
+/**
  * Writes the record at `path` as its latest operation in the journal says (its `after`),
- * whatever is on disk, without the `rev` check of `writeRecord`: the journal is the authority
- * here. Throws if no operation in the journal touches `path`, and also, writing nothing, if the
- * record on disk has a higher `rev` than that `after`: putting an older state over a newer one
- * would lose a change, so that case is left to the person (the journal is then the one that is
- * behind, for instance because a file of it did not arrive yet).
+ * without the `rev` check of `writeRecord`: the journal is the authority here. It finishes what an
+ * interruption between the journal and the record left, which always leaves the record at a lower
+ * `rev` (or missing, or cut short). Throws, writing nothing:
+ *
+ * - if no operation in the journal touches `path`;
+ * - if the record is `forked` (two operations left its latest `rev` with different content): the
+ *   person chooses with `resolveFork`, the clock never does;
+ * - if the record on disk has a `rev` at or above that `after` with other content: putting the
+ *   journal's version over it could replace a change that went through with one that failed, so
+ *   that case is left to the person (the journal is then the one that is behind, for instance
+ *   because a file of it did not arrive yet).
  */
 export async function repairDiverged(store: Store, path: string): Promise<void> {
   const normalised = path.normalize('NFC');
-  const after = (await latestAfterByPath(store)).get(normalised);
+  const { operations } = await readJournal(store);
+  const after = latestAfter(operations).get(normalised);
   if (after === undefined) throw new Error(`No operation in the journal touches ${path}`);
+  if (forkedPaths(operations).has(normalised)) {
+    throw new Error(
+      `Refusing to repair ${path}: two operations left rev ${String(after.rev)} with different ` +
+        'content; choose the version to keep with resolveFork',
+    );
+  }
   const onDisk = await readTolerant(store, normalised);
-  if (hasRev(onDisk) && onDisk.rev > after.rev) {
+  if (jsonEqual(onDisk, after)) return;
+  if (hasRev(onDisk) && onDisk.rev >= after.rev) {
     throw new Error(
       `Refusing to repair ${path}: the record on disk has rev ${String(onDisk.rev)}, ` +
-        `above rev ${String(after.rev)} of its latest operation in the journal`,
+        `not below rev ${String(after.rev)} of its latest operation in the journal`,
+    );
+  }
+  // A record on disk that the latest operation does not build on (through the chain of `before`s)
+  // is a change that operation knew nothing of: writing over it would lose it.
+  if (hasRev(onDisk) && !onChain(touchesByPath(operations).get(normalised) ?? [], onDisk)) {
+    throw new Error(
+      `Refusing to repair ${path}: the record on disk is not a state its latest operation builds on`,
     );
   }
   await store.writeJsonAtomic(normalised, after);
+}
+
+/**
+ * Whether `record` is a state the latest of `touches` builds on: its `before`, or the `before` of
+ * the operation that left that state, and so on down the chain.
+ */
+function onChain(touches: readonly Touch[], record: unknown): boolean {
+  const seen = new Set<Touch>();
+  for (let touch = touches.at(-1); touch !== undefined && !seen.has(touch);) {
+    seen.add(touch);
+    const { before } = touch;
+    if (before === undefined) return false;
+    if (jsonEqual(before, record)) return true;
+    touch = touches.find(({ after }) => jsonEqual(after, before));
+  }
+  return false;
+}
+
+/**
+ * The versions of a `forked` record to choose from: the operations that left its latest `rev`,
+ * by time then `id`. Empty when the record at `path` is not forked.
+ */
+export async function forkVersions(store: Store, path: string): Promise<Operation[]> {
+  const normalised = path.normalize('NFC');
+  const { operations } = await readJournal(store);
+  if (!forkedPaths(operations).has(normalised)) return [];
+  const touches = touchesByPath(operations).get(normalised) ?? [];
+  const top = touches.at(-1)?.after.rev;
+  return touches
+    .filter(({ after }) => after.rev === top)
+    .map(({ operation }) => operation)
+    .sort(compareByTime);
+}
+
+/**
+ * Ends a fork with the version the person chose: one new operation (kind `fork.resolve`) that
+ * writes the `after` of operation `keepOpId` on top of what is on disk, with the next `rev`, so
+ * the record has one latest `rev` again. Nothing is lost: the other version stays in the journal
+ * and in the `before` of this operation when it was the one on disk, and the operation can be
+ * undone. Throws, writing nothing, when `path` is not forked or `keepOpId` is not one of its
+ * versions (see `forkVersions`).
+ */
+export async function resolveFork(
+  store: Store,
+  path: string,
+  keepOpId: string,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<Operation> {
+  const normalised = path.normalize('NFC');
+  const keep = (await forkVersions(store, normalised)).find(({ id }) => id === keepOpId);
+  const after = keep?.changes.find((change) => change.path === normalised)?.after;
+  if (keep === undefined || !hasRev(after)) {
+    throw new Error(`${path} is not forked, or ${keepOpId} is not one of its versions`);
+  }
+  // The `before` is the version on disk when it is one of the forked ones (an undo then brings it
+  // back); otherwise (a file cut short, no file) the journal's latest. Either way it has the top
+  // rev, so the new one is above every version.
+  const versions = (await forkVersions(store, normalised)).flatMap(({ changes }) =>
+    changes.filter((change) => change.path === normalised).map((change) => change.after),
+  );
+  const onDisk = await readTolerant(store, normalised);
+  // A rev above the versions is a save whose journal has not arrived: choosing now would hide it.
+  if (hasRev(onDisk) && onDisk.rev > after.rev) {
+    throw new Error(
+      `${path}: on disk there is a newer rev than the versions to choose from (another computer ` +
+        'saved it, its journal has not arrived): wait for the synchronisation and try again',
+    );
+  }
+  const before = versions.find((version) => jsonEqual(version, onDisk)) ?? after;
+  const operation = await commitOperation(
+    store,
+    {
+      profileId,
+      kind: 'fork.resolve',
+      ...(keep.apartmentId === undefined ? {} : { apartmentId: keep.apartmentId }),
+      summary: 'Scelta la versione da tenere di un dato modificato in due posti.',
+      changes: [{ path: normalised, before, after }],
+    },
+    clock,
+    newId,
+    true,
+  );
+  await checkConsistency(store); // refreshes what loadAll knows of the forks
+  return operation;
+}
+
+// --- Damaged operation files -----------------------------------------------------------------
+
+/** Where a damaged operation file is set aside, relative to the workspace root. */
+export const DAMAGED_JOURNAL_DIR = '_app/journal-danneggiati';
+
+/**
+ * An operation file that cannot be read (empty, cut short, not an operation) and what can be done
+ * with it. `safeToSetAside` is true only when it is shown that the operation left no effect the
+ * rest of the folder does not explain; the platform then moves the file to `setAsideTo` (the core
+ * `Store` cannot move files: `moveFileNoOverwrite` in store-fs, a rename on Tauri), never over an
+ * existing file. Otherwise `blockedBy` says why, and the file must be restored (for instance from
+ * the version history of Dropbox) or the person decides.
+ */
+export type DamagedJournalFile = {
+  path: string;
+  setAsideTo: string;
+  safeToSetAside: boolean;
+  /**
+   * - `records-differ`: a record is not as the readable journal says (diverged or forked): the
+   *   damaged operation may be what changed it;
+   * - `unexplained-record`: a record file that no readable operation wrote;
+   * - `broken-chain`: an operation starts from a `rev` that no readable operation left, or undoes
+   *   an operation that is not in the journal.
+   */
+  blockedBy: ('records-differ' | 'unexplained-record' | 'broken-chain')[];
+};
+
+/**
+ * The operation files of the journal that cannot be read (`malformed-json`, `schema-mismatch`),
+ * each with whether it can be set aside safely (see `DamagedJournalFile`). A file from a newer app
+ * (`future-version`) or a conflict copy is not damaged and is not listed. `recordKinds` are the
+ * folders of `_app/dati` to look in for records no operation explains (default: every kind).
+ */
+export async function damagedJournalFiles(
+  store: Store,
+  recordKinds: readonly string[] = Object.keys(recordSchemas),
+): Promise<DamagedJournalFile[]> {
+  const { operations, problems } = await readJournal(store);
+  const damaged = problems.filter(
+    ({ reason }) => reason === 'malformed-json' || reason === 'schema-mismatch',
+  );
+  if (damaged.length === 0) return [];
+
+  const blockedBy = new Set<DamagedJournalFile['blockedBy'][number]>();
+  if ((await checkConsistency(store)).some(({ reason }) => reason !== 'conflicted-copy')) {
+    blockedBy.add('records-differ');
+  }
+  const touches = touchesByPath(operations);
+  for (const kind of recordKinds) {
+    for (const name of await store.list(`${DATA_DIR}/${kind}`)) {
+      const copy = DEFAULT_CONFLICT_RULES.some((rule) => rule.isConflictName(name));
+      if (name.endsWith('.json') && !copy && !touches.has(`${DATA_DIR}/${kind}/${name}`)) {
+        blockedBy.add('unexplained-record');
+      }
+    }
+  }
+  const ids = new Set(operations.map(({ id }) => id));
+  for (const operation of operations) {
+    if (operation.undoes !== undefined && !ids.has(operation.undoes)) blockedBy.add('broken-chain');
+    for (const { path, before } of operation.changes) {
+      if (!hasRev(before)) continue;
+      const left = touches.get(path) ?? [];
+      if (!left.some(({ after }) => after.rev === before.rev)) blockedBy.add('broken-chain');
+    }
+  }
+  const reasons = [...blockedBy].sort(compareText);
+  return damaged.map(({ path }) => ({
+    path,
+    setAsideTo: `${DAMAGED_JOURNAL_DIR}/${path.slice(JOURNAL_DIR.length + 1)}`,
+    safeToSetAside: reasons.length === 0,
+    blockedBy: reasons,
+  }));
 }

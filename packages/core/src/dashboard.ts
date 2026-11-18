@@ -11,7 +11,7 @@ import { consumptionThresholdsFor } from './consumption-store';
 import { calcConguaglio, SettlementInputError } from './conguaglio';
 import { loadContractChecks, loadContractStatus } from './contract-store';
 import { loadExcelInput } from './excel-store';
-import { checkConsistency } from './journal';
+import { writesBlocked } from './journal';
 import {
   AccountSchema,
   ApartmentSchema,
@@ -125,7 +125,7 @@ export async function loadDashboard(
   options: DashboardOptions,
 ): Promise<DashboardResult> {
   const refused = { status: 'refused', reason: 'inconsistent-store' } as const;
-  if ((await checkConsistency(store)).length > 0) return refused;
+  if (await writesBlocked(store)) return refused;
   const { today } = options;
   const asOf = yearMonth(today.slice(0, 7));
   const counts = new Map<string, Map<string, number>>();

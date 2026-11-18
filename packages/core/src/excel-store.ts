@@ -8,7 +8,7 @@ import type { ZodType } from 'zod';
 import type { ExcelInput } from './excel';
 import { loadFreeDebits } from './condo-store';
 import { recoverableMovements } from './condominio';
-import { checkConsistency } from './journal';
+import { writesBlocked } from './journal';
 import { planMatch } from './match-store';
 import {
   ApartmentSchema,
@@ -47,7 +47,7 @@ export async function loadExcelInput(
 ): Promise<LoadExcelInputResult> {
   const refuse = (reason: Extract<LoadExcelInputResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const records = async <T extends { id: string }>(kind: string, schema: ZodType<T>) =>
     (await loadAll(store, kind, schema)).records;
   const apartment = (await records('apartment', ApartmentSchema)).find(

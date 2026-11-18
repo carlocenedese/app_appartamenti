@@ -4,7 +4,7 @@
  */
 import { tenancyUndoBlockers } from './tenancy-store';
 import { imuDependents } from './imu';
-import { checkConsistency, commitChange, readJournal } from './journal';
+import { commitChange, readJournal, writesBlocked } from './journal';
 import type { Operation } from './journal';
 import { bedsConflictOf } from './apartment-store';
 import {
@@ -262,7 +262,7 @@ export async function excludeMovement(
   clock: () => string,
   newId: () => string,
 ): Promise<ExcludeMovementResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const tx = (await loadAll(store, 'transaction', BankTransactionSchema)).records.find(

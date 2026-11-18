@@ -13,6 +13,7 @@ import {
   WORKSPACE_PATH,
   assertSafeRelPath,
   assertSafeSegment,
+  isFileAccessError,
 } from './store';
 import type { Problem, Store } from './store';
 
@@ -23,16 +24,35 @@ import type { Problem, Store } from './store';
 export type ConflictNameRule = { service: string; isConflictName(name: string): boolean };
 
 /**
- * Dropbox: "conflicted copy" in English, "Copia in conflitto di <name>" in Italian, any case. To
- * be checked on a real Italian Dropbox (spec section 36). The default rule of `loadAll`.
+ * Dropbox: "conflicted copy" in English, "Copia in conflitto di <name>" in Italian, any case, and
+ * the "Case Conflict" and "Selective Sync Conflict" copies. To be checked on a real Italian
+ * Dropbox (spec section 36).
  */
 export const DROPBOX_CONFLICT_RULE: ConflictNameRule = {
   service: 'dropbox',
-  isConflictName: (name) => /conflicted copy|copia in conflitto/i.test(name),
+  isConflictName: (name) => DROPBOX_MARKER.test(name),
 };
+const DROPBOX_MARKER = /conflicted copy|copia in conflitto|case conflict|selective sync conflict/i;
 // The parenthesised group with the marker, with the space before it and the " (1)" Dropbox adds
 // when the same conflict repeats; several groups when a conflict copy was itself in conflict.
-const CONFLICT_GROUP = / ?\([^()]*(?:conflicted copy|copia in conflitto)[^()]*\)(?: \([0-9]+\))?/gi;
+const CONFLICT_GROUP =
+  / ?\([^()]*(?:conflicted copy|copia in conflitto|case conflict|selective sync conflict)[^()]*\)(?: \([0-9]+\))?/gi;
+
+/**
+ * iCloud Drive: a second copy of `x.json` is named `x 2.json` (a space and a number before the
+ * extension). No id and no journal file the app writes has a space, so the rule cannot hit them.
+ */
+export const ICLOUD_CONFLICT_RULE: ConflictNameRule = {
+  service: 'icloud',
+  isConflictName: (name) => ICLOUD_SUFFIX.test(name.replace(/\.json$/i, '')),
+};
+const ICLOUD_SUFFIX = / [0-9]+$/;
+
+/** The rules used when the caller gives none: Dropbox and iCloud. */
+export const DEFAULT_CONFLICT_RULES: readonly ConflictNameRule[] = [
+  DROPBOX_CONFLICT_RULE,
+  ICLOUD_CONFLICT_RULE,
+];
 
 const JSON_EXTENSION = '.json';
 const TEMP_PREFIX = '.tmp-';
@@ -40,7 +60,65 @@ const TEMP_PREFIX = '.tmp-';
 type LoadOptions = {
   /** Include records marked `deleted: true`, which are left out by default. */
   includeDeleted?: boolean;
+  /**
+   * Return the files that hold no usable record as problems instead of throwing
+   * `UnreadableRecordsError`: for the checks of the folder (`assessWorkspace`), never for a
+   * calculation or a write, which would otherwise go on without that record.
+   */
+  tolerant?: boolean;
 };
+
+/**
+ * The problems that mean a record of the kind is there but not loaded: its file is cut short,
+ * cannot be read now, has another shape or a newer `v`, is not named after its id, or shares its
+ * id with other files of which none is named after it.
+ */
+const MISSING_RECORD: ReadonlySet<Problem['reason']> = new Set([
+  'malformed-json',
+  'schema-mismatch',
+  'future-version',
+  'unreadable',
+  'id-mismatch',
+]);
+
+// shortcut: the forks `checkConsistency` last saw in each store, so that `loadAll` refuses a
+// forked record without reading the journal at every call. Every store and calculation calls
+// `checkConsistency` first, so it is fresh there; a caller that does not may see an older set
+// (a fork it found later is then missed until the next check). Replace with a journal index if
+// the core gets one.
+const forkedSeen = new WeakMap<Store, ReadonlySet<string>>();
+
+/** Records the forked paths of `store` (from `checkConsistency`). Not part of the public API. */
+export function noteForkedPaths(store: Store, paths: ReadonlySet<string>): void {
+  forkedSeen.set(store, paths);
+}
+
+/**
+ * Thrown by `loadAll` (unless `tolerant`) when some files of the kind hold a record it cannot
+ * use: a calculation or an Excel made without them would be wrong without saying so. `records`
+ * gives, for each, the id (the file name without `.json`), the relative path and the reason; ids
+ * only, no personal data. The message is in Italian, for the screen.
+ */
+export class UnreadableRecordsError extends Error {
+  readonly kind: string;
+  readonly records: { id: string; path: string; reason: Problem['reason'] }[];
+
+  constructor(kind: string, records: UnreadableRecordsError['records']) {
+    const forked = records.some(({ reason }) => reason === 'forked');
+    super(
+      `Alcuni dati (${kind}: ${records.map(({ id }) => id).join(', ')}) non si possono usare: ` +
+        'il calcolo non si fa senza di loro. ' +
+        (forked
+          ? 'Un dato è stato modificato in due posti: scegli prima la versione da tenere ' +
+            '(«pnpm estratti scegli-versione --file <percorso>»).'
+          : "Aspetta che Dropbox finisca, aggiorna l'app se sono di una versione più nuova, o " +
+            'ripristina i file dalla cronologia delle versioni di Dropbox.'),
+    );
+    this.name = 'UnreadableRecordsError';
+    this.kind = kind;
+    this.records = records;
+  }
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -66,18 +144,35 @@ export function isSafePath(path: string): boolean {
 }
 
 /**
- * The problem for a conflict copy at `dir/name`. `originalPath` is the file the copy was made from
+ * The problem for a conflict copy at `dir/name` (shared with the journal; not public API). `originalPath` is the file the copy was made from
  * (the same name without the conflict group), left out when the name has no such group or nothing
  * would remain of it.
  */
-function conflictProblem(dir: string, name: string): Problem {
+export function conflictProblem(dir: string, name: string): Problem {
   const problem: Problem = { path: `${dir}/${name}`, reason: 'conflicted-copy' };
   const stem = name.slice(0, -JSON_EXTENSION.length);
-  const originalStem = stem.replace(CONFLICT_GROUP, '');
+  const dropbox = stem.replace(CONFLICT_GROUP, '');
+  const originalStem = dropbox === stem ? stem.replace(ICLOUD_SUFFIX, '') : dropbox;
   if (originalStem !== stem && originalStem !== '') {
     problem.originalPath = `${dir}/${originalStem}${JSON_EXTENSION}`;
   }
   return problem;
+}
+
+/**
+ * Whether parsing `raw` into `parsed` dropped a key, at any depth: a key of an object in `raw`
+ * that the object at the same place in `parsed` does not have. That is a field written by a newer
+ * app (the schemas drop keys they do not know). Keys that `parsed` adds (defaults) do not count.
+ * Shared with the journal; not part of the public API.
+ */
+export function dropsKeys(raw: unknown, parsed: unknown): boolean {
+  if (Array.isArray(raw)) {
+    return Array.isArray(parsed) && raw.some((item, index) => dropsKeys(item, parsed[index]));
+  }
+  if (!isObject(raw) || !isObject(parsed)) return false;
+  return Object.entries(raw).some(
+    ([key, value]) => !Object.hasOwn(parsed, key) || dropsKeys(value, parsed[key]),
+  );
 }
 
 /**
@@ -86,8 +181,8 @@ function conflictProblem(dir: string, name: string): Problem {
  * (temporary `.tmp-*` files and anything else are ignored). Each file is sorted into exactly one
  * of these, in this order:
  *
- * 1. a name that one of `conflictRules` (default: Dropbox only) calls a conflict copy. Reported
- *    as `conflicted-copy`, with `originalPath` when a Dropbox group can be cut from the name, and
+ * 1. a name that one of `conflictRules` (default: Dropbox and iCloud) calls a conflict copy. Reported
+ *    as `conflicted-copy`, with `originalPath` when a Dropbox group or an iCloud number can be cut from the name, and
  *    never loaded as a record, even if its content is valid: which of the two files is right is
  *    for the user to decide;
  * 2. a name that is not a safe store path (a stray file that this app did not write and that
@@ -103,13 +198,25 @@ function conflictProblem(dir: string, name: string): Problem {
  *    a deleted record back): if exactly one of those files is named after the id, that one is
  *    kept and the others are reported as `duplicate-id`; otherwise all of them are reported as
  *    `duplicate-id` and none is loaded, since which one is right is for the user to decide;
- * 8. otherwise a record. One with `deleted: true` is left out unless `includeDeleted` is set.
+ * 8. otherwise a record. One with `deleted: true` is left out unless `includeDeleted` is set. A
+ *    record with keys the schema does not know (at any depth: a field a newer app added) is
+ *    loaded and also reported as `unknown-fields`: it can be read, but writing it back would lose
+ *    those keys, so `commitChange` refuses to.
  *
  * Records come back sorted by `id`, problems by path, both by code unit, so the result does not depend on the order the store lists files in. Records are what
  * `schema` returns, so keys it does not know are dropped (see the notes in `model.ts`).
  *
- * Failures of the store itself are not per-file problems and are not swallowed: if the folder
- * cannot be listed or a file cannot be read (permissions, I/O), the error goes up. A file that
+ * A file that holds a record of the kind that cannot be used (cut short, unreadable now, another
+ * shape, a newer `v`, not named after its id, or an id in several files none named after it) makes
+ * `loadAll` throw `UnreadableRecordsError`, unless `opts.tolerant` is set: every calculation, Excel
+ * and write reads through `loadAll`, and none of them may go on as if the record did not exist
+ * (revisione 2026-11-18, G6). Conflict copies and copies of a record that is loaded do not throw:
+ * the record is there, and `checkConsistency` blocks the writes until the copy is set aside.
+ *
+ * A file that exists but cannot be read now (`FileAccessError`, or an error with one of the codes
+ * `FILE_ACCESS_CODES`: permissions, held open on Windows, I/O) is reported as `unreadable`, so
+ * one such file does not stop the folder from opening. Other failures of the store are not
+ * swallowed: if the folder cannot be listed, the error goes up. A file that
  * disappears between the listing and the read is skipped, because it no longer exists.
  */
 export async function loadAll<T extends { id: string }>(
@@ -117,11 +224,32 @@ export async function loadAll<T extends { id: string }>(
   kind: string,
   schema: ZodType<T>,
   opts: LoadOptions = {},
-  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
-): Promise<{ records: T[]; problems: Problem[] }> {
+  conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
+): Promise<{ records: T[]; problems: Problem[]; missing: Problem[] }> {
   assertSafeSegment(kind);
   const naming = { stemOf: (record: T) => record.id, strict: true };
-  return loadDir(store, `${DATA_DIR}/${kind}`, schema, naming, opts, conflictRules);
+  const loaded = await loadDir(store, `${DATA_DIR}/${kind}`, schema, naming, opts, conflictRules);
+  const missing = loaded.problems.filter(
+    (problem) => MISSING_RECORD.has(problem.reason) || loaded.orphanDuplicates.has(problem.path),
+  );
+  // A forked record: which of its versions is right is not known, so it is not used either.
+  // Every forked path of the kind counts, also a record whose file is missing or that one version
+  // marks deleted: either way the calculation would go on without knowing which is right.
+  const prefix = `${DATA_DIR}/${kind}/`;
+  for (const path of [...(forkedSeen.get(store) ?? [])].sort(compareText)) {
+    if (path.startsWith(prefix)) missing.push({ path, reason: 'forked' });
+  }
+  if (opts.tolerant !== true && missing.length > 0) {
+    throw new UnreadableRecordsError(
+      kind,
+      missing.map(({ path, reason }) => ({
+        id: path.slice(path.lastIndexOf('/') + 1, -JSON_EXTENSION.length),
+        path,
+        reason,
+      })),
+    );
+  }
+  return { records: loaded.records, problems: loaded.problems, missing };
 }
 
 /**
@@ -144,8 +272,8 @@ export async function loadDir<T extends { id: string }>(
   schema: ZodType<T>,
   naming: Naming<T>,
   opts: LoadOptions = {},
-  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
-): Promise<{ records: T[]; problems: Problem[] }> {
+  conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
+): Promise<{ records: T[]; problems: Problem[]; orphanDuplicates: Set<string> }> {
   const names = (await store.list(dir)).map((name) => name.normalize('NFC'));
 
   const loaded: { path: string; stem: string; record: T; deleted: boolean }[] = [];
@@ -168,6 +296,10 @@ export async function loadDir<T extends { id: string }>(
     try {
       raw = await store.readJson(path);
     } catch (error) {
+      if (isFileAccessError(error)) {
+        problems.push({ path, reason: 'unreadable' });
+        continue;
+      }
       if (!(error instanceof MalformedJsonError)) throw error;
       problems.push({ path, reason: 'malformed-json' });
       continue;
@@ -183,6 +315,8 @@ export async function loadDir<T extends { id: string }>(
       problems.push({ path, reason: 'schema-mismatch' });
       continue;
     }
+    // A newer app added a field this one does not know: readable, but never to be written over.
+    if (dropsKeys(raw, parsed.data)) problems.push({ path, reason: 'unknown-fields' });
     const deleted = isObject(raw) && raw.deleted === true;
     loaded.push({
       path,
@@ -196,6 +330,8 @@ export async function loadDir<T extends { id: string }>(
   for (const entry of loaded)
     byId.set(entry.record.id, [...(byId.get(entry.record.id) ?? []), entry]);
   const kept: typeof loaded = [];
+  // Paths of an id in several files of which none is named after it: no record of it is loaded.
+  const orphanDuplicates = new Set<string>();
   for (const entries of byId.values()) {
     const named = entries.filter(
       ({ stem, record }) => stem === naming.stemOf(record).normalize('NFC'),
@@ -211,13 +347,14 @@ export async function loadDir<T extends { id: string }>(
     for (const entry of entries) {
       if (entry === winner) kept.push(entry);
       else problems.push({ path: entry.path, reason: 'duplicate-id' });
+      if (winner === undefined) orphanDuplicates.add(entry.path);
     }
   }
 
   const records = kept.filter(({ deleted }) => opts.includeDeleted === true || !deleted);
   records.sort((a, b) => compareText(a.record.id, b.record.id));
   problems.sort((a, b) => compareText(a.path, b.path));
-  return { records: records.map(({ record }) => record), problems };
+  return { records: records.map(({ record }) => record), problems, orphanDuplicates };
 }
 
 /**

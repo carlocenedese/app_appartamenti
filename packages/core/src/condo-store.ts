@@ -14,7 +14,7 @@ import {
 } from './condominio';
 import type { CondoCheckRow, CondoDifference, CondoEstimate, FreeDebit } from './condominio';
 import type { ZodType } from 'zod';
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import { planMatch } from './match-store';
 import { expectedDebit } from './match';
 import {
@@ -69,7 +69,7 @@ export async function saveCondoDocument(
       'esercizio-format'
     >,
   ) => ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
   // The fiscal year is part of the id, hence of a file name.
@@ -152,7 +152,7 @@ export async function loadCondo(
   store: Store,
   query: { asOf: ISODate; apartmentId?: string; esercizio?: string },
 ): Promise<LoadCondoResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const wanted = (r: { apartmentId: string; esercizio: string }) =>
@@ -209,7 +209,7 @@ export async function loadCondoEstimate(
   store: Store,
   query: { apartmentId: string; esercizio: string },
 ): Promise<LoadCondoEstimateResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
@@ -276,7 +276,7 @@ export async function saveTenantRecovery(
 ): Promise<SaveTenantRecoveryResult> {
   const refuse = (reason: Extract<SaveTenantRecoveryResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id)) return refuse('invalid-recovery');
   if (
     (input.instalmentId !== undefined && input.transactionId !== undefined) ||

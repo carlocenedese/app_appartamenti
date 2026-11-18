@@ -6,11 +6,12 @@ import { JOURNAL_DIR, readJournal } from './journal';
 import { WorkspaceSchema, recordSchemas } from './model';
 import type { User, Workspace } from './model';
 import { parseOrThrow } from './parse';
+import { findWorkspace } from './store/load';
 import { seedProfiles } from './seed-profiles';
 import { DATA_DIR, WORKSPACE_PATH } from './store/store';
 import type { Store } from './store/store';
 import { createUser } from './users';
-import { CORE_SCHEMA_VERSION, CORE_VERSION } from './version';
+import { CORE_VERSION, DATA_FORMAT } from './version';
 
 /**
  * Creates the user, seeds the profiles, then writes `workspace.json` LAST, so the folder counts as
@@ -42,7 +43,7 @@ export async function createWorkspace(
     {
       workspaceId: input.workspaceId,
       name: input.name,
-      schemaVersion: CORE_SCHEMA_VERSION,
+      schemaVersion: DATA_FORMAT,
       minAppVersion: CORE_VERSION,
       createdAt: clock(),
     },
@@ -52,6 +53,23 @@ export async function createWorkspace(
   const { written } = await seedProfiles(store, seeds, input.user.id, clock, newId);
   await store.writeJsonAtomic(WORKSPACE_PATH, workspace);
   return { workspace, user, seeded: written.length };
+}
+
+/**
+ * Raises the data format of the folder (`schemaVersion` in `workspace.json`) to `DATA_FORMAT`
+ * when it is lower, so that an older app opens it read-only from then on (`checkCompat`). It is
+ * what `checkCompat` calls `upgrade-needed`: the app calls it, with the person's consent, before
+ * writing. Only additive schema changes raise `DATA_FORMAT` without a migration (see
+ * `version.ts`), so the records stay as they are and nothing else is rewritten. The other keys of
+ * `workspace.json` are kept as they are on disk. Throws when the folder has no valid workspace.
+ */
+export async function raiseDataFormat(store: Store): Promise<'raised' | 'unchanged'> {
+  const workspace = await findWorkspace(store);
+  if (workspace === undefined) throw new RangeError('La cartella non contiene un workspace');
+  if (workspace.schemaVersion >= DATA_FORMAT) return 'unchanged';
+  const raw = (await store.readJson(WORKSPACE_PATH)) as Record<string, unknown>;
+  await store.writeJsonAtomic(WORKSPACE_PATH, { ...raw, schemaVersion: DATA_FORMAT });
+  return 'raised';
 }
 
 /**

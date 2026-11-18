@@ -1,19 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   BillSchema,
-  CORE_SCHEMA_VERSION,
+  DATA_FORMAT,
   CORE_VERSION,
+  DEFAULT_CONFLICT_RULES,
   DROPBOX_CONFLICT_RULE,
   JOURNAL_DIR,
   assessWorkspace,
+  checkConsistency,
   createUser,
+  saveApartment,
   loadAll,
 } from '../src/index';
 import type { ConflictNameRule } from '../src/index';
 import { WORKSPACE_PATH } from '../src/store/store';
 import { MemoryStore } from './helpers/memory-store';
 
-const app = { version: CORE_VERSION, schemaVersion: CORE_SCHEMA_VERSION };
+const app = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
 const clock = () => '2026-11-13T09:00:00.000Z';
 function ids(): () => string {
   let n = 0;
@@ -22,7 +25,7 @@ function ids(): () => string {
 const workspace = (extra: Record<string, unknown> = {}) => ({
   workspaceId: 'ws-1',
   name: 'Casa',
-  schemaVersion: CORE_SCHEMA_VERSION,
+  schemaVersion: DATA_FORMAT,
   minAppVersion: CORE_VERSION,
   createdAt: clock(),
   ...extra,
@@ -46,6 +49,7 @@ describe('assessWorkspace', () => {
       sync: 'ok',
       writable: true,
       problems: [],
+      reasons: [],
     });
   });
 
@@ -63,7 +67,7 @@ describe('assessWorkspace', () => {
   });
 
   it('is read-only for a folder with a newer schemaVersion', async () => {
-    const store = await cleanFolder({ schemaVersion: CORE_SCHEMA_VERSION + 1 });
+    const store = await cleanFolder({ schemaVersion: DATA_FORMAT + 1 });
     expect(await assessWorkspace(store, app)).toMatchObject({
       compat: 'readonly',
       sync: 'ok',
@@ -72,7 +76,7 @@ describe('assessWorkspace', () => {
   });
 
   it('is upgrade-needed for an older schemaVersion', async () => {
-    const newerApp = { ...app, schemaVersion: CORE_SCHEMA_VERSION + 1 };
+    const newerApp = { ...app, schemaVersion: DATA_FORMAT + 1 };
     expect(await assessWorkspace(await cleanFolder(), newerApp)).toMatchObject({
       compat: 'upgrade-needed',
       writable: false,
@@ -93,13 +97,16 @@ describe('assessWorkspace', () => {
     }
   });
 
-  it('lists a conflict copy and a duplicate id as problems that do not block', async () => {
+  it('blocks on a conflict copy, never ignored (G2), and lists a duplicate id that does not block', async () => {
     const store = await cleanFolder();
     store.putRaw('_app/dati/user/u1 (conflicted copy 2026-11-13).json', userJson('u1'));
     store.putRaw('_app/dati/user/u2.json', userJson('u2'));
     store.putRaw('_app/dati/user/u2 - Copia.json', userJson('u2'));
     const result = await assessWorkspace(store, app);
-    expect(result).toMatchObject({ compat: 'ok', sync: 'ok', writable: true });
+    expect(result).toMatchObject({ compat: 'ok', sync: 'ok', writable: false });
+    expect(result.reasons).toEqual([
+      { code: 'conflict-copies', paths: ['_app/dati/user/u1 (conflicted copy 2026-11-13).json'] },
+    ]);
     expect(result.problems).toEqual([
       {
         path: '_app/dati/user/u1 (conflicted copy 2026-11-13).json',
@@ -110,11 +117,11 @@ describe('assessWorkspace', () => {
     ]);
   });
 
-  it('lists a conflict copy of workspace.json as a problem that does not block', async () => {
+  it('blocks on a conflict copy of workspace.json', async () => {
     const store = await cleanFolder();
     store.putRaw('_app/workspace (conflicted copy 2026-11-13).json', JSON.stringify(workspace()));
     const result = await assessWorkspace(store, app);
-    expect(result).toMatchObject({ compat: 'ok', sync: 'ok', writable: true });
+    expect(result).toMatchObject({ compat: 'ok', sync: 'ok', writable: false });
     expect(result.problems).toEqual([
       {
         path: '_app/workspace (conflicted copy 2026-11-13).json',
@@ -127,19 +134,25 @@ describe('assessWorkspace', () => {
   it('uses the conflict rules it is given', async () => {
     const store = await cleanFolder();
     store.putRaw('_app/dati/user/u1 2.json', userJson('u1'));
-    const plain = await assessWorkspace(store, app);
+    const plain = await assessWorkspace(store, app, [DROPBOX_CONFLICT_RULE]);
     expect(plain.problems).toEqual([{ path: '_app/dati/user/u1 2.json', reason: 'duplicate-id' }]);
+    expect(plain.writable).toBe(true);
     const both = await assessWorkspace(store, app, [DROPBOX_CONFLICT_RULE, ICLOUD_TEST_RULE]);
-    expect(both.problems).toEqual([
-      { path: '_app/dati/user/u1 2.json', reason: 'conflicted-copy' },
-    ]);
+    const icloud = {
+      path: '_app/dati/user/u1 2.json',
+      reason: 'conflicted-copy',
+      originalPath: '_app/dati/user/u1.json',
+    };
+    expect(both.problems).toEqual([icloud]);
+    // iCloud is a default rule now.
+    expect((await assessWorkspace(store, app)).problems).toEqual([icloud]);
   });
 
   it('checks every kind of record in recordSchemas, such as tenancy', async () => {
     const store = await cleanFolder();
     store.putRaw('_app/dati/tenancy/t1 (conflicted copy 2026-11-13).json', '{}');
     const result = await assessWorkspace(store, app);
-    expect(result.writable).toBe(true);
+    expect(result.writable).toBe(false);
     expect(result.problems).toEqual([
       {
         path: '_app/dati/tenancy/t1 (conflicted copy 2026-11-13).json',
@@ -149,38 +162,42 @@ describe('assessWorkspace', () => {
     ]);
   });
 
-  it('is behind for an operation file cut short or from a newer app', async () => {
+  it('is behind for an operation file cut short, and asks for a newer app for one from a newer app (G7)', async () => {
     const truncated = new MemoryStore();
     await truncated.writeJsonAtomic(WORKSPACE_PATH, workspace());
     truncated.putRaw(`${JOURNAL_DIR}/op.json`, '{"id": "op-1", "v": 1, "chan');
     const result = await assessWorkspace(truncated, app);
     expect(result).toMatchObject({ compat: 'ok', sync: 'behind', writable: false });
     expect(result.problems).toEqual([{ path: `${JOURNAL_DIR}/op.json`, reason: 'malformed-json' }]);
+    expect(result.reasons).toEqual([
+      { code: 'damaged-journal', paths: [`${JOURNAL_DIR}/op.json`] },
+    ]);
 
     const future = await cleanFolder();
     future.putRaw(`${JOURNAL_DIR}/op.json`, JSON.stringify({ id: 'op-9', v: 2 }));
     expect(await assessWorkspace(future, app)).toMatchObject({
-      sync: 'behind',
+      sync: 'ok',
       writable: false,
       problems: [{ path: `${JOURNAL_DIR}/op.json`, reason: 'future-version' }],
+      reasons: [{ code: 'newer-data', paths: [`${JOURNAL_DIR}/op.json`] }],
     });
   });
 
-  it('lists a conflict copy of an operation without blocking, with the rules it is given', async () => {
+  it('blocks on a conflict copy of an operation, with the rules it is given', async () => {
     const store = await cleanFolder();
     const [name] = await store.list(JOURNAL_DIR);
     const stem = (name ?? '').slice(0, -'.json'.length);
     const text = store.getRaw(`${JOURNAL_DIR}/${name ?? ''}`) ?? '';
     store.putRaw(`${JOURNAL_DIR}/${stem} (conflicted copy).json`, text);
     store.putRaw(`${JOURNAL_DIR}/${stem} 2.json`, text);
-    const plain = await assessWorkspace(store, app);
-    expect(plain).toMatchObject({ sync: 'ok', writable: true });
+    const plain = await assessWorkspace(store, app, [DROPBOX_CONFLICT_RULE]);
+    expect(plain).toMatchObject({ sync: 'ok', writable: false });
     expect(plain.problems.map(({ path, reason }) => [path, reason])).toEqual([
       [`${JOURNAL_DIR}/${stem} (conflicted copy).json`, 'conflicted-copy'],
       [`${JOURNAL_DIR}/${stem} 2.json`, 'duplicate-id'],
     ]);
     const both = await assessWorkspace(store, app, [DROPBOX_CONFLICT_RULE, ICLOUD_TEST_RULE]);
-    expect(both).toMatchObject({ sync: 'ok', writable: true });
+    expect(both).toMatchObject({ sync: 'ok', writable: false });
     expect(both.problems.map(({ reason }) => reason)).toEqual([
       'conflicted-copy',
       'conflicted-copy',
@@ -213,7 +230,7 @@ describe('conflict name rules', () => {
     expect(ICLOUD_TEST_RULE.isConflictName('x 2.json')).toBe(true);
   });
 
-  it('loadAll without rules behaves as before, with rules it uses any of them', async () => {
+  it('loadAll uses Dropbox and iCloud by default, and the rules it is given otherwise', async () => {
     const store = new MemoryStore();
     const bill = {
       id: 'b',
@@ -234,12 +251,100 @@ describe('conflict name rules', () => {
     store.putRaw('_app/dati/bill/b (conflicted copy).json', JSON.stringify(bill));
     expect((await loadAll(store, 'bill', BillSchema)).problems.map((p) => p.reason)).toEqual([
       'conflicted-copy',
-      'id-mismatch',
+      'conflicted-copy',
     ]);
+    const dropboxOnly = await loadAll(store, 'bill', BillSchema, { tolerant: true }, [
+      DROPBOX_CONFLICT_RULE,
+    ]);
+    expect(dropboxOnly.problems.map((p) => p.reason)).toEqual(['conflicted-copy', 'id-mismatch']);
     const withRules = await loadAll(store, 'bill', BillSchema, {}, [
       DROPBOX_CONFLICT_RULE,
       ICLOUD_TEST_RULE,
     ]);
     expect(withRules.problems.map((p) => p.reason)).toEqual(['conflicted-copy', 'conflicted-copy']);
+  });
+});
+
+describe('conflict copies of the review (revisione 2026-11-18, G2)', () => {
+  const names = [
+    "u1 (user2's conflicted copy 2026-11-05).json",
+    'u1 (Copia in conflitto di user2 2026-11-05).json',
+    'u1 (copia in conflitto di PC-WIN 05-11-2026).json',
+    'u1 (Case Conflict).json',
+    'u1 (Selective Sync Conflict).json',
+    'u1 (conflicted copy 2026-11-05) (1).json',
+    'u1 2.json',
+  ];
+
+  it('are all found by the default rules, with the original they come from', async () => {
+    for (const name of names) {
+      const store = await cleanFolder();
+      store.putRaw(`_app/dati/user/${name}`, userJson('u1'));
+      const result = await assessWorkspace(store, app);
+      expect(result.writable).toBe(false);
+      expect(result.problems).toEqual([
+        {
+          path: `_app/dati/user/${name}`,
+          reason: 'conflicted-copy',
+          originalPath: '_app/dati/user/u1.json',
+        },
+      ]);
+    }
+  });
+
+  it('block every store through checkConsistency, also in the journal', async () => {
+    const store = await cleanFolder();
+    store.putRaw('_app/dati/user/u1 (Copia in conflitto di PC 2026-11-05).json', userJson('u1'));
+    const problems = await checkConsistency(store);
+    expect(problems.map(({ reason }) => reason)).toEqual(['conflicted-copy']);
+    const apartment = { id: 'Nord', name: 'Nord', locatore: 'L', posti: 3 };
+    const saved = await saveApartment(
+      store,
+      { ...apartment, annualitaStart: { month: 9, day: 1 }, condoDifferenceTo: 'tenants' },
+      'u1',
+      clock,
+      ids(),
+    );
+    expect(saved).toEqual({ status: 'refused', reason: 'inconsistent-store' });
+    const [op] = await store.list(JOURNAL_DIR);
+    const journal = await cleanFolder();
+    journal.putRaw(`${JOURNAL_DIR}/${(op ?? '').replace('.json', ' 2.json')}`, '{}');
+    expect((await checkConsistency(journal)).map(({ reason }) => reason)).toEqual([
+      'conflicted-copy',
+    ]);
+  });
+
+  it('are not hit by the names the app writes', () => {
+    for (const name of ['u1.json', '20261102T100000000Z-u1-op-12.json', 'apt-2.json']) {
+      expect(DEFAULT_CONFLICT_RULES.some((rule) => rule.isConflictName(name))).toBe(false);
+    }
+  });
+});
+
+describe('records the calculations cannot use (revisione 2026-11-18, point 4)', () => {
+  it('make the folder not writable with unreadable-files, never writable and then a throw', async () => {
+    for (const [name, text] of [
+      ['u2.json', '{"id": "u2", "v": 1, "re'],
+      ['u2.json', JSON.stringify({ id: 'u2', v: 1, rev: 1 })],
+      ['renamed.json', userJson('u9')],
+    ] as const) {
+      const store = await cleanFolder();
+      store.putRaw(`_app/dati/user/${name}`, text);
+      const result = await assessWorkspace(store, app);
+      expect(result.writable, name).toBe(false);
+      expect(result.reasons).toContainEqual({
+        code: 'unreadable-files',
+        paths: [`_app/dati/user/${name}`],
+      });
+    }
+  });
+
+  it('includes an id in two files of which none is named after it', async () => {
+    const store = await cleanFolder();
+    store.putRaw('_app/dati/user/a.json', userJson('u7'));
+    store.putRaw('_app/dati/user/b.json', userJson('u7'));
+    expect((await assessWorkspace(store, app)).reasons).toEqual([
+      { code: 'unreadable-files', paths: ['_app/dati/user/a.json', '_app/dati/user/b.json'] },
+    ]);
   });
 });

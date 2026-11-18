@@ -158,7 +158,8 @@ async function scan(store: Store): Promise<{ pointing: Pointing[]; present: Set<
   const pointing: Pointing[] = [];
   const present = new Set<string>();
   for (const [kind, schema] of KINDS) {
-    const { records, problems } = await loadAll(store, kind, schema);
+    // Tolerant: the files it cannot load are reported by `loadAll` and counted present below.
+    const { records, problems } = await loadAll(store, kind, schema, { tolerant: true });
     const of = POINTERS[kind] as ((r: unknown) => Pointer[]) | undefined;
     for (const record of records) {
       present.add(`${kind}/${record.id}`);
