@@ -121,6 +121,28 @@ describe('recordDependents', () => {
 });
 
 describe('referenceProblems', () => {
+  it('reports a live statement listing a movement that is gone', async () => {
+    const store = await seeded();
+    await put(store, 'statement', [
+      {
+        ...base,
+        id: 's1',
+        accountId: 'acc',
+        bankProfileId: 'bp',
+        fileName: 's.csv',
+        suggestedPath: 'estratti/s.csv',
+        from: '2026-03-01',
+        to: '2026-03-31',
+        periodSource: 'file',
+        rowCount: 1,
+        transactionIds: ['tx-gone'],
+        held: [],
+      },
+    ]);
+    const fields = (await referenceProblems(store)).map((p) => `${p.field}:${p.to.id}`);
+    expect(fields).toContain('transactionIds:tx-gone');
+  });
+
   it('finds nothing in a store whose references all hold', async () => {
     expect(await referenceProblems(await seeded())).toEqual([]);
   });
@@ -226,8 +248,6 @@ describe('referenceProblems', () => {
       },
     ]);
     expect(await referenceProblems(store)).toEqual([]);
-    expect(await recordDependents(store, [{ type: 'bill', id: 'gone' }])).toEqual([
-      { type: 'note', id: 'n1' },
-    ]);
+    expect(await recordDependents(store, [{ type: 'bill', id: 'gone' }])).toEqual([]);
   });
 });

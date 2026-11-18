@@ -86,6 +86,7 @@ const POINTERS: { [K in RecordKind]?: (r: Of<K>) => Pointer[] } = {
   statement: (r) => [
     ...at('accountId', 'account', [r.accountId]),
     ...at('bankProfileId', 'bankProfile', [r.bankProfileId]),
+    ...at('transactionIds', 'transaction', r.transactionIds),
   ],
   payer: (r) => at('tenantId', 'tenant', [r.tenantId]),
   tenantCard: (r) => at('id', 'tenant', [r.id]),
@@ -136,7 +137,7 @@ const POINTERS: { [K in RecordKind]?: (r: Of<K>) => Pointer[] } = {
  * Pointers `referenceProblems` does not report yet, because some write still leaves them
  * dangling and blocking every write on them would freeze the folder (see «Arretrato» in
  * docs/revisione-2026-11-18-annullo.md): a note on a deleted record (U11), the supply of an
- * instalment or contact (U10, `removeSupply`). `recordDependents` still lists them.
+ * instalment or contact (U10, `removeSupply`). `recordDependents` still lists the supplies.
  */
 const NOT_CHECKED = new Set(['note.targetId', 'instalment.supplyId', 'contact.supplyIds']);
 
@@ -180,7 +181,8 @@ const byRef = (a: RecordRef, b: RecordRef) =>
 /**
  * The live records that point at one of `targets` (the undo or removal of a target would leave
  * them dangling), each once, sorted by kind then id. Records that are themselves targets are left
- * out.
+ * out, and so are notes: a note on a record that is gone harms nothing (U11), so a note never
+ * blocks a write or an undo (one rule for every guard).
  */
 export async function recordDependents(
   store: Store,
@@ -191,7 +193,11 @@ export async function recordDependents(
   const found = new Map<string, RecordRef>();
   for (const p of (await scan(store)).pointing) {
     const key = `${p.from.type}/${p.from.id}`;
-    if (!wanted.has(key) && p.to.some((kind) => wanted.has(`${kind}/${p.id}`))) {
+    if (
+      p.from.type !== 'note' &&
+      !wanted.has(key) &&
+      p.to.some((kind) => wanted.has(`${kind}/${p.id}`))
+    ) {
       found.set(key, p.from);
     }
   }

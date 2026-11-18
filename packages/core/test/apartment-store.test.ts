@@ -204,6 +204,37 @@ describe('saveApartment under live stays (review of 18 Nov 2026, U13)', () => {
     });
   });
 
+  it('accepts a new room next to those in use', async () => {
+    const { store } = await withStays();
+    expect(
+      await saveApartment(
+        store,
+        { id: 'apt-a', posti: 3, rooms: ['A', 'B', 'C'] },
+        'p1',
+        clock,
+        ids('n'),
+        {
+          confirmed: true,
+        },
+      ),
+    ).toMatchObject({ status: 'updated' });
+  });
+
+  it('refuses rooms given to an apartment whose stays name none', async () => {
+    const store = new MemoryStore();
+    await save(store, { ...create, posti: 2 });
+    await store.writeJsonAtomic(recordPath('tenancy', 'ten1'), {
+      ...stay('ten1', 'A'),
+      room: undefined,
+    });
+    expect(await save(store, { id: 'apt-a', rooms: ['A', 'B'] }, 'n')).toMatchObject({
+      status: 'refused',
+      reason: 'beds-conflict',
+      code: 'unknown-room',
+      tenancyIds: ['ten1'],
+    });
+  });
+
   it('refuses fewer beds than the stays need, without rooms', async () => {
     const store = new MemoryStore();
     await save(store, { ...create, posti: 2 });
