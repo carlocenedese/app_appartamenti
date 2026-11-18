@@ -3173,6 +3173,16 @@ async function command(name, values, positionals, store, who, clock, newId) {
         newId,
       );
     }
+    if (result.status === 'refused' && result.reason === 'use-supplementary') {
+      // The main is already settled and a supplementary is left: the amount, in euro.
+      const amount = formatEuro(Math.abs(result.amount));
+      throw new Stop('rejected', result.reason, {
+        message:
+          result.amount < 0
+            ? `Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare a favore dell’inquilino di ${amount}: usa --supplementare.`
+            : `Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare di ${amount}: usa --supplementare.`,
+      });
+    }
     if (result.status === 'refused') {
       const message = {
         'unknown-tenant': 'unknown-tenant-in-close',

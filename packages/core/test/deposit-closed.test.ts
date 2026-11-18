@@ -680,4 +680,44 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     );
     expect(r.toCheck.reduce((sum, l) => sum + l.amount, 0)).toBe(3000);
   });
+
+  it('a main mark again while a supplementary is left is refused: use --supplementare', async () => {
+    const store = await setUp('2026-08', 0, '2026-09');
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-11-25' },
+      'p1',
+      later,
+      ids('m'),
+    );
+    const b = bill('b-10', '2026-07-01', '2026-07-28', 1000, { dueDate: isoDate('2026-11-10') });
+    await put(store, 'bill', b, later);
+    await put(store, 'match', match(b, 1000, { transactionId: 'tx-10' }), later);
+    expect(
+      await markTenantSettled(
+        store,
+        { ...QUERY, tenantId: 't-a', on: '2026-12-10' },
+        'p1',
+        later,
+        ids('m2'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'use-supplementary', amount: 1000 });
+    // Nothing left of the supplementary: the date of the mark can still change.
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-10', supplementary: true },
+      'p1',
+      later,
+      ids('s'),
+    );
+    expect(
+      await markTenantSettled(
+        store,
+        { ...QUERY, tenantId: 't-a', on: '2026-12-11' },
+        'p1',
+        later,
+        ids('m3'),
+      ),
+    ).toMatchObject({ status: 'saved' });
+  });
 });

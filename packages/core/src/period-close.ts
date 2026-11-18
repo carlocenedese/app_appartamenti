@@ -17,6 +17,7 @@ import type { PeriodClose } from './model';
 import { isoDate, monthsInPeriod } from './period';
 import type { ISODate } from './period';
 import { cents } from './money';
+import type { Cents } from './money';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -253,7 +254,12 @@ export type MarkCloseResult =
         | 'missing-reason'
         | 'no-supplementary'
         | 'invalid-input';
-    };
+    }
+  /**
+   * The main settlement of this closing is already marked and a supplementary is left (`amount`,
+   * positive owed by the tenant): marking the main again would settle nothing, so it is refused.
+   */
+  | { status: 'refused'; reason: 'use-supplementary'; amount: Cents };
 
 /**
  * One change of the live closing of the period (F1, F3), in one operation of `kind`: `change`
@@ -391,6 +397,12 @@ export function markTenantSettled(
       }
       // Marked again on this closing: the date and movement change, never what it declared.
       const again = (close.settled ?? []).find((s) => s.tenantId === input.tenantId);
+      // Marked again with something left of the supplementary: the owner would believe he settled
+      // it, but this mark changes no amount (final review): refused, pointing at --supplementare.
+      const left = ledger.supplementary - ledger.supplementarySettled;
+      if (again?.amount !== undefined && again.flatCollected !== undefined && left !== 0) {
+        return { status: 'refused', reason: 'use-supplementary', amount: cents(left) } as const;
+      }
       const declared =
         again?.amount !== undefined && again.flatCollected !== undefined
           ? { amount: again.amount, flatCollected: again.flatCollected }

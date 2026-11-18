@@ -694,6 +694,34 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
       '--supplementare',
     );
     expect(noSup.json.reason).toBe('no-supplementary');
+    // Marked again while a supplementary is left: refused, pointing at --supplementare.
+    const late = bill('b-dopo', '2026-11-10');
+    await seed([
+      ['bill', late],
+      ['match', matchOf(late)],
+    ]);
+    const markedAgain = await cli(
+      'conguaglio-saldato',
+      ...args,
+      '--inquilino',
+      't-x',
+      '--data',
+      '2026-12-03',
+    );
+    expect(markedAgain.json.reason).toBe('use-supplementary');
+    expect(markedAgain.json.message).toBe(
+      'Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare di € 90,00: usa --supplementare.',
+    );
+    const supDone = await cli(
+      'conguaglio-saldato',
+      ...args,
+      '--inquilino',
+      't-x',
+      '--data',
+      '2026-12-03',
+      '--supplementare',
+    );
+    expect(supDone.json.status).toBe('saved');
     // The reason is required.
     expect((await cli('riapri-periodo', ...args, '--data', '2026-12-05')).code).toBe(2);
     const reopened = await cli(

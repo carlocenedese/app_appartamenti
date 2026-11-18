@@ -440,7 +440,7 @@ class Run {
           this.newId,
         );
         if (result.status === 'refused') {
-          return refused(result.reason, ['not-closed', 'no-supplementary']);
+          return refused(result.reason, ['not-closed', 'no-supplementary', 'use-supplementary']);
         }
         if (result.status === 'unchanged') return false;
         const l = this.ledgers.get(a.tenant) as Ledger;
