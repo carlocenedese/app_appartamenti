@@ -17,7 +17,22 @@ import type { ISODate } from './period';
  * missing then, `forfaitNonIncassato`) is `da-verificare` (answer F).
  */
 export interface ClosingRow extends Omit<SupplementaryRow, 'action'> {
+  /** The flat charge collected at the closing less today's (display; read `total`, `forfaitPaid`). */
   forfaitDelta: Cents;
+  /**
+   * The supplementary settlement of the tenant, computed once (fourth round, B): the costs since the
+   * snapshot plus the flat charge collected at the closing and lost since. What is paid since on
+   * the flat charge missing at the closing is `forfaitPaid`, never here. This is what
+   * «Conguaglio supplementare» withholds and what `markTenantSettled({ supplementary })` settles.
+   */
+  total: Cents;
+  /** Of the flat charge missing at the closing (H), what is paid since: it reduces the main due. */
+  forfaitPaid: Cents;
+  /**
+   * Flat charge collected beyond what was due (answer F, fourth round A): «da verificare», shown
+   * with its amount and never an automatic credit.
+   */
+  toCheck: Cents;
   action: SupplementaryRow['action'] | 'da-verificare';
 }
 
@@ -39,8 +54,13 @@ export interface PeriodClosed {
   unassignedDelta: Cents;
   /** Some difference is not 0: a supplementary settlement is due (R5, F11). */
   changed: boolean;
-  /** The tenants of the period changed since the closing (one is new or gone): to check. */
+  /**
+   * The tenants of the period changed since the closing (one is new or gone), or a flat charge
+   * missing at the closing was paid since (it changes the main due): to check.
+   */
   dataChanged: boolean;
+  /** Some flat charge was collected beyond what was due: «da verificare» (`ClosingRow.toCheck`). */
+  toCheck: boolean;
 }
 
 /** A closing that holds the period closed: not deleted and not reopened (F3). */
@@ -210,14 +230,17 @@ export function closingOf(
       row.delta + (precNow.get(row.tenantId) ?? 0) - (precThen.get(row.tenantId) ?? 0),
     );
     const forfaitDelta = cents((atClose.get(row.tenantId) ?? 0) - (now.get(row.tenantId) ?? 0));
-    // Finding 3: while the main due (which holds the flat charge missing at the closing, H) is not
-    // settled, a payment of that flat charge only cancels it: nothing to refund.
-    // Only the part of the payment that covers what was missing is cancelled; beyond it, a refund.
+    // Flat charge paid since the closing: first it covers what was missing at the closing (H) while
+    // the main due that holds it is not settled; the rest is more than was due, «da verificare»
+    // (findings 3 of the third round, A and B of the fourth).
     const mainSettled = (close.settled ?? []).some((s) => s.tenantId === row.tenantId);
     const missing = mainSettled ? 0 : (missingThen.get(row.tenantId) ?? 0);
-    const total = delta + (forfaitDelta < 0 ? Math.min(0, forfaitDelta + missing) : forfaitDelta);
+    const paidSince = Math.max(0, -forfaitDelta);
+    const forfaitPaid = cents(Math.min(paidSince, missing));
+    const toCheck = cents(paidSince - forfaitPaid);
+    const total = cents(delta + Math.max(0, forfaitDelta));
     const action =
-      forfaitDelta + (missingThen.get(row.tenantId) ?? 0) < 0
+      toCheck > 0
         ? 'da-verificare'
         : total === 0
           ? 'nessuna'
@@ -226,7 +249,7 @@ export function closingOf(
             : row.departed
               ? 'da-trattenere-o-richiedere'
               : 'da-pagare';
-    return { ...row, delta, forfaitDelta, action };
+    return { ...row, delta, forfaitDelta, total, forfaitPaid, toCheck, action };
   });
   return {
     status: close.reopened === undefined ? 'closed' : 'reopened',
@@ -237,9 +260,9 @@ export function closingOf(
     ...(close.reopened === undefined ? {} : { reopened: close.reopened }),
     tenants,
     unassignedDelta: supplementary.unassignedDelta,
-    changed:
-      supplementary.unassignedDelta !== 0 ||
-      tenants.some((t) => t.delta !== 0 || t.forfaitDelta !== 0),
-    dataChanged,
+    changed: supplementary.unassignedDelta !== 0 || tenants.some((t) => t.total !== 0),
+    // A flat charge paid since on what was missing changes the main due, not the supplementary.
+    dataChanged: dataChanged || tenants.some((t) => t.forfaitPaid !== 0),
+    toCheck: tenants.some((t) => t.toCheck !== 0),
   };
 }

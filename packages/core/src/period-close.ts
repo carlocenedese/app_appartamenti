@@ -369,7 +369,8 @@ export function markTenantSettled(
           closing.status === 'closed'
             ? closing.tenants.find((t) => t.tenantId === input.tenantId)
             : undefined;
-        const amount = row === undefined ? 0 : row.delta + row.forfaitDelta;
+        // The supplementary as the closing computes it (`total`, fourth round B).
+        const amount = row === undefined ? 0 : row.total;
         if (amount === 0) return { status: 'refused', reason: 'no-supplementary' } as const;
         const rest = (close.supplementarySettled ?? []).filter(
           (s) => s.tenantId !== input.tenantId,

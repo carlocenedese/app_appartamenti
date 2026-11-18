@@ -74,3 +74,10 @@ facoltativi nuovi in `periodClose`.
   è accettata come nuova e va nel supplementare.
 - (d) La quota dei posti vuoti di un conguaglio condominiale dell'anno prima cambiato non è
   tracciata.
+
+## Quarta revisione
+
+13. A e B: `ClosingRow.total`, `forfaitPaid`, `toCheck` calcolati una volta in `closingOf` e usati da
+    caparra, saldo del supplementare, Excel e riga di comando; tabella in `deposit-closed.test.ts`
+    («A, B: …»). C: `reopen-changed` quando il record sul disco è riaperto
+    (`closed-period-guard.test.ts`, «C: depth 3»).

@@ -673,6 +673,9 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     );
     expect(settled.code, settled.out).toBe(0);
     expect(await state()).toBe('saldato');
+    const detailed = await cli('conguaglio-supplementare', ...args, '--dettagli');
+    expect(detailed.json.tenants[0]).toMatchObject({ total: 0, forfaitPaid: 0, toCheck: 0 });
+    expect(detailed.json).not.toHaveProperty('toCheck');
     const sup = await cli('conguaglio-supplementare', ...args);
     expect(sup.json).toMatchObject({
       status: 'closed',

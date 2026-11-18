@@ -190,6 +190,11 @@ export type DepositReturnResult =
       statement: CaparraReturn;
       /** Recoveries kept from the deposit once their expense is paid: not in yet (RECOVERY_WAITING). */
       recoveriesWaiting: number;
+      /**
+       * Flat charge collected beyond what was due in a closed period (answer F): «da verificare»,
+       * shown apart and never in the total.
+       */
+      toCheck: { label: string; amount: Cents }[];
     }
   /**
    * B4, F10, I: the deposit is already returned, so its statement does not change: the lines of
@@ -408,6 +413,7 @@ export async function loadDepositReturn(
       extraCharges: [...settled, ...closed.lines, ...recoveries.withheld, ...input.extraCharges],
     }),
     recoveriesWaiting: recoveries.waiting,
+    toCheck: closed.toCheck,
   };
 }
 
@@ -438,6 +444,8 @@ async function closedPeriodLines(
 ): Promise<
   | {
       lines: Line[];
+      /** Flat charge collected beyond what was due, per period: «da verificare», no effect. */
+      toCheck: Line[];
       exit?: { label: string; due: Cents; paid: Cents; lines: Line[] };
     }
   | 'period-reopened'
@@ -448,6 +456,7 @@ async function closedPeriodLines(
     .filter((c) => c.snapshot.tenants.some((t) => t.tenantId === input.tenantId))
     .sort((a, b) => compareText(a.from, b.from));
   const lines: Line[] = [];
+  const toCheck: Line[] = [];
   let exit: { label: string; due: Cents; paid: Cents; lines: Line[] } | undefined;
   for (const close of closes) {
     if (close.reopened !== undefined) return 'period-reopened';
@@ -470,24 +479,34 @@ async function closedPeriodLines(
     }
     const label = close.periodLabel;
     const balance = tenantBalance(close, input.tenantId);
+    // The amounts of the closing row, computed once there (fourth round, B): `total` is the
+    // supplementary, `forfaitPaid` reduces the flat charge missing at the closing, `toCheck` is
+    // more flat charge than was due («da verificare», never a credit: answer F).
     const delta = row?.delta ?? 0;
-    const forfaitDelta = row?.forfaitDelta ?? 0;
+    const total = row?.total ?? 0;
+    const lost = total - delta;
     const supplementary = (close.supplementarySettled ?? []).find(
       (s) => s.tenantId === input.tenantId,
     );
-    const forfait = balance.fni + (supplementary === undefined ? forfaitDelta : 0);
+    const forfait =
+      balance.fni - (row?.forfaitPaid ?? 0) + (supplementary === undefined ? lost : 0);
+    if ((row?.toCheck ?? 0) > 0) {
+      toCheck.push({
+        label: `Forfait incassato in più ${label} (da verificare)`,
+        amount: cents(row?.toCheck ?? 0),
+      });
+    }
     const later: Line[] = [
-      // shortcut: more flat charge than was missing is left out, «da verificare» (answer F).
       ...(forfait > 0 ? [{ label: `Forfait non incassato ${label}`, amount: cents(forfait) }] : []),
       ...(supplementary === undefined
         ? delta !== 0
           ? [{ label: `Conguaglio supplementare ${label}`, amount: cents(delta) }]
           : []
-        : delta + forfaitDelta !== supplementary.amount
+        : total !== supplementary.amount
           ? [
               {
                 label: `Conguaglio supplementare ${label} da saldare`,
-                amount: cents(delta + forfaitDelta - supplementary.amount),
+                amount: cents(total - supplementary.amount),
               },
             ]
           : []),
@@ -514,7 +533,7 @@ async function closedPeriodLines(
     if (left !== 0) lines.push({ label: `Conguaglio ${label} non saldato`, amount: left });
     lines.push(...later);
   }
-  return exit === undefined ? { lines } : { lines, exit };
+  return exit === undefined ? { lines, toCheck } : { lines, toCheck, exit };
 }
 
 /**

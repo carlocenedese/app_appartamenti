@@ -227,7 +227,10 @@ export interface ExcelInput extends ConguaglioInput {
 export function settlementStateText(
   closing: PeriodClose | undefined,
   waiting: number,
-  flags: { changed: boolean; dataChanged: boolean } = { changed: false, dataChanged: false },
+  flags: { changed: boolean; dataChanged: boolean; toCheck?: boolean } = {
+    changed: false,
+    dataChanged: false,
+  },
 ): string {
   if (closing === undefined || waiting > 0) {
     return `Conguaglio provvisorio: voci in attesa ${String(waiting)}`;
@@ -254,6 +257,8 @@ export function settlementStateText(
   const notes = [
     ...(flags.changed ? ["dopo la chiusura c'è un conguaglio supplementare"] : []),
     ...(flags.dataChanged ? ['dati cambiati dopo la chiusura, da controllare'] : []),
+    // Answer F, fourth round A: more flat charge than was due, never a credit.
+    ...(flags.toCheck === true ? ['forfait incassato in più, da verificare'] : []),
   ];
   return `Conguaglio chiuso il ${date(closing.closedAt)}${steps.map((x) => `, ${x}`).join('')}${notes.length > 0 ? `: ${notes.join('; ')}` : ''}`;
 }
@@ -266,25 +271,25 @@ export function settlementStateText(
 export function closingFlags(
   input: ConguaglioInput & { closing?: PeriodClose },
   result?: ConguaglioResult,
-): { changed: boolean; dataChanged: boolean } {
+): { changed: boolean; dataChanged: boolean; toCheck: boolean } {
   const { closing } = input;
-  if (closing === undefined) return { changed: false, dataChanged: false };
+  if (closing === undefined) return { changed: false, dataChanged: false, toCheck: false };
   let current = result;
   if (current === undefined) {
     try {
       current = calcConguaglio(input);
     } catch (error) {
       if (!(error instanceof SettlementInputError)) throw error;
-      return { changed: true, dataChanged: true };
+      return { changed: true, dataChanged: true, toCheck: false };
     }
   }
-  const { changed, dataChanged } = closingOf(
+  const { changed, dataChanged, toCheck } = closingOf(
     closing,
     current,
     input,
     isoDate(closing.closedAt.slice(0, 10)),
   );
-  return { changed, dataChanged };
+  return { changed, dataChanged, toCheck };
 }
 
 type Span = { from: YearMonth; to: YearMonth };

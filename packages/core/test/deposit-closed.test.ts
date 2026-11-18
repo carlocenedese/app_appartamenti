@@ -131,6 +131,44 @@ const statement = async (store: MemoryStore) => {
   return r.statement.lines;
 };
 
+/** Fourth round: closing 2 of a reopened period, with 30,00 of the May flat charge missing. */
+const reclosed = async () => {
+  const store = await setUp('2026-08', 0, '2026-09');
+  await reopenPeriod(
+    store,
+    { ...QUERY, on: '2026-11-20', reason: 'Forfait di maggio' },
+    'p1',
+    later,
+    ids('r'),
+  );
+  const may = (await loadAll(store, 'payment', PaymentSchema)).records.find(
+    (p) => p.forMonth === '2026-05',
+  );
+  if (may === undefined) throw new Error('payment');
+  await commitChange(
+    store,
+    {
+      profileId: 'p1',
+      kind: 'test.seed',
+      summary: 'x',
+      changes: [
+        { path: recordPath('payment', may.id), before: may, after: { ...may, amount: 45000 } },
+      ],
+    },
+    later,
+    ids('fix'),
+  );
+  expect((await closePeriod(store, QUERY, 'p1', later, ids('c2'))).status).toBe('closed');
+  return store;
+};
+const paysLate = (store: MemoryStore, amount = 3000) =>
+  put(
+    store,
+    'payment',
+    payment('t-a', '2026-05', amount, { id: 'pay-late', date: isoDate('2026-12-05') }),
+    later,
+  );
+
 describe('deposit statement and closed periods (B4, F10)', () => {
   it('an older closed period not marked settled is withheld on its own line', async () => {
     // The tenant leaves in March 2027 with 120,00 of the 2025-26 settlement unpaid.
@@ -371,43 +409,7 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     expect(lines).toContainEqual({ label: 'Conguaglio bollette', amount: 0 });
   });
 
-  it('finding 3: the missing flat charge paid after the new closing is nothing to refund; settled first, it is', async () => {
-    const reclosed = async () => {
-      const store = await setUp('2026-08', 0, '2026-09');
-      await reopenPeriod(
-        store,
-        { ...QUERY, on: '2026-11-20', reason: 'Forfait di maggio' },
-        'p1',
-        later,
-        ids('r'),
-      );
-      const may = (await loadAll(store, 'payment', PaymentSchema)).records.find(
-        (p) => p.forMonth === '2026-05',
-      );
-      if (may === undefined) throw new Error('payment');
-      await commitChange(
-        store,
-        {
-          profileId: 'p1',
-          kind: 'test.seed',
-          summary: 'x',
-          changes: [
-            { path: recordPath('payment', may.id), before: may, after: { ...may, amount: 45000 } },
-          ],
-        },
-        later,
-        ids('fix'),
-      );
-      expect((await closePeriod(store, QUERY, 'p1', later, ids('c2'))).status).toBe('closed');
-      return store;
-    };
-    const paysLate = (store: MemoryStore) =>
-      put(
-        store,
-        'payment',
-        payment('t-a', '2026-05', 3000, { id: 'pay-late', date: isoDate('2026-12-05') }),
-        later,
-      );
+  it('finding 3: the missing flat charge paid after the new closing is nothing to refund; settled first, da verificare', async () => {
     const store = await reclosed();
     // Before the payment: the missing flat charge is in the main due, not in the supplementary.
     expect(await loadPeriodClosing(store, QUERY, isoDate('2026-12-01'))).toMatchObject({
@@ -420,7 +422,8 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     expect(
       (await statement(store)).filter((l) => l.amount !== 0 && l.label.includes('2025-26')),
     ).toEqual([]);
-    // Settled with the flat charge in it, then paid again: 30,00 to give back.
+    // Settled with the flat charge in it, then paid again: more than due, «da verificare» (answer
+    // F; fourth round A replaced «da-rimborsare»).
     const settled = await reclosed();
     await markTenantSettled(
       settled,
@@ -431,7 +434,7 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     );
     await paysLate(settled);
     expect(await loadPeriodClosing(settled, QUERY, isoDate('2026-12-10'))).toMatchObject({
-      tenants: [{ tenantId: 't-a', forfaitDelta: -3000, action: 'da-rimborsare' }],
+      tenants: [{ tenantId: 't-a', forfaitDelta: -3000, action: 'da-verificare', toCheck: 3000 }],
     });
   });
 
@@ -474,5 +477,79 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     expect(
       await loadDepositReturn(store, { apartmentId: 'apt', tenantId: 't-a', extraCharges: [] }),
     ).toEqual({ status: 'refused', reason: 'period-reopened' });
+  });
+
+  // Fourth round, findings A and B: what the closing says and what the deposit withholds agree.
+  // Columns: main settled, flat charge paid after closing 2 (cents), closing action and amount
+  // «da verificare», deposit lines of the period, deposit «da verificare» amount.
+  const matrix: [boolean, number, string, number, { label: string; amount: number }[], number][] = [
+    [false, 0, 'nessuna', 0, [{ label: 'Forfait non incassato 2025-26', amount: -3000 }], 0],
+    [false, 1500, 'nessuna', 0, [{ label: 'Forfait non incassato 2025-26', amount: -1500 }], 0],
+    [false, 3000, 'nessuna', 0, [], 0],
+    // Only 30,00 of a 40,00 payment is flat charge (the month's due): as 30,00.
+    [false, 4000, 'nessuna', 0, [], 0],
+    [true, 0, 'nessuna', 0, [], 0],
+    [true, 1500, 'da-verificare', 1500, [], 1500],
+    [true, 3000, 'da-verificare', 3000, [], 3000],
+    [true, 4000, 'da-verificare', 3000, [], 3000],
+  ];
+  for (const [settledMain, paid, action, toCheck, lines, depositToCheck] of matrix) {
+    it(`A, B: main ${settledMain ? 'settled' : 'not settled'}, ${String(paid / 100)} paid after: closing and deposit agree`, async () => {
+      const store = await reclosed();
+      if (settledMain) {
+        await markTenantSettled(
+          store,
+          { ...QUERY, tenantId: 't-a', on: '2026-12-01' },
+          'p1',
+          later,
+          ids('s'),
+        );
+      }
+      if (paid > 0) await paysLate(store, paid);
+      const closing = await loadPeriodClosing(store, QUERY, isoDate('2026-12-10'));
+      expect(closing).toMatchObject({ tenants: [{ action, toCheck, total: 0 }] });
+      const r = await loadDepositReturn(store, {
+        apartmentId: 'apt',
+        tenantId: 't-a',
+        extraCharges: [],
+      });
+      if (r.status !== 'computed') throw new Error(r.reason);
+      expect(
+        r.statement.lines.filter((l) => l.label.includes('2025-26') || l.label.includes('Forfait')),
+      ).toEqual(lines);
+      expect(r.toCheck.reduce((sum, l) => sum + l.amount, 0)).toBe(depositToCheck);
+    });
+  }
+
+  it('A: the files say «da verificare» for the flat charge collected beyond what was due', async () => {
+    const store = await reclosed();
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-01' },
+      'p1',
+      later,
+      ids('s'),
+    );
+    await paysLate(store);
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    expect(buildOwnersWorkbook(loaded.input).sheets[0]?.rows[0]?.[0]).toMatchObject({
+      value: expect.stringContaining('forfait incassato in più, da verificare') as unknown,
+    });
+  });
+
+  it('B: 30,00 paid, nothing to settle: the supplementary mark is refused and nothing is withheld', async () => {
+    const store = await reclosed();
+    await paysLate(store);
+    expect(
+      await markTenantSettled(
+        store,
+        { ...QUERY, tenantId: 't-a', on: '2026-12-10', supplementary: true },
+        'p1',
+        later,
+        ids('sup'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'no-supplementary' });
+    expect((await statement(store)).filter((l) => l.label.includes('Forfait'))).toEqual([]);
   });
 });

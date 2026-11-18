@@ -283,6 +283,8 @@ export const MESSAGES = {
   'unknown-movement-in-close': 'Rifiutato: il movimento non esiste.',
   'missing-reason': 'Rifiutato: per riaprire il periodo serve il motivo (--motivo).',
   'no-supplementary': 'Rifiutato: l’inquilino non ha un conguaglio supplementare da saldare.',
+  'forfait-to-check':
+    'Da verificare: è stato incassato più forfait del dovuto in un periodo chiuso; non è un credito automatico.',
   'invalid-close-input': 'Rifiutato: data non valida.',
   'period-reopened':
     'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
@@ -2460,6 +2462,21 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ...(result.recoveriesWaiting > 0
         ? { recoveriesWaiting: result.recoveriesWaiting, warning: MESSAGES['recovery-waiting'] }
         : {}),
+      // Answer F, fourth round A: shown apart, never in the total.
+      ...(result.toCheck.length > 0
+        ? {
+            toCheck: result.toCheck.length,
+            toCheckMessage: MESSAGES['forfait-to-check'],
+            ...(values.dettagli === true
+              ? {
+                  toCheckLines: result.toCheck.map(({ label, amount }) => ({
+                    label,
+                    amount: formatEuro(amount),
+                  })),
+                }
+              : {}),
+          }
+        : {}),
       ...(values.dettagli === true ? { statement: result.statement } : {}),
     };
   }
@@ -3105,12 +3122,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ...(result.reopened === undefined ? {} : { reopenedOn: result.reopened.on }),
       changed: result.changed,
       dataChanged: result.dataChanged,
-      tenants: result.tenants.map(({ delta, forfaitDelta, ...t }) => ({
+      tenants: result.tenants.map(({ delta, forfaitDelta, total, forfaitPaid, toCheck, ...t }) => ({
         ...t,
         settled: settledIds.has(t.tenantId),
-        // F11: the flat charge no longer collected is a line of its own.
-        ...(details ? { delta, forfaitDelta } : {}),
+        // F11: the flat charge no longer collected is a line of its own; fourth round A, B: the
+        // supplementary computed once (`total`) and the flat charge «da verificare» (`toCheck`).
+        ...(details ? { delta, forfaitDelta, total, forfaitPaid, toCheck } : {}),
       })),
+      ...(result.toCheck ? { toCheck: true, warning: MESSAGES['forfait-to-check'] } : {}),
       ...(details ? { unassignedDelta: result.unassignedDelta } : {}),
     };
   }
