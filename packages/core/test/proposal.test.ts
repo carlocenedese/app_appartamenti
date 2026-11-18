@@ -269,6 +269,13 @@ describe('proposalFromExtraction: bill', () => {
       expect(asBill(proposal).bill.consumption).toBeUndefined();
     });
 
+    it('makes no check without the percentage of the caller (plan 19, R330)', () => {
+      const ctx = context({ bills: [lastYear] });
+      delete ctx.thresholds;
+      const proposal = proposalFromExtraction(withConsumption('140'), ctx, ids());
+      expect(check(proposal, 'consumption-anomaly')).toBeUndefined();
+    });
+
     it('rejects a threshold that is not a non-negative number', () => {
       expect(() =>
         proposalFromExtraction(

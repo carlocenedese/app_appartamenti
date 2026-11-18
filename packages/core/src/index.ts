@@ -82,7 +82,12 @@ export * from './condo-store';
 export * from './contact-store';
 export * from './taxes';
 export * from './tax-store';
-export { CONSUMPTION_AVERAGE_MONTHS, compareConsumption, yearBeforeBill } from './consumption';
+export {
+  CONSUMPTION_AVERAGE_MONTHS,
+  compareConsumption,
+  worstLevel,
+  yearBeforeBill,
+} from './consumption';
 export * from './consumption-store';
 export type {
   Comparable,

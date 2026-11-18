@@ -152,6 +152,18 @@ describe('renderFirstRun: «Crea gruppo»', () => {
     expect(settings().pendingWorkspace).toBeUndefined();
   });
 
+  it('refuses a home folder or a root before writing anything', async () => {
+    renderFirstRun(root, input({ pickFolder: () => Promise.resolve('/Users/user2') }));
+    await screen('Crea gruppo');
+    type('group', 'Casa al mare');
+    type('me', 'Mario');
+    primary().click();
+    await vi.waitFor(() =>
+      expect(root.querySelector('.error')?.textContent).toContain('troppo ampia'),
+    );
+    expect(saved).toBeUndefined();
+  });
+
   it('starts a new group with new ids when the retry picks another folder', async () => {
     saved = JSON.stringify({
       pendingWorkspace: { folder: '/Dropbox/Altro', workspaceId: 'old-ws', userId: 'old-u' },
@@ -210,6 +222,15 @@ describe('renderFirstRun: opening a folder', () => {
     expect(repairDiverged).toHaveBeenCalledTimes(1);
     expect(vi.mocked(repairDiverged).mock.calls[0]?.[1]).toBe('_app/dati/user/u-1.json');
     expect(JSON.parse(await fs.readText(userFile)).name).toBe('Mario');
+  });
+
+  it('a saved or joined folder that is a home or a root: message, nothing read or written', async () => {
+    saved = JSON.stringify({ folder: '/', userId: 'u-1' });
+    const openStore = vi.fn(() => store);
+    renderFirstRun(root, input({ openStore }));
+    await screen('Cartella troppo ampia');
+    expect(openStore).not.toHaveBeenCalled();
+    expect(primary().textContent).toBe("Scegli un'altra cartella");
   });
 
   it('a folder without a group: message and no write action', async () => {

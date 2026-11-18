@@ -68,6 +68,10 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
+      # The web part of the desktop app as the installer gets it (vite build).
+      - name: Build the desktop web app
+        run: pnpm --filter desktop build
+
       - name: Test
         run: pnpm test
 
@@ -111,3 +115,145 @@ jobs:
 
       - name: Check for personal data
         run: pnpm data:check
+
+      # The tests of tools/ (anonymise.py). `python3` is not on the Windows runners.
+      - name: Test the tools
+        if: runner.os != 'Windows'
+        run: pnpm tools:test
+
+  # Known vulnerabilities in what the app ships (S5 of the security review of 18 November 2026).
+  # Blocking. npm: only high and critical advisories of production dependencies. pip and Cargo:
+  # any known vulnerability (pip-audit and cargo-deny have no severity filter; deny.toml leaves
+  # unmaintained crates out).
+  # A false positive is silenced in the repository, with a reason, never by removing the step:
+  # npm: `pnpm audit --ignore <GHSA-...>` once on a computer, which writes the id in
+  # pnpm-workspace.yaml (auditConfig.ignoreGhsas), committed with a comment; pip with
+  # `--ignore-vuln <ID>` on the pip-audit line; Cargo in deny.toml ([advisories] ignore).
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Audit the npm production dependencies
+        run: pnpm audit --prod --audit-level high
+
+      - name: Install Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      # pip-audit (Apache-2.0) is a tool of this job only, in its own virtualenv: never in the
+      # package or in python/requirements.txt. It reads the pinned, hashed list without installing it.
+      - name: Audit the Python dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/python" -m pip install --quiet pip-audit==2.10.1
+          "$RUNNER_TEMP/audit/bin/pip-audit" --require-hashes --disable-pip --progress-spinner off -r python/requirements.txt
+
+      # As in cargo-lock.yml: cargo-deny reads Cargo.lock through cargo metadata, nothing is built.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2.90.0
+        with:
+          tool: cargo-deny@0.20.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Audit the Rust dependencies
+        run: cargo deny --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --config deny.toml check advisories
+
+  # Pull requests only: the Rust app compiles with the committed Cargo.lock and its crate licences
+  # pass deny.toml. The steps run only when the Rust app, a Cargo file or deny.toml changes;
+  # otherwise the job is green at once, so it can be a required check. Windows, like the release
+  # build: on Linux Tauri needs the WebKitGTK system libraries.
+  rust:
+    name: rust
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The base branch too, to see what the pull request changes.
+          fetch-depth: 0
+
+      - name: Look for changes to the Rust app
+        id: changes
+        shell: bash
+        # The list first, then grep: with pipefail, grep -q closing the pipe early could fail it.
+        run: |
+          changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD")
+          if grep -qE '^apps/desktop/src-tauri/|(^|/)Cargo\.(toml|lock)$|^deny\.toml$' <<< "$changed"; then
+            echo rust=true >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install pnpm
+        if: steps.changes.outputs.rust == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Install Node.js
+        if: steps.changes.outputs.rust == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install Rust
+        if: steps.changes.outputs.rust == 'true'
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+
+      - name: Cache Rust build output
+        if: steps.changes.outputs.rust == 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      # generate_context! embeds the web app (frontendDist) and tauri-build looks for the bundled
+      # resources: the web app is built, the resource folders get a placeholder (nothing is bundled).
+      - name: Prepare what the Rust build reads
+        if: steps.changes.outputs.rust == 'true'
+        shell: bash
+        run: |
+          pnpm install --frozen-lockfile --filter desktop...
+          pnpm --filter desktop build
+          for folder in python seed-profiles ocr-data; do
+            mkdir -p "apps/desktop/src-tauri/resources/$folder"
+            touch "apps/desktop/src-tauri/resources/$folder/.placeholder"
+          done
+
+      - name: Check that the Rust app compiles
+        if: steps.changes.outputs.rust == 'true'
+        run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Install cargo-deny
+        if: steps.changes.outputs.rust == 'true'
+        uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2.90.0
+        with:
+          tool: cargo-deny@0.20.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Check Rust licences
+        if: steps.changes.outputs.rust == 'true'
+        run: cargo deny --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --config deny.toml check licenses

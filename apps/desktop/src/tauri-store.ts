@@ -57,6 +57,36 @@ export async function pickFolder(): Promise<string | null> {
   return open({ directory: true, recursive: true, multiple: false });
 }
 
+/**
+ * True for a folder too broad to be the folder of a group: a root (`/`, `C:\`, `~`, a network
+ * share `\\server\share`), a home folder (`/Users/<name>`, `/home/<name>`, `C:\Users\<name>`,
+ * `/root`), a folder that holds the homes, or a mount point (`/Volumes/<disk>`, `/mnt/<x>`,
+ * `/media/<x>`). The long forms `\\?\C:\…`, `\\?\UNC\…` and `/System/Volumes/Data/…` count as
+ * the short ones. The dialog has already added the folder to the file scope by then
+ * (persisted-scope keeps it): refusing it stops the app from using it; taking it out of the scope
+ * needs a Rust command.
+ * shortcut: the usual places only, by name; a home elsewhere (a renamed or network one) passes.
+ */
+export function isTooBroadFolder(folder: string): boolean {
+  let path = folder.trim();
+  if (/^~[\\/]*$/.test(path)) return true;
+  path = path.replace(/^[\\/]{2}[?.][\\/](UNC[\\/])?/i, (_, unc?: string) =>
+    unc === undefined ? '' : '\\\\',
+  );
+  let parts = path.split(/[\\/]+/).filter((part) => part !== '');
+  if (/^[\\/]{2}[^\\/]/.test(path)) return parts.length <= 2; // \\server\share
+  const drive = /^[A-Za-z]:$/.test(parts[0] ?? '');
+  if (drive) parts = parts.slice(1);
+  else if (parts.slice(0, 3).join('/').toLowerCase() === 'system/volumes/data')
+    parts = parts.slice(3);
+  if (parts.length === 0) return true;
+  const top = (parts[0] ?? '').toLowerCase();
+  const mounts = drive ? ['users'] : ['users', 'home', 'volumes', 'mnt', 'media'];
+  if (parts.length <= 2 && mounts.includes(top)) return true;
+  const rest = parts.join('/').toLowerCase();
+  return !drive && (rest === 'root' || rest === 'var/root');
+}
+
 const TEMP_PREFIX = '.tmp-';
 
 /** The waits before each new attempt of a rename that failed (Windows: a busy target). */
