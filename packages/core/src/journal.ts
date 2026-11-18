@@ -246,17 +246,15 @@ async function commitOperation(
   assertSafeSegment(input.profileId);
   const id = newId();
   assertSafeSegment(id);
-  const changes = input.changes
-    .map(normaliseChange)
-    .map((change) =>
-      resolving === undefined
-        ? change
-        : {
-            ...change,
-            after: { ...change.after, rev: resolving.rev },
-            supersedes: resolving.supersedes,
-          },
-    );
+  const changes = input.changes.map(normaliseChange).map((change) =>
+    resolving === undefined
+      ? change
+      : {
+          ...change,
+          after: { ...change.after, rev: resolving.rev },
+          supersedes: resolving.supersedes,
+        },
+  );
   if (new Set(changes.map((change) => change.path)).size !== changes.length) {
     throw new RangeError('An operation cannot change the same path twice');
   }
