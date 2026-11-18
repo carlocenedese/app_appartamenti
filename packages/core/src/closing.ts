@@ -210,7 +210,12 @@ export function closingOf(
       row.delta + (precNow.get(row.tenantId) ?? 0) - (precThen.get(row.tenantId) ?? 0),
     );
     const forfaitDelta = cents((atClose.get(row.tenantId) ?? 0) - (now.get(row.tenantId) ?? 0));
-    const total = delta + forfaitDelta;
+    // Finding 3: while the main due (which holds the flat charge missing at the closing, H) is not
+    // settled, a payment of that flat charge only cancels it: nothing to refund.
+    // Only the part of the payment that covers what was missing is cancelled; beyond it, a refund.
+    const mainSettled = (close.settled ?? []).some((s) => s.tenantId === row.tenantId);
+    const missing = mainSettled ? 0 : (missingThen.get(row.tenantId) ?? 0);
+    const total = delta + (forfaitDelta < 0 ? Math.min(0, forfaitDelta + missing) : forfaitDelta);
     const action =
       forfaitDelta + (missingThen.get(row.tenantId) ?? 0) < 0
         ? 'da-verificare'
