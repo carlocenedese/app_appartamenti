@@ -505,8 +505,9 @@ function replacedBy(touch: Touch, touches: readonly Touch[]): Touch[] {
  *
  * - `forked`: two heads or more, so two computers changed the record and neither saw the other;
  * - `head`: the one head, when there is one: the record must be equal to it;
- * - `incomplete`: some change starts from a version no operation here left, or supersedes an
- *   operation that is not here, so an operation file has not arrived yet: more heads then mean
+ * - `incomplete`: the changes start from more than one place (nothing, for a creation, or a
+ *   version no operation here left, as a record older than the journal), or one supersedes an
+ *   operation that is not here: an operation file has not arrived yet, and more heads then mean
  *   waiting, not a fork;
  * - `builtOn(record)`: whether `record` is a version the head replaced, directly or not.
  */
@@ -521,6 +522,8 @@ function stateOf(touches: readonly Touch[]): {
   const left = new Set(keys.values());
   const parents = new Map<string, string[]>();
   let incomplete = false;
+  /** Where the changes start: nothing (a creation) or a version that no operation here left. */
+  const starts = new Set<string>();
   const ids = new Set(touches.map(({ operation }) => operation.id));
   /** Versions some change was made on: they are not heads. */
   const builtUpon = new Set<string>();
@@ -534,7 +537,9 @@ function stateOf(touches: readonly Touch[]): {
       const before = versionKey(touch.before);
       replaced.push(before);
       builtUpon.add(before);
-      if (!left.has(before)) incomplete = true;
+      if (!left.has(before)) starts.add(before);
+    } else {
+      starts.add('');
     }
     const key = keys.get(touch) ?? '';
     parents.set(key, [...(parents.get(key) ?? []), ...replaced]);
@@ -567,6 +572,7 @@ function stateOf(touches: readonly Touch[]): {
     }
     return false;
   };
+  if (starts.size > 1) incomplete = true;
   return { heads, head, forked: heads.length > 1 && !incomplete, incomplete, builtOn };
 }
 

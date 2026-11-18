@@ -396,3 +396,35 @@ describe('operations written before `supersedes` existed are read as they were m
     expect(await checkConsistency(a)).toEqual([]);
   });
 });
+
+describe('a record that no operation created (written before the journal)', () => {
+  it('is forked when two computers change it from the same state (S2)', async () => {
+    const a = new MemoryStore();
+    a.putRaw(P, JSON.stringify(bill()));
+    const c = await cloneOf(a);
+    const r1 = await a.readJson(P);
+    await commitChange(a, op('pa', r1, bill({ supplier: 'G' })), clock, id);
+    await commitChange(a, op('pa', await a.readJson(P), bill({ supplier: 'H' })), clock, id);
+    await commitChange(c, op('pc', r1, bill({ amount: 777 })), clock, id);
+    await copyJournal(a, c);
+    await copyJournal(c, a);
+    c.putRaw(P, a.getRaw(P) ?? '');
+    for (const store of [a, c]) {
+      expect(await checkConsistency(store)).toEqual([{ path: P, reason: 'forked' }]);
+    }
+  });
+
+  it('is waiting, not forked, while an operation in the middle has not arrived', async () => {
+    const a = new MemoryStore();
+    await commitChange(a, op('pa', undefined, bill()), clock, id);
+    await commitChange(a, op('pa', await a.readJson(P), bill({ amount: 2 })), clock, id);
+    await commitChange(a, op('pa', await a.readJson(P), bill({ amount: 3 })), clock, id);
+    const [first, , third] = await a.list(JOURNAL_DIR);
+    const b = new MemoryStore();
+    for (const name of [first, third]) {
+      b.putRaw(`${JOURNAL_DIR}/${name ?? ''}`, a.getRaw(`${JOURNAL_DIR}/${name ?? ''}`) ?? '');
+    }
+    b.putRaw(P, a.getRaw(P) ?? '');
+    expect(await checkConsistency(b)).toEqual([{ path: P, reason: 'diverged' }]);
+  });
+});
