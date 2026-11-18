@@ -9,9 +9,14 @@ import {
   isValidCodiceFiscale,
   maskPath,
   parseAllowedCodes,
+  NAME_FINGERPRINTS,
   scanFiles,
   scanText,
+  wordFingerprint,
 } from './check-personal-data.mjs';
+
+// Invented names: the tests never spell the real ones, which the check knows only by fingerprint.
+const TEST_NAMES = new Set(['Zorbaldo', 'Quintilia', 'Frasconi'].map(wordFingerprint));
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'check-personal-data.mjs');
 
@@ -48,7 +53,7 @@ const README_WITH_EXAMPLES = [
   `Questo non e' ammesso: \`${UNLISTED_IBAN}\``,
 ].join('\n');
 
-const kinds = (text, allowed) => scanText(text, allowed).map((finding) => finding.kind);
+const kinds = (text, allowed) => scanText(text, allowed, TEST_NAMES).map((finding) => finding.kind);
 
 describe('scanText', () => {
   it('flags an Italian IBAN, spaced or compact', () => {
@@ -138,14 +143,40 @@ describe('scanText', () => {
     ).toEqual([]);
   });
 
-  it('flags the real names as whole words, in any case', () => {
-    expect(kinds('chiedere a Carlo\nNICOLA e cenedese')).toEqual([
+  it('flags the names of the fingerprint list as whole words, in any case and in NFC', () => {
+    expect(kinds('chiedere a Zorbaldo\nQUINTILIA e frasconi')).toEqual([
       'person name',
       'person name',
       'person name',
     ]);
-    expect(kinds("profileId: 'carlo'")).toEqual(['person name']);
-    expect(kinds('non modificarlo; user1 e user2; Nicolas')).toEqual([]);
+    expect(kinds("profileId: 'zorbaldo'")).toEqual(['person name']);
+    expect(kinds('non zorbaldone; user1 e user2; Quintilias, _frasconi')).toEqual([]);
+    expect(wordFingerprint('Zòrbaldo')).toBe(wordFingerprint('Zo\u0300rbaldo'.toUpperCase()));
+  });
+
+  it('knows the real names only as three salted SHA-256 fingerprints', () => {
+    expect(NAME_FINGERPRINTS.size).toBe(3);
+    for (const fingerprint of NAME_FINGERPRINTS) expect(fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(wordFingerprint('user1')).not.toBe(wordFingerprint('user2'));
+    expect(kinds('user1 e user2')).toEqual([]);
+  });
+
+  it('flags private paths of a real account, not placeholders', () => {
+    const home = parts('/Users/', 'pinco', '/Dropbox');
+    const icloud = parts('~/Library/Mobile', ' Documents/com~apple~CloudDocs/x');
+    const windows = parts('C:', '\\Users\\', 'pinco\\Desktop');
+    expect(kinds(`${home}\n${icloud}\n${windows}\n/home/pinco/x\n/Users/pinco.rossi`)).toEqual([
+      'private path',
+      'private path',
+      'private path',
+      'private path',
+      'private path',
+    ]);
+    expect(
+      kinds(
+        "/Users/user2/Dropbox, /Users/<nome>/x, C:\\Users\\user1, C:/Users/x.json, /Users/…, '/Users/' + x, (?:/Users/|/home/)",
+      ),
+    ).toEqual([]);
   });
 
   it('flags a house number after an apartment name, not years or amounts', () => {
@@ -273,8 +304,8 @@ describe('scanFiles and the command line', () => {
     expect(scanFiles(root, files).findings).toEqual([]);
   });
 
-  it('does not check names and addresses in the files of the check itself', () => {
-    const text = 'Carlo, Berchet 3\n';
+  it('does not check addresses and paths in the files of the check itself, but does check names', () => {
+    const text = `Zorbaldo, Berchet 3, ${parts('/Users/', 'pinco')}\n`;
     const root = makeRepo({
       'scripts/check-personal-data.mjs': text,
       'scripts/check-personal-data.test.mjs': `${text}${UNLISTED_IBAN}\n`,
@@ -285,10 +316,13 @@ describe('scanFiles and the command line', () => {
       'scripts/check-personal-data.test.mjs',
       'docs/a.md',
     ];
-    expect(scanFiles(root, files).findings.map((f) => [f.file, f.kind])).toEqual([
+    expect(scanFiles(root, files, TEST_NAMES).findings.map((f) => [f.file, f.kind])).toEqual([
+      ['scripts/check-personal-data.mjs', 'person name'],
+      ['scripts/check-personal-data.test.mjs', 'person name'],
       ['scripts/check-personal-data.test.mjs', 'IBAN'],
       ['docs/a.md', 'person name'],
       ['docs/a.md', 'address'],
+      ['docs/a.md', 'private path'],
     ]);
   });
 
