@@ -233,7 +233,13 @@ export interface ConfirmMatchInput {
 }
 
 export type ConfirmMatchResult =
-  | { status: 'confirmed'; operationId: string; matchIds: string[] }
+  | {
+      status: 'confirmed';
+      operationId: string;
+      matchIds: string[];
+      /** Bills confirmed for the debited amount, not the document's (R2, I1). */
+      amountDiffers?: string[];
+    }
   | {
       status: 'refused';
       reason:
@@ -313,6 +319,27 @@ export async function confirmMatch(
     input.parts.map((p) => [refKey(p), expectedOf(itemOf(p) as Bill | Instalment, instalments)]),
   );
   if ([...expected.values()].includes(undefined)) return refuse('invalid-group');
+  // R2 «conta l'importo addebitato» (I1): a bill (never an instalment or an F24, which stay
+  // pending until the document is corrected) may be confirmed for the whole debit of its one
+  // movement when it differs from the document; the match keeps the debited amount.
+  const amountDiffers: string[] = [];
+  for (const p of input.parts) {
+    if (p.itemType !== 'bill' || p.part !== 'amount') continue;
+    const own = input.parts.filter((q) => q.itemType === 'bill' && q.itemId === p.itemId);
+    const debit = -(txOf(p.transactionId) as BankTransaction).amount;
+    const document = expected.get(refKey(p)) as Cents;
+    const alone = input.parts.every((q) => q.transactionId !== p.transactionId || q === p);
+    if (
+      own.length === 1 &&
+      alone &&
+      p.amount === debit &&
+      debit !== document &&
+      Math.sign(debit) === Math.sign(document)
+    ) {
+      expected.set(refKey(p), cents(debit));
+      amountDiffers.push(p.itemId);
+    }
+  }
 
   const matches = input.parts.map((p, i) =>
     parseOrThrow(
@@ -355,5 +382,10 @@ export async function confirmMatch(
     clock,
     newId,
   );
-  return { status: 'confirmed', operationId: operation.id, matchIds: matches.map((m) => m.id) };
+  return {
+    status: 'confirmed',
+    operationId: operation.id,
+    matchIds: matches.map((m) => m.id),
+    ...(amountDiffers.length > 0 ? { amountDiffers: amountDiffers.sort(compareText) } : {}),
+  };
 }

@@ -2619,7 +2619,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
         'errors' in result ? { errors: result.errors } : {},
       );
     }
-    return { status: 'confirmed', operationId: result.operationId, matchIds: result.matchIds };
+    // amountDiffers: bill ids confirmed for the debit, not the document amount (R2: «importo
+    // diverso», an id only, no amount).
+    return {
+      status: 'confirmed',
+      operationId: result.operationId,
+      matchIds: result.matchIds,
+      ...optional('amountDiffers', result.amountDiffers),
+    };
   }
 
   if (name === 'conferma') {
