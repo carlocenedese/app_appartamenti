@@ -434,10 +434,36 @@ export function reopenPeriod(
  */
 export async function refuseClosingUndo(
   store: Store,
-  toUndo: readonly { kind: string; changes: readonly { after?: unknown }[] }[],
+  toUndo: readonly {
+    kind: string;
+    changes: readonly { path: string; before?: unknown; after?: unknown }[];
+  }[],
   asOf: ISODate,
 ): Promise<void> {
   for (const operation of toUndo) {
+    // Finding 4 (third review): any undo that puts back a live closing (the undo of an undo of a
+    // closing, at any depth) is checked against that closing's snapshot.
+    for (const change of operation.changes) {
+      if (!change.path.startsWith('_app/dati/periodClose/')) continue;
+      const back = PeriodCloseSchema.safeParse(change.before);
+      if (!back.success || !isLiveClose(back.data)) continue;
+      // Already closed now (the undo of a mark, sent or settled): nothing closes again.
+      const now = PeriodCloseSchema.safeParse(await store.readJson(change.path));
+      if (now.success && isLiveClose(now.data)) continue;
+      const query = { apartmentId: back.data.apartmentId, periodLabel: back.data.periodLabel };
+      const calc = await computed(store, query);
+      if (calc.status === 'refused') {
+        throw new ClosingUndoError('closing-unknown', query.apartmentId, query.periodLabel);
+      }
+      const since = closingOf(back.data, calc.result, calc.input, asOf);
+      if (since.changed || since.dataChanged) {
+        throw new ClosingUndoError(
+          operation.kind === 'period.reopen' ? 'reopen-changed' : 'closing-changed',
+          query.apartmentId,
+          query.periodLabel,
+        );
+      }
+    }
     if (operation.kind !== 'period.close' && operation.kind !== 'period.reopen') continue;
     const parsed = PeriodCloseSchema.safeParse(operation.changes[0]?.after);
     if (!parsed.success || parsed.data.deleted === true) continue;

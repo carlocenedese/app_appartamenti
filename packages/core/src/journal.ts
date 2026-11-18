@@ -880,7 +880,9 @@ export async function undoOperation(
   // Finding 9: no undo closes a period without a new snapshot. Imported here, when needed, because
   // `period-close.ts` reads the settlement, which imports this module.
   if (
-    [target, ...dependents].some((o) => o.kind === 'period.close' || o.kind === 'period.reopen')
+    [target, ...dependents].some((o) =>
+      o.changes.some((c) => c.path.startsWith('_app/dati/periodClose/')),
+    )
   ) {
     const { refuseClosingUndo } = await import('./period-close');
     await refuseClosingUndo(store, [target, ...dependents], isoDate(clock().slice(0, 10)));

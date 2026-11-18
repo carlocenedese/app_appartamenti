@@ -516,4 +516,36 @@ describe('closed period guard, second review', () => {
       undoOperation(store, reopened.operationId, 'p1', later, ids('u')),
     ).rejects.toMatchObject({ name: 'ClosingUndoError', reason: 'reopen-changed' });
   });
+
+  it('finding 4: undoing the undo of a closing after a change is refused too (any depth)', async () => {
+    const store = await closed();
+    const closeOp = (await readJournal(store)).operations.find((o) => o.kind === 'period.close');
+    if (closeOp === undefined) throw new Error('close');
+    const undo = await undoOperation(store, closeOp.id, 'p1', later, ids('u'));
+    // Open again: a late bill comes in.
+    const late = bill('b-tardiva', '2026-07-01', '2026-09-30', 1000, {
+      dueDate: isoDate('2026-11-10'),
+    });
+    await write(store, 'bill', late, undefined, later);
+    await write(store, 'match', match(late, 1000), undefined, later);
+    await expect(undoOperation(store, undo.id, 'p1', later, ids('uu'))).rejects.toMatchObject({
+      name: 'ClosingUndoError',
+      reason: 'closing-changed',
+    });
+  });
+
+  it('finding 4: the undo of a mark (sent) after a late bill is not a closing again: it passes', async () => {
+    const store = await closed();
+    const sent = await markPeriodSent(store, { ...QUERY, on: '2026-11-20' }, 'p1', later, ids('s'));
+    if (sent.status !== 'saved') throw new Error('sent');
+    const late = bill('b-tardiva', '2026-07-01', '2026-09-30', 1000, {
+      dueDate: isoDate('2026-11-10'),
+    });
+    await write(store, 'bill', late, undefined, later);
+    await expect(
+      undoOperation(store, sent.operationId, 'p1', later, ids('u')),
+    ).resolves.toMatchObject({
+      kind: 'undo',
+    });
+  });
 });
