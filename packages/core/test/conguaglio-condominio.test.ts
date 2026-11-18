@@ -211,6 +211,16 @@ describe('Step 3: condominium instalments (R3)', () => {
         ),
       ).toThrow(expect.objectContaining({ code: 'owner-share-inconsistent' }));
     }
+    // The ids of the rates against most of them, not the first one of the period.
+    const three = [rata(1, { quotaProprieta: cents(3000) }), rata(2), rata(3)];
+    expect(() =>
+      calc(
+        three,
+        three.map((item) => match(item, item.rata + item.conguaglioPrec)),
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: 'owner-share-inconsistent', instalmentIds: ['cond-1'] }),
+    );
     // A record with rata 0 carries no owner share (R-C8): its value is not compared.
     const zero = rata(2, { rata: cents(0), quotaProprieta: cents(0), conguaglioPrec: cents(100) });
     const items = [rata(1), zero];

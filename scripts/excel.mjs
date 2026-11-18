@@ -136,8 +136,11 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
         periodLabel: values.periodo,
       });
     } catch (error) {
-      // E6: periods that cannot be built from the saved data (a lease year not from day 1).
-      if (error instanceof RangeError) throw rejected('bad-periods');
+      // E6: only the periods that cannot be built (a lease year not from day 1, period.ts); any
+      // other error stays a failure.
+      if (error instanceof RangeError && error.message.startsWith('Settlement periods are whole')) {
+        throw rejected('bad-periods');
+      }
       throw error;
     }
     if (loaded.status !== 'ok') throw rejected(loaded.reason);
@@ -181,7 +184,11 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
         throw rejected('missing-tenant', { tenantIds: error.tenantIds });
       }
       if (error instanceof SettlementInputError) {
-        throw rejected('settlement-input', { code: error.code });
+        // I5: the ids of the rates to correct (ids only, no amount).
+        throw rejected('settlement-input', {
+          code: error.code,
+          ...(error.instalmentIds === undefined ? {} : { instalmentIds: error.instalmentIds }),
+        });
       }
       throw error;
     }
