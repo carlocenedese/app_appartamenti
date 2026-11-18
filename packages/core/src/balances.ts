@@ -52,6 +52,7 @@ import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
 import { compareText } from './text';
+import { loadSettings } from './settings-store';
 
 export interface BalanceItem {
   date: ISODate;
@@ -84,6 +85,8 @@ export interface BalanceInput {
   imuYears: ImuYear[];
   /** The other voci of a mixed F24 (plan 17, R307); absent: none. */
   taxPayments?: TaxPayment[];
+  /** The IMU tolerance of the workspace settings (I9); the default when absent. */
+  imuToleranceBp?: number;
 }
 
 export type ImuSplitReason = 'imu-da-ripartire' | 'imu-importo-mancante' | 'imu-da-riconciliare';
@@ -140,6 +143,7 @@ export function accountBalances(input: BalanceInput): AccountBalances {
       classes: input.classes,
       transactions: input.transactions,
       ...(input.taxPayments === undefined ? {} : { taxPayments: input.taxPayments }),
+      ...(input.imuToleranceBp === undefined ? {} : { toleranceBp: input.imuToleranceBp }),
     }).map((r) => [imuRateKey(r), r]),
   );
   const otherVoci = new Map(
@@ -322,6 +326,7 @@ export async function loadAccountBalances(store: Store): Promise<LoadAccountBala
     transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,
     imuYears: (await loadAll(store, 'imuYear', ImuYearSchema, all)).records,
     taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
+    imuToleranceBp: (await loadSettings(store)).imuToleranceBp.value,
   });
   return { status: 'computed', ...balances };
 }

@@ -1402,6 +1402,30 @@ export const ConsumptionSettingsSchema = RecordBaseSchema.extend({
   });
 export type ConsumptionSettings = z.infer<typeof ConsumptionSettingsSchema>;
 
+// --- Workspace settings (review of 18 Nov 2026, I9) --------------------------------------------
+
+/** The id of the one settings record of the workspace. */
+export const WORKSPACE_SETTINGS_ID = 'impostazioni';
+
+/**
+ * The control thresholds of the workspace typed by user1 (review of 18 Nov 2026, I9): a field
+ * absent means the default of the code (`DEFAULT_IMU_TOLERANCE_BP`). One record,
+ * `impostazioni`.
+ */
+export const WorkspaceSettingsSchema = RecordBaseSchema.extend({
+  /**
+   * IMU: how far an F24 may be from the expected rate and still be paid, in basis points of the
+   * expected (100 is 1%, decision of user1 of 14 Nov 2026: «= configurazione»).
+   */
+  imuToleranceBp: z.int().min(0).max(10000).optional(),
+})
+  .refine((s) => s.id === WORKSPACE_SETTINGS_ID, {
+    message: 'The id must be impostazioni',
+    path: ['id'],
+  })
+  .meta({ description: 'id is impostazioni; imuToleranceBp in basis points (100 = 1%).' });
+export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
+
 // --- Legal interest rates (plan 17) -------------------------------------------------------------
 
 /**
@@ -1566,6 +1590,7 @@ export const recordSchemas = {
   taxConfirmation: TaxConfirmationSchema,
   consumptionSettings: ConsumptionSettingsSchema,
   tenantCard: TenantCardSchema,
+  workspaceSettings: WorkspaceSettingsSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

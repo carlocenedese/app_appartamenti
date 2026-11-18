@@ -76,6 +76,7 @@ export {
   yearBeforeBill,
 } from './consumption';
 export * from './consumption-store';
+export * from './settings-store';
 export type {
   Comparable,
   ConsumptionComparison,

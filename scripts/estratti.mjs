@@ -109,6 +109,8 @@ import {
   saveTenantRecovery,
   saveSupply,
   saveCondoInstalment,
+  saveSettings,
+  loadSettings,
   equalShares,
   saveContract,
   setContractRent,
@@ -236,6 +238,7 @@ export const MESSAGES = {
     'Rifiutato: l’identificativo è di una rata TARI o di un altro appartamento.',
   'owner-share-differs':
     'Attenzione: le rate dell’esercizio non hanno la stessa quota della proprietà o lo stesso numero di rate («instalmentIds»): il conguaglio le rifiuta finché non si corregge.',
+  'invalid-workspace-settings': 'Rifiutato: impostazione non valida.',
   'invalid-supply':
     'Rifiutato: utenza non valida: etichetta vuota, o le quote degli appartamenti non fanno 100%.',
   'class-has-dependents':
@@ -547,6 +550,7 @@ const OPTIONS = {
   'quota-proprieta': { type: 'string' },
   'conguaglio-prec': { type: 'string' },
   straordinaria: { type: 'boolean' },
+  'tolleranza-imu': { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -597,6 +601,8 @@ const RECONCILE_KINDS = [
   'bank-profile.save',
   // I3, E4: a condominium instalment typed by user1.
   'condo.instalment',
+  // I9: the workspace settings.
+  'settings.save',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -2903,6 +2909,37 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  // I9 (review of 18 Nov 2026): the workspace settings, read, or set with --tolleranza-imu
+  // <percentuale> (`predefinita` takes it back to the default of the code).
+  if (name === 'impostazioni') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const imu = values['tolleranza-imu'];
+    let written;
+    if (imu !== undefined) {
+      const result = await saveSettings(
+        store,
+        { imuToleranceBp: imu === 'predefinita' ? null : basisPoints(imu) },
+        who,
+        clock,
+        newId,
+      );
+      if (result.status === 'refused') throw new Stop('rejected', result.reason);
+      written = result;
+    }
+    const settings = await loadSettings(store);
+    return {
+      status: written?.status ?? 'ok',
+      ...optional('operationId', written?.operationId),
+      settings: {
+        // Basis points (100 is 1%): no amount-like text in the output.
+        imuTolerance: {
+          basisPoints: settings.imuToleranceBp.value,
+          isDefault: settings.imuToleranceBp.isDefault,
+        },
+      },
+    };
+  }
+
   // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
   // and the apartments it belongs to, `--appartamento` alone at 100% or `--ripartizione
   // apt-a:60;apt-b:40` (percentages); undone with annulla-riconciliazione. Ids only in the output.
@@ -3097,6 +3134,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'riferimenti',
         'utenza',
         'rata-condominio',
+        'impostazioni',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -3244,6 +3282,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       'quota-proprieta': ['rata-condominio'],
       'conguaglio-prec': ['rata-condominio'],
       straordinaria: ['rata-condominio'],
+      'tolleranza-imu': ['impostazioni'],
       pagine: ['annulla-bolletta'],
       scadenza: ['scadenza-nuova', 'scadenza-ripeti', 'rata-condominio'],
       'ogni-anno': ['scadenza-nuova'],

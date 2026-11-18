@@ -373,3 +373,26 @@ describe('rata-condominio (I3, E4)', () => {
     expect((await cli('rata-condominio', '--id', 'r')).code).toBe(2);
   });
 });
+
+describe('impostazioni (I9)', () => {
+  it('legge il predefinito, lo cambia, rilanciata non scrive, torna al predefinito, si annulla', async () => {
+    const read = await cli('impostazioni');
+    expect(read.json).toEqual({
+      status: 'ok',
+      settings: { imuTolerance: { basisPoints: 100, isDefault: true } },
+    });
+    const set = await cli('impostazioni', '--tolleranza-imu', '1,5');
+    expect(set.json).toMatchObject({
+      status: 'saved',
+      settings: { imuTolerance: { basisPoints: 150, isDefault: false } },
+    });
+    expect((await cli('impostazioni', '--tolleranza-imu', '1,50')).json.status).toBe('unchanged');
+    expect((await cli('impostazioni', '--tolleranza-imu', 'tanto')).code).toBe(2);
+    const back = await cli('impostazioni', '--tolleranza-imu', 'predefinita');
+    expect(back.json.settings.imuTolerance).toEqual({ basisPoints: 100, isDefault: true });
+    for (const op of [back.json.operationId, set.json.operationId]) {
+      expect((await cli('annulla-riconciliazione', '--operazione', op)).code).toBe(0);
+    }
+    expect((await cli('impostazioni')).json.settings.imuTolerance.isDefault).toBe(true);
+  });
+});

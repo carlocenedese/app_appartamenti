@@ -19,9 +19,13 @@ import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
 import { compareText } from './text';
+import { loadSettings } from './settings-store';
 
-/** Decision 7 of user1: a control threshold, not a tax rate («Mie scelte» 6). */
-export const IMU_TOLERANCE_PERCENT = 1;
+/**
+ * Decision 7 of user1: a control threshold, not a tax rate («Mie scelte» 6). The default of the
+ * workspace setting `imuToleranceBp` (I9: «= configurazione»), in basis points: 100 is 1%.
+ */
+export const DEFAULT_IMU_TOLERANCE_BP = 100;
 
 export type ImuRateStatus = 'attesa' | 'importo-mancante' | 'pagata' | 'da-riconciliare';
 
@@ -46,9 +50,9 @@ export interface ImuRate {
   annual?: { expected: Cents; paid?: Cents };
 }
 
-/** Integers only; the expected is the base, 1.00% exactly included (question 11). */
-const withinTolerance = (paid: number, expected: number): boolean =>
-  100 * Math.abs(paid - expected) <= IMU_TOLERANCE_PERCENT * expected;
+/** Integers only; the expected is the base, the tolerance exactly included (question 11). */
+const withinTolerance = (paid: number, expected: number, toleranceBp: number): boolean =>
+  10000 * Math.abs(paid - expected) <= toleranceBp * expected;
 
 /** The key of a rate, as in `MovementClass.imu`. */
 export const imuRateKey = (r: { f24Group: string; year: string; rateIndex: number }): string =>
@@ -66,7 +70,10 @@ export function imuRates(input: {
   transactions: BankTransaction[];
   /** The other voci of a mixed F24 (plan 17, R307): what is left of the debit is the IMU. */
   taxPayments?: TaxPayment[];
+  /** The workspace setting (I9); `DEFAULT_IMU_TOLERANCE_BP` when absent. */
+  toleranceBp?: number;
 }): ImuRate[] {
+  const toleranceBp = input.toleranceBp ?? DEFAULT_IMU_TOLERANCE_BP;
   const transactions = new Map(
     input.transactions.filter((t) => t.deleted !== true).map((t) => [t.id, t]),
   );
@@ -128,7 +135,7 @@ export function imuRates(input: {
           ? 'attesa'
           : checkPaid === undefined || checkExpected === undefined
             ? 'importo-mancante'
-            : withinTolerance(checkPaid, checkExpected)
+            : withinTolerance(checkPaid, checkExpected, toleranceBp)
               ? 'pagata'
               : 'da-riconciliare';
       rates.push({
@@ -236,6 +243,7 @@ export async function loadImuRates(
     classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
+    toleranceBp: (await loadSettings(store)).imuToleranceBp.value,
   });
   return {
     status: 'computed',

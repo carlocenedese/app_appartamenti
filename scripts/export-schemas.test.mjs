@@ -57,6 +57,7 @@ describe('writeJsonSchemas', () => {
       'transfer',
       'user',
       'workspace',
+      'workspaceSettings',
     ].map((kind) => `${kind}.json`);
     expect(readdirSync(outDir).sort()).toEqual(expected);
     expect(written.sort()).toEqual(expected);

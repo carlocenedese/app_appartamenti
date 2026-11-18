@@ -942,6 +942,8 @@ describe.sequential('ciclo completo con la CLI vera', () => {
       await run('scadenze', ['--oggi', '2026-10-05'], { label: 'scadenze' });
       shared.imu = await run('imu', ['--anno', '2026', '--dettagli'], { label: 'imu dettagli' });
       await run('imu', ['--anno', '2026'], { label: 'imu' });
+      // I9: the IMU tolerance is a workspace setting, read here at its default (1%).
+      shared.settings = await run('impostazioni', []);
       shared.tasse = await run('tasse', ['--anno', '2026', '--oggi', '2026-10-05', '--dettagli'], {
         label: 'tasse dettagli',
       });
@@ -1129,6 +1131,8 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         if (existsSync(file)) shared.sheets[folder] = readSheets(file);
       }
       shared.matches = records('match');
+      // The diagnosis of the references (review of 18 Nov 2026): none dangling at the end.
+      shared.references = await run('riferimenti', []);
       notes.push({ files: shared.files, sheets: shared.sheets, calc: shared.calc });
     },
     TIMEOUT,
@@ -1440,6 +1444,13 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
       'tari-2026-1.pdf',
     ]);
     expect(inbox('Appartamento-B')).toEqual(['2025-12-28_Gas_Gas-Inventato_20251201-20260131.pdf']);
+  });
+
+  it('impostazioni al predefinito e nessun riferimento pendente a fine ciclo', () => {
+    expect(shared.settings.json.settings).toEqual({
+      imuTolerance: { basisPoints: 100, isDefault: true },
+    });
+    expect(shared.references.json).toMatchObject({ status: 'ok', problems: [] });
   });
 
   it('stato finale dopo gli annulli = stato iniziale (E11)', () => {
