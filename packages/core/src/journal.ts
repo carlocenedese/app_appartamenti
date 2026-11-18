@@ -748,18 +748,68 @@ async function readOrMark(store: Store, path: string): Promise<unknown> {
 }
 
 /**
- * The paths whose latest `rev` is left by two operations or more with different content: a fork.
- * Two machines (or two windows) changed the same record from the same `rev` at once, and both
- * operation files reached the journal. Which one is right is for the person to decide
- * (`resolveFork`); the clock does not decide it.
+ * The heads of the branches of one record: the latest operation, and the tip of every other line
+ * of changes that the latest one does not build on. More than one head is a fork: two machines
+ * (or two windows) changed the record from the same state, and the operation files of both
+ * reached the journal; which one is right is for the person to decide (`resolveFork`), never the
+ * clock. A branch can be deep: one machine saved twice (rev 2, rev 3) while the other saved once
+ * (rev 2), and the other's rev 2 is then below the latest rev.
+ *
+ * Not a branch: a change the latest one builds on through its chain of `before`s; an operation
+ * whose record write failed and that a retry through the same store went over (the retry starts
+ * from the same `before` and skips its rev); an operation that was undone, with its undo; what a
+ * `fork.resolve` on the chain settled (everything at or below the rev it chose from).
  */
+function branchHeads(touches: readonly Touch[], isEffective: (id: string) => boolean): Touch[] {
+  const head = touches.at(-1);
+  if (head === undefined) return [];
+  const reached = new Set<Touch>();
+  // When the chain reaches a `before` that no readable operation left (a damaged or missing
+  // operation file), what is below that rev may be an ancestor through the gap: not a branch.
+  let gap = 0;
+  let touch: Touch | undefined = head;
+  while (touch !== undefined && !reached.has(touch)) {
+    reached.add(touch);
+    const before: unknown = touch.before;
+    touch =
+      before === undefined ? undefined : touches.find(({ after }) => jsonEqual(after, before));
+    if (touch === undefined && hasRev(before)) gap = before.rev;
+  }
+  const chain = [...reached];
+  const settled = Math.max(
+    0,
+    ...chain
+      .filter(({ operation }) => operation.kind === 'fork.resolve')
+      .map(({ before }) => (hasRev(before) ? before.rev : 0)),
+  );
+  const offChain = touches.filter((touch) => {
+    if (reached.has(touch) || chain.some(({ after }) => jsonEqual(after, touch.after))) {
+      return false;
+    }
+    if (touch.after.rev <= settled || touch.after.rev < gap) return false;
+    const { operation } = touch;
+    if (!isEffective(operation.id)) return false; // undone: it and its undo cancel out
+    if (operation.undoes !== undefined && !isEffective(operation.undoes)) return false;
+    // Gone over by a retry: the retry has the same `before` and a rev above this one.
+    return !chain.some(
+      (retry) =>
+        jsonEqual(retry.before, touch.before) &&
+        retry.after.rev > touch.after.rev &&
+        retry.after.rev - (hasRev(retry.before) ? retry.before.rev : 0) > 1,
+    );
+  });
+  const tips = offChain.filter(
+    (touch) => !offChain.some((other) => other !== touch && jsonEqual(other.before, touch.after)),
+  );
+  return tips.length === 0 ? [head] : [head, ...tips];
+}
+
+/** The paths with more than one branch head (see `branchHeads`): forks. */
 function forkedPaths(operations: readonly Operation[]): Set<string> {
+  const { isEffective } = undoState(operations);
   const forked = new Set<string>();
   for (const [path, touches] of touchesByPath(operations)) {
-    const last = touches.at(-1);
-    if (last === undefined) continue;
-    const top = touches.filter(({ after }) => after.rev === last.after.rev);
-    if (top.some(({ after }) => !jsonEqual(after, last.after))) forked.add(path);
+    if (branchHeads(touches, isEffective).length > 1) forked.add(path);
   }
   return forked;
 }
@@ -898,13 +948,12 @@ function onChain(touches: readonly Touch[], record: unknown): boolean {
 export async function forkVersions(store: Store, path: string): Promise<Operation[]> {
   const normalised = path.normalize('NFC');
   const { operations } = await readJournal(store);
-  if (!forkedPaths(operations).has(normalised)) return [];
-  const touches = touchesByPath(operations).get(normalised) ?? [];
-  const top = touches.at(-1)?.after.rev;
-  return touches
-    .filter(({ after }) => after.rev === top)
-    .map(({ operation }) => operation)
-    .sort(compareByTime);
+  const heads = branchHeads(
+    touchesByPath(operations).get(normalised) ?? [],
+    undoState(operations).isEffective,
+  );
+  if (heads.length < 2) return [];
+  return heads.map(({ operation }) => operation).sort(compareByTime);
 }
 
 /**
@@ -929,14 +978,25 @@ export async function resolveFork(
   if (keep === undefined || !hasRev(after)) {
     throw new Error(`${path} is not forked, or ${keepOpId} is not one of its versions`);
   }
-  // The `before` is the version on disk when it is one of the forked ones (an undo then brings it
-  // back); otherwise (a file cut short, no file) the journal's latest. Either way it has the top
-  // rev, so the new one is above every version.
+  // The `before` is the version on disk when it is one of the heads (an undo then brings it
+  // back), otherwise (a file cut short, no file) the chosen one, at the highest rev of the heads:
+  // the new rev is above every version, and the resolution settles them all.
   const versions = (await forkVersions(store, normalised)).flatMap(({ changes }) =>
     changes.filter((change) => change.path === normalised).map((change) => change.after),
   );
+  const top = Math.max(...versions.map((version) => (hasRev(version) ? version.rev : 0)));
   const onDisk = await readTolerant(store, normalised);
-  const before = versions.find((version) => jsonEqual(version, onDisk)) ?? after;
+  if (hasRev(onDisk) && onDisk.rev > top) {
+    throw new Error(
+      `${path}: on disk there is a newer rev than the versions to choose from (another computer ` +
+        'saved it, its journal has not arrived): wait for the synchronisation and try again',
+    );
+  }
+  const before = {
+    ...((versions.find((version) => jsonEqual(version, onDisk)) as JsonRecord | undefined) ??
+      after),
+    rev: top,
+  };
   const operation = await commitOperation(
     store,
     {

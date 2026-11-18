@@ -11,7 +11,10 @@ import {
   commitChange,
   loadAll,
   recordPath,
+  forkVersions,
   repairDiverged,
+  resolveFork,
+  undoOperation,
 } from '../src/index';
 import { MemoryStore } from './helpers/memory-store';
 
@@ -187,5 +190,73 @@ describe('a forked record never drops out of a calculation (critical 2)', () => 
       await expect(failure).rejects.toBeInstanceOf(UnreadableRecordsError);
       await expect(failure).rejects.toMatchObject({ records: [{ path: P, reason: 'forked' }] });
     }
+  });
+});
+
+describe('a branch below the latest rev is a fork (third review, S2)', () => {
+  async function deepFork() {
+    const a = new MemoryStore();
+    await commitChange(a, op('pa', undefined, bill()), clock, id);
+    const c = new MemoryStore();
+    await copyJournal(a, c);
+    c.putRaw(P, a.getRaw(P) ?? '');
+    const r1 = await a.readJson(P);
+    await commitChange(a, op('pa', r1, bill({ supplier: 'G' })), clock, id);
+    const a3 = await commitChange(
+      a,
+      op('pa', await a.readJson(P), bill({ supplier: 'H' })),
+      clock,
+      id,
+    );
+    const c2 = await commitChange(c, op('pc', r1, bill({ amount: 777 })), clock, id); // «salvato»
+    await copyJournal(a, c);
+    await copyJournal(c, a);
+    return { a, c, a3, c2 };
+  }
+
+  it('is reported on both computers, «ripara» refuses, and the versions are the two heads', async () => {
+    const { a, c, a3, c2 } = await deepFork();
+    for (const store of [a, c]) {
+      expect(await checkConsistency(store)).toEqual([{ path: P, reason: 'forked' }]);
+      await expect(repairDiverged(store, P)).rejects.toThrow(/resolveFork/);
+      expect((await forkVersions(store, P)).map(({ id: opId }) => opId).sort()).toEqual(
+        [a3.id, c2.id].sort(),
+      );
+    }
+    // When A's record reaches C, the fork does not go away: 777 is not lost in silence.
+    c.putRaw(P, a.getRaw(P) ?? '');
+    expect(await checkConsistency(c)).toEqual([{ path: P, reason: 'forked' }]);
+  });
+
+  it('is settled by the choice, which keeps everything in the journal and can be undone', async () => {
+    const { c, c2 } = await deepFork();
+    const resolved = await resolveFork(c, P, c2.id, 'pc', clock, id);
+    expect(await c.readJson(P)).toMatchObject({ amount: 777, rev: 4 });
+    expect(await checkConsistency(c)).toEqual([]);
+    expect(await forkVersions(c, P)).toEqual([]);
+    await undoOperation(c, resolved.id, 'pc', clock, id);
+    expect(await c.readJson(P)).toMatchObject({ amount: 777, rev: 5 });
+    expect(await checkConsistency(c)).toEqual([]);
+  });
+
+  it('refuses the choice when the disk has a rev above the versions (point 3)', async () => {
+    const { c, c2 } = await deepFork();
+    c.putRaw(P, JSON.stringify(bill({ rev: 9, amount: 1 })));
+    await expect(resolveFork(c, P, c2.id, 'pc', clock, id)).rejects.toThrow(/wait for the/);
+  });
+
+  it('is not a fork: linear history, undo and redo, a retry through the same store', async () => {
+    const store = new MemoryStore();
+    await commitChange(store, op('pa', undefined, bill()), clock, id);
+    const two = await commitChange(
+      store,
+      op('pa', await store.readJson(P), bill({ amount: 2 })),
+      clock,
+      id,
+    );
+    const undo = await undoOperation(store, two.id, 'pa', clock, id);
+    await undoOperation(store, undo.id, 'pa', clock, id);
+    await commitChange(store, op('pa', await store.readJson(P), bill({ amount: 3 })), clock, id);
+    expect(await checkConsistency(store)).toEqual([]);
   });
 });
