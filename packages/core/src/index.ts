@@ -8,6 +8,7 @@ export {
   FileAccessError,
   MalformedJsonError,
   NewerDataError,
+  WORKSPACE_PATH,
   assertSafeRelPath,
   isFileAccessError,
 } from './store/store';
@@ -90,6 +91,9 @@ export {
   yearBeforeBill,
 } from './consumption';
 export * from './consumption-store';
+export * from './settings-store';
+export * from './closing';
+export * from './period-close';
 export type {
   Comparable,
   ConsumptionComparison,

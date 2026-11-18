@@ -25,9 +25,10 @@ import {
   saveBankProfile,
   undoImport,
   undoOperation,
+  planMatch,
 } from '../src/index';
 import type { StatementCell, StatementTable } from '../src/index';
-import { apartment } from './helpers/conguaglio-builders';
+import { apartment, bill } from './helpers/conguaglio-builders';
 import { MemoryStore } from './helpers/memory-store';
 
 const clock = () => '2026-11-14T09:00:00.000Z';
@@ -1206,5 +1207,53 @@ describe('after review: interruptions, hidden twins, masked accounts', () => {
     await imp(second.account.id, [['2026-10-10', 'BON. ROSSI', '-10.00']], 'c');
     expect((await statementsOf(store)).some((x) => x.held.length > 0)).toBe(true);
     expect((await undoImport(store, a, 'p1', clock, newId)).status).toBe('undone');
+  });
+});
+
+describe('C1 after an undone statement (review of 18 Nov 2026, point 7)', () => {
+  it('the movements of an undone statement are no candidates: the gap item is assumed again', async () => {
+    const { store, accountId, newId } = await seeded();
+    // Invented: a bill due 31/01, the statement from 01/02 with its debit on 03/02.
+    const late = bill('b-late', '2025-11-01', '2025-12-31', 21460, {
+      dueDate: isoDate('2026-01-31'),
+    });
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [{ path: recordPath('bill', late.id), after: late }],
+      },
+      clock,
+      ids('seed'),
+    );
+    const f = file(
+      [['2026-02-03', 'ADDEBITO Fornitore luce', '-214.60']],
+      declared('01/02/2026', '28/02/2026'),
+    );
+    const imported = await importStatement(
+      store,
+      { accountId, fileBytes: f.bytes, fileName: 'feb.csv', table: f.table },
+      'p1',
+      clock,
+      newId,
+    );
+    if (imported.status !== 'imported') throw new Error('import');
+    const plan = async () => {
+      const { run, written } = await planMatch(store);
+      if (run.status !== 'matched') throw new Error('refused');
+      return { assumed: run.assumed, written: written.map((m) => [m.itemId, m.transactionId]) };
+    };
+    const [tx] = await live(store);
+    expect(await plan()).toEqual({ assumed: [], written: [['b-late', tx?.id]] });
+    expect(await undoImport(store, imported.statement.id, 'p1', clock, newId)).toMatchObject({
+      status: 'undone',
+    });
+    expect(await plan()).toEqual({
+      assumed: [{ itemType: 'bill', itemId: 'b-late' }],
+      written: [],
+    });
+    expect(await live(store)).toEqual([]);
   });
 });

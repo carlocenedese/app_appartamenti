@@ -131,6 +131,7 @@ const POINTERS: { [K in RecordKind]?: (r: Of<K>) => Pointer[] } = {
   ],
   taxConfirmation: (r) => at('apartmentId', 'apartment', [r.apartmentId]),
   consumptionSettings: (r) => at('apartmentId', 'apartment', [r.apartmentId]),
+  periodClose: (r) => at('apartmentId', 'apartment', [r.apartmentId]),
 };
 
 /**

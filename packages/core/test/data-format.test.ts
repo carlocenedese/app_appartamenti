@@ -33,6 +33,8 @@ import { MemoryStore } from './helpers/memory-store';
  */
 const FINGERPRINTS: Record<number, string> = {
   1: 'b3a6c89ee02f30219d3ab56ea958c3f8b8ca0d7c3ea3dcbfa345baee3423fea4',
+  // Review of 18 Nov 2026 (missing functions): workspaceSettings and periodClose.
+  2: '90d55b9eef75a2090c533eb1c80b206e9ef00232d0cb0fb61e18d577cf6ab918',
 };
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));

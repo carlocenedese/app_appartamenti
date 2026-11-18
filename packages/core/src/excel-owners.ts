@@ -10,7 +10,8 @@ import { instalmentOwnerShare, previousToTenants } from './conguaglio';
 import type { ConguaglioInput } from './conguaglio';
 import { expectedDebit } from './match';
 import { apartmentFolder } from './accounts';
-import type { Apartment, Instalment, TenantRecovery } from './model';
+import type { Apartment, Instalment, PeriodClose, TenantRecovery } from './model';
+import { closingFlags, settlementStateText } from './excel';
 import { safeWord } from './proposal';
 import { cents } from './money';
 import type { Cents } from './money';
@@ -177,7 +178,7 @@ const dayMonthYear = (day: ISODate): string =>
 
 /** The owners' file (plan 5b): the sheet `OWNERS_SHEET`, then the row «Totale» (section 19). */
 export function buildOwnersWorkbook(
-  input: ConguaglioInput & { freeDebits?: FreeDebit[] },
+  input: ConguaglioInput & { freeDebits?: FreeDebit[]; closing?: PeriodClose },
 ): XlsxWorkbook {
   const items = ownersItems(input);
   const rows: (XlsxCell | null)[][] = items.map((item) => [
@@ -242,12 +243,15 @@ export function buildOwnersWorkbook(
     }
   }
   const header = OWNERS_HEADERS.map((value): XlsxCell => ({ kind: 'text', value }));
-  // 5b D5, R184: as the tenants' file (R171), every period is open; N = instalments not paid.
+  // 5b D5, R184: as the tenants' file (R171); N = instalments not paid.
   const waiting = items.filter((i) =>
     ['in-attesa', 'importo-diverso', 'duplicato'].includes(i.status),
   );
   const provisional: XlsxCell[] = [
-    { kind: 'text', value: `Conguaglio provvisorio: voci in attesa ${String(waiting.length)}` },
+    {
+      kind: 'text',
+      value: settlementStateText(input.closing, waiting.length, closingFlags(input)),
+    },
   ];
   return { sheets: [{ name: OWNERS_SHEET, rows: [provisional, header, ...rows] }] };
 }

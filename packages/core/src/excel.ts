@@ -7,6 +7,7 @@ import {
   CATEGORY_ORDER,
   allocateBillToMonths,
   allocateInstalment,
+  SettlementInputError,
   calcConguaglio,
   isPresent,
   previousToTenants,
@@ -17,7 +18,17 @@ import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguagl
 import { apartmentFolder } from './accounts';
 import type { FreeDebit } from './condominio';
 import { safeWord } from './proposal';
-import type { Apartment, Bill, BillMatch, Instalment, Payment, Tenancy, Tenant } from './model';
+import { closingOf } from './closing';
+import type {
+  Apartment,
+  Bill,
+  BillMatch,
+  Instalment,
+  Payment,
+  PeriodClose,
+  Tenancy,
+  Tenant,
+} from './model';
 import { cents, formatEuro, splitCents } from './money';
 import type { Cents } from './money';
 import { annualitaRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
@@ -208,6 +219,58 @@ export interface ExcelInput extends ConguaglioInput {
   tenants: Tenant[];
   /** The free outgoing movements, for the «duplicato» of the owners' file (R198). */
   freeDebits?: FreeDebit[];
+  /** The live closing of the period (R5), when it is closed. */
+  closing?: PeriodClose;
+}
+
+/**
+ * The first row of the sheets (R171, answer 5 of user1): «Conguaglio provvisorio: voci in attesa
+ * N» when the period is not closed or has items waiting; otherwise «Conguaglio chiuso il
+ * GG/MM/AAAA», saying when the costs changed since the snapshot (a supplementary settlement, R5).
+ */
+export function settlementStateText(
+  closing: { closedAt: string } | undefined,
+  waiting: number,
+  flags: { changed: boolean; dataChanged: boolean } = { changed: false, dataChanged: false },
+): string {
+  if (closing === undefined || waiting > 0) {
+    return `Conguaglio provvisorio: voci in attesa ${String(waiting)}`;
+  }
+  const [y, m, d] = closing.closedAt.slice(0, 10).split('-');
+  const notes = [
+    ...(flags.changed ? ["dopo la chiusura c'è un conguaglio supplementare"] : []),
+    ...(flags.dataChanged ? ['dati cambiati dopo la chiusura, da controllare'] : []),
+  ];
+  return `Conguaglio chiuso il ${d ?? ''}/${m ?? ''}/${y ?? ''}${notes.length > 0 ? `: ${notes.join('; ')}` : ''}`;
+}
+
+/**
+ * What changed since the closing of the period (R5), for the first row of the files: the costs
+ * (`changed`, a supplementary settlement) and the other data of the snapshot (`dataChanged`).
+ * When the settlement cannot be computed both are true: the file says to check.
+ */
+export function closingFlags(
+  input: ConguaglioInput & { closing?: PeriodClose },
+  result?: ConguaglioResult,
+): { changed: boolean; dataChanged: boolean } {
+  const { closing } = input;
+  if (closing === undefined) return { changed: false, dataChanged: false };
+  let current = result;
+  if (current === undefined) {
+    try {
+      current = calcConguaglio(input);
+    } catch (error) {
+      if (!(error instanceof SettlementInputError)) throw error;
+      return { changed: true, dataChanged: true };
+    }
+  }
+  const { changed, dataChanged } = closingOf(
+    closing,
+    current,
+    input,
+    isoDate(closing.closedAt.slice(0, 10)),
+  );
+  return { changed, dataChanged };
 }
 
 type Span = { from: YearMonth; to: YearMonth };
@@ -580,11 +643,12 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
 
   const header = (name: ExcelSheetName, extra: string[] = []): XlsxCell[] =>
     [...EXCEL_HEADERS[name], ...extra].map((value) => ({ kind: 'text', value }));
-  // Question 5: with no closing (R5) in the model yet, no period is closed (R171).
+  // Question 5, R171: provisional unless closed (R5) with nothing waiting.
+  const closing = input.closing;
   const provisional: XlsxCell[] = [
     {
       kind: 'text',
-      value: `Conguaglio provvisorio: voci in attesa ${String(result.pending.length)}`,
+      value: settlementStateText(closing, result.pending.length, closingFlags(input, result)),
     },
   ];
   const sheet = (

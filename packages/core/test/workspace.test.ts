@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   CORE_VERSION,
+  DATA_FORMAT,
   WorkspaceSchema,
   createWorkspace,
   findWorkspace,
@@ -47,7 +48,7 @@ describe('createWorkspace', () => {
     expect(r.workspace).toEqual({
       workspaceId: 'ws-1',
       name: 'Casa',
-      schemaVersion: 1,
+      schemaVersion: DATA_FORMAT,
       minAppVersion: CORE_VERSION,
       createdAt: '2026-11-13T09:00:00.000Z',
     });

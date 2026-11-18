@@ -1403,6 +1403,73 @@ export const ConsumptionSettingsSchema = RecordBaseSchema.extend({
   });
 export type ConsumptionSettings = z.infer<typeof ConsumptionSettingsSchema>;
 
+// --- Workspace settings (review of 18 Nov 2026, I9) --------------------------------------------
+
+/** The id of the one settings record of the workspace. */
+export const WORKSPACE_SETTINGS_ID = 'impostazioni';
+
+/**
+ * The control thresholds of the workspace typed by user1 (review of 18 Nov 2026, I9): a field
+ * absent means the default of the code (`DEFAULT_IMU_TOLERANCE_BP`). One record,
+ * `impostazioni`.
+ */
+export const WorkspaceSettingsSchema = RecordBaseSchema.extend({
+  /**
+   * IMU: how far an F24 may be from the expected rate and still be paid, in basis points of the
+   * expected (100 is 1%, decision of user1 of 14 Nov 2026: «= configurazione»).
+   */
+  imuToleranceBp: z.int().min(0).max(10000).optional(),
+})
+  .refine((s) => s.id === WORKSPACE_SETTINGS_ID, {
+    message: 'The id must be impostazioni',
+    path: ['id'],
+  })
+  .meta({ description: 'id is impostazioni; imuToleranceBp in basis points (100 = 1%).' });
+export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
+
+// --- Closing of a settlement period (review of 18 Nov 2026, I2, R5) ----------------------------
+
+/**
+ * The closing of one settlement period of an apartment (R5), `chiusura-<apartmentId>-<periodLabel>`,
+ * with the snapshot of the costs of each tenant and of the empty beds that the supplementary
+ * settlement compares with (`calcConguaglioSupplementare`). Written only when every rent and flat
+ * charge is collected and no item is waiting; undone with the reconciliation undo.
+ */
+export const PeriodCloseSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  periodLabel: NonEmptyString,
+  from: YearMonthSchema,
+  to: YearMonthSchema,
+  closedAt: TimestampSchema,
+  /** `CORE_VERSION` of the calculation of the snapshot. */
+  engineVersion: NonEmptyString,
+  snapshot: z.object({
+    /** Bills and TARI, condominium rata and commission of each tenant (`spese`, `rata`, ...). */
+    tenants: z.array(
+      z.object({
+        tenantId: NonEmptyString,
+        spese: CentsSchema,
+        rata: CentsSchema,
+        commissione: CentsSchema,
+        /** What the tenant owes for an intervention (R197), 0 if none: part of the costs. */
+        recupero: CentsSchema,
+        /** Not a cost: when it changes after the closing, the data changed (a warning). */
+        forfaitIncassato: CentsSchema,
+        /** Last year's condominium settlement (R3): not a cost of R5, a warning when it changes. */
+        conguaglioPrec: CentsSchema,
+      }),
+    ),
+    /** The shares of the empty beds, last year's condominium settlement excluded. */
+    emptyBeds: CentsSchema,
+  }),
+})
+  .refine((c) => c.id === `chiusura-${c.apartmentId}-${c.periodLabel}`, {
+    message: 'The id must be chiusura-<apartmentId>-<periodLabel>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is chiusura-<apartmentId>-<periodLabel>; amounts in cents.' });
+export type PeriodClose = z.infer<typeof PeriodCloseSchema>;
+
 // --- Legal interest rates (plan 17) -------------------------------------------------------------
 
 /**
@@ -1567,6 +1634,8 @@ export const recordSchemas = {
   taxConfirmation: TaxConfirmationSchema,
   consumptionSettings: ConsumptionSettingsSchema,
   tenantCard: TenantCardSchema,
+  workspaceSettings: WorkspaceSettingsSchema,
+  periodClose: PeriodCloseSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

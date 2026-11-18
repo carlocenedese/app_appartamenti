@@ -530,22 +530,13 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         });
       }
 
-      // The supplies of the shared TARI: no command of the CLI writes them (finding), so the
-      // core function the desktop app uses, `linkSupply`.
-      const store = new FsStore(dir);
+      // The supplies of the shared TARI (E5: the `utenza` command).
       for (const [label, apt] of [
         ['UTENZA-A', 'apt-a'],
         ['UTENZA-B', 'apt-b'],
       ]) {
-        await linkSupply(
-          store,
-          { label, rows: [{ apartmentId: apt, basisPoints: 10000 }], note: '' },
-          'cli',
-          () => clock,
-          newId,
-        );
+        await run('utenza', ['--etichetta', label, '--appartamento', apt]);
       }
-      notes.push('supply: linkSupply del core, nessun comando CLI');
       // The TARI notice of January–April 2026 shared by A and B (spec R3 example: 186,00 split
       // as 101,04 / 84,96 by the supplies 100,75 / 84,71).
       const tari = await pdfWithReading('Appartamento-A', 'tari-2026-1.pdf', {
@@ -591,37 +582,31 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         undoHow.set(t.json.operationId, { how: 'bolletta', file: shared.tariFile });
       }
 
-      // The condominium instalment: no command writes one (finding); seeded with its own operation
-      // as the R3 example: rata 150,00 with 18,00 a year of owner share (6,00 a rata of 3), plus a
-      // previous settlement of 48,00: debit 198,00.
-      const instalment = recordSchemas.instalment.parse({
-        id: 'inst-condo-a-1',
-        v: 1,
-        rev: 1,
-        apartmentId: 'apt-a',
-        kind: 'condominio',
-        esercizio: '2025-26',
-        rateIndex: 1,
-        rateCount: 3,
-        dueDate: '2025-10-10',
-        rata: 15000,
-        quotaProprieta: 1800,
-        conguaglioPrec: 4800,
+      // The condominium instalment (I3, E4: the `rata-condominio` command), as the R3 example:
+      // rata 150,00 with 18,00 a year of owner share (6,00 a rata of 3), plus a previous
+      // settlement of 48,00: debit 198,00.
+      await run('rata-condominio', [
+        '--id',
+        'inst-condo-a-1',
+        '--appartamento',
+        'apt-a',
+        '--esercizio',
+        '2025-26',
+        '--rata',
+        '1/3',
+        '--scadenza',
+        '2025-10-10',
+        '--importo',
+        '150,00',
+        '--quota-proprieta',
+        '18,00',
+        '--conguaglio-prec',
+        '48,00',
+      ]);
+      expect(records('instalment').find((i) => i.id === 'inst-condo-a-1')).toMatchObject({
         coversFrom: '2025-10',
         coversTo: '2026-01',
       });
-      await commitChange(
-        store,
-        {
-          profileId: 'cli',
-          kind: 'test.seed',
-          summary: 'Rata del condominio inventata',
-          changes: [{ path: recordPath('instalment', instalment.id), after: instalment }],
-        },
-        () => clock,
-        newId,
-      );
-      notes.push('instalment condominio: commitChange di prova, nessun comando CLI');
       await run('condominio-documento', [
         '--appartamento',
         'apt-a',
@@ -957,6 +942,8 @@ describe.sequential('ciclo completo con la CLI vera', () => {
       await run('scadenze', ['--oggi', '2026-10-05'], { label: 'scadenze' });
       shared.imu = await run('imu', ['--anno', '2026', '--dettagli'], { label: 'imu dettagli' });
       await run('imu', ['--anno', '2026'], { label: 'imu' });
+      // I9: the IMU tolerance is a workspace setting, read here at its default (1%).
+      shared.settings = await run('impostazioni', []);
       shared.tasse = await run('tasse', ['--anno', '2026', '--oggi', '2026-10-05', '--dettagli'], {
         label: 'tasse dettagli',
       });
@@ -1055,6 +1042,20 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         ],
         { label: 'cruscotto periodo dettagli' },
       );
+      // I2, R5: the period of A does not close while items wait for their debit; nothing is
+      // closed, so no supplementary settlement.
+      shared.close = await step(
+        'estratti',
+        'chiudi-periodo',
+        ['--appartamento', 'apt-a', '--periodo', '2025-26'],
+        { label: 'chiudi-periodo' },
+      );
+      shared.supplementary = await run('conguaglio-supplementare', [
+        '--appartamento',
+        'apt-a',
+        '--periodo',
+        '2025-26',
+      ]);
       const template = join(root, 'modello-promessa.docx');
       await ok('moduli', 'moduli', ['--vuoto', '--tipo', 'promessa', '--uscita', template], {
         label: 'moduli vuoto',
@@ -1144,6 +1145,8 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         if (existsSync(file)) shared.sheets[folder] = readSheets(file);
       }
       shared.matches = records('match');
+      // The diagnosis of the references (review of 18 Nov 2026): none dangling at the end.
+      shared.references = await run('riferimenti', []);
       notes.push({ files: shared.files, sheets: shared.sheets, calc: shared.calc });
     },
     TIMEOUT,
@@ -1244,6 +1247,20 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(shared.tariMatches).toEqual([
       ['apt-a', 10104, true],
       ['apt-b', 8496, true],
+    ]);
+  });
+
+  it('chiudi-periodo: rifiutato con le voci in attesa del conguaglio; nessun supplementare (R5)', () => {
+    expect(shared.close.code).toBe(1);
+    expect(shared.close.json.reason).toBe('cannot-close');
+    expect(shared.close.json.missing.filter((m) => m.kind === 'item').map((m) => m.itemId)).toEqual(
+      shared.calc['apt-a'].pending.map((p) => p.itemId),
+    );
+    expect(shared.close.rerun.wrote).toBe(false);
+    expect(shared.supplementary.json).toEqual({ status: 'open' });
+    expect(shared.cruscottoPeriodo.json.settlements.map((r) => r.state)).toEqual([
+      'provvisorio',
+      'provvisorio',
     ]);
   });
 
@@ -1441,35 +1458,11 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(text).toContain('XXXINVENTATO');
   });
 
-  it('dopo gli annulli restano solo i record che nessun comando annulla (E11, E4, E5)', () => {
-    // After the U1 fix of the undo review, the creation of an apartment is not undone while its
-    // accounts and supplies (never undone, E11) are alive: both outcomes are accepted here.
-    const failed = shared.undo
-      .filter((u) => u.code !== 0 && u.kind !== 'apartment.save')
-      .map((u) => u.kind);
-    expect([...new Set(failed)].sort()).toEqual([
-      'account.save',
-      'bank-profile.save',
-      'statement.resolve',
-      'supply.link',
-      'tenant.save',
-      'test.seed',
-    ]);
+  it('dopo gli annulli ogni operazione è annullata, apartment.save compreso (E11, E4, E5)', () => {
+    const failed = shared.undo.filter((u) => u.code !== 0).map((u) => u.kind);
+    // statement.resolve (decidi) goes with its statement (`annulla --estratto`).
+    expect([...new Set(failed)].sort()).toEqual(['statement.resolve']);
     expect(shared.initial).toEqual([]);
-    expect(
-      shared.afterUndo.map((r) => r.split('/')[0]).filter((kind) => kind !== 'apartment'),
-    ).toEqual([
-      'account',
-      'account',
-      'bankProfile',
-      'instalment',
-      'supply',
-      'supply',
-      'tenant',
-      'tenant',
-      'tenant',
-      'tenant',
-    ]);
     // The PDFs are back in Da_smistare, under the name the registration gave them (E13).
     const inbox = (folder) => readdirSync(join(dir, folder, 'Da_smistare')).sort();
     expect(inbox('Appartamento-A')).toEqual([
@@ -1481,7 +1474,14 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(inbox('Appartamento-B')).toEqual(['2025-12-28_Gas_Gas-Inventato_20251201-20260131.pdf']);
   });
 
-  it.fails('stato finale dopo gli annulli = stato iniziale (E11)', () => {
+  it('impostazioni al predefinito e nessun riferimento pendente a fine ciclo', () => {
+    expect(shared.settings.json.settings).toEqual({
+      imuTolerance: { basisPoints: 100, isDefault: true },
+    });
+    expect(shared.references.json).toMatchObject({ status: 'ok', problems: [] });
+  });
+
+  it('stato finale dopo gli annulli = stato iniziale (E11)', () => {
     expect(shared.afterUndo).toEqual(shared.initial);
   });
 });

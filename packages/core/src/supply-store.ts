@@ -3,8 +3,8 @@
  * Each write is one operation of the journal, so `undoOperation` takes it back. The draft is
  * checked with `draftProblem` and the final record with `SupplySchema` before anything is written.
  */
-import { commitChange } from './journal';
-import { NoteSchema, SupplySchema } from './model';
+import { commitChange, readJournal, writesBlocked } from './journal';
+import { ApartmentSchema, NoteSchema, SupplySchema } from './model';
 import type { Note, Supply } from './model';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
@@ -77,6 +77,55 @@ export async function linkSupply(
     newId,
   );
   return parseOrThrow(SupplySchema, operation.changes[0]?.after, 'supply');
+}
+
+export type SaveSupplyResult =
+  | { status: 'saved'; operationId: string; supplyId: string }
+  | { status: 'unchanged'; supplyId: string }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-apartment' | 'invalid-supply' }
+  /** A live supply has the label with other apartments or weights (its id). */
+  | { status: 'refused'; reason: 'label-in-use'; supplyId: string };
+
+/**
+ * `linkSupply` for the command line (review of 18 Nov 2026, E5): nothing written while
+ * `checkConsistency` reports a problem; every apartment must be live; a draft `draftProblem`
+ * refuses (or an empty label) is `invalid-supply`. A live supply with the same label (folded) and
+ * the same apartments and weights is `unchanged`, with others `label-in-use`.
+ */
+export async function saveSupply(
+  store: Store,
+  draft: SupplyDraft,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<SaveSupplyResult> {
+  if (await writesBlocked(store)) {
+    return { status: 'refused', reason: 'inconsistent-store' };
+  }
+  if (draft.label.trim() === '' || draftProblem(draft) !== undefined) {
+    return { status: 'refused', reason: 'invalid-supply' };
+  }
+  const apartments = new Set(
+    (await loadAll(store, 'apartment', ApartmentSchema)).records.map((a) => a.id),
+  );
+  if (draft.rows.some((r) => !apartments.has(r.apartmentId))) {
+    return { status: 'refused', reason: 'unknown-apartment' };
+  }
+  const key = foldText(draft.label);
+  const same = (await liveSupplies(store)).find((s) => foldText(s.label) === key);
+  if (same !== undefined) {
+    const { apartments: rows } = checkedDraft(draft);
+    return JSON.stringify(same.apartments) === JSON.stringify(rows)
+      ? { status: 'unchanged', supplyId: same.id }
+      : { status: 'refused', reason: 'label-in-use', supplyId: same.id };
+  }
+  const supply = await linkSupply(store, draft, profileId, clock, newId);
+  // The operation that wrote this supply (the last one by order may be another with the same time).
+  const path = recordPath('supply', supply.id);
+  const operation = (await readJournal(store)).operations.find(
+    (o) => o.kind === 'supply.link' && o.changes.some((c) => c.path === path),
+  );
+  return { status: 'saved', operationId: operation?.id ?? '', supplyId: supply.id };
 }
 
 /** Replaces label and apartments with the draft's, one `supply.update`; `StaleWriteError` if changed. */
