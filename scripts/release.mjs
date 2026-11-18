@@ -10,6 +10,14 @@
 //     itself, and user2 would need a manual reinstall. Prints every problem. (The signing key is
 //     a secret of the `release` environment, invisible here: the sign job checks it.)
 //
+//   node scripts/release.mjs environment <owner/name>
+//     Before the signing key is used or sent: the environment `release` exists, has at least one
+//     required reviewer and admits only v* tags (read with `gh api`, GET only). GitHub would create
+//     a missing environment by itself, without reviewers, the first time a job names it, so the
+//     job guard of build.yml runs this outside that environment, and setup-updater.mjs before
+//     sending the key. Anyone who can change the workflow can also drop this check: it catches a
+//     missing or half-made setting, it does not replace the settings themselves.
+//
 //   node scripts/release.mjs manifest <folder> <tag> <base url>
 //     After signing, in the folder of the files to publish: checks that the Windows installer
 //     and the macOS update archive are there with a .sig that the public key of tauri.conf.json
@@ -18,6 +26,7 @@
 //
 // Only Node built-ins: no npm dependencies.
 
+import { spawnSync } from 'node:child_process';
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import {
   existsSync,
@@ -119,6 +128,60 @@ export function preflightProblems(root, tag) {
   if (missing.length > 0) {
     problems.push(
       `Mancano i permessi ${missing.join(', ')} in capabilities/default.json: l'app non potrebbe controllare o installare gli aggiornamenti.`,
+    );
+  }
+  return problems;
+}
+
+/** `gh api <path>` parsed, or null when gh fails (missing, not readable, not logged in). */
+export function ghApiGet(path) {
+  const result = spawnSync('gh', ['api', '--method', 'GET', path], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  if (result.status !== 0) return null;
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every reason why the environment `release` of `repository` does not protect the signing key;
+ * empty when it has a required reviewer and admits only v* tags. `api(path)` is a GET of the
+ * GitHub API, null on any failure: a failure is a refusal (fail closed).
+ */
+export function releaseEnvironmentProblems(repository, api = ghApiGet) {
+  const path = `repos/${repository}/environments/release`;
+  const environment = api(path);
+  if (environment === null || typeof environment !== 'object') {
+    return [
+      `L'environment «release» non esiste o non si può leggere su ${repository}: va creato con un revisore e solo le etichette v* (docs/distribuzione.md, punto 1) prima di caricare la chiave o firmare.`,
+    ];
+  }
+  const problems = [];
+  const reviewers = (environment.protection_rules ?? []).some(
+    (rule) =>
+      rule?.type === 'required_reviewers' &&
+      Array.isArray(rule.reviewers) &&
+      rule.reviewers.length > 0,
+  );
+  if (!reviewers) {
+    problems.push(
+      "L'environment «release» non ha un revisore obbligatorio: chiunque spinga un'etichetta firmerebbe senza approvazione (docs/distribuzione.md, punto 1).",
+    );
+  }
+  const custom = environment.deployment_branch_policy?.custom_branch_policies === true;
+  const list = custom ? api(`${path}/deployment-branch-policies`) : null;
+  const policies = Array.isArray(list?.branch_policies) ? list.branch_policies : [];
+  const onlyTags =
+    policies.length > 0 &&
+    list.total_count === policies.length &&
+    policies.every((policy) => policy?.type === 'tag' && policy.name === 'v*');
+  if (!onlyTags) {
+    problems.push(
+      "L'environment «release» non ammette solo le etichette v*: va impostato «Selected branches and tags» con la sola regola di etichetta v* (docs/distribuzione.md, punto 1).",
     );
   }
   return problems;
@@ -227,12 +290,17 @@ if (isEntryPoint) {
       for (const problem of problems) console.error(problem);
       if (problems.length > 0) process.exitCode = 1;
       else console.log(`Pronta per la pubblicazione: ${args[0]}.`);
+    } else if (command === 'environment' && args.length === 1) {
+      const problems = releaseEnvironmentProblems(args[0]);
+      for (const problem of problems) console.error(problem);
+      if (problems.length > 0) process.exitCode = 1;
+      else console.log("L'environment «release» è protetto.");
     } else if (command === 'manifest' && args.length === 3) {
       const conf = readJson(join(root, TAURI_DIR, 'tauri.conf.json'));
       buildRelease(args[0], args[1], args[2], conf.plugins?.updater?.pubkey ?? '');
     } else {
       console.error(
-        'Uso: release.mjs preflight <etichetta> | manifest <cartella> <etichetta> <indirizzo>',
+        'Uso: release.mjs preflight <etichetta> | environment <proprietario/nome> | manifest <cartella> <etichetta> <indirizzo>',
       );
       process.exitCode = 2;
     }

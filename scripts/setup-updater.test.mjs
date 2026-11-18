@@ -32,11 +32,25 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function fakeGh(fail = false) {
+const ENV = 'repos/proprietario/repository/environments/release';
+// `gh api` of an environment with a reviewer that admits only v* tags.
+const PROTECTED = {
+  [ENV]: {
+    protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'User' }] }],
+    deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+  },
+  [`${ENV}/deployment-branch-policies`]: {
+    total_count: 1,
+    branch_policies: [{ name: 'v*', type: 'tag' }],
+  },
+};
+
+function fakeGh(fail = false, answers = PROTECTED) {
   const calls = [];
   const logs = [];
   const options = {
     origin: ORIGIN,
+    api: (path) => answers[path] ?? null,
     log: (line) => logs.push(line),
     run: (command, args, input) => {
       calls.push({ command, args, input });
@@ -129,6 +143,16 @@ describe('setupUpdater', () => {
     const other = { ...gh.options, origin: 'https://example.com/a/b.git' };
     expect(() => setupUpdater(root, keys, other)).toThrow(/GitHub/);
     expect(gh.calls).toEqual([]);
+  });
+
+  it('refuses, before reading the key or calling gh, a release environment that is missing or unprotected', () => {
+    const before = readFileSync(conf, 'utf8');
+    const missing = fakeGh(false, {});
+    expect(() => setupUpdater(root, keys, missing.options)).toThrow(/non esiste/);
+    const open = fakeGh(false, { [ENV]: { protection_rules: [] } });
+    expect(() => setupUpdater(root, keys, open.options)).toThrow(/revisore[\s\S]*etichette v\*/);
+    expect([...missing.calls, ...open.calls]).toEqual([]);
+    expect(readFileSync(conf, 'utf8')).toBe(before);
   });
 
   it('refuses a public key that is not a Tauri key, and never prints the private key', () => {

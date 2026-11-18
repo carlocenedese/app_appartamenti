@@ -47,18 +47,21 @@ EOF
 Lo script c'è dopo l'unione del piano 16 in `main` (`git pull`):
 
 ```sh
-node scripts/setup-updater.mjs "$HOME/Library/Mobile Documents/com~apple~CloudDocs/Personale/App_appartamenti/chiave-firma-aggiornamenti"
+node scripts/setup-updater.mjs "<cartella della chiave>"
 ```
 
 Il comando:
 
+- prima di leggere la chiave, controlla con `gh api` (solo lettura) che l'environment `release` esista, abbia almeno un revisore obbligatorio e ammetta solo le etichette `v*`; altrimenti si ferma e dice che cosa manca (prima il punto 1);
 - trova nella cartella la coppia di chiavi già creata l'11 novembre 2026 (un file `….key` e il suo `….key.pub`; non ne crea di nuove);
-- mostra il repository (letto da `git remote get-url origin`) e manda la chiave privata a GitHub come secret `TAURI_SIGNING_PRIVATE_KEY` dell'environment `release` (non la mostra e non la scrive altrove; se l'environment non c'è, `gh` si ferma: prima il punto 1);
+- mostra il repository (letto da `git remote get-url origin`) e manda la chiave privata a GitHub come secret `TAURI_SIGNING_PRIVATE_KEY` dell'environment `release` (non la mostra e non la scrive altrove);
 - scrive la chiave pubblica in `apps/desktop/src-tauri/tauri.conf.json`.
 
 Se dice «Fatto», resta solo da committare `tauri.conf.json` di quella stessa copia (la chiave pubblica non è un segreto): basta dire a un agente «chiave pubblica scritta, committala».
 
 Se la cartella contiene altri file `.key`, il comando si ferma: deve esserci una sola coppia.
+
+Lo stesso controllo dell'environment lo fa, a ogni etichetta `v*`, il job `guard` di `build.yml`, prima che il job `sign` entri in `release`: se l'environment manca o non è protetto, la build si ferma senza firmare. Se il job `guard` fallisce solo perché il `GITHUB_TOKEN` non può leggere l'environment (risposta 403, da verificare alla prima etichetta, soprattutto con il repository privato), la build resta ferma: non si toglie il controllo, si chiede a un agente di passargli un token in sola lettura.
 
 ### 3. Il plugin di aggiornamento nell'app (piano 16b, lo fanno gli agenti)
 
