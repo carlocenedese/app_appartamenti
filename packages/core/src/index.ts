@@ -6,7 +6,13 @@ export * from './version';
 export { MalformedJsonError, assertSafeRelPath } from './store/store';
 export type { Problem, Store } from './store/store';
 export { StaleWriteError, recordPath, writeRecord } from './store/records';
-export { DROPBOX_CONFLICT_RULE, findWorkspace, loadAll } from './store/load';
+export {
+  DEFAULT_CONFLICT_RULES,
+  DROPBOX_CONFLICT_RULE,
+  ICLOUD_CONFLICT_RULE,
+  findWorkspace,
+  loadAll,
+} from './store/load';
 export type { ConflictNameRule } from './store/load';
 export * from './journal';
 export * from './notes';

@@ -12,7 +12,13 @@
  */
 import { z } from 'zod';
 import { TimestampSchema } from './model';
-import { DROPBOX_CONFLICT_RULE, compareText, isSafePath, loadDir } from './store/load';
+import {
+  DEFAULT_CONFLICT_RULES,
+  compareText,
+  conflictProblem,
+  isSafePath,
+  loadDir,
+} from './store/load';
 import type { ConflictNameRule } from './store/load';
 import { StaleWriteError, currentRev, writeRecord } from './store/records';
 import { MalformedJsonError, assertSafeRelPath, assertSafeSegment } from './store/store';
@@ -215,7 +221,7 @@ export async function commitChange(
  */
 export async function readJournal(
   store: Store,
-  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
+  conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
 ): Promise<{ operations: Operation[]; problems: Problem[] }> {
   const naming = { stemOf: journalStem, strict: false };
   const { records, problems } = await loadDir(
@@ -510,7 +516,7 @@ export async function undoOperation(
     );
   }
 
-  // A fork blocks an undo as it blocks every store
+  // A fork, a conflict copy or a file that cannot be read blocks an undo as it blocks every store
   // (R113); a diverged record blocks it only when the undo would write it (below).
   const blocking = (await checkConsistency(store)).filter(({ reason }) => reason !== 'diverged');
   if (blocking.length > 0) {
@@ -595,6 +601,31 @@ function forkedPaths(operations: readonly Operation[]): Set<string> {
 }
 
 /**
+ * The conflict copies (see `ConflictNameRule`) next to the records the journal knows and next to
+ * `workspace.json`. A record has a conflict copy only if it exists, and it exists only through
+ * an operation, so the folders of the paths in the journal are the ones to look in.
+ */
+async function conflictCopies(
+  store: Store,
+  paths: Iterable<string>,
+  conflictRules: readonly ConflictNameRule[],
+): Promise<Problem[]> {
+  const dirs = new Set(['_app']);
+  for (const path of paths) dirs.add(path.slice(0, path.lastIndexOf('/')));
+  const problems: Problem[] = [];
+  for (const dir of [...dirs].sort(compareText)) {
+    for (const name of await store.list(dir)) {
+      if (!name.endsWith('.json') || !conflictRules.some((rule) => rule.isConflictName(name))) {
+        continue;
+      }
+      if (dir === '_app' && !name.includes('workspace')) continue;
+      problems.push(conflictProblem(dir, name));
+    }
+  }
+  return problems;
+}
+
+/**
  * Compares every record in the journal with its latest operation and reports each one that is not
  * as that operation's `after` says as `diverged`, by path. The latest operation on a record is
  * the one that leaves the highest `rev`, not the one with the latest time: the clocks of two
@@ -604,17 +635,21 @@ function forkedPaths(operations: readonly Operation[]): Set<string> {
  *
  * A record whose highest `rev` is left by two operations with different content is `forked`
  * instead (see `forkedPaths`), whatever is on disk: `repairDiverged` refuses it and the person
- * chooses with `resolveFork`. The files of the journal that cannot be read are in `readJournal`'s
- * `problems`, not here.
+ * chooses with `resolveFork`. Every conflict copy of a record, of an operation file or of
+ * `workspace.json` is reported too (`conflicted-copy`): until the person has compared it and set
+ * it aside, nothing is written, since the copy may hold a change that is confirmed nowhere else.
+ * The other files of the journal that cannot be read are in `readJournal`'s `problems`, not here.
  */
 export async function checkConsistency(
   store: Store,
-  conflictRules?: readonly ConflictNameRule[],
+  conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
 ): Promise<Problem[]> {
-  const { operations } = await readJournal(store, conflictRules);
+  const { operations, problems: journalProblems } = await readJournal(store, conflictRules);
   const latest = latestAfter(operations);
   const forked = forkedPaths(operations);
-  const problems: Problem[] = [];
+  const problems: Problem[] = await conflictCopies(store, latest.keys(), conflictRules);
+  // A conflict copy of an operation file is reported by readJournal; it blocks as the others do.
+  problems.push(...journalProblems.filter(({ reason }) => reason === 'conflicted-copy'));
   for (const [path, after] of [...latest].sort(([a], [b]) => compareText(a, b))) {
     if (forked.has(path)) problems.push({ path, reason: 'forked' });
     else if (!jsonEqual(await readTolerant(store, path), after)) {

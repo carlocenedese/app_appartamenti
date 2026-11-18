@@ -23,16 +23,35 @@ import type { Problem, Store } from './store';
 export type ConflictNameRule = { service: string; isConflictName(name: string): boolean };
 
 /**
- * Dropbox: "conflicted copy" in English, "Copia in conflitto di <name>" in Italian, any case. To
- * be checked on a real Italian Dropbox (spec section 36). The default rule of `loadAll`.
+ * Dropbox: "conflicted copy" in English, "Copia in conflitto di <name>" in Italian, any case, and
+ * the "Case Conflict" and "Selective Sync Conflict" copies. To be checked on a real Italian
+ * Dropbox (spec section 36).
  */
 export const DROPBOX_CONFLICT_RULE: ConflictNameRule = {
   service: 'dropbox',
-  isConflictName: (name) => /conflicted copy|copia in conflitto/i.test(name),
+  isConflictName: (name) => DROPBOX_MARKER.test(name),
 };
+const DROPBOX_MARKER = /conflicted copy|copia in conflitto|case conflict|selective sync conflict/i;
 // The parenthesised group with the marker, with the space before it and the " (1)" Dropbox adds
 // when the same conflict repeats; several groups when a conflict copy was itself in conflict.
-const CONFLICT_GROUP = / ?\([^()]*(?:conflicted copy|copia in conflitto)[^()]*\)(?: \([0-9]+\))?/gi;
+const CONFLICT_GROUP =
+  / ?\([^()]*(?:conflicted copy|copia in conflitto|case conflict|selective sync conflict)[^()]*\)(?: \([0-9]+\))?/gi;
+
+/**
+ * iCloud Drive: a second copy of `x.json` is named `x 2.json` (a space and a number before the
+ * extension). No id and no journal file the app writes has a space, so the rule cannot hit them.
+ */
+export const ICLOUD_CONFLICT_RULE: ConflictNameRule = {
+  service: 'icloud',
+  isConflictName: (name) => ICLOUD_SUFFIX.test(name.replace(/\.json$/i, '')),
+};
+const ICLOUD_SUFFIX = / [0-9]+$/;
+
+/** The rules used when the caller gives none: Dropbox and iCloud. */
+export const DEFAULT_CONFLICT_RULES: readonly ConflictNameRule[] = [
+  DROPBOX_CONFLICT_RULE,
+  ICLOUD_CONFLICT_RULE,
+];
 
 const JSON_EXTENSION = '.json';
 const TEMP_PREFIX = '.tmp-';
@@ -66,14 +85,15 @@ export function isSafePath(path: string): boolean {
 }
 
 /**
- * The problem for a conflict copy at `dir/name`. `originalPath` is the file the copy was made from
+ * The problem for a conflict copy at `dir/name` (shared with the journal; not public API). `originalPath` is the file the copy was made from
  * (the same name without the conflict group), left out when the name has no such group or nothing
  * would remain of it.
  */
-function conflictProblem(dir: string, name: string): Problem {
+export function conflictProblem(dir: string, name: string): Problem {
   const problem: Problem = { path: `${dir}/${name}`, reason: 'conflicted-copy' };
   const stem = name.slice(0, -JSON_EXTENSION.length);
-  const originalStem = stem.replace(CONFLICT_GROUP, '');
+  const dropbox = stem.replace(CONFLICT_GROUP, '');
+  const originalStem = dropbox === stem ? stem.replace(ICLOUD_SUFFIX, '') : dropbox;
   if (originalStem !== stem && originalStem !== '') {
     problem.originalPath = `${dir}/${originalStem}${JSON_EXTENSION}`;
   }
@@ -86,8 +106,8 @@ function conflictProblem(dir: string, name: string): Problem {
  * (temporary `.tmp-*` files and anything else are ignored). Each file is sorted into exactly one
  * of these, in this order:
  *
- * 1. a name that one of `conflictRules` (default: Dropbox only) calls a conflict copy. Reported
- *    as `conflicted-copy`, with `originalPath` when a Dropbox group can be cut from the name, and
+ * 1. a name that one of `conflictRules` (default: Dropbox and iCloud) calls a conflict copy. Reported
+ *    as `conflicted-copy`, with `originalPath` when a Dropbox group or an iCloud number can be cut from the name, and
  *    never loaded as a record, even if its content is valid: which of the two files is right is
  *    for the user to decide;
  * 2. a name that is not a safe store path (a stray file that this app did not write and that
@@ -117,7 +137,7 @@ export async function loadAll<T extends { id: string }>(
   kind: string,
   schema: ZodType<T>,
   opts: LoadOptions = {},
-  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
+  conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
 ): Promise<{ records: T[]; problems: Problem[] }> {
   assertSafeSegment(kind);
   const naming = { stemOf: (record: T) => record.id, strict: true };
@@ -144,7 +164,7 @@ export async function loadDir<T extends { id: string }>(
   schema: ZodType<T>,
   naming: Naming<T>,
   opts: LoadOptions = {},
-  conflictRules: readonly ConflictNameRule[] = [DROPBOX_CONFLICT_RULE],
+  conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
 ): Promise<{ records: T[]; problems: Problem[] }> {
   const names = (await store.list(dir)).map((name) => name.normalize('NFC'));
 
