@@ -1125,6 +1125,18 @@ describe('checkConsistency', () => {
     await expect(checkConsistency(store)).rejects.toThrow('I/O error');
   });
 
+  it('reports a record it cannot read now as unreadable, not diverged (G5)', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    const busy = Object.assign(Object.create(store) as TestStore, {
+      async readJson(path: string): Promise<unknown> {
+        if (path === BILL_PATH) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' });
+        return store.readJson(path);
+      },
+    });
+    expect(await checkConsistency(busy)).toEqual([{ path: BILL_PATH, reason: 'unreadable' }]);
+  });
+
   it('does not report the problems of the journal files: readJournal does', async () => {
     const { store, commit } = setup();
     await commit(createBill());

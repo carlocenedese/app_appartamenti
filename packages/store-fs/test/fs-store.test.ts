@@ -17,6 +17,7 @@ import {
   BillSchema,
   CORE_VERSION,
   DATA_FORMAT,
+  FileAccessError,
   MalformedJsonError,
   assessWorkspace,
   commitChange,
@@ -37,6 +38,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return {
     ...actual,
     rename: vi.fn(actual.rename),
+    readFile: vi.fn(actual.readFile),
     link: vi.fn(actual.link),
     unlink: vi.fn(actual.unlink),
   };
@@ -315,12 +317,15 @@ describe('FsStore: an interrupted write never leaves a partial .json file', () =
   });
 
   it('leaves no .json file and no temporary file when the rename fails on a new file', async () => {
-    vi.mocked(rename).mockRejectedValueOnce(
+    vi.mocked(rename).mockRejectedValue(
       Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }),
     );
     await expect(store.writeJsonAtomic('dati/a.json', bill)).rejects.toMatchObject({
+      name: 'FileAccessError',
       code: 'EPERM',
+      path: 'dati/a.json',
     });
+    vi.mocked(rename).mockReset();
     expect(await readdir(join(root, 'dati'))).toEqual([]);
     expect(await store.readJson('dati/a.json')).toBeUndefined();
     expect(await store.list('dati')).toEqual([]);
@@ -515,5 +520,65 @@ describe('a damaged operation file set aside (revisione 2026-11-18, G4)', () => 
     expect(file?.safeToSetAside).toBe(true);
     expect(await moveFileNoOverwrite(root, file?.path ?? '', file?.setAsideTo ?? '')).toBe('moved');
     expect(await assessWorkspace(store, app)).toMatchObject({ writable: true, reasons: [] });
+  });
+});
+
+describe('files held open or without permission (revisione 2026-11-18, G5, G8)', () => {
+  const busy = () => Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' });
+
+  it('tries a refused rename again, and the write goes through', async () => {
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    vi.mocked(rename)
+      .mockRejectedValueOnce(busy())
+      .mockRejectedValueOnce(busy())
+      .mockImplementation(actual.rename);
+    await store.writeJsonAtomic('dati/a.json', { id: 'a' });
+    expect(await store.readJson('dati/a.json')).toEqual({ id: 'a' });
+    expect(vi.mocked(rename)).toHaveBeenCalledTimes(3);
+  });
+
+  it('gives up with a FileAccessError on the relative path, leaving no temporary file', async () => {
+    vi.mocked(rename).mockRejectedValue(busy());
+    const failure = store.writeJsonAtomic('dati/a.json', { id: 'a' });
+    await expect(failure).rejects.toBeInstanceOf(FileAccessError);
+    await expect(failure).rejects.toMatchObject({ code: 'EBUSY', path: 'dati/a.json' });
+    vi.mocked(rename).mockReset();
+    expect(await readdir(join(root, 'dati'))).toEqual([]);
+  });
+
+  it('does not try again a rename that failed for another reason', async () => {
+    vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'ENOSPC' }));
+    await expect(store.writeJsonAtomic('dati/a.json', { id: 'a' })).rejects.toMatchObject({
+      code: 'ENOSPC',
+    });
+    expect(vi.mocked(rename)).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a file it cannot read as unreadable, and the folder still opens (T5b)', async () => {
+    await store.writeJsonAtomic('_app/dati/bill/bill-1.json', bill);
+    await store.writeJsonAtomic('_app/dati/bill/bill-2.json', { ...bill, id: 'bill-2' });
+    const denied = Object.assign(new Error(`EACCES: ${root}`), { code: 'EACCES' });
+    vi.mocked(readFile).mockImplementation(async (file, options) => {
+      if (String(file).endsWith('bill-2.json')) throw denied;
+      const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+      return actual.readFile(file, options as 'utf8');
+    });
+    try {
+      await expect(store.readJson('_app/dati/bill/bill-2.json')).rejects.toMatchObject({
+        name: 'FileAccessError',
+        path: '_app/dati/bill/bill-2.json',
+      });
+      const { records, problems } = await loadAll(store, 'bill', BillSchema, {}, []);
+      expect(records.map(({ id }) => id)).toEqual(['bill-1']);
+      expect(problems).toEqual([{ path: '_app/dati/bill/bill-2.json', reason: 'unreadable' }]);
+      const app = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
+      expect((await assessWorkspace(store, app)).reasons).toContainEqual({
+        code: 'unreadable-files',
+        paths: ['_app/dati/bill/bill-2.json'],
+      });
+    } finally {
+      const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+      vi.mocked(readFile).mockImplementation(actual.readFile);
+    }
   });
 });

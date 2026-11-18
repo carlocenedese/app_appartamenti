@@ -3,8 +3,15 @@ export * from './iban';
 export * from './money';
 export * from './period';
 export * from './version';
-export { MalformedJsonError, NewerDataError, assertSafeRelPath } from './store/store';
-export type { Problem, Store } from './store/store';
+export {
+  FILE_ACCESS_CODES,
+  FileAccessError,
+  MalformedJsonError,
+  NewerDataError,
+  assertSafeRelPath,
+  isFileAccessError,
+} from './store/store';
+export type { FileAccessCode, Problem, Store } from './store/store';
 export { StaleWriteError, recordPath, writeRecord } from './store/records';
 export {
   DEFAULT_CONFLICT_RULES,

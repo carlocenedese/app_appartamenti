@@ -13,6 +13,7 @@ import {
   WORKSPACE_PATH,
   assertSafeRelPath,
   assertSafeSegment,
+  isFileAccessError,
 } from './store';
 import type { Problem, Store } from './store';
 
@@ -147,8 +148,10 @@ export function dropsKeys(raw: unknown, parsed: unknown): boolean {
  * Records come back sorted by `id`, problems by path, both by code unit, so the result does not depend on the order the store lists files in. Records are what
  * `schema` returns, so keys it does not know are dropped (see the notes in `model.ts`).
  *
- * Failures of the store itself are not per-file problems and are not swallowed: if the folder
- * cannot be listed or a file cannot be read (permissions, I/O), the error goes up. A file that
+ * A file that exists but cannot be read now (`FileAccessError`, or an error with one of the codes
+ * `FILE_ACCESS_CODES`: permissions, held open on Windows, I/O) is reported as `unreadable`, so
+ * one such file does not stop the folder from opening. Other failures of the store are not
+ * swallowed: if the folder cannot be listed, the error goes up. A file that
  * disappears between the listing and the read is skipped, because it no longer exists.
  */
 export async function loadAll<T extends { id: string }>(
@@ -207,6 +210,10 @@ export async function loadDir<T extends { id: string }>(
     try {
       raw = await store.readJson(path);
     } catch (error) {
+      if (isFileAccessError(error)) {
+        problems.push({ path, reason: 'unreadable' });
+        continue;
+      }
       if (!(error instanceof MalformedJsonError)) throw error;
       problems.push({ path, reason: 'malformed-json' });
       continue;

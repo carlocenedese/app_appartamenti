@@ -281,8 +281,14 @@ describe('TauriStore: an interrupted write never leaves a partial .json file', (
   });
 
   it('leaves no .json file when the rename fails on a new file (the temporary file stays hidden)', async () => {
-    vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('operation not permitted'));
-    await expect(store.writeJsonAtomic('dati/a.json', bill)).rejects.toThrow('not permitted');
+    const spy = vi.spyOn(fs, 'rename').mockRejectedValue(new Error('operation not permitted'));
+    await expect(store.writeJsonAtomic('dati/a.json', bill)).rejects.toMatchObject({
+      name: 'FileAccessError',
+      path: 'dati/a.json',
+      cause: new Error('operation not permitted'),
+    });
+    expect(spy).toHaveBeenCalledTimes(6);
+    spy.mockRestore();
     expect(await store.readJson('dati/a.json')).toBeUndefined();
     expect(await store.list('dati')).toEqual([]);
   });
@@ -290,17 +296,46 @@ describe('TauriStore: an interrupted write never leaves a partial .json file', (
   it('keeps the previous content intact when the rename over an existing file fails', async () => {
     await store.writeJsonAtomic('dati/a.json', { id: 'a', rev: 1 });
     const before = await fs.readText(`${ROOT}/dati/a.json`);
-    vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('disk full'));
-    await expect(store.writeJsonAtomic('dati/a.json', { id: 'a', rev: 2 })).rejects.toThrow(
-      'disk full',
-    );
+    const spy = vi.spyOn(fs, 'rename').mockRejectedValue(new Error('disk full'));
+    await expect(store.writeJsonAtomic('dati/a.json', { id: 'a', rev: 2 })).rejects.toMatchObject({
+      cause: new Error('disk full'),
+    });
+    spy.mockRestore();
     expect(await fs.readText(`${ROOT}/dati/a.json`)).toBe(before);
     expect(await store.list('dati')).toEqual(['a.json']);
   });
 
+  it('tries a refused rename again: a target held open on Windows (G8)', async () => {
+    const real = fs.rename.bind(fs);
+    const spy = vi
+      .spyOn(fs, 'rename')
+      .mockRejectedValueOnce(new Error('Access is denied. (os error 32)'))
+      .mockImplementation(real);
+    await store.writeJsonAtomic('dati/a.json', { id: 'a' });
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(await store.readJson('dati/a.json')).toEqual({ id: 'a' });
+    spy.mockRestore();
+  });
+
+  it('reports a file it cannot read with its relative path (G5)', async () => {
+    fs.put(`${ROOT}/dati/a.json`, '{}');
+    const spy = vi
+      .spyOn(fs, 'readText')
+      .mockRejectedValueOnce(new Error('The process cannot access the file (os error 32)'));
+    await expect(store.readJson('dati/a.json')).rejects.toMatchObject({
+      name: 'FileAccessError',
+      code: 'EBUSY',
+      path: 'dati/a.json',
+    });
+    spy.mockRestore();
+  });
+
   it('writes again normally after a failure', async () => {
-    vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('boom'));
-    await expect(store.writeJsonAtomic('a.json', { id: 'a' })).rejects.toThrow('boom');
+    const spy = vi.spyOn(fs, 'rename').mockRejectedValue(new Error('boom'));
+    await expect(store.writeJsonAtomic('a.json', { id: 'a' })).rejects.toMatchObject({
+      cause: new Error('boom'),
+    });
+    spy.mockRestore();
     await store.writeJsonAtomic('a.json', { id: 'a' });
     expect(await store.readJson('a.json')).toEqual({ id: 'a' });
     expect(fs.names(ROOT).filter((name) => !name.startsWith('.tmp-'))).toEqual(['a.json']);

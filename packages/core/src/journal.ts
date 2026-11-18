@@ -30,6 +30,7 @@ import {
   WORKSPACE_PATH,
   assertSafeRelPath,
   assertSafeSegment,
+  isFileAccessError,
 } from './store/store';
 import type { Problem, Store } from './store/store';
 import { compactTimestamp, compareByTime, compareTimestamps } from './time';
@@ -625,6 +626,17 @@ async function readTolerant(store: Store, path: string): Promise<unknown> {
   }
 }
 
+/** As `readTolerant`, with `UNREADABLE` for a file that exists but cannot be read now. */
+const UNREADABLE = Symbol('unreadable');
+async function readOrMark(store: Store, path: string): Promise<unknown> {
+  try {
+    return await readTolerant(store, path);
+  } catch (error) {
+    if (isFileAccessError(error)) return UNREADABLE;
+    throw error;
+  }
+}
+
 /**
  * The paths whose latest `rev` is left by two operations or more with different content: a fork.
  * Two machines (or two windows) changed the same record from the same `rev` at once, and both
@@ -690,13 +702,21 @@ export async function checkConsistency(
   const latest = latestAfter(operations);
   const forked = forkedPaths(operations);
   const problems: Problem[] = await conflictCopies(store, latest.keys(), conflictRules);
-  // A conflict copy of an operation file is reported by readJournal; it blocks as the others do.
-  problems.push(...journalProblems.filter(({ reason }) => reason === 'conflicted-copy'));
+  // A conflict copy of an operation file, or one that cannot be read now, is reported by
+  // readJournal; it blocks as the others do.
+  problems.push(
+    ...journalProblems.filter(
+      ({ reason }) => reason === 'conflicted-copy' || reason === 'unreadable',
+    ),
+  );
   for (const [path, after] of [...latest].sort(([a], [b]) => compareText(a, b))) {
-    if (forked.has(path)) problems.push({ path, reason: 'forked' });
-    else if (!jsonEqual(await readTolerant(store, path), after)) {
-      problems.push({ path, reason: 'diverged' });
+    if (forked.has(path)) {
+      problems.push({ path, reason: 'forked' });
+      continue;
     }
+    const onDisk = await readOrMark(store, path);
+    if (onDisk === UNREADABLE) problems.push({ path, reason: 'unreadable' });
+    else if (!jsonEqual(onDisk, after)) problems.push({ path, reason: 'diverged' });
   }
   return problems.sort((a, b) => compareText(a.path, b.path));
 }

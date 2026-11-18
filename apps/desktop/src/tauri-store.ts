@@ -17,8 +17,13 @@ import {
   rename,
   writeTextFile,
 } from '@tauri-apps/plugin-fs';
-import { MalformedJsonError, assertSafeRelPath } from '@bollette/core';
-import type { Store } from '@bollette/core';
+import {
+  FILE_ACCESS_CODES,
+  FileAccessError,
+  MalformedJsonError,
+  assertSafeRelPath,
+} from '@bollette/core';
+import type { FileAccessCode, Store } from '@bollette/core';
 
 /** The file operations `TauriStore` uses, on absolute paths. Nothing deletes: the app never does. */
 export interface FsBackend {
@@ -53,6 +58,26 @@ export async function pickFolder(): Promise<string | null> {
 }
 
 const TEMP_PREFIX = '.tmp-';
+
+/** The waits before each new attempt of a rename that failed (Windows: a busy target). */
+const RENAME_RETRY_MS = [20, 50, 100, 200, 400];
+
+/**
+ * The code of a failure of the file plugin. Its errors are strings with the OS error number:
+ * 13 (Unix) and 5 (Windows) are a refused access, 32 and 33 a file held open by another program
+ * on Windows (sharing or lock violation). shortcut: matched on the message text; to be checked on
+ * a real Windows machine (revisione 2026-11-18).
+ */
+function accessCode(error: unknown): FileAccessCode {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && (FILE_ACCESS_CODES as readonly string[]).includes(code)) {
+    return code as FileAccessCode;
+  }
+  const text = String(error);
+  if (/os error (?:32|33)\b/.test(text)) return 'EBUSY';
+  if (/os error (?:5|13)\b/.test(text)) return 'EACCES';
+  return 'unknown';
+}
 const BYTE_ORDER_MARK = '﻿';
 
 /**
@@ -80,7 +105,13 @@ export class TauriStore implements Store {
   async readJson(path: string): Promise<unknown | undefined> {
     const { rel, file } = await this.locate(path);
     if (!(await this.fs.exists(file))) return undefined;
-    const text = await this.fs.readText(file);
+    let text: string;
+    try {
+      text = await this.fs.readText(file);
+    } catch (error) {
+      // The file is there but cannot be read now (permissions, held open, offline Dropbox file).
+      throw new FileAccessError(rel, accessCode(error), { cause: error });
+    }
     try {
       return JSON.parse(text.startsWith(BYTE_ORDER_MARK) ? text.slice(1) : text);
     } catch (error) {
@@ -93,12 +124,23 @@ export class TauriStore implements Store {
     const json = JSON.stringify(value, null, 2);
     if (json === undefined) throw new TypeError('Value cannot be written as JSON');
 
-    const { file } = await this.locate(path);
+    const { rel, file } = await this.locate(path);
     const dir = file.slice(0, file.lastIndexOf(this.sep));
     await this.fs.mkdir(dir);
     const temp = `${dir}${this.sep}${TEMP_PREFIX}${crypto.randomUUID()}`;
     await this.fs.writeText(temp, `${json}\n`);
-    await this.fs.rename(temp, file);
+    // Windows refuses a rename over a file that Dropbox, an antivirus or Excel holds open: try
+    // again a few times over about a second before giving up (revisione 2026-11-18, G8).
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.fs.rename(temp, file);
+        return;
+      } catch (error) {
+        const wait = RENAME_RETRY_MS[attempt];
+        if (wait === undefined) throw new FileAccessError(rel, accessCode(error), { cause: error });
+        await new Promise((done) => setTimeout(done, wait));
+      }
+    }
   }
 
   async list(dir: string): Promise<string[]> {

@@ -7,7 +7,7 @@ import { JOURNAL_DIR, checkConsistency, readJournal } from './journal';
 import { WorkspaceSchema, recordSchemas } from './model';
 import { DEFAULT_CONFLICT_RULES, compareText, loadAll } from './store/load';
 import type { ConflictNameRule } from './store/load';
-import { MalformedJsonError, WORKSPACE_PATH } from './store/store';
+import { MalformedJsonError, WORKSPACE_PATH, isFileAccessError } from './store/store';
 import type { Problem, Store } from './store/store';
 import { checkCompat } from './version';
 import type { Compat } from './version';
@@ -25,7 +25,8 @@ export type ReadOnlyCode =
   | 'forked'
   | 'diverged'
   | 'damaged-journal'
-  | 'newer-data';
+  | 'newer-data'
+  | 'unreadable-files';
 export type ReadOnlyReason = { code: ReadOnlyCode; paths: string[] };
 
 export type WorkspaceAssessment = {
@@ -69,6 +70,10 @@ const READ_ONLY_MESSAGES: Record<ReadOnlyCode, string> = {
     'Un file del registro è vuoto o rovinato. Se Dropbox ha finito di sincronizzare, ' +
     'ripristinalo dalla cronologia delle versioni di Dropbox; se è dimostrato che non ha lasciato ' +
     'effetti, si può mettere da parte.',
+  'unreadable-files':
+    'Alcuni file non si possono leggere ora: chiudili se sono aperti in un altro programma ' +
+    "(Excel, l'antivirus), controlla che Dropbox li tenga su questo computer e che tu abbia i " +
+    'permessi, poi ricontrolla.',
   'newer-data':
     "Alcuni dati sono stati scritti da una versione più nuova dell'app: aggiorna l'app per " +
     'modificarli. Fino ad allora la cartella è in sola lettura, anche per gli annullamenti.',
@@ -80,6 +85,7 @@ const REASON_ORDER: readonly ReadOnlyCode[] = [
   'newer-format',
   'older-format',
   'newer-data',
+  'unreadable-files',
   'conflict-copies',
   'forked',
   'damaged-journal',
@@ -93,6 +99,8 @@ function blockingCode(problem: Problem, inJournal: boolean): ReadOnlyCode | unde
       return 'conflict-copies';
     case 'forked':
       return 'forked';
+    case 'unreadable':
+      return 'unreadable-files';
     case 'diverged':
       return 'diverged';
     case 'future-version':
@@ -107,8 +115,9 @@ function blockingCode(problem: Problem, inJournal: boolean): ReadOnlyCode | unde
 }
 
 /**
- * Assesses the folder behind `store` for this app. Never throws for a bad `workspace.json`; a
- * failure of the store itself (permissions, I/O) goes up.
+ * Assesses the folder behind `store` for this app. Never throws for a bad `workspace.json`, nor
+ * for a file that cannot be read now (`unreadable-files`, with its path); any other failure of the
+ * store goes up (a folder that cannot be listed).
  */
 export async function assessWorkspace(
   store: Store,
@@ -116,10 +125,12 @@ export async function assessWorkspace(
   conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
 ): Promise<WorkspaceAssessment> {
   let raw: unknown;
+  let unreadableWorkspace = false;
   try {
     raw = await store.readJson(WORKSPACE_PATH);
   } catch (error) {
-    if (!(error instanceof MalformedJsonError)) throw error;
+    unreadableWorkspace = isFileAccessError(error);
+    if (!unreadableWorkspace && !(error instanceof MalformedJsonError)) throw error;
   }
   const workspace = WorkspaceSchema.safeParse(raw);
   const compat = workspace.success ? checkCompat(workspace.data, app) : 'invalid';
@@ -144,7 +155,8 @@ export async function assessWorkspace(
   const byCode = new Map<ReadOnlyCode, string[]>();
   const add = (code: ReadOnlyCode, path: string) =>
     byCode.set(code, [...(byCode.get(code) ?? []), path]);
-  if (compat === 'invalid') add('invalid-workspace', WORKSPACE_PATH);
+  if (unreadableWorkspace) add('unreadable-files', WORKSPACE_PATH);
+  else if (compat === 'invalid') add('invalid-workspace', WORKSPACE_PATH);
   if (compat === 'readonly') add('newer-format', WORKSPACE_PATH);
   if (compat === 'upgrade-needed') add('older-format', WORKSPACE_PATH);
   for (const problem of problems) {
