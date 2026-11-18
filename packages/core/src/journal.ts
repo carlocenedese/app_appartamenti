@@ -12,6 +12,7 @@
  */
 import { z } from 'zod';
 import type { ZodType } from 'zod';
+import { refuseClosedPeriodChanges } from './closed-period-guard';
 import { TimestampSchema, WorkspaceSchema, recordSchemas } from './model';
 import {
   DEFAULT_CONFLICT_RULES,
@@ -280,6 +281,8 @@ async function commitOperation(
     return parsedOperation;
   }
   const { operations } = await readJournal(store);
+  // F5: what a closed period counted does not change until it is reopened.
+  await refuseClosedPeriodChanges(store, operations, changes);
   const touches = touchesByPath(operations);
   /** For each path written on top of the head of the journal rather than on the disk. */
   const realigned = new Map<string, { rev: number; supersedes: string[] }>();
@@ -849,6 +852,17 @@ export async function undoOperation(
     );
   }
   await refuseIfDiverged(store, operations, [target, ...dependents]);
+  // F5: refused before the first undo of a cascade, so that none is left half done.
+  for (const operation of [target, ...dependents]) {
+    const back = await Promise.all(
+      operation.changes.map(async (change) => ({
+        path: change.path,
+        before: await readTolerant(store, change.path),
+        after: change.before,
+      })),
+    );
+    await refuseClosedPeriodChanges(store, operations, back);
+  }
 
   // Each round undoes one dependent that nothing else depends on, then looks again with the new
   // undo in the journal, so a dependent that was brought back by a redo is handled like the rest.

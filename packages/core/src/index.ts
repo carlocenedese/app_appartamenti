@@ -93,6 +93,7 @@ export {
 export * from './consumption-store';
 export * from './settings-store';
 export * from './closing';
+export * from './closed-period-guard';
 export * from './period-close';
 export type {
   Comparable,

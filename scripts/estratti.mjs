@@ -81,6 +81,7 @@ import {
   checkConsistency,
   FileAccessError,
   forkVersions,
+  ClosedPeriodError,
   InconsistentRecordError,
   NewerDataError,
   resolveFork,
@@ -160,6 +161,7 @@ import {
   undoBillImport,
   DATA_FORMAT,
   PeriodCloseSchema,
+  isLiveClose,
   WORKSPACE_PATH,
   findWorkspace,
   raiseDataFormat,
@@ -3304,7 +3306,10 @@ export const COMMAND_NAMES = [
 async function closedStates(store, today) {
   const states = new Map();
   try {
-    const closes = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    // Only the periods closed now: a reopened one is open again (F3).
+    const closes = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records.filter(
+      isLiveClose,
+    );
     for (const c of closes) {
       const query = { apartmentId: c.apartmentId, periodLabel: c.periodLabel };
       states.set(c.id, {
@@ -3634,13 +3639,22 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
           }
         : error instanceof InconsistentRecordError
           ? { reason: 'inconsistent-record', paths: [error.path], state: error.reason }
-          : error instanceof UnreadableRecordsError
-            ? { reason: 'unreadable-records', paths: error.records.map((r) => r.path) }
-            : undefined;
+          : error instanceof ClosedPeriodError
+            ? {
+                reason: 'closed-period',
+                paths: [error.path],
+                apartmentId: error.apartmentId,
+                periodLabel: error.periodLabel,
+              }
+            : error instanceof UnreadableRecordsError
+              ? { reason: 'unreadable-records', paths: error.records.map((r) => r.path) }
+              : undefined;
     if (refusal !== undefined) {
       // The core's text for unreadable records names the ids and, for a fork, «scegli-versione».
       const message =
-        error instanceof UnreadableRecordsError ? error.message : MESSAGES[refusal.reason];
+        error instanceof UnreadableRecordsError || error instanceof ClosedPeriodError
+          ? error.message
+          : MESSAGES[refusal.reason];
       return done(1, { status: 'rejected', ...refusal, message });
     }
     // Never the message or the stack: they could hold a path or a value.

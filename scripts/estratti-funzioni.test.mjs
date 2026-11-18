@@ -574,19 +574,44 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     expect(refused.json.reason).toBe('closing-changed');
   });
 
-  it('una scrittura dentro un periodo chiuso lo dice nell’esito, senza rifiutare', async () => {
+  it('F5: cambiare ciò che il periodo chiuso contava è rifiutato; un record nuovo lo dice nell’esito', async () => {
     await closable();
     await cli('chiudi-periodo', ...args);
     const r = await cli('fine-presenza', '--presenza', 'tcy-x', '--mese', '2026-08');
-    expect(r.code, r.out).toBe(0);
-    expect(r.json.closedPeriods).toEqual([{ apartmentId: 'apt-x', periodLabel: '2025-26' }]);
-    expect(r.json.closedPeriodMessage).toMatch(/conguaglio supplementare/);
+    expect(r.code, r.out).toBe(1);
+    expect(r.json).toMatchObject({
+      status: 'rejected',
+      reason: 'closed-period',
+      apartmentId: 'apt-x',
+      periodLabel: '2025-26',
+    });
+    expect(r.json.message).toMatch(/2025-26.*riapri il periodo con il motivo/);
+    // The end of the stay after the period does not touch it.
+    const after = await cli('fine-presenza', '--presenza', 'tcy-x', '--mese', '2027-03');
+    expect(after.code, after.out).toBe(0);
+    expect(after.json).not.toHaveProperty('closedPeriods');
+    // A new record of the period (a credit of the tenant) is accepted and goes into the
+    // supplementary settlement: the outcome says so.
+    const w = await cli(
+      'recupero',
+      '--id',
+      'rec-x',
+      '--appartamento',
+      'apt-x',
+      '--importo',
+      '-15',
+      '--inquilini',
+      't-x',
+      '--periodo',
+      '2025-26',
+    );
+    expect(w.code, w.out).toBe(0);
+    expect(w.json.closedPeriods).toEqual([{ apartmentId: 'apt-x', periodLabel: '2025-26' }]);
+    expect(w.json.closedPeriodMessage).toMatch(/conguaglio supplementare/);
     // A write that does not touch the period says nothing.
     const other = await cli('inquilino', '--id', 't-z', '--nome', 'Terzo Inventato');
     expect(other.json).not.toHaveProperty('closedPeriods');
-    // The data changed (one month less of flat charge): the undo of the closing is refused.
-    const sup = await cli('conguaglio-supplementare', ...args);
-    expect(sup.json.dataChanged || sup.json.changed).toBe(true);
+    // The costs changed: the undo of the closing is refused.
     const closeOp = (await readJournal(new FsStore(dir))).operations.find(
       (o) => o.kind === 'period.close',
     );
@@ -598,19 +623,19 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
   it('l’annullo della chiusura è rifiutato anche quando il conguaglio non si calcola', async () => {
     await closable();
     const closed = await cli('chiudi-periodo', ...args);
-    // A second stay of the same tenant in the same months: the settlement cannot be computed.
+    // A new recovery of a tenant who was not there: the settlement cannot be computed.
     await seed([
       [
-        'tenancy',
+        'tenantRecovery',
         {
-          id: 'tcy-x2',
+          id: 'rec-assente',
           v: 1,
           rev: 1,
           apartmentId: 'apt-x',
-          tenantId: 't-x',
-          from: '2026-01',
-          monthlyRent: 45000,
-          monthlyForfait: 3000,
+          amount: -1500,
+          shares: [{ tenantId: 't-assente', amount: -1500 }],
+          status: 'da-recuperare',
+          periodLabel: '2025-26',
         },
       ],
     ]);
