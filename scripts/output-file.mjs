@@ -34,10 +34,11 @@ export const NEWER_DATA_MESSAGE =
 /**
  * Refuses a folder written by a newer app (review of 18 Nov 2026): a document built without the
  * record kinds this app does not know would be wrong with no notice. The raw file is read, since
- * a newer workspace file may not fit this app's schema.
+ * a newer workspace file may not fit this app's schema; a file that cannot be read stops nothing,
+ * as before this check.
  */
 export async function refuseNewerData(store) {
-  const workspace = await store.readJson(WORKSPACE_PATH);
+  const workspace = await store.readJson(WORKSPACE_PATH).catch(() => undefined);
   if (Number.isInteger(workspace?.schemaVersion) && workspace.schemaVersion > DATA_FORMAT) {
     throw rejected('newer-data');
   }
