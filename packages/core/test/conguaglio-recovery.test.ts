@@ -84,6 +84,19 @@ describe('recoveries in calcConguaglio (plan 8, task 8, R197)', () => {
       itemId: 'str-1',
       reason: 'recupero in attesa del pagamento',
     });
+    // I10/B19, lotto 10: an assumed match (no statement) is not a payment for the recovery.
+    const assumed = calcConguaglio(
+      input({
+        matches: [match(light, 4000), match(expense, 20000, { by: 'assumed' })],
+        recoveries: [recovery()],
+      }),
+    );
+    expect(assumed.tenants.every((t) => t.recupero === undefined)).toBe(true);
+    expect(assumed.pending).toContainEqual({
+      itemType: 'instalment',
+      itemId: 'str-1',
+      reason: 'recupero in attesa del pagamento',
+    });
   });
 
   it('refuses a tenant who is not in the period', () => {

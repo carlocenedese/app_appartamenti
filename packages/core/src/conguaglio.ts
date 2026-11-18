@@ -585,14 +585,24 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   };
 
   // Confirmed matches by item and part.
-  const matched = new Map<string, { amount: number; commission: number; hasAmount: boolean }>();
+  const matched = new Map<
+    string,
+    { amount: number; commission: number; hasAmount: boolean; debited: boolean }
+  >();
   for (const match of live(input.matches)) {
     if (!match.confirmed) continue;
     const key = `${match.itemType}\u0000${match.itemId}`;
-    const entry = matched.get(key) ?? { amount: 0, commission: 0, hasAmount: false };
+    const entry = matched.get(key) ?? {
+      amount: 0,
+      commission: 0,
+      hasAmount: false,
+      debited: false,
+    };
     if (match.part === 'amount') {
       entry.amount += match.amount;
       entry.hasAmount = true;
+      // A real debit in the statement, not an item assumed paid (lotto 10, I10).
+      if (match.by !== 'assumed') entry.debited = true;
     } else {
       entry.commission += match.amount;
     }
@@ -706,14 +716,15 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     });
   }
 
-  // R2: a recovery counts once the expense it recovers is debited.
+  // R2: a recovery counts once the expense it recovers is debited, never on an assumed match
+  // (lotto 10: only after it is paid).
   const recovered = new Map<string, number>();
   const waiting = new Set<string>();
   for (const recovery of recoveries) {
     const { instalmentId } = recovery;
     if (
       instalmentId !== undefined &&
-      matched.get(`instalment\u0000${instalmentId}`)?.hasAmount !== true
+      matched.get(`instalment\u0000${instalmentId}`)?.debited !== true
     ) {
       waiting.add(instalmentId);
       continue;
