@@ -457,8 +457,11 @@ export async function refuseClosingUndo(
       }
       const since = closingOf(back.data, calc.result, calc.input, asOf);
       if (since.changed || since.dataChanged) {
+        // Fourth round, C: the period is reopened now (whatever the operation): its message.
         throw new ClosingUndoError(
-          operation.kind === 'period.reopen' ? 'reopen-changed' : 'closing-changed',
+          operation.kind === 'period.reopen' || (now.success && now.data.reopened !== undefined)
+            ? 'reopen-changed'
+            : 'closing-changed',
           query.apartmentId,
           query.periodLabel,
         );

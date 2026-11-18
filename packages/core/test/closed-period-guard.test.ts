@@ -548,4 +548,24 @@ describe('closed period guard, second review', () => {
       kind: 'undo',
     });
   });
+
+  it('C: depth 3, undoing again would close a reopened period: the reason is reopen-changed', async () => {
+    const store = await closed();
+    const reopened = await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-11-20', reason: 'Correzione' },
+      'p1',
+      later,
+      ids('r'),
+    );
+    if (reopened.status !== 'saved') throw new Error('reopen');
+    const u1 = await undoOperation(store, reopened.operationId, 'p1', later, ids('u1'));
+    const u2 = await undoOperation(store, u1.id, 'p1', later, ids('u2'));
+    const stay = await one(store, 'tenancy', TenancySchema, 'tcy-t-a-2025-10');
+    await write(store, 'tenancy', { ...stay, to: '2026-06' }, stay, later, 'end');
+    await expect(undoOperation(store, u2.id, 'p1', later, ids('u3'))).rejects.toMatchObject({
+      name: 'ClosingUndoError',
+      reason: 'reopen-changed',
+    });
+  });
 });
