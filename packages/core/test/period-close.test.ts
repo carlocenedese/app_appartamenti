@@ -12,6 +12,7 @@ import {
   loadPeriodClosing,
   readJournal,
   recordPath,
+  tariDecembers,
   undoOperation,
 } from '../src/index';
 import type { RecordKind } from '../src/index';
@@ -261,7 +262,20 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     expect(d.status === 'computed' && d.apartments[0]?.counts['conguaglio:dati-cambiati']).toBe(1);
   });
 
-  it('R3: an apartment of the shared TARI notice closes only after the December notice is debited', async () => {
+  const decemberNotice = (year: string) =>
+    instalment(`tari-dic-${year}`, {
+      kind: 'tari',
+      esercizio: year,
+      rateIndex: 3,
+      rateCount: 3,
+      dueDate: isoDate(`${year}-12-16`),
+      rata: cents(3000),
+      coversFrom: yearMonth(`${year}-09`),
+      coversTo: yearMonth(`${year}-12`),
+    });
+
+  it('R3, F4: an apartment of the shared TARI notice closes only after the December inside the period is debited', async () => {
+    // Period October 2025 – September 2026: the December that counts is December 2025.
     const store = await setUp();
     await put(store, 'supply', {
       id: 'sup-a',
@@ -270,25 +284,35 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
       label: 'UTENZA-A',
       apartments: [{ apartmentId: 'apt', weight: 10000 }],
     });
-    expect(await closePeriod(store, QUERY, 'p1', clock, ids('c'))).toEqual({
+    const refused = {
       status: 'refused',
       reason: 'tari-december-missing',
-      month: '2026-12',
-    });
-    const december = instalment('tari-dic', {
-      kind: 'tari',
-      esercizio: '2026',
-      rateIndex: 3,
-      rateCount: 3,
-      dueDate: isoDate('2026-12-16'),
-      rata: cents(3000),
-      coversFrom: yearMonth('2026-09'),
-      coversTo: yearMonth('2026-12'),
-    });
+      month: '2025-12',
+    };
+    expect(await closePeriod(store, QUERY, 'p1', clock, ids('c'))).toEqual(refused);
+    // The December of the year the period ends in no longer counts (decision of 18 Nov 2026).
+    const later = decemberNotice('2026');
+    await put(store, 'instalment', later);
+    await put(store, 'match', match(later, 3000, { transactionDate: isoDate('2026-12-16') }));
+    expect(await closePeriod(store, QUERY, 'p1', clock, ids('d'))).toEqual(refused);
+    const december = decemberNotice('2025');
     await put(store, 'instalment', december);
     // Registered but not debited yet: still refused.
-    expect((await closePeriod(store, QUERY, 'p1', clock, ids('d'))).status).toBe('refused');
-    await put(store, 'match', match(december, 3000, { transactionDate: isoDate('2026-12-16') }));
-    expect((await closePeriod(store, QUERY, 'p1', clock, ids('e'))).status).toBe('closed');
+    expect(await closePeriod(store, QUERY, 'p1', clock, ids('e'))).toEqual(refused);
+    await put(store, 'match', match(december, 3000, { transactionDate: isoDate('2025-12-16') }));
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('f'))).status).toBe('closed');
+  });
+});
+
+describe('tariDecembers (F4)', () => {
+  it('is the December inside the period, every one when there are several', () => {
+    expect(tariDecembers('2025-04', '2026-03')).toEqual(['2025-12']);
+    expect(tariDecembers('2025-09', '2026-08')).toEqual(['2025-12']);
+    expect(tariDecembers('2026-01', '2026-12')).toEqual(['2026-12']);
+    expect(tariDecembers('2024-04', '2026-03')).toEqual(['2024-12', '2025-12']);
+  });
+
+  it('without a December inside, the December of the year the period ends in (as before)', () => {
+    expect(tariDecembers('2026-02', '2026-07')).toEqual(['2026-12']);
   });
 });
