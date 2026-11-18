@@ -6,14 +6,17 @@ import { tenancyUndoBlockers } from './tenancy-store';
 import { imuDependents } from './imu';
 import { checkConsistency, commitChange, readJournal } from './journal';
 import type { Operation } from './journal';
+import { bedsConflictOf } from './apartment-store';
 import {
   AccountSchema,
+  ApartmentSchema,
   BankTransactionSchema,
   BillMatchSchema,
   ImuYearSchema,
   MovementClassSchema,
   PaymentSchema,
   StatementSchema,
+  TenancySchema,
   TransferSchema,
   recordSchemas,
 } from './model';
@@ -123,6 +126,33 @@ const CANCEL_KINDS = ['income.cancel-payment', 'outgoing.cancel-auto'];
  * from a payable, plan 14 the contacts of an apartment, and since the review of 18 Nov 2026 every
  * record of an apartment, the classes of a rule, the contracts of a stay or a deposit).
  */
+/** The stays that no longer fit an apartment whose `rooms` or `posti` an undo of `changes` puts back. */
+async function bedsUndoBlockers(store: Store, changes: Operation['changes']): Promise<string[]> {
+  const restored = changes.flatMap(({ path, before, after }) => {
+    const was = path.includes('/apartment/') ? ApartmentSchema.safeParse(before) : undefined;
+    const is = ApartmentSchema.safeParse(after);
+    return was?.success === true &&
+      was.data.deleted !== true &&
+      is.success &&
+      (was.data.posti !== is.data.posti ||
+        JSON.stringify(was.data.rooms) !== JSON.stringify(is.data.rooms))
+      ? [was.data]
+      : [];
+  });
+  if (restored.length === 0) return [];
+  const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records;
+  return restored
+    .flatMap((a) => {
+      const conflict = bedsConflictOf(a, tenancies);
+      return conflict === undefined
+        ? []
+        : conflict.tenancyIds.length > 0
+          ? conflict.tenancyIds
+          : [a.id];
+    })
+    .sort(compareText);
+}
+
 /** The records `changes` creates: not live before, live after (a deleted one brought back counts). */
 function createdRecords(changes: Operation['changes']): RecordRef[] {
   const live = (r: unknown) =>
@@ -165,6 +195,9 @@ export async function undoBlockedBy(store: Store, operationId: string): Promise<
   // Plan 11: an undo that would take away the only stay of a tenant with payments or recoveries.
   const stays = await tenancyUndoBlockers(store, operation?.changes ?? []);
   if (stays.length > 0) return stays;
+  // Review of 18 Nov 2026 (U13): an undo that puts back beds the live stays no longer fit.
+  const beds = await bedsUndoBlockers(store, operation?.changes ?? []);
+  if (beds.length > 0) return beds;
   if (operation?.kind === 'imu.expected') {
     // The undo puts `before` back in place of `after` (plan 3d, answer of user1, 16 Nov 2026).
     const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
