@@ -143,6 +143,26 @@ describe('referenceProblems', () => {
     expect(fields).toContain('transactionIds:tx-gone');
   });
 
+  it('reports the closing of a period of an apartment that is gone (review of 18 Nov 2026)', async () => {
+    const store = new MemoryStore();
+    await put(store, 'periodClose', [
+      {
+        ...base,
+        id: 'chiusura-apz-2025-26',
+        apartmentId: 'apz',
+        periodLabel: '2025-26',
+        from: '2025-10',
+        to: '2026-09',
+        closedAt: '2026-11-18T09:00:00.000Z',
+        engineVersion: '0.1.0',
+        snapshot: { tenants: [], emptyBeds: 0 },
+      },
+    ]);
+    expect((await referenceProblems(store)).map((p) => [p.from.type, p.field, p.to])).toEqual([
+      ['periodClose', 'apartmentId', { type: 'apartment', id: 'apz' }],
+    ]);
+  });
+
   it('finds nothing in a store whose references all hold', async () => {
     expect(await referenceProblems(await seeded())).toEqual([]);
   });
