@@ -919,11 +919,13 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
         repaired: 0,
         left: [{ path: rel, reason: 'forked' }],
       });
-      expect(cli(['riconcilia', ...s.common]).json).toMatchObject({
+      const forkedRead = cli(['riconcilia', ...s.common]).json;
+      expect(forkedRead).toMatchObject({
         status: 'rejected',
         reason: 'unreadable-records',
         paths: [rel],
       });
+      expect(forkedRead.message).toContain('scegli-versione');
       const versions = cli(['scegli-versione', ...s.common, '--file', rel]);
       expect(versions.code).toBe(0);
       expect(versions.json.versions.map((v) => v.operationId).sort()).toEqual(

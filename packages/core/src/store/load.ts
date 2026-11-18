@@ -109,7 +109,8 @@ export class UnreadableRecordsError extends Error {
       `Alcuni dati (${kind}: ${records.map(({ id }) => id).join(', ')}) non si possono usare: ` +
         'il calcolo non si fa senza di loro. ' +
         (forked
-          ? 'Un dato è stato modificato in due posti: scegli prima la versione da tenere.'
+          ? 'Un dato è stato modificato in due posti: scegli prima la versione da tenere ' +
+            '(«pnpm estratti scegli-versione --file <percorso>»).'
           : "Aspetta che Dropbox finisca, aggiorna l'app se sono di una versione più nuova, o " +
             'ripristina i file dalla cronologia delle versioni di Dropbox.'),
     );

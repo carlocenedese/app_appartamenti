@@ -63,9 +63,10 @@ const READ_ONLY_MESSAGES: Record<ReadOnlyCode, string> = {
     'dati insieme. Confronta a mano ogni copia con il file originale e, quando la versione giusta ' +
     "è quella del file originale, sposta la copia fuori dalla cartella _app; l'app non sceglie da sola.",
   forked:
-    'Due persone hanno modificato gli stessi dati nello stesso momento e il registro ha tutte e ' +
-    'due le versioni: nessuna viene scelta in automatico. Si sceglie quale tenere con il comando ' +
-    '«pnpm estratti scegli-versione --file <percorso>»; il resto della cartella resta usabile.',
+    'Due persone hanno modificato gli stessi dati in due posti e il registro ha tutte e due le ' +
+    "versioni: nessuna viene scelta in automatico, e per ora l'app apre la cartella in sola " +
+    'lettura. Scegli quale tenere con il comando «pnpm estratti scegli-versione --file ' +
+    "<percorso>» (la schermata per sceglierla nell'app arriverà), poi ricontrolla.",
   diverged:
     'Alcuni dati non sono come dice il registro: sincronizzazione in corso o incompleta, o un ' +
     'salvataggio interrotto. Aspetta che Dropbox finisca; se il messaggio resta, usa «Ripara».',

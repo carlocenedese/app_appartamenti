@@ -49,6 +49,23 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
 - **CLI.** `NewerDataError`, `UnreadableRecordsError`, `FileAccessError` e `InconsistentRecordError` danno l'esito `rejected` (codice 1), con il motivo e i percorsi relativi.
 - **Varie.** `FileAccessError` non porta più la causa con il percorso assoluto. `TauriStore` distingue un testo non UTF-8 (file rovinato) da un file inaccessibile. L'impronta degli schemi toglie `description` solo quando è un testo; l'impronta del formato 1 è stata ricalcolata. I messaggi indicano solo azioni che esistono.
 
+## Terzo giro
+
+- **Biforcazione sotto il rev più alto (S2).** A salva due volte offline e C una volta, dallo stesso stato. Ora è `forked` su tutti e due i computer, anche dopo l'arrivo del record dell'altro.
+  - È biforcato ogni record che ha nel registro una modifica in vigore che l'ultima operazione non assorbe nella sua catena di `before`.
+  - Non contano come rami:
+    - una ripresa sullo stesso Store (stesso `before`, rev saltato);
+    - un'operazione annullata con la sua inversa;
+    - ciò che una scelta `fork.resolve` ha sistemato (tutto fino al rev da cui ha scelto);
+    - ciò che sta sotto un buco del registro (file rovinato o mancante).
+  - `forkVersions` offre le teste dei rami.
+- **Nessun falso `forked` nei dati esistenti.** Per tutta la suite (3189 test, compresi i test della CLI) un controllo temporaneo dopo ogni `commitChange` cercava biforcazioni nuove: zero. Lo stesso controllo, insieme alla scansione finale della cartella conservata, sul ciclo completo end-to-end copiato fuori dal repository: zero. Le sole biforcazioni trovate stanno in cartelle di prova create apposta dal revisore.
+- **`resolveFork`** scrive sopra il rev più alto delle versioni. Rifiuta («attendere la sincronizzazione») se sul disco c'è un rev ancora più alto, cioè il registro di un terzo computer non ancora arrivato.
+- **Messaggi.**
+  - `forked` dice che il desktop resta in sola lettura e indica il comando `scegli-versione`; la schermata arriverà.
+  - `repair-refused` e il pulsante «Ripara» non dicono più «più recente del registro».
+  - La CLI, per `unreadable-records`, mostra il messaggio del core, che nomina `scegli-versione`.
+
 ## Da agganciare (passo successivo)
 
 - **Desktop.**
@@ -65,6 +82,7 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
 - Una biforcazione si segnala solo sul `rev` massimo. Se dopo la biforcazione qualcuno ha già scritto un `rev` più alto, la biforcazione resta nella storia e non blocca.
 - `raiseDataFormat` scrive `workspace.json` fuori dal registro, come fa `createWorkspace`. Due computer che lo alzano insieme scrivono lo stesso contenuto. Se Dropbox crea comunque una copia di conflitto, quella blocca la cartella (G2) finché non la si toglie.
 - Anche le letture (Excel, cruscotto) rifiutano con una copia di conflitto, perché fanno già il controllo `checkConsistency`.
+- Il ciclo end-to-end ha un fallimento in più rispetto al rapporto del revisore: l'annullo di `apartment.save` è rifiutato con `has-dependents`. Viene dalla #69 (riferimenti), non da questo ramo. Gli altri 6 fallimenti erano già su main.
 - Riallineamento dopo una scrittura fallita (corretto nella seconda revisione).
   - Il primo giro riconosceva la scrittura fallita dallo stesso `profileId`, e così perdeva in silenzio una modifica riuscita sull'altro computer della stessa persona.
   - Ora vale solo per le operazioni che quello stesso Store ha visto fallire in questa sessione. Una ripresa in un altro processo passa da `ripara`, che applica l'operazione rimasta a metà.
@@ -78,7 +96,6 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
 ## Arretrato
 
 - L'annullo di una scelta (`fork.resolve`) rimette la versione che c'era sul disco, non la biforcazione: l'altra versione resta nel registro.
-- `resolveFork` con un rev sul disco più alto delle versioni (un terzo computer ha scritto sopra e la sua operazione non è ancora arrivata) scrive comunque la scelta. Va rifiutato: è da fare.
 - Gli scrittori senza `checkConsistency` preliminare (supply-store, statement-import, accounts, confirmation, dedupe, users, notes) leggono con `loadAll`. Con uno Store appena creato, `loadAll` non conosce ancora le biforcazioni. La scrittura sul record biforcato la rifiuta comunque `commitChange`; resta il rischio di decisioni prese leggendo un record biforcato. Da far passare per `writesBlocked` come gli altri.
 
 - **G9.** Gli orologi sfasati nell'avviso di presenza. Va scelto tra l'ora di modifica del file e una tolleranza simmetrica più ampia, che però cambia i test di presenza. È una decisione di prodotto.

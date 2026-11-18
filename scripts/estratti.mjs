@@ -192,7 +192,8 @@ const MESSAGES = {
   'empty-parts': 'Rifiutato: nessuna parte, o una parte senza importo positivo.',
   'sum-mismatch': 'Rifiutato: la somma delle parti non è l’importo del movimento.',
   'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
-  'repair-refused': 'Rifiutato: un record sul disco è più recente del registro: serve una persona.',
+  'repair-refused':
+    'Non riparato: il dato sul disco non è uno stato da cui parte il registro. Se è biforcato, scegliere con «scegli-versione»; altrimenti attendere che Dropbox finisca la sincronizzazione e riprovare.',
   'newer-data': 'Rifiutato: dati scritti da una versione più nuova dell’app: aggiornare l’app.',
   'unreadable-records':
     'Rifiutato: alcuni dati non si possono usare (rovinati, di un’altra versione, biforcati o non leggibili): vedere «paths».',
@@ -3103,7 +3104,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
             ? { reason: 'unreadable-records', paths: error.records.map((r) => r.path) }
             : undefined;
     if (refusal !== undefined) {
-      return done(1, { status: 'rejected', ...refusal, message: MESSAGES[refusal.reason] });
+      // The core's text for unreadable records names the ids and, for a fork, «scegli-versione».
+      const message =
+        error instanceof UnreadableRecordsError ? error.message : MESSAGES[refusal.reason];
+      return done(1, { status: 'rejected', ...refusal, message });
     }
     // Never the message or the stack: they could hold a path or a value.
     return done(3, { status: 'failed', reason: 'failed', message: MESSAGES.failed });

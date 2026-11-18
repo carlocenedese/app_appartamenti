@@ -257,7 +257,9 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
                 await repairDiverged(store, p.path);
               } catch {
                 failed =
-                  'Alcuni dati non si possono riparare: sono più nuovi di quanto dice il registro.';
+                  'Alcuni dati non si possono riparare da soli: il dato sul disco non è uno stato ' +
+                  'da cui parte il registro. Aspetta che Dropbox finisca la sincronizzazione e ' +
+                  'ricontrolla; se resta, serve scegliere a mano.';
               }
             }
             open(folder, failed);
