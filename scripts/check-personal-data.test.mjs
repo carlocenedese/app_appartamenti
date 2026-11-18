@@ -240,7 +240,9 @@ describe('maskPath', () => {
   });
 });
 
-describe('scanFiles and the command line', () => {
+// These tests start the real command line on temporary git repositories: under the load of the
+// whole suite they took more than the default 5 s (seen twice on 18 Nov 2026).
+describe('scanFiles and the command line', { timeout: 60_000 }, () => {
   const folders = [];
 
   function makeRepo(files) {
