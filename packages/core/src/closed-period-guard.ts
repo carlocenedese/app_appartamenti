@@ -203,6 +203,8 @@ function existedAt(
   closedAt: string,
   before: unknown,
 ): boolean {
+  // shortcut: compares the clocks of the operations with closedAt, so a computer whose clock is
+  // minutes off can misjudge a record made just around the closing; upgrade with an operation id.
   let touched = false;
   let last: unknown;
   for (const operation of operations) {

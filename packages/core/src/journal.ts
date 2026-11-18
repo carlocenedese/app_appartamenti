@@ -799,6 +799,28 @@ async function refuseIfDiverged(
 }
 
 /**
+ * F5: throws `ClosedPeriodError`, writing nothing, if undoing any of `toUndo` would change what a
+ * closed period counted. For a caller that undoes several operations one by one (`undoFile`).
+ */
+export async function refuseClosedPeriodUndo(
+  store: Store,
+  toUndo: readonly Operation[],
+  journal?: readonly Operation[],
+): Promise<void> {
+  const operations = journal ?? (await readJournal(store)).operations;
+  for (const operation of toUndo) {
+    const back = await Promise.all(
+      operation.changes.map(async (change) => ({
+        path: change.path,
+        before: await readTolerant(store, change.path),
+        after: change.before,
+      })),
+    );
+    await refuseClosedPeriodChanges(store, operations, back);
+  }
+}
+
+/**
  * Undoes the operation `opId` for the profile `profileId`: writes a new operation (kind `undo`,
  * with `undoes` set to `opId`) that puts every record it changed back as it was before, with a
  * `rev` that goes on from the current one. A record the operation created is marked `deleted`.
@@ -853,16 +875,7 @@ export async function undoOperation(
   }
   await refuseIfDiverged(store, operations, [target, ...dependents]);
   // F5: refused before the first undo of a cascade, so that none is left half done.
-  for (const operation of [target, ...dependents]) {
-    const back = await Promise.all(
-      operation.changes.map(async (change) => ({
-        path: change.path,
-        before: await readTolerant(store, change.path),
-        after: change.before,
-      })),
-    );
-    await refuseClosedPeriodChanges(store, operations, back);
-  }
+  await refuseClosedPeriodUndo(store, [target, ...dependents], operations);
 
   // Each round undoes one dependent that nothing else depends on, then looks again with the new
   // undo in the journal, so a dependent that was brought back by a redo is handled like the rest.

@@ -25,19 +25,19 @@ facoltativi nuovi in `periodClose`.
    scrivere (nessun annullo a metà). Rifiuta la modifica, la cancellazione e l'annullo di ciò che
    esisteva alla chiusura e tocca il periodo: presenze, contratti, bollette, rate, pagamenti,
    abbinamenti, recuperi; un record nuovo passa (salvo presenze e contratti nuovi nel periodo).
-   Test in `closed-period-guard.test.ts`.
+   Anche `undoFile` controlla prima del primo annullo. Test in `closed-period-guard.test.ts`.
 4. **Forfait nel supplementare (F11).** `closingOf` dà per inquilino `forfaitDelta` (forfait
    incassato alla chiusura meno quello di oggi), una riga a sé; `dataChanged` non guarda più il
-   forfait. Test in `closing.test.ts`.
+   forfait. Test in `period-close.test.ts` (fatto insieme al task 2).
 5. **Caparra (B4, F10).** `loadDepositReturn` aggiunge una riga per ogni periodo chiuso con il
    conguaglio non saldato («Conguaglio <periodo> non saldato»), per il supplementare
    («Conguaglio supplementare <periodo>») e per il forfait («Forfait non incassato <periodo>»);
    caparra già restituita: `already-returned` con le righe `toRequest` («da richiedere»).
-   Test in `deposit.test.ts`.
+   Test in `deposit-closed.test.ts`.
 6. **Riga di comando, Excel, cruscotto.** Comandi `invia-conguaglio`, `conguaglio-saldato`,
    `riapri-periodo`; stato in `conguaglio-supplementare`, nel cruscotto (`chiuso`, `inviato`,
    `saldato`) e nella prima riga dell'Excel e del file dei proprietari; `ClosedPeriodError` →
-   `closed-period`. Test in `scripts/estratti-funzioni.test.mjs`, `excel.test.ts`,
-   `dashboard.test.ts`; test di F2 (l'Excel dopo la chiusura mostra il calcolo di oggi).
+   `closed-period`. Test in `scripts/estratti-funzioni.test.mjs` e `period-close.test.ts` (Excel,
+   cruscotto e F2: l'Excel dopo la chiusura mostra il calcolo di oggi).
 7. **Registro e specifica.** Sezione 42 (R5), una riga «Ruling» per decisione in
    `docs/progress.md`.

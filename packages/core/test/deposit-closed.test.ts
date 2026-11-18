@@ -127,6 +127,24 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     );
   });
 
+  it('what is already paid on it is a line of its own; a credit of the tenant is added', async () => {
+    const store = await setUp('2027-03', 12000);
+    await put(
+      store,
+      'payment',
+      payment('t-a', '2026-09', 4000, { kind: 'conguaglio', date: isoDate('2026-11-15') }),
+      later,
+    );
+    const lines = await statement(store);
+    expect(lines).toContainEqual({ label: 'Conguaglio 2025-26 non saldato', amount: -12000 });
+    expect(lines).toContainEqual({ label: 'Conguaglio 2025-26 già versato', amount: 4000 });
+    const credit = await setUp('2027-03', -5000);
+    expect(await statement(credit)).toContainEqual({
+      label: 'Conguaglio 2025-26 non saldato',
+      amount: 5000,
+    });
+  });
+
   it('the supplementary of the closed exit period is one line of its own, also when settled', async () => {
     // The tenant left in August 2026, the period is closed; a late bill of 12,00 for July.
     const store = await setUp('2026-08', 0, '2026-09');

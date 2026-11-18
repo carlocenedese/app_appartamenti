@@ -714,6 +714,43 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     expect(await state()).toBe('chiuso');
   });
 
+  it('F10: caparra già restituita, i conguagli chiusi non saldati sono «da richiedere»', async () => {
+    await closable();
+    await cli('chiudi-periodo', ...args);
+    const deposit = (id, amount, date) => [
+      'payment',
+      {
+        id,
+        v: 1,
+        rev: 1,
+        apartmentId: 'apt-x',
+        tenantId: 't-x',
+        date,
+        amount,
+        confirmed: true,
+        kind: 'caparra',
+        source: 'manual',
+      },
+    ];
+    await seed([
+      deposit('dep-x', 50000, '2025-09-20'),
+      deposit('dep-x-back', -50000, '2026-10-05'),
+    ]);
+    const r = await cli('caparra-restituzione', '--appartamento', 'apt-x', '--inquilino', 't-x');
+    expect(r.json).toMatchObject({ reason: 'already-returned', toRequest: 1 });
+    expect(r.json.warning).toMatch(/da richiedere/);
+    expect(r.json).not.toHaveProperty('toRequestLines');
+    const d = await cli(
+      'caparra-restituzione',
+      '--appartamento',
+      'apt-x',
+      '--inquilino',
+      't-x',
+      '--dettagli',
+    );
+    expect(d.json.toRequestLines[0].label).toBe('Conguaglio 2025-26 non saldato');
+  });
+
   it('senza cambiamenti l’annullo della chiusura riapre il periodo', async () => {
     await closable();
     const closed = await cli('chiudi-periodo', ...args);
