@@ -1042,6 +1042,20 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         ],
         { label: 'cruscotto periodo dettagli' },
       );
+      // I2, R5: the period of A does not close while items wait for their debit; nothing is
+      // closed, so no supplementary settlement.
+      shared.close = await step(
+        'estratti',
+        'chiudi-periodo',
+        ['--appartamento', 'apt-a', '--periodo', '2025-26'],
+        { label: 'chiudi-periodo' },
+      );
+      shared.supplementary = await run('conguaglio-supplementare', [
+        '--appartamento',
+        'apt-a',
+        '--periodo',
+        '2025-26',
+      ]);
       const template = join(root, 'modello-promessa.docx');
       await ok('moduli', 'moduli', ['--vuoto', '--tipo', 'promessa', '--uscita', template], {
         label: 'moduli vuoto',
@@ -1233,6 +1247,20 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(shared.tariMatches).toEqual([
       ['apt-a', 10104, true],
       ['apt-b', 8496, true],
+    ]);
+  });
+
+  it('chiudi-periodo: rifiutato con le voci in attesa del conguaglio; nessun supplementare (R5)', () => {
+    expect(shared.close.code).toBe(1);
+    expect(shared.close.json.reason).toBe('cannot-close');
+    expect(shared.close.json.missing.filter((m) => m.kind === 'item').map((m) => m.itemId)).toEqual(
+      shared.calc['apt-a'].pending.map((p) => p.itemId),
+    );
+    expect(shared.close.rerun.wrote).toBe(false);
+    expect(shared.supplementary.json).toEqual({ status: 'open' });
+    expect(shared.cruscottoPeriodo.json.settlements.map((r) => r.state)).toEqual([
+      'provvisorio',
+      'provvisorio',
     ]);
   });
 

@@ -8,6 +8,7 @@ import { pendingDocuments } from './bill-import';
 import { loadCondo } from './condo-store';
 import { compareConsumption, worstLevel } from './consumption';
 import { consumptionThresholdsFor } from './consumption-store';
+import { closingOf } from './closing';
 import { calcConguaglio, SettlementInputError } from './conguaglio';
 import { loadContractChecks, loadContractStatus } from './contract-store';
 import { loadExcelInput } from './excel-store';
@@ -56,6 +57,8 @@ export interface SettlementStatusRow {
   pending?: number;
   /** The shares of the empty beds, left to the owner. */
   unassigned?: Cents;
+  /** R5: the period is closed («chiuso»); absent, it is provisional. */
+  closed?: true;
 }
 
 export interface ApartmentDashboard {
@@ -115,6 +118,7 @@ async function currentSettlements(
  * and for each settlement period given (else the one in course of each apartment, R316)
  * `conguaglio:voci-in-attesa` (the pending items),
  * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`,
+ * `conguaglio:supplementare` (a closed period whose costs changed since its snapshot, R5),
  * and `consumi:giallo` / `consumi:rosso` (the last live bill of each apartment and kind by its
  * worst level, `compareConsumption` with the thresholds of its apartment; none without
  * thresholds: plan 19, R331).
@@ -220,14 +224,21 @@ export async function loadDashboard(
     }
     try {
       const result = calcConguaglio(loaded.input);
+      const { closing } = loaded.input;
       settlements.push({
         apartmentId,
         periodLabel,
         pending: result.pending.length,
         unassigned: result.unassigned,
+        ...(closing === undefined ? {} : { closed: true as const }),
       });
       add(apartmentId, 'conguaglio:voci-in-attesa', result.pending.length);
       if (result.unassigned !== 0) add(apartmentId, 'conguaglio:posti-vuoti');
+      // R5: a closed period whose costs changed since the snapshot (a late bill): a supplementary
+      // settlement to make, «Da rivedere».
+      if (closing !== undefined && closingOf(closing, result, loaded.input, today).changed) {
+        add(apartmentId, 'conguaglio:supplementare');
+      }
     } catch (error) {
       if (!(error instanceof SettlementInputError)) throw error;
       settlements.push({ apartmentId, periodLabel, problem: error.code });

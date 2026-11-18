@@ -111,6 +111,8 @@ import {
   saveCondoInstalment,
   saveSettings,
   loadSettings,
+  closePeriod,
+  loadPeriodClosing,
   equalShares,
   saveContract,
   setContractRent,
@@ -239,6 +241,15 @@ export const MESSAGES = {
   'owner-share-differs':
     'Attenzione: le rate dell’esercizio non hanno la stessa quota della proprietà o lo stesso numero di rate («instalmentIds»): il conguaglio le rifiuta finché non si corregge.',
   'invalid-workspace-settings': 'Rifiutato: impostazione non valida.',
+  'cannot-close':
+    'Rifiutato: il periodo non si chiude: mancano affitti o forfait, o ci sono voci in attesa («missing»; importi solo con --dettagli).',
+  'already-closed':
+    'Rifiutato: il periodo è già chiuso: per riaprirlo annullare la chiusura (annulla-riconciliazione).',
+  'period-settlement-error':
+    'Rifiutato: il conguaglio del periodo non si può calcolare («code»): correggere i dati, poi riprovare.',
+  'unknown-period': 'Rifiutato: periodo di conguaglio sconosciuto per l’appartamento.',
+  'ambiguous-period-label':
+    'Rifiutato: due contratti danno periodi diversi con la stessa etichetta.',
   'invalid-supply':
     'Rifiutato: utenza non valida: etichetta vuota, o le quote degli appartamenti non fanno 100%.',
   'class-has-dependents':
@@ -603,6 +614,8 @@ const RECONCILE_KINDS = [
   'condo.instalment',
   // I9: the workspace settings.
   'settings.save',
+  // I2, R5: the closing of a settlement period (its undo opens the period again).
+  'period.close',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -2597,6 +2610,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         periodLabel: r.periodLabel,
         ...optional('problem', r.problem),
         ...optional('pending', r.pending),
+        // R5: «chiuso» when the period has a live closing, else provisional.
+        ...(r.problem === undefined ? { state: r.closed === true ? 'chiuso' : 'provvisorio' } : {}),
         ...(values.dettagli === true ? optional('unassigned', r.unassigned) : {}),
       })),
     };
@@ -2940,6 +2955,58 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  // I2, R5 (review of 18 Nov 2026): the closing of a settlement period with its snapshot, and the
+  // supplementary settlement of what changed since. Ids, months and codes; amounts only with
+  // --dettagli.
+  if (name === 'chiudi-periodo' || name === 'conguaglio-supplementare') {
+    need(values, 'appartamento', 'periodo');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const query = { apartmentId: values.appartamento, periodLabel: values.periodo };
+    const details = values.dettagli === true;
+    if (name === 'chiudi-periodo') {
+      const result = await closePeriod(store, query, who, clock, newId);
+      if (result.status === 'refused') {
+        throw new Stop(
+          'rejected',
+          result.reason,
+          result.reason === 'cannot-close'
+            ? {
+                missing: result.missing.map(({ amount, ...m }) =>
+                  details && amount !== undefined ? { ...m, amount } : m,
+                ),
+              }
+            : result.reason === 'settlement-error'
+              ? { code: result.code, message: MESSAGES['period-settlement-error'] }
+              : result.reason === 'ambiguous-period'
+                ? { message: MESSAGES['ambiguous-period-label'] }
+                : {},
+        );
+      }
+      return result;
+    }
+    const result = await loadPeriodClosing(store, query, day(clock().slice(0, 10)));
+    if (result.status === 'refused') {
+      const message =
+        result.reason === 'ambiguous-period'
+          ? 'ambiguous-period-label'
+          : result.reason === 'settlement-error'
+            ? 'period-settlement-error'
+            : result.reason;
+      throw new Stop('rejected', result.reason, {
+        ...optional('code', result.code),
+        message: MESSAGES[message],
+      });
+    }
+    if (result.status === 'open') return { status: 'open' };
+    return {
+      status: 'closed',
+      closedAt: result.closedAt,
+      changed: result.changed,
+      tenants: result.tenants.map(({ delta, ...t }) => (details ? { ...t, delta } : t)),
+      ...(details ? { unassignedDelta: result.unassignedDelta } : {}),
+    };
+  }
+
   // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
   // and the apartments it belongs to, `--appartamento` alone at 100% or `--ripartizione
   // apt-a:60;apt-b:40` (percentages); undone with annulla-riconciliazione. Ids only in the output.
@@ -3135,6 +3202,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'utenza',
         'rata-condominio',
         'impostazioni',
+        'chiudi-periodo',
+        'conguaglio-supplementare',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -3171,6 +3240,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'bolletta',
         'annulla-bolletta',
         'cruscotto',
+        'chiudi-periodo',
+        'conguaglio-supplementare',
       ],
       parte: ['conferma', 'abbina', 'tasse-assegna'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
@@ -3221,11 +3292,13 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'contatti',
         'utenza',
         'rata-condominio',
+        'chiudi-periodo',
+        'conguaglio-supplementare',
       ],
       voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
       inquilini: ['recupero'],
       quote: ['recupero'],
-      periodo: ['recupero'],
+      periodo: ['recupero', 'chiudi-periodo', 'conguaglio-supplementare'],
       stato: ['scadenze', 'recupero'],
       nome: ['inquilino', 'appartamento', 'contatto'],
       ruolo: ['contatto', 'contatti'],

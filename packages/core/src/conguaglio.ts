@@ -855,6 +855,18 @@ export interface SupplementaryRow {
   action: 'da-pagare' | 'da-rimborsare' | 'da-trattenere-o-richiedere';
 }
 
+/** What the supplementary settlement reads of a calculation (a `ConguaglioResult` is one). */
+export interface SettlementCosts {
+  tenants: readonly {
+    tenantId: string;
+    spese: Cents;
+    condominio: { rata: Cents };
+    commissione: Cents;
+  }[];
+  unassigned: Cents;
+  unassignedByBucket: { conguaglioPrec: Cents };
+}
+
 /**
  * The supplementary settlement of a closed period (R5): for each tenant of either calculation, the
  * difference in costs (`spese + condominio.rata + commissione`) between `current` and the
@@ -865,14 +877,14 @@ export interface SupplementaryRow {
  * departed (R-C10).
  */
 export function calcConguaglioSupplementare(input: {
-  current: ConguaglioResult;
-  snapshot: ConguaglioResult;
+  current: SettlementCosts;
+  snapshot: SettlementCosts;
   tenancies: Tenancy[];
   asOf: ISODate;
 }): { tenants: SupplementaryRow[]; unassignedDelta: Cents } {
-  const emptyBeds = (result: ConguaglioResult): number =>
+  const emptyBeds = (result: SettlementCosts): number =>
     result.unassigned - result.unassignedByBucket.conguaglioPrec;
-  const costs = (result: ConguaglioResult): Map<string, number> =>
+  const costs = (result: SettlementCosts): Map<string, number> =>
     new Map(result.tenants.map((t) => [t.tenantId, t.spese + t.condominio.rata + t.commissione]));
   const now = costs(input.current);
   const before = costs(input.snapshot);

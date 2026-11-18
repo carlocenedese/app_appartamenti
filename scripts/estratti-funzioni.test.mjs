@@ -396,3 +396,172 @@ describe('impostazioni (I9)', () => {
     expect((await cli('impostazioni')).json.settings.imuTolerance.isDefault).toBe(true);
   });
 });
+
+describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
+  // Invented: one bed, one tenant all year (450,00 + 30,00 a month), a bill of 90,00 paid.
+  const MONTHS = Array.from({ length: 12 }, (_, i) => {
+    const n = 2025 * 12 + 9 + i;
+    return `${String(Math.floor(n / 12))}-${String((n % 12) + 1).padStart(2, '0')}`;
+  });
+  const bill = (id, dueDate) => ({
+    id,
+    v: 1,
+    rev: 1,
+    apartmentId: 'apt-x',
+    category: 'elettricita',
+    supplier: 'Fornitore inventato',
+    dueDate,
+    periodStart: '2026-07-01',
+    periodEnd: '2026-09-30',
+    amount: 9000,
+    includedInConguaglio: true,
+    sharedWithTenants: true,
+    fileHash: `hash-${id}`,
+    filePath: `bollette/${id}.pdf`,
+  });
+  const matchOf = (b) => ({
+    id: `m-${b.id}`,
+    v: 1,
+    rev: 1,
+    itemType: 'bill',
+    itemId: b.id,
+    transactionId: `tx-${b.id}`,
+    transactionDate: b.dueDate,
+    amount: 9000,
+    part: 'amount',
+    confirmed: true,
+    by: 'manual',
+  });
+  async function seed(records) {
+    await commitChange(
+      new FsStore(dir),
+      {
+        profileId: 'cli',
+        kind: 'test.seed',
+        summary: 'dati inventati',
+        changes: records.map(([kind, r]) => ({
+          path: recordPath(kind, r.id),
+          after: recordSchemas[kind].parse(r),
+        })),
+      },
+      () => ORA,
+      newId,
+    );
+  }
+  async function closable(months = MONTHS) {
+    await cli(
+      'appartamento',
+      '--id',
+      'apt-x',
+      '--nome',
+      'X',
+      '--locatore',
+      'L',
+      '--posti',
+      '1',
+      '--annualita',
+      '10-01',
+      '--differenza-condominio',
+      'inquilini',
+    );
+    await cli('inquilino', '--id', 't-x', '--nome', 'Nome Inventato');
+    const b = bill('b-lug', '2026-10-10');
+    await seed([
+      [
+        'contract',
+        {
+          id: 'ctr-x',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-x',
+          type: '1+1',
+          start: '2025-10',
+          end: '2026-09',
+          settlement: 'annuale',
+        },
+      ],
+      [
+        'tenancy',
+        {
+          id: 'tcy-x',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-x',
+          tenantId: 't-x',
+          from: '2025-10',
+          monthlyRent: 45000,
+          monthlyForfait: 3000,
+        },
+      ],
+      ['bill', b],
+      ['match', matchOf(b)],
+      ...months.map((m) => [
+        'payment',
+        {
+          id: `pay-${m}`,
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-x',
+          tenantId: 't-x',
+          date: `${m}-05`,
+          amount: 48000,
+          confirmed: true,
+          kind: 'canone',
+          forMonth: m,
+          source: 'csv',
+        },
+      ]),
+    ]);
+  }
+  const args = ['--appartamento', 'apt-x', '--periodo', '2025-26'];
+
+  it('rifiuta con un mese non pagato: mesi e codici, importi solo con --dettagli', async () => {
+    await closable(MONTHS.slice(0, 11));
+    const r = await cli('chiudi-periodo', ...args);
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({
+      reason: 'cannot-close',
+      missing: [
+        { tenantId: 't-x', month: '2026-09', kind: 'rent' },
+        { tenantId: 't-x', month: '2026-09', kind: 'forfait' },
+      ],
+    });
+    expect(r.out).not.toMatch(/45000|3000\b/);
+    const d = await cli('chiudi-periodo', ...args, '--dettagli');
+    expect(d.json.missing[0].amount).toBe(45000);
+    expect((await cli('conguaglio-supplementare', ...args)).json).toEqual({ status: 'open' });
+  });
+
+  it('chiude, il cruscotto dice «chiuso», una bolletta tardiva dà il supplementare, l’annullo riapre', async () => {
+    await closable();
+    expect(
+      (await cli('cruscotto', '--periodo-conguaglio', 'apt-x:2025-26')).json.settlements,
+    ).toEqual([{ apartmentId: 'apt-x', periodLabel: '2025-26', pending: 0, state: 'provvisorio' }]);
+    const closed = await cli('chiudi-periodo', ...args);
+    expect(closed.json).toMatchObject({ status: 'closed', closeId: 'chiusura-apt-x-2025-26' });
+    expect((await cli('chiudi-periodo', ...args)).json.reason).toBe('already-closed');
+    const board = await cli('cruscotto', '--periodo-conguaglio', 'apt-x:2025-26');
+    expect(board.json.settlements[0].state).toBe('chiuso');
+    const late = bill('b-tardiva', '2026-11-10');
+    await seed([
+      ['bill', late],
+      ['match', matchOf(late)],
+    ]);
+    const sup = await cli('conguaglio-supplementare', ...args);
+    expect(sup.json).toMatchObject({
+      status: 'closed',
+      changed: true,
+      tenants: [{ tenantId: 't-x', departed: false, action: 'da-pagare' }],
+    });
+    expect(sup.json.tenants[0].delta).toBeUndefined();
+    expect(
+      (await cli('conguaglio-supplementare', ...args, '--dettagli')).json.tenants[0].delta,
+    ).toBe(9000);
+    const counts = (await cli('cruscotto', '--periodo-conguaglio', 'apt-x:2025-26')).json
+      .apartments[0].counts;
+    expect(counts['conguaglio:supplementare']).toBe(1);
+    const u = await cli('annulla-riconciliazione', '--operazione', closed.json.operationId);
+    expect(u.code, u.out).toBe(0);
+    expect((await cli('conguaglio-supplementare', ...args)).json).toEqual({ status: 'open' });
+  });
+});

@@ -1426,6 +1426,43 @@ export const WorkspaceSettingsSchema = RecordBaseSchema.extend({
   .meta({ description: 'id is impostazioni; imuToleranceBp in basis points (100 = 1%).' });
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
 
+// --- Closing of a settlement period (review of 18 Nov 2026, I2, R5) ----------------------------
+
+/**
+ * The closing of one settlement period of an apartment (R5), `chiusura-<apartmentId>-<periodLabel>`,
+ * with the snapshot of the costs of each tenant and of the empty beds that the supplementary
+ * settlement compares with (`calcConguaglioSupplementare`). Written only when every rent and flat
+ * charge is collected and no item is waiting; undone with the reconciliation undo.
+ */
+export const PeriodCloseSchema = RecordBaseSchema.extend({
+  apartmentId: NonEmptyString,
+  periodLabel: NonEmptyString,
+  from: YearMonthSchema,
+  to: YearMonthSchema,
+  closedAt: TimestampSchema,
+  /** `CORE_VERSION` of the calculation of the snapshot. */
+  engineVersion: NonEmptyString,
+  snapshot: z.object({
+    /** Bills and TARI, condominium rata and commission of each tenant (`spese`, `rata`, ...). */
+    tenants: z.array(
+      z.object({
+        tenantId: NonEmptyString,
+        spese: CentsSchema,
+        rata: CentsSchema,
+        commissione: CentsSchema,
+      }),
+    ),
+    /** The shares of the empty beds, last year's condominium settlement excluded. */
+    emptyBeds: CentsSchema,
+  }),
+})
+  .refine((c) => c.id === `chiusura-${c.apartmentId}-${c.periodLabel}`, {
+    message: 'The id must be chiusura-<apartmentId>-<periodLabel>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is chiusura-<apartmentId>-<periodLabel>; amounts in cents.' });
+export type PeriodClose = z.infer<typeof PeriodCloseSchema>;
+
 // --- Legal interest rates (plan 17) -------------------------------------------------------------
 
 /**
@@ -1591,6 +1628,7 @@ export const recordSchemas = {
   consumptionSettings: ConsumptionSettingsSchema,
   tenantCard: TenantCardSchema,
   workspaceSettings: WorkspaceSettingsSchema,
+  periodClose: PeriodCloseSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 

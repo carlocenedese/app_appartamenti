@@ -302,6 +302,20 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
   consumptionSettings: { ...base, id: 'soglie-consumi', giallo: { consumption: 3000 } },
   tenantCard: { ...base, id: 'ten-1', taxCode: 'CODICE-PROVA' },
   workspaceSettings: { ...base, id: 'impostazioni', imuToleranceBp: 100 },
+  periodClose: {
+    ...base,
+    id: 'chiusura-apt-1-2025-26',
+    apartmentId: 'apt-1',
+    periodLabel: '2025-26',
+    from: '2025-10',
+    to: '2026-09',
+    closedAt: '2026-11-18T09:00:00.000Z',
+    engineVersion: '0.1.0',
+    snapshot: {
+      tenants: [{ tenantId: 'ten-1', spese: 9000, rata: 0, commissione: 0 }],
+      emptyBeds: 0,
+    },
+  },
   taxConfirmation: {
     ...base,
     id: 'taxc-apt-1-2026-cedolare',
@@ -440,6 +454,7 @@ describe('recordSchemas', () => {
         'consumptionSettings',
         'tenantCard',
         'workspaceSettings',
+        'periodClose',
       ].sort(),
     );
   });
