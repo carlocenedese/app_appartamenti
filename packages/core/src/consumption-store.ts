@@ -5,7 +5,7 @@
  */
 import { compareConsumption } from './consumption';
 import type { ConsumptionComparison, ConsumptionThresholds } from './consumption';
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import { ApartmentSchema, BillSchema, ConsumptionSettingsSchema } from './model';
 import type { ConsumptionSettings } from './model';
 import { loadAll } from './store/load';
@@ -48,7 +48,7 @@ export async function saveConsumptionSettings(
   const refuse = (
     reason: Extract<SaveConsumptionSettingsResult, { status: 'refused' }>['reason'],
   ) => ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   if (
     input.apartmentId !== undefined &&
     !(await loadAll(store, 'apartment', ApartmentSchema)).records.some(
@@ -104,7 +104,7 @@ export async function loadConsumption(
   store: Store,
   billId: string,
 ): Promise<LoadConsumptionResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const bills = (await loadAll(store, 'bill', BillSchema)).records;

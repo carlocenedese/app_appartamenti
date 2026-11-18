@@ -3,7 +3,7 @@
  * write one `contact.save` operation, nothing written while `checkConsistency` reports a problem,
  * nothing for the same request on the same state. No name or contact in a summary.
  */
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import { ApartmentSchema, ContactSchema, SupplySchema } from './model';
 import type { Contact } from './model';
 import { loadAll } from './store/load';
@@ -37,7 +37,7 @@ export async function saveContact(
 ): Promise<SaveContactResult> {
   const refuse = (reason: Extract<SaveContactResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id)) return refuse('invalid-contact');
   try {
     assertSafeSegment(input.id); // also a name reserved on Windows (`CON`, `nul`)
@@ -88,7 +88,7 @@ export async function loadContacts(
   store: Store,
   query: { apartmentId?: string; role?: Contact['role'] },
 ): Promise<LoadContactsResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   if (

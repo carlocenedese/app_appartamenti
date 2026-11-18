@@ -81,6 +81,18 @@ const MISSING_RECORD: ReadonlySet<Problem['reason']> = new Set([
   'id-mismatch',
 ]);
 
+// shortcut: the forks `checkConsistency` last saw in each store, so that `loadAll` refuses a
+// forked record without reading the journal at every call. Every store and calculation calls
+// `checkConsistency` first, so it is fresh there; a caller that does not may see an older set
+// (a fork it found later is then missed until the next check). Replace with a journal index if
+// the core gets one.
+const forkedSeen = new WeakMap<Store, ReadonlySet<string>>();
+
+/** Records the forked paths of `store` (from `checkConsistency`). Not part of the public API. */
+export function noteForkedPaths(store: Store, paths: ReadonlySet<string>): void {
+  forkedSeen.set(store, paths);
+}
+
 /**
  * Thrown by `loadAll` (unless `tolerant`) when some files of the kind hold a record it cannot
  * use: a calculation or an Excel made without them would be wrong without saying so. `records`
@@ -92,10 +104,14 @@ export class UnreadableRecordsError extends Error {
   readonly records: { id: string; path: string; reason: Problem['reason'] }[];
 
   constructor(kind: string, records: UnreadableRecordsError['records']) {
+    const forked = records.some(({ reason }) => reason === 'forked');
     super(
-      `Alcuni dati (${kind}: ${records.map(({ id }) => id).join(', ')}) non si possono leggere: ` +
-        "il calcolo non si fa senza di loro. Aspetta che Dropbox finisca, aggiorna l'app se sono " +
-        'di una versione più nuova, o ripara i file.',
+      `Alcuni dati (${kind}: ${records.map(({ id }) => id).join(', ')}) non si possono usare: ` +
+        'il calcolo non si fa senza di loro. ' +
+        (forked
+          ? 'Un dato è stato modificato in due posti: scegli prima la versione da tenere.'
+          : "Aspetta che Dropbox finisca, aggiorna l'app se sono di una versione più nuova, o " +
+            'ripristina i file dalla cronologia delle versioni di Dropbox.'),
     );
     this.name = 'UnreadableRecordsError';
     this.kind = kind;
@@ -215,6 +231,12 @@ export async function loadAll<T extends { id: string }>(
   const missing = loaded.problems.filter(
     (problem) => MISSING_RECORD.has(problem.reason) || loaded.orphanDuplicates.has(problem.path),
   );
+  // A forked record: which of its versions is right is not known, so it is not used either.
+  const forked = forkedSeen.get(store);
+  for (const record of loaded.records) {
+    const path = `${DATA_DIR}/${kind}/${record.id}.json`.normalize('NFC');
+    if (forked?.has(path) === true) missing.push({ path, reason: 'forked' });
+  }
   if (opts.tolerant !== true && missing.length > 0) {
     throw new UnreadableRecordsError(
       kind,

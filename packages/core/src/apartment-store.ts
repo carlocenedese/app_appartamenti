@@ -3,7 +3,7 @@
  * `condoDifferenceTo` is asked at creation. One `apartment.save` operation, nothing written while
  * `checkConsistency` reports a problem, nothing for the same request on the same state.
  */
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import { ApartmentSchema } from './model';
 import type { Apartment } from './model';
 import { isSafePath, loadAll } from './store/load';
@@ -47,7 +47,7 @@ export async function saveApartment(
 ): Promise<SaveApartmentResult> {
   const refuse = (reason: Extract<SaveApartmentResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id) || !isSafePath(input.id)) {
     return refuse('invalid-apartment'); // isSafePath: no CON, NUL, COM1 (Windows device names)
   }

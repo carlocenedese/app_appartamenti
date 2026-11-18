@@ -6,7 +6,7 @@
  */
 import type { ReconcileRunResult } from './income-store';
 import { planIncome, runReconcile } from './income-store';
-import { checkConsistency } from './journal';
+import { writesBlocked } from './journal';
 import type { MatchRunResult } from './match-store';
 import { planMatch, runMatch } from './match-store';
 import type { ExclusionProposal } from './movements';
@@ -42,7 +42,7 @@ export async function runReconciliation(
   options: { dryRun?: boolean } = {},
 ): Promise<ReconciliationResult> {
   const refused = { status: 'refused', reason: 'inconsistent-store' } as const;
-  if ((await checkConsistency(store)).length > 0) return refused;
+  if (await writesBlocked(store)) return refused;
   const exclusions = await listExclusionProposals(store);
   const dryRun = options.dryRun === true;
   let match: Matched;

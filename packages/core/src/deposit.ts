@@ -12,7 +12,7 @@ import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
 import { legalInterest } from './interest';
 import { planMatch } from './match-store';
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import {
   ApartmentSchema,
   BankTransactionSchema,
@@ -118,7 +118,7 @@ export async function saveLegalRate(
   clock: () => string,
   newId: () => string,
 ): Promise<SaveLegalRateResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const id = `tasso-${input.year}`;
@@ -225,7 +225,7 @@ export async function loadDepositReturn(
 ): Promise<DepositReturnResult> {
   const refuse = (reason: Extract<DepositReturnResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records.filter(
     (t) => t.apartmentId === input.apartmentId,
   );

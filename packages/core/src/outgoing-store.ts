@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 import { planIncome } from './income-store';
-import { checkConsistency, commitChange, latestOperationByPath, readJournal } from './journal';
+import { commitChange, latestOperationByPath, readJournal, writesBlocked } from './journal';
 import {
   AccountSchema,
   ApartmentSchema,
@@ -135,7 +135,7 @@ export async function runOutgoing(
   newId: () => string,
   options: { dryRun?: boolean; alsoUsed?: ReadonlySet<string> } = {},
 ): Promise<OutgoingRunResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const state = await loadOutgoingState(store, options.alsoUsed);
@@ -216,7 +216,7 @@ export async function confirmOutgoing(
 ): Promise<ConfirmOutgoingResult> {
   const refuse = (reason: Extract<ConfirmOutgoingResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const state = await loadOutgoingState(store);
   let transactionId = state.result.proposals.find((p) => p.id === input.proposalId)?.transactionId;
   if (transactionId === undefined && input.proposalId.startsWith('p-chi-')) {
@@ -362,7 +362,7 @@ export async function confirmTenantOutgoing(
 ): Promise<ConfirmTenantOutgoingResult> {
   const refuse = (reason: Extract<ConfirmTenantOutgoingResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   // The type says it already; a caller in plain JavaScript could still pass `canone`.
   if (!TenantOutgoingKindSchema.safeParse(input.kind).success) return refuse('invalid-kind');
   const state = await loadOutgoingState(store);
@@ -436,7 +436,7 @@ export async function cancelAutomaticClass(
 ): Promise<CancelClassResult> {
   const refuse = (reason: 'inconsistent-store' | 'unknown-class' | 'not-automatic') =>
     ({ status: 'refused', reason }) as const;
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const id = `mc-${transactionId}`;
   const cls = (await loadAll(store, 'movementClass', MovementClassSchema)).records.find(
     (c) => c.id === id,

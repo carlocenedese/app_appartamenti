@@ -6,7 +6,7 @@
  */
 import { imuRates } from './imu';
 import type { ImuRateStatus } from './imu';
-import { checkConsistency } from './journal';
+import { writesBlocked } from './journal';
 import { expectedDebit, statementPeriodsOf } from './match';
 import {
   AccountSchema,
@@ -300,7 +300,7 @@ export async function loadScadenzario(
   store: Store,
   options: { today: ISODate; soonDays?: number },
 ): Promise<LoadScadenzarioResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const all = { includeDeleted: true };
