@@ -4546,6 +4546,82 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     ]);
     expect((await run(contratto('--presenze', 'tcy-anna,tcy-bruno'))).code).toBe(0);
   });
+
+  it('scambio-camera (piano 18): salvato, unchanged, avviso, rifiuti e annullamento', async () => {
+    const s = await setup();
+    await run(presenza(s));
+    await run(
+      presenza(
+        s,
+        '--id',
+        'tcy-bruno',
+        '--inquilino',
+        'ten-bruno',
+        '--posto',
+        'B',
+        '--affitto',
+        '360,00',
+      ),
+    );
+    const scambio = (...extra) => [
+      'scambio-camera',
+      ...s.common,
+      '--appartamento',
+      'pulci',
+      '--presenza-a',
+      'tcy-anna',
+      '--presenza-b',
+      'tcy-bruno',
+      '--mese',
+      '2026-03',
+      ...extra,
+    ];
+    const saved = await run(scambio());
+    expect([saved.code, saved.json]).toEqual([
+      0,
+      {
+        status: 'saved',
+        tenancyIds: ['tcy-anna-2026-03', 'tcy-bruno-2026-03'],
+        operationId: saved.json.operationId,
+        warnings: ['swap-rent-unchanged'],
+        message: expect.stringMatching(/^Nota: /),
+      },
+    ]);
+    const again = await run(scambio());
+    expect([again.code, again.json.status]).toEqual([0, 'unchanged']);
+    expect(saved.out + again.out).not.toMatch(/ten-|Anna|Bruno|35000|36000/);
+    const other = await run(scambio('--canone-a', '360,00'));
+    expect([other.code, other.json.reason]).toEqual([1, 'tenancy-exists']);
+    const same = await run(scambio('--presenza-b', 'tcy-anna'));
+    expect([same.code, same.json.reason, same.json.message]).toEqual([
+      1,
+      'same-tenant',
+      'Rifiutato: nello scambio le due presenze sono dello stesso inquilino.',
+    ]);
+    for (const args of [
+      scambio('--canone-b', '-1,00'),
+      scambio('--mese', '2026-13'),
+      scambio('--affitto', '1,00'),
+      ['scambio-camera', ...s.common, '--appartamento', 'pulci', '--presenza-a', 'tcy-anna'],
+    ]) {
+      expect((await run(args)).code).toBe(2);
+    }
+    const long = await run(scambio('--mese', '2026-04', '--id-a', 'x'.repeat(65)));
+    expect([long.code, long.json.reason, long.json.part]).toEqual([1, 'id-too-long', 'a']);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      saved.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect((await run(scambio('--mese', '2026-04', '--id-a', 'CON'))).code).toBe(2);
+    const named = await run(scambio('--mese', '2026-04', '--id-a', 'tcy-a2', '--id-b', 'tcy-b2'));
+    expect([named.code, named.json.tenancyIds]).toEqual([0, ['tcy-a2', 'tcy-b2']]);
+    await run(['annulla-riconciliazione', ...s.common, '--operazione', named.json.operationId]);
+    const redo = await run(scambio('--canone-a', '360,00', '--canone-b', '350,00'));
+    expect([redo.code, redo.json.status, redo.json.warnings]).toEqual([0, 'saved', undefined]);
+  });
 });
 
 describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () => {
