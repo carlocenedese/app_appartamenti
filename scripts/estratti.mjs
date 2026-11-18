@@ -158,6 +158,11 @@ import {
   importBill,
   loadDashboard,
   undoBillImport,
+  DATA_FORMAT,
+  PeriodCloseSchema,
+  WORKSPACE_PATH,
+  findWorkspace,
+  raiseDataFormat,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
@@ -261,7 +266,15 @@ export const MESSAGES = {
     'Attenzione: le rate dell’esercizio non hanno la stessa quota della proprietà o lo stesso numero di rate («instalmentIds»): il conguaglio le rifiuta finché non si corregge.',
   'invalid-workspace-settings': 'Rifiutato: impostazione non valida.',
   'closing-changed':
-    'Rifiutato: dopo la chiusura i costi del periodo sono cambiati: annullare la chiusura perderebbe il conguaglio supplementare (vedere conguaglio-supplementare).',
+    'Rifiutato: dopo la chiusura sono cambiati costi o dati del periodo, e annullarla perderebbe il conguaglio supplementare. Due vie: tenere la chiusura e usare «conguaglio-supplementare»; oppure annullare prima, in ordine inverso, le operazioni fatte dopo la chiusura (bollette, pagamenti, recuperi), poi la chiusura.',
+  'instalment-esercizio-format':
+    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 (il conguaglio divide solo questa forma).',
+  'tari-december-missing':
+    'Rifiutato: l’appartamento è nell’avviso TARI comune e il periodo si chiude solo dopo l’addebito dell’avviso TARI di dicembre («month», R3): registrarlo e abbinarlo, poi chiudere.',
+  'closed-period-changed':
+    'Attenzione: questa scrittura cambia un periodo di conguaglio già chiuso («closedPeriods»): serve un conguaglio supplementare (conguaglio-supplementare).',
+  'closing-unknown':
+    'Rifiutato: il conguaglio del periodo ora non si calcola, quindi non si sa se annullare la chiusura perderebbe un conguaglio supplementare: correggere prima i dati del periodo.',
   'already-closed':
     'Rifiutato: il periodo è già chiuso: per riaprirlo annullare la chiusura (annulla-riconciliazione), finché non c’è un conguaglio supplementare.',
   'cannot-close':
@@ -2868,7 +2881,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         { apartmentId: closed.apartmentId, periodLabel: closed.periodLabel },
         day(clock().slice(0, 10)),
       );
-      if (closing.status === 'closed' && closing.changed) {
+      if (closing.status === 'refused') throw new Stop('rejected', 'closing-unknown');
+      if (closing.status === 'closed' && (closing.changed || closing.dataChanged)) {
         throw new Stop('rejected', 'closing-changed');
       }
     }
@@ -2941,7 +2955,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
         'rejected',
         result.reason,
         result.reason === 'esercizio-format'
-          ? { documentIds: result.documentIds }
+          ? {
+              documentIds: result.documentIds,
+              ...(result.documentIds.length === 0
+                ? { message: MESSAGES['instalment-esercizio-format'] }
+                : {}),
+            }
           : result.reason === 'instalment-in-use'
             ? { recordIds: result.recordIds }
             : result.reason === 'id-collision'
@@ -2969,7 +2988,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (imu !== undefined) {
       const result = await saveSettings(
         store,
-        { imuToleranceBp: imu === 'predefinita' ? null : basisPoints(imu) },
+        // 0 is no tolerance at all (the schema allows it); basisPoints starts at 0,01%.
+        {
+          imuToleranceBp:
+            imu === 'predefinita' ? null : /^0(,0{1,2})?$/.test(imu) ? 0 : basisPoints(imu),
+        },
         who,
         clock,
         newId,
@@ -3005,17 +3028,19 @@ async function command(name, values, positionals, store, who, clock, newId) {
         throw new Stop(
           'rejected',
           result.reason,
-          result.reason === 'cannot-close'
-            ? {
-                missing: result.missing.map(({ amount, ...m }) =>
-                  details && amount !== undefined ? { ...m, amount } : m,
-                ),
-              }
-            : result.reason === 'settlement-error'
-              ? { code: result.code, message: MESSAGES['period-settlement-error'] }
-              : result.reason === 'ambiguous-period'
-                ? { message: MESSAGES['ambiguous-period-label'] }
-                : {},
+          result.reason === 'tari-december-missing'
+            ? { month: result.month }
+            : result.reason === 'cannot-close'
+              ? {
+                  missing: result.missing.map(({ amount, ...m }) =>
+                    details && amount !== undefined ? { ...m, amount } : m,
+                  ),
+                }
+              : result.reason === 'settlement-error'
+                ? { code: result.code, message: MESSAGES['period-settlement-error'] }
+                : result.reason === 'ambiguous-period'
+                  ? { message: MESSAGES['ambiguous-period-label'] }
+                  : {},
         );
       }
       return result;
@@ -3038,6 +3063,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       status: 'closed',
       closedAt: result.closedAt,
       changed: result.changed,
+      dataChanged: result.dataChanged,
       tenants: result.tenants.map(({ delta, ...t }) => (details ? { ...t, delta } : t)),
       ...(details ? { unassignedDelta: result.unassignedDelta } : {}),
     };
@@ -3269,6 +3295,51 @@ export const COMMAND_NAMES = [
   'scegli-versione',
   'aiuto',
 ];
+
+/**
+ * The state of each closed settlement period (R5), by closing id, as `loadPeriodClosing` gives it:
+ * compared before and after a write to warn that the write changed a closed period (review,
+ * point 6). Nothing when no period is closed; a folder it cannot read gives nothing.
+ */
+async function closedStates(store, today) {
+  const states = new Map();
+  try {
+    const closes = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    for (const c of closes) {
+      const query = { apartmentId: c.apartmentId, periodLabel: c.periodLabel };
+      states.set(c.id, {
+        query,
+        state: JSON.stringify(await loadPeriodClosing(store, query, today)),
+      });
+    }
+  } catch {
+    return new Map();
+  }
+  return states;
+}
+
+/**
+ * The data folder of one command line (review of 18 Nov 2026, data format): before its first
+ * write of a record or an operation, a folder whose `workspace.json` declares an older data format
+ * is raised to `DATA_FORMAT` (`raiseDataFormat`, idempotent), so that an older app opens it
+ * read-only instead of reading records it does not know. A newer format is refused by
+ * `commitChange` (`newer-data`: update the app); a folder without `workspace.json` is left as it is.
+ */
+class CliStore extends FsStore {
+  formatChecked = false;
+  formatRaised = false;
+
+  async writeJsonAtomic(path, value) {
+    if (!this.formatChecked && path !== WORKSPACE_PATH) {
+      this.formatChecked = true;
+      const workspace = await findWorkspace(this);
+      if (workspace !== undefined && workspace.schemaVersion < DATA_FORMAT) {
+        this.formatRaised = (await raiseDataFormat(this)) === 'raised';
+      }
+    }
+    return super.writeJsonAtomic(path, value);
+  }
+}
 
 /**
  * Runs one command line. `io.now` is the clock and `io.newId` the generator of ids (both live
@@ -3516,8 +3587,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     } catch {
       throw invalid('bad-folder');
     }
-    const store = new FsStore(values.cartella);
-    const body = await command(
+    const store = new CliStore(values.cartella);
+    const today = day(now.slice(0, 10));
+    const closedBefore = await closedStates(store, today);
+    const result = await command(
       name,
       values,
       positionals,
@@ -3526,6 +3599,22 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       () => now,
       io.newId,
     );
+    // The raise of the folder's data format is said in the output (it is not an operation).
+    let body = store.formatRaised ? { ...result, dataFormat: 'raised' } : result;
+    // Point 6: a write that changed a period closed before it (never a refusal of ours).
+    if (store.formatChecked && closedBefore.size > 0) {
+      const after = await closedStates(store, today);
+      const changed = [...closedBefore]
+        .filter(([id, { state }]) => after.has(id) && after.get(id).state !== state)
+        .map(([, { query }]) => query);
+      if (changed.length > 0) {
+        body = {
+          ...body,
+          closedPeriods: changed,
+          closedPeriodMessage: MESSAGES['closed-period-changed'],
+        };
+      }
+    }
     return done(0, body);
   } catch (error) {
     if (error instanceof Stop) {

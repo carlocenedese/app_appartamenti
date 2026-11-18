@@ -312,7 +312,17 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
     closedAt: '2026-11-18T09:00:00.000Z',
     engineVersion: '0.1.0',
     snapshot: {
-      tenants: [{ tenantId: 'ten-1', spese: 9000, rata: 0, commissione: 0 }],
+      tenants: [
+        {
+          tenantId: 'ten-1',
+          spese: 9000,
+          rata: 0,
+          commissione: 0,
+          recupero: 0,
+          forfaitIncassato: 36000,
+          conguaglioPrec: 0,
+        },
+      ],
       emptyBeds: 0,
     },
   },

@@ -119,6 +119,7 @@ async function currentSettlements(
  * `conguaglio:voci-in-attesa` (the pending items),
  * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`,
  * `conguaglio:supplementare` (a closed period whose costs changed since its snapshot, R5),
+ * `conguaglio:dati-cambiati` (other data of its snapshot changed, such as the flat charge),
  * and `consumi:giallo` / `consumi:rosso` (the last live bill of each apartment and kind by its
  * worst level, `compareConsumption` with the thresholds of its apartment; none without
  * thresholds: plan 19, R331).
@@ -236,9 +237,11 @@ export async function loadDashboard(
       if (result.unassigned !== 0) add(apartmentId, 'conguaglio:posti-vuoti');
       // R5: a closed period whose costs changed since the snapshot (a late bill): a supplementary
       // settlement to make, «Da rivedere».
-      if (closing !== undefined && closingOf(closing, result, loaded.input, today).changed) {
-        add(apartmentId, 'conguaglio:supplementare');
-      }
+      const since =
+        closing === undefined ? undefined : closingOf(closing, result, loaded.input, today);
+      if (since?.changed === true) add(apartmentId, 'conguaglio:supplementare');
+      // Data of the snapshot that is not a cost (the flat charge collected...) changed: to check.
+      if (since?.dataChanged === true) add(apartmentId, 'conguaglio:dati-cambiati');
     } catch (error) {
       if (!(error instanceof SettlementInputError)) throw error;
       settlements.push({ apartmentId, periodLabel, problem: error.code });

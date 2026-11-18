@@ -4,7 +4,7 @@
  * `settings.save` operation (undone with the reconciliation undo).
  */
 import { DEFAULT_IMU_TOLERANCE_BP } from './imu';
-import { checkConsistency, commitChange } from './journal';
+import { commitChange, writesBlocked } from './journal';
 import { WORKSPACE_SETTINGS_ID, WorkspaceSettingsSchema } from './model';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -42,7 +42,7 @@ export async function saveSettings(
   clock: () => string,
   newId: () => string,
 ): Promise<SaveSettingsResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const before = (

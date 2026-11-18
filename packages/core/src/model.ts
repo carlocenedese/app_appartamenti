@@ -1451,6 +1451,12 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
         spese: CentsSchema,
         rata: CentsSchema,
         commissione: CentsSchema,
+        /** What the tenant owes for an intervention (R197), 0 if none: part of the costs. */
+        recupero: CentsSchema,
+        /** Not a cost: when it changes after the closing, the data changed (a warning). */
+        forfaitIncassato: CentsSchema,
+        /** Last year's condominium settlement (R3): not a cost of R5, a warning when it changes. */
+        conguaglioPrec: CentsSchema,
       }),
     ),
     /** The shares of the empty beds, last year's condominium settlement excluded. */

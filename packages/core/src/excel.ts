@@ -7,6 +7,7 @@ import {
   CATEGORY_ORDER,
   allocateBillToMonths,
   allocateInstalment,
+  SettlementInputError,
   calcConguaglio,
   isPresent,
   previousToTenants,
@@ -230,16 +231,46 @@ export interface ExcelInput extends ConguaglioInput {
 export function settlementStateText(
   closing: { closedAt: string } | undefined,
   waiting: number,
-  changed = false,
+  flags: { changed: boolean; dataChanged: boolean } = { changed: false, dataChanged: false },
 ): string {
   if (closing === undefined || waiting > 0) {
     return `Conguaglio provvisorio: voci in attesa ${String(waiting)}`;
   }
   const [y, m, d] = closing.closedAt.slice(0, 10).split('-');
-  const when = `${d ?? ''}/${m ?? ''}/${y ?? ''}`;
-  return changed
-    ? `Conguaglio chiuso il ${when}: dopo la chiusura c'è un conguaglio supplementare`
-    : `Conguaglio chiuso il ${when}`;
+  const notes = [
+    ...(flags.changed ? ["dopo la chiusura c'è un conguaglio supplementare"] : []),
+    ...(flags.dataChanged ? ['dati cambiati dopo la chiusura, da controllare'] : []),
+  ];
+  return `Conguaglio chiuso il ${d ?? ''}/${m ?? ''}/${y ?? ''}${notes.length > 0 ? `: ${notes.join('; ')}` : ''}`;
+}
+
+/**
+ * What changed since the closing of the period (R5), for the first row of the files: the costs
+ * (`changed`, a supplementary settlement) and the other data of the snapshot (`dataChanged`).
+ * When the settlement cannot be computed both are true: the file says to check.
+ */
+export function closingFlags(
+  input: ConguaglioInput & { closing?: PeriodClose },
+  result?: ConguaglioResult,
+): { changed: boolean; dataChanged: boolean } {
+  const { closing } = input;
+  if (closing === undefined) return { changed: false, dataChanged: false };
+  let current = result;
+  if (current === undefined) {
+    try {
+      current = calcConguaglio(input);
+    } catch (error) {
+      if (!(error instanceof SettlementInputError)) throw error;
+      return { changed: true, dataChanged: true };
+    }
+  }
+  const { changed, dataChanged } = closingOf(
+    closing,
+    current,
+    input,
+    isoDate(closing.closedAt.slice(0, 10)),
+  );
+  return { changed, dataChanged };
 }
 
 type Span = { from: YearMonth; to: YearMonth };
@@ -614,11 +645,11 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     [...EXCEL_HEADERS[name], ...extra].map((value) => ({ kind: 'text', value }));
   // Question 5, R171: provisional unless closed (R5) with nothing waiting.
   const closing = input.closing;
-  const changed =
-    closing !== undefined &&
-    closingOf(closing, result, input, isoDate(closing.closedAt.slice(0, 10))).changed;
   const provisional: XlsxCell[] = [
-    { kind: 'text', value: settlementStateText(closing, result.pending.length, changed) },
+    {
+      kind: 'text',
+      value: settlementStateText(closing, result.pending.length, closingFlags(input, result)),
+    },
   ];
   const sheet = (
     name: ExcelSheetName,

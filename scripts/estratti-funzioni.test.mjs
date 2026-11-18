@@ -2,13 +2,14 @@
 // tenants, bank profiles and supplies, the `riferimenti` diagnosis, the messages of the new
 // refusal codes. In process (`main()` of estratti.mjs), invented data only.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
+  DATA_FORMAT,
   commitChange,
   loadAll,
   readJournal,
@@ -372,7 +373,8 @@ describe('rata-condominio (I3, E4)', () => {
       '--importo',
       '150,00',
     );
-    expect(bad.json.reason).toBe('invalid-instalment');
+    expect(bad.json.reason).toBe('esercizio-format');
+    expect(bad.json.message).toMatch(/2026-27/);
     expect((await cli('rata-condominio', '--id', 'r')).code).toBe(2);
   });
 });
@@ -391,6 +393,10 @@ describe('impostazioni (I9)', () => {
     });
     expect((await cli('impostazioni', '--tolleranza-imu', '1,50')).json.status).toBe('unchanged');
     expect((await cli('impostazioni', '--tolleranza-imu', 'tanto')).code).toBe(2);
+    // 0 = no tolerance, as the schema allows.
+    const zero = await cli('impostazioni', '--tolleranza-imu', '0');
+    expect(zero.json.settings.imuTolerance).toEqual({ basisPoints: 0, isDefault: false });
+    await cli('annulla-riconciliazione', '--operazione', zero.json.operationId);
     const back = await cli('impostazioni', '--tolleranza-imu', 'predefinita');
     expect(back.json.settings.imuTolerance).toEqual({ basisPoints: 100, isDefault: true });
     for (const op of [back.json.operationId, set.json.operationId]) {
@@ -568,6 +574,51 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     expect(refused.json.reason).toBe('closing-changed');
   });
 
+  it('una scrittura dentro un periodo chiuso lo dice nell’esito, senza rifiutare', async () => {
+    await closable();
+    await cli('chiudi-periodo', ...args);
+    const r = await cli('fine-presenza', '--presenza', 'tcy-x', '--mese', '2026-08');
+    expect(r.code, r.out).toBe(0);
+    expect(r.json.closedPeriods).toEqual([{ apartmentId: 'apt-x', periodLabel: '2025-26' }]);
+    expect(r.json.closedPeriodMessage).toMatch(/conguaglio supplementare/);
+    // A write that does not touch the period says nothing.
+    const other = await cli('inquilino', '--id', 't-z', '--nome', 'Terzo Inventato');
+    expect(other.json).not.toHaveProperty('closedPeriods');
+    // The data changed (one month less of flat charge): the undo of the closing is refused.
+    const sup = await cli('conguaglio-supplementare', ...args);
+    expect(sup.json.dataChanged || sup.json.changed).toBe(true);
+    const closeOp = (await readJournal(new FsStore(dir))).operations.find(
+      (o) => o.kind === 'period.close',
+    );
+    const refused = await cli('annulla-riconciliazione', '--operazione', closeOp.id);
+    expect(refused.json.reason).toBe('closing-changed');
+    expect(refused.json.message).toMatch(/conguaglio-supplementare/);
+  });
+
+  it('l’annullo della chiusura è rifiutato anche quando il conguaglio non si calcola', async () => {
+    await closable();
+    const closed = await cli('chiudi-periodo', ...args);
+    // A second stay of the same tenant in the same months: the settlement cannot be computed.
+    await seed([
+      [
+        'tenancy',
+        {
+          id: 'tcy-x2',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-x',
+          tenantId: 't-x',
+          from: '2026-01',
+          monthlyRent: 45000,
+          monthlyForfait: 3000,
+        },
+      ],
+    ]);
+    const r = await cli('annulla-riconciliazione', '--operazione', closed.json.operationId);
+    expect(r.json.reason).toBe('closing-unknown');
+    expect(r.json.message).toMatch(/^Rifiutato: /);
+  });
+
   it('senza cambiamenti l’annullo della chiusura riapre il periodo', async () => {
     await closable();
     const closed = await cli('chiudi-periodo', ...args);
@@ -633,5 +684,45 @@ describe('aiuto di excel e moduli (Q9)', () => {
       const bad = JSON.parse((await tool.main(['--sconosciuta'])).output);
       expect(bad.message).toMatch(/--help/);
     }
+  });
+});
+
+describe('formato dei dati della cartella (revisione dei dati, G3)', () => {
+  const workspace = (schemaVersion) =>
+    writeFileSync(
+      join(dir, '_app', 'workspace.json'),
+      JSON.stringify({
+        workspaceId: 'ws-prova',
+        name: 'Cartella di prova',
+        schemaVersion,
+        minAppVersion: '0.1.0',
+        createdAt: ORA,
+      }),
+    );
+  const declared = () =>
+    JSON.parse(readFileSync(join(dir, '_app', 'workspace.json'), 'utf8')).schemaVersion;
+  beforeEach(() => mkdirSync(join(dir, '_app'), { recursive: true }));
+
+  it('una cartella del formato precedente si alza alla prima scrittura, una volta sola', async () => {
+    workspace(DATA_FORMAT - 1);
+    // A read writes nothing and leaves the format as it is.
+    expect((await cli('riferimenti')).json).not.toHaveProperty('dataFormat');
+    expect(declared()).toBe(DATA_FORMAT - 1);
+    const first = await cli('inquilino', '--id', 't-x', '--nome', 'Nome Inventato');
+    expect(first.code, first.out).toBe(0);
+    expect(first.json.dataFormat).toBe('raised');
+    expect(declared()).toBe(DATA_FORMAT);
+    const second = await cli('inquilino', '--id', 't-y', '--nome', 'Altro Inventato');
+    expect(second.json).not.toHaveProperty('dataFormat');
+  });
+
+  it('una cartella di un formato più nuovo rifiuta le scritture: aggiornare l’app', async () => {
+    workspace(DATA_FORMAT + 1);
+    const r = await cli('inquilino', '--id', 't-x', '--nome', 'Nome Inventato');
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ reason: 'newer-data' });
+    expect(r.json.message).toMatch(/aggiornare l’app/);
+    expect(declared()).toBe(DATA_FORMAT + 1);
+    expect(existsSync(join(dir, '_app', 'dati', 'tenant'))).toBe(false);
   });
 });

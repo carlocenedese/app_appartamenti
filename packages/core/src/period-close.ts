@@ -10,8 +10,8 @@ import { SettlementInputError, calcConguaglio, canClosePeriod } from './conguagl
 import type { CloseMissing, ConguaglioResult, SettlementInputErrorCode } from './conguaglio';
 import { loadExcelInput } from './excel-store';
 import type { ExcelInput } from './excel';
-import { checkConsistency, commitChange } from './journal';
-import { PeriodCloseSchema } from './model';
+import { commitChange, writesBlocked } from './journal';
+import { PeriodCloseSchema, SupplySchema } from './model';
 import type { PeriodClose } from './model';
 import { isoDate, monthsInPeriod } from './period';
 import type { ISODate } from './period';
@@ -26,6 +26,8 @@ type LoadRefusal =
 export type ClosePeriodResult =
   | { status: 'closed'; operationId: string; closeId: string }
   | { status: 'refused'; reason: LoadRefusal | 'already-closed' }
+  /** R3: the December TARI notice (`month`) of an apartment of the shared notice is not debited. */
+  | { status: 'refused'; reason: 'tari-december-missing'; month: string }
   | { status: 'refused'; reason: 'settlement-error'; code: SettlementInputErrorCode }
   /** What is not collected or still waiting (`canClosePeriod`). */
   | { status: 'refused'; reason: 'cannot-close'; missing: CloseMissing[] };
@@ -69,7 +71,7 @@ export async function closePeriod(
   clock: () => string,
   newId: () => string,
 ): Promise<ClosePeriodResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   const calc = await computed(store, query);
@@ -90,6 +92,26 @@ export async function closePeriod(
     pending: result.pending.map((p) => ({ itemType: p.itemType, itemId: p.itemId, months })),
   });
   if (!check.ok) return { status: 'refused', reason: 'cannot-close', missing: check.missing };
+  // R3: an apartment with a supply of the shared TARI notice closes only after the December
+  // notice of the year the period ends in is debited (a real match, not assumed), so that the
+  // September share of that notice does not open the period again. Which apartments and which
+  // month when the year is another one: question to the owner (review document).
+  const shared = (await loadAll(store, 'supply', SupplySchema)).records.some((supply) =>
+    supply.apartments.some((a) => a.apartmentId === query.apartmentId),
+  );
+  if (shared) {
+    const december = `${input.period.to.slice(0, 4)}-12`;
+    const debited = new Set(
+      input.matches
+        .filter((m) => m.itemType === 'instalment' && m.part === 'amount' && m.by !== 'assumed')
+        .map((m) => m.itemId),
+    );
+    const paid = input.instalments.some(
+      (i) =>
+        i.deleted !== true && i.kind === 'tari' && i.coversTo === december && debited.has(i.id),
+    );
+    if (!paid) return { status: 'refused', reason: 'tari-december-missing', month: december };
+  }
   const id = periodCloseId(query.apartmentId, query.periodLabel);
   const before = (
     await loadAll(store, 'periodClose', PeriodCloseSchema, { includeDeleted: true })

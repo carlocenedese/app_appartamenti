@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PaymentSchema,
   PeriodCloseSchema,
   buildConguaglioWorkbook,
   buildOwnersWorkbook,
@@ -14,8 +15,16 @@ import {
   undoOperation,
 } from '../src/index';
 import type { RecordKind } from '../src/index';
-import { isoDate } from '../src/period';
-import { apartment, bill, match, payment, tenancy } from './helpers/conguaglio-builders';
+import { isoDate, yearMonth } from '../src/period';
+import {
+  apartment,
+  bill,
+  instalment,
+  match,
+  payment,
+  tenancy,
+} from './helpers/conguaglio-builders';
+import { cents } from '../src/money';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
@@ -178,10 +187,108 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     });
     await put(store, 'bill', late);
     await put(store, 'match', match(late, 9000));
-    expect((await firstRow())[0]).toEqual({
+    // The owners' file says it too (review, point 5).
+    const sup = {
       kind: 'text',
       value: `Conguaglio chiuso il ${day}: dopo la chiusura c'è un conguaglio supplementare`,
-    });
+    };
+    expect(await firstRow()).toEqual([sup, sup]);
     expect((await dashboard()).counts?.['conguaglio:supplementare']).toBe(1);
+  });
+
+  it('a recovery after the closing is a cost: supplementary; the action of no difference is «nessuna»', async () => {
+    const store = await setUp();
+    await closePeriod(store, QUERY, 'p1', clock, ids('c'));
+    const none = await loadPeriodClosing(store, QUERY, isoDate('2026-11-18'));
+    expect(none).toMatchObject({ changed: false, tenants: [{ delta: 0, action: 'nessuna' }] });
+    // The tenant paid 15,00 for the owners in August: a credit of the tenant.
+    await put(store, 'tenantRecovery', {
+      id: 'rec-1',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt',
+      amount: -1500,
+      shares: [{ tenantId: 't-a', amount: -1500 }],
+      status: 'da-recuperare',
+      date: '2026-08-10',
+    });
+    expect(await loadPeriodClosing(store, QUERY, isoDate('2026-11-18'))).toMatchObject({
+      changed: true,
+      dataChanged: false,
+      tenants: [{ tenantId: 't-a', delta: -1500, action: 'da-rimborsare' }],
+    });
+  });
+
+  it('a payment cancelled after the closing changes the data: said in the files and the dashboard', async () => {
+    const store = await setUp();
+    await closePeriod(store, QUERY, 'p1', clock, ids('c'));
+    const [first] = (await loadAll(store, 'payment', PaymentSchema)).records;
+    if (first === undefined) throw new Error('payment');
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('payment', first.id),
+            before: first,
+            after: { ...first, rev: 2, deleted: true },
+          },
+        ],
+      },
+      clock,
+      ids('del'),
+    );
+    expect(await loadPeriodClosing(store, QUERY, isoDate('2026-11-18'))).toMatchObject({
+      changed: false,
+      dataChanged: true,
+    });
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    const day = `${clock().slice(8, 10)}/${clock().slice(5, 7)}/${clock().slice(0, 4)}`;
+    const text = `Conguaglio chiuso il ${day}: dati cambiati dopo la chiusura, da controllare`;
+    expect(buildConguaglioWorkbook(loaded.input).sheets[0]?.rows[0]?.[0]).toEqual({
+      kind: 'text',
+      value: text,
+    });
+    expect(buildOwnersWorkbook(loaded.input).sheets[0]?.rows[0]?.[0]).toEqual({
+      kind: 'text',
+      value: text,
+    });
+    const d = await loadDashboard(store, { today: isoDate('2026-11-18'), settlements: [QUERY] });
+    expect(d.status === 'computed' && d.apartments[0]?.counts['conguaglio:dati-cambiati']).toBe(1);
+  });
+
+  it('R3: an apartment of the shared TARI notice closes only after the December notice is debited', async () => {
+    const store = await setUp();
+    await put(store, 'supply', {
+      id: 'sup-a',
+      v: 1,
+      rev: 1,
+      label: 'UTENZA-A',
+      apartments: [{ apartmentId: 'apt', weight: 10000 }],
+    });
+    expect(await closePeriod(store, QUERY, 'p1', clock, ids('c'))).toEqual({
+      status: 'refused',
+      reason: 'tari-december-missing',
+      month: '2026-12',
+    });
+    const december = instalment('tari-dic', {
+      kind: 'tari',
+      esercizio: '2026',
+      rateIndex: 3,
+      rateCount: 3,
+      dueDate: isoDate('2026-12-16'),
+      rata: cents(3000),
+      coversFrom: yearMonth('2026-09'),
+      coversTo: yearMonth('2026-12'),
+    });
+    await put(store, 'instalment', december);
+    // Registered but not debited yet: still refused.
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('d'))).status).toBe('refused');
+    await put(store, 'match', match(december, 3000, { transactionDate: isoDate('2026-12-16') }));
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('e'))).status).toBe('closed');
   });
 });

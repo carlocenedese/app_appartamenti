@@ -72,13 +72,31 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              "recupero": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "forfaitIncassato": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "conguaglioPrec": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
               }
             },
             "required": [
               "tenantId",
               "spese",
               "rata",
-              "commissione"
+              "commissione",
+              "recupero",
+              "forfaitIncassato",
+              "conguaglioPrec"
             ]
           }
         },

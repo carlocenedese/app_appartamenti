@@ -11,7 +11,7 @@ import type { ConguaglioInput } from './conguaglio';
 import { expectedDebit } from './match';
 import { apartmentFolder } from './accounts';
 import type { Apartment, Instalment, PeriodClose, TenantRecovery } from './model';
-import { settlementStateText } from './excel';
+import { closingFlags, settlementStateText } from './excel';
 import { safeWord } from './proposal';
 import { cents } from './money';
 import type { Cents } from './money';
@@ -248,7 +248,10 @@ export function buildOwnersWorkbook(
     ['in-attesa', 'importo-diverso', 'duplicato'].includes(i.status),
   );
   const provisional: XlsxCell[] = [
-    { kind: 'text', value: settlementStateText(input.closing, waiting.length) },
+    {
+      kind: 'text',
+      value: settlementStateText(input.closing, waiting.length, closingFlags(input)),
+    },
   ];
   return { sheets: [{ name: OWNERS_SHEET, rows: [provisional, header, ...rows] }] };
 }

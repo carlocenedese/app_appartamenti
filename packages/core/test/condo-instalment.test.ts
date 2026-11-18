@@ -119,7 +119,7 @@ describe('saveCondoInstalment', () => {
     const refused = async (input: SaveCondoInstalmentInput, reason: string) =>
       expect(await save(store, input)).toMatchObject({ status: 'refused', reason });
     await refused({ ...first, apartmentId: 'apt-x' }, 'unknown-apartment');
-    await refused({ ...first, esercizio: '2025' }, 'invalid-instalment');
+    await refused({ ...first, esercizio: '2025' }, 'esercizio-format');
     await refused({ ...first, esercizio: '2025-27' }, 'invalid-instalment');
     await refused({ ...first, rateIndex: 4 }, 'invalid-instalment');
     await refused({ ...first, rateCount: 5 }, 'invalid-instalment');

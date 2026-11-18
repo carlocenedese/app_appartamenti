@@ -3,7 +3,7 @@
  * Each write is one operation of the journal, so `undoOperation` takes it back. The draft is
  * checked with `draftProblem` and the final record with `SupplySchema` before anything is written.
  */
-import { checkConsistency, commitChange, readJournal } from './journal';
+import { commitChange, readJournal, writesBlocked } from './journal';
 import { ApartmentSchema, NoteSchema, SupplySchema } from './model';
 import type { Note, Supply } from './model';
 import { parseOrThrow } from './parse';
@@ -99,7 +99,7 @@ export async function saveSupply(
   clock: () => string,
   newId: () => string,
 ): Promise<SaveSupplyResult> {
-  if ((await checkConsistency(store)).length > 0) {
+  if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
   }
   if (draft.label.trim() === '' || draftProblem(draft) !== undefined) {

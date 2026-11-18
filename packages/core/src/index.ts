@@ -8,6 +8,7 @@ export {
   FileAccessError,
   MalformedJsonError,
   NewerDataError,
+  WORKSPACE_PATH,
   assertSafeRelPath,
   isFileAccessError,
 } from './store/store';

@@ -190,7 +190,7 @@ export async function saveCondoInstalment(
   const refuse = (
     reason: Exclude<Plain, 'esercizio-format' | 'instalment-in-use'>,
   ): SaveCondoInstalmentResult => ({ status: 'refused', reason });
-  if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
   const apartment = (await loadAll(store, 'apartment', ApartmentSchema)).records.find(
     (a) => a.id === input.apartmentId,
   );
@@ -198,6 +198,10 @@ export async function saveCondoInstalment(
   const start = apartment.condominioStart;
   if (start === undefined || start.day !== 1) return refuse('missing-condominio-start');
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id)) return refuse('invalid-instalment');
+  // The settlement splits only a `2026-27` fiscal year (`annualitaRange`): `2026` is another form.
+  if (!/^[0-9]{4}-[0-9]{2}$/.test(input.esercizio)) {
+    return { status: 'refused', reason: 'esercizio-format', documentIds: [] };
+  }
   let covers: { from: YearMonth; to: YearMonth };
   try {
     const first = annualitaRange(input.esercizio, start).from.slice(0, 7) as YearMonth;
