@@ -161,7 +161,9 @@ describe('a journal ahead of the record is never written over (critical 1)', () 
     await expect(
       commitChange(b, op('pb', r1, bill({ amount: 400 })), clock, id),
     ).rejects.toBeInstanceOf(StaleWriteError);
-    await expect(repairDiverged(b, P)).rejects.toThrow(/not a state/);
+    // A's change and B's retry both stand on r1: a fork, which «Ripara» refuses.
+    expect(await checkConsistency(b)).toEqual([{ path: P, reason: 'forked' }]);
+    await expect(repairDiverged(b, P)).rejects.toThrow(/changed in two places/);
     expect(await b.readJson(P)).toMatchObject({ supplier: 'A', rev: 2 });
   });
 });
@@ -288,11 +290,9 @@ describe('a concurrent undo on another computer is a fork (fourth review)', () =
   });
 });
 
-// KNOWN LIMIT, the same as on main (docs/revisione-2026-11-18-dati.md, «Limiti noti»): a fork is
-// seen only between versions with the same top rev. These tests describe the wanted behaviour and
-// are expected to fail until the redesign; only the last `expect` of each can fail.
-describe('known limits: a branch below the top rev (S2) or after a choice (B2)', () => {
-  it.fails("S2: A saves twice, C once from the same state: C's change is lost", async () => {
+// Limits of the fourth review, closed by the heads of the journal (one invariant, see `stateOf`).
+describe('a branch below the top rev (S2) or after a choice (B2) is a fork', () => {
+  it("S2: A saves twice, C once from the same state: C's change is not lost", async () => {
     const a = new MemoryStore();
     await commitChange(a, op('pa', undefined, bill()), clock, id);
     const c = await cloneOf(a);
@@ -307,7 +307,7 @@ describe('known limits: a branch below the top rev (S2) or after a choice (B2)',
     expect(seen).toEqual([[{ path: P, reason: 'forked' }], [{ path: P, reason: 'forked' }]]);
   });
 
-  it.fails('S2 with an undo: C undoes while A saves twice: the undo is lost', async () => {
+  it('S2 with an undo: C undoes while A saves twice: the undo is not lost', async () => {
     const a = new MemoryStore();
     await commitChange(a, op('pa', undefined, bill()), clock, id);
     const two = await commitChange(
@@ -327,7 +327,7 @@ describe('known limits: a branch below the top rev (S2) or after a choice (B2)',
     expect(seen).toEqual([[{ path: P, reason: 'forked' }], [{ path: P, reason: 'forked' }]]);
   });
 
-  it.fails('B2: three computers, the choice made before the third branch arrives', async () => {
+  it('B2: three computers, the choice made before the third branch arrives', async () => {
     const a = new MemoryStore();
     await commitChange(a, op('pa', undefined, bill()), clock, id);
     const c = await cloneOf(a);
@@ -344,5 +344,55 @@ describe('known limits: a branch below the top rev (S2) or after a choice (B2)',
     d.putRaw(P, a.getRaw(P) ?? '');
     const seen = [await checkConsistency(a), await checkConsistency(d)];
     expect(seen).toEqual([[{ path: P, reason: 'forked' }], [{ path: P, reason: 'forked' }]]);
+  });
+});
+
+/** The journal as an app without `supersedes` wrote it: the same files without that field. */
+async function asOldApp(store: MemoryStore): Promise<void> {
+  for (const name of await store.list(JOURNAL_DIR)) {
+    const path = `${JOURNAL_DIR}/${name}`;
+    const operation = JSON.parse(store.getRaw(path) ?? '') as {
+      changes: Record<string, unknown>[];
+    };
+    for (const change of operation.changes) delete change.supersedes;
+    store.putRaw(path, JSON.stringify(operation));
+  }
+}
+
+describe('operations written before `supersedes` existed are read as they were meant', () => {
+  it('a retry over a failed write of the same profile is not a fork', async () => {
+    class Failing extends MemoryStore {
+      fail = false;
+      override async writeJsonAtomic(path: string, value: unknown): Promise<void> {
+        if (this.fail && path.startsWith('_app/dati/')) {
+          this.fail = false;
+          throw new Error('EIO');
+        }
+        await super.writeJsonAtomic(path, value);
+      }
+    }
+    const store = new Failing();
+    await commitChange(store, op('pa', undefined, bill()), clock, id);
+    const r1 = await store.readJson(P);
+    store.fail = true;
+    await expect(
+      commitChange(store, op('pa', r1, bill({ amount: 2 })), clock, id),
+    ).rejects.toThrow();
+    await commitChange(store, op('pa', r1, bill({ amount: 3 })), clock, id);
+    await asOldApp(store);
+    expect(await checkConsistency(store)).toEqual([]);
+  });
+
+  it('a choice merged every version at the rev below it', async () => {
+    const a = new MemoryStore();
+    await commitChange(a, op('pa', undefined, bill()), clock, id);
+    const c = await cloneOf(a);
+    const r1 = await a.readJson(P);
+    await commitChange(a, op('pa', r1, bill({ amount: 2 })), clock, id);
+    const mine = await commitChange(c, op('pc', r1, bill({ amount: 3 })), clock, id);
+    await copyJournal(c, a);
+    await resolveFork(a, P, mine.id, 'pa', clock, id);
+    await asOldApp(a);
+    expect(await checkConsistency(a)).toEqual([]);
   });
 });

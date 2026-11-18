@@ -58,6 +58,12 @@ const ChangeSchema = z
     path: z.string().refine(isSafePath, { message: 'Not a safe store path' }),
     before: z.unknown().optional(),
     after: z.unknown(),
+    /**
+     * The operations whose `after` at this path this change also replaces, besides `before`: the
+     * versions a choice (`fork.resolve`) merged, or the write that failed under a retry. Absent in
+     * every other change, and in the operations written before it existed (see `replacedBy`).
+     */
+    supersedes: z.array(NonEmptyString).optional(),
   })
   .refine(({ before, after }) => (before === undefined || hasRev(before)) && hasRev(after), {
     message: 'A stored change needs an `after` record, and a `before` that is a record with a rev',
@@ -69,7 +75,9 @@ const ChangeSchema = z
       'operation created the record), and a record is deleted by writing it with `deleted: ' +
       'true`, never by removing the file. `before` is the record as it was, and is absent when ' +
       'the operation created the record. `path` is a safe path below the workspace root: no ' +
-      'absolute path, no `..`, none of the characters Windows forbids in names.',
+      'absolute path, no `..`, none of the characters Windows forbids in names. `supersedes` ' +
+      'lists the operations whose `after` at this path the change also replaces: the versions a ' +
+      '`fork.resolve` merged, or a write that failed under its retry.',
   });
 
 /**
@@ -219,25 +227,36 @@ export async function commitChange(
   clock: () => string,
   newId: () => string,
 ): Promise<Operation> {
-  return commitOperation(store, input, clock, newId, false);
+  return commitOperation(store, input, clock, newId);
 }
 
 /**
- * `commitChange`, and with `resolving` the write of `resolveFork`: the `before` of each change is
- * then the journal's latest version, not what is on disk (which may be one of the forked versions,
- * cut short or missing), and the record is written without the `rev` checks.
+ * `commitChange`, and with `resolving` the write of `resolveFork`: each change then keeps the
+ * `before` and `supersedes` it is given (the versions merged, whatever is on disk: one of them, a
+ * file cut short or missing), its `after` gets the `rev` given, and the record is written without
+ * the `rev` checks.
  */
 async function commitOperation(
   store: Store,
   input: Omit<Operation, 'id' | 'v' | 'at'>,
   clock: () => string,
   newId: () => string,
-  resolving: boolean,
+  resolving?: { rev: number; supersedes: string[] },
 ): Promise<Operation> {
   assertSafeSegment(input.profileId);
   const id = newId();
   assertSafeSegment(id);
-  const changes = input.changes.map(normaliseChange);
+  const changes = input.changes
+    .map(normaliseChange)
+    .map((change) =>
+      resolving === undefined
+        ? change
+        : {
+            ...change,
+            after: { ...change.after, rev: resolving.rev },
+            supersedes: resolving.supersedes,
+          },
+    );
   if (new Set(changes.map((change) => change.path)).size !== changes.length) {
     throw new RangeError('An operation cannot change the same path twice');
   }
@@ -256,7 +275,7 @@ async function commitOperation(
     throw new Error(`The journal already has ${file}: an operation file is never overwritten`);
   }
   await refuseNewerFormat(store);
-  if (resolving) {
+  if (resolving !== undefined) {
     for (const { path } of changes) refuseNewerRecord(path, await readTolerant(store, path));
     await store.writeJsonAtomic(file, parsedOperation);
     for (const { path, after } of changes) await store.writeJsonAtomic(path, after);
@@ -264,39 +283,51 @@ async function commitOperation(
   }
   const { operations } = await readJournal(store);
   const touches = touchesByPath(operations);
-  const forked = forkedPaths(operations);
-  /** For each path written on top of the journal's latest rev rather than the one on disk. */
-  const realigned = new Map<string, number>();
+  /** For each path written on top of the head of the journal rather than on the disk. */
+  const realigned = new Map<string, { rev: number; supersedes: string[] }>();
+  /** What is on disk, which the operation stores as its `before`: the version it builds on. */
+  const found = new Map<string, unknown>();
   for (const { path, before } of changes) {
     const expected = before?.rev ?? null;
     const actual = await currentRev(store, path);
     if (actual !== expected) throw new StaleWriteError(path, expected, actual);
     const onDisk = await store.readJson(path);
+    found.set(path, onDisk);
     refuseNewerRecord(path, onDisk);
-    // A record not as the journal leaves it is never written over at the same rev: that would
-    // fork it (revisione 2026-11-18, G1-bis).
-    if (forked.has(path)) throw new InconsistentRecordError(path, 'forked');
-    const latest = touches.get(path)?.at(-1);
-    if (latest === undefined || jsonEqual(onDisk, latest.after)) continue;
-    // The journal is ahead of the record. Only when the operation ahead is one whose record write
-    // failed through this very store, and the record is still as that operation found it, is it
-    // known that the change never landed: this one replaces it, on top of its rev. Anything else
-    // (the same person on another computer, a record still on its way through Dropbox) is
-    // refused: `repairDiverged` applies what the journal says without losing it.
-    const failed = failedOperations.get(store)?.has(latest.operation.id) === true;
-    const found = latest.operation.changes.find((change) => change.path === path)?.before;
-    if (!failed || !jsonEqual(onDisk, found)) {
+    const state = stateOf(touches.get(path) ?? []);
+    if (state.forked) throw new InconsistentRecordError(path, 'forked');
+    if (
+      state.heads.length === 0 ||
+      (state.head !== undefined && jsonEqual(onDisk, state.head.after))
+    ) {
+      continue;
+    }
+    // The record is not the one head of the journal. Only when that head is an operation whose
+    // record write failed through this very store, and the record is still as that operation
+    // found it, is it known that the change never landed: this one replaces it (`supersedes`), on
+    // top of its rev. Anything else (the same person on another computer, a record still on its
+    // way through Dropbox) is refused: `repairDiverged` applies what the journal says.
+    const head = state.head;
+    const failed =
+      head !== undefined && failedOperations.get(store)?.has(head.operation.id) === true;
+    if (head === undefined || !failed || !jsonEqual(onDisk, head.before)) {
       throw new InconsistentRecordError(path, 'diverged');
     }
-    realigned.set(path, latest.after.rev + 1);
+    realigned.set(path, { rev: head.after.rev + 1, supersedes: [head.operation.id] });
   }
   const operation: Operation = {
     ...parsedOperation,
     changes: parsedOperation.changes.map((change) => {
-      const rev = realigned.get(change.path);
-      return rev === undefined
-        ? change
-        : { ...change, after: { ...(change.after as JsonRecord), rev } };
+      const stored =
+        change.before === undefined ? change : { ...change, before: found.get(change.path) };
+      const again = realigned.get(change.path);
+      return again === undefined
+        ? stored
+        : {
+            ...stored,
+            after: { ...(change.after as JsonRecord), rev: again.rev },
+            supersedes: again.supersedes,
+          };
     }),
   };
 
@@ -304,14 +335,14 @@ async function commitOperation(
   try {
     for (const { path, before, after } of changes) {
       const expectedRev = before?.rev ?? null;
-      const rev = realigned.get(path);
-      if (rev === undefined) {
+      const again = realigned.get(path);
+      if (again === undefined) {
         await writeRecord(store, path, after, { expectedRev });
         continue;
       }
       const actual = await currentRev(store, path);
       if (actual !== expectedRev) throw new StaleWriteError(path, expectedRev, actual);
-      await store.writeJsonAtomic(path, { ...after, rev });
+      await store.writeJsonAtomic(path, { ...after, rev: again.rev });
     }
   } catch (error) {
     // The operation is in the journal but its records are not (all) written: a retry through this
@@ -388,7 +419,12 @@ export async function readJournal(
 // --- Order of the operations on a record -----------------------------------------------------
 
 /** What one operation leaves in one record file: the `after` of its change to that path. */
-type Touch = { operation: Operation; before: unknown; after: JsonRecord & { rev: number } };
+type Touch = {
+  operation: Operation;
+  before: unknown;
+  after: JsonRecord & { rev: number };
+  supersedes: string[] | undefined;
+};
 
 /**
  * Orders what two operations did to the same record: by the `rev` they leave in it, then by time,
@@ -410,15 +446,130 @@ function compareTouches(a: Touch, b: Touch): number {
 function touchesByPath(operations: readonly Operation[]): Map<string, Touch[]> {
   const byPath = new Map<string, Touch[]>();
   for (const operation of operations) {
-    for (const { path, before, after } of operation.changes) {
+    for (const { path, before, after, supersedes } of operation.changes) {
       if (!hasRev(after)) continue; // not in a file that passed the schema
       const touches = byPath.get(path) ?? [];
-      touches.push({ operation, before, after });
+      touches.push({ operation, before, after, supersedes });
       byPath.set(path, touches);
     }
   }
   for (const touches of byPath.values()) touches.sort(compareTouches);
   return byPath;
+}
+
+// --- Versions and heads of a record --------------------------------------------------------
+
+/** The identity of a version of a record: its whole content, `rev` included, as canonical JSON. */
+function versionKey(value: unknown): string {
+  const canonical = (item: unknown): unknown =>
+    Array.isArray(item)
+      ? item.map(canonical)
+      : isRecord(item)
+        ? Object.fromEntries(
+            Object.keys(item)
+              .sort(compareText)
+              .map((key) => [key, canonical(item[key])]),
+          )
+        : item;
+  return JSON.stringify(canonical(value)) ?? '';
+}
+
+/**
+ * The versions that `touch` replaces besides its `before`: the operations in its `supersedes`.
+ * An operation written before `supersedes` existed says it in its shape, and only two kinds wrote
+ * over more than their `before`: a `fork.resolve`, which merged every version at the rev below
+ * its own, and the retry of a failed write, which jumped the rev over the failed write of the same
+ * profile from the same `before` rev.
+ */
+function replacedBy(touch: Touch, touches: readonly Touch[]): Touch[] {
+  if (touch.supersedes !== undefined) {
+    const ids = new Set(touch.supersedes);
+    return touches.filter(({ operation }) => ids.has(operation.id));
+  }
+  if (touch.operation.kind === 'fork.resolve') {
+    return touches.filter((other) => other.after.rev === touch.after.rev - 1);
+  }
+  const from = hasRev(touch.before) ? touch.before.rev : 0;
+  if (touch.after.rev === from + 1) return [];
+  return touches.filter(
+    (other) =>
+      other.operation.profileId === touch.operation.profileId &&
+      (hasRev(other.before) ? other.before.rev : 0) === from &&
+      other.after.rev > from &&
+      other.after.rev < touch.after.rev,
+  );
+}
+
+/**
+ * The state of one record in the journal. Every change is an edge from the versions it replaces
+ * (its `before` and what it `supersedes`) to its `after`; an undo is one more edge. The heads are
+ * the versions that nothing replaces, one touch each (the earliest that left it).
+ *
+ * - `forked`: two heads or more, so two computers changed the record and neither saw the other;
+ * - `head`: the one head, when there is one: the record must be equal to it;
+ * - `incomplete`: some change starts from a version no operation here left, or supersedes an
+ *   operation that is not here, so an operation file has not arrived yet: more heads then mean
+ *   waiting, not a fork;
+ * - `builtOn(record)`: whether `record` is a version the head replaced, directly or not.
+ */
+function stateOf(touches: readonly Touch[]): {
+  heads: Touch[];
+  head: Touch | undefined;
+  forked: boolean;
+  incomplete: boolean;
+  builtOn: (record: unknown) => boolean;
+} {
+  const keys = new Map(touches.map((touch) => [touch, versionKey(touch.after)]));
+  const left = new Set(keys.values());
+  const parents = new Map<string, string[]>();
+  let incomplete = false;
+  const ids = new Set(touches.map(({ operation }) => operation.id));
+  /** Versions some change was made on: they are not heads. */
+  const builtUpon = new Set<string>();
+  const superseded = new Set<Touch>();
+  for (const touch of touches) {
+    if (touch.supersedes?.some((id) => !ids.has(id)) === true) incomplete = true;
+    const others = replacedBy(touch, touches);
+    for (const other of others) superseded.add(other);
+    const replaced = others.map((other) => keys.get(other) ?? '');
+    if (touch.before !== undefined) {
+      const before = versionKey(touch.before);
+      replaced.push(before);
+      builtUpon.add(before);
+      if (!left.has(before)) incomplete = true;
+    }
+    const key = keys.get(touch) ?? '';
+    parents.set(key, [...(parents.get(key) ?? []), ...replaced]);
+  }
+  // A superseded version stops being a head only when every change that left it is superseded:
+  // the same content left by another operation (another computer's) was not replaced.
+  const replacedKeys = new Set(builtUpon);
+  for (const key of left) {
+    if ([...keys].every(([touch, k]) => k !== key || superseded.has(touch))) replacedKeys.add(key);
+  }
+  const heads: Touch[] = [];
+  const seen = new Set<string>();
+  for (const touch of [...touches].sort((a, b) => compareByTime(a.operation, b.operation))) {
+    const key = keys.get(touch) ?? '';
+    if (replacedKeys.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    heads.push(touch);
+  }
+  const head = heads.length === 1 ? heads[0] : undefined;
+  const builtOn = (record: unknown): boolean => {
+    if (head === undefined) return false;
+    const wanted = versionKey(record);
+    const visited = new Set<string>();
+    const pending = [...(parents.get(keys.get(head) ?? '') ?? [])];
+    for (let key = pending.pop(); key !== undefined; key = pending.pop()) {
+      if (key === wanted) return true;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      pending.push(...(parents.get(key) ?? []));
+    }
+    return false;
+  };
+  return { heads, head, forked: heads.length > 1 && !incomplete, incomplete, builtOn };
 }
 
 /** For every path, the operation of its latest change (see `compareTouches`): what left it so. */
@@ -610,17 +761,18 @@ async function refuseIfDiverged(
   operations: readonly Operation[],
   toUndo: readonly Operation[],
 ): Promise<void> {
-  const latest = latestAfter(operations);
+  const touches = touchesByPath(operations);
   const paths = [...new Set(toUndo.flatMap(({ changes }) => changes.map(({ path }) => path)))];
   for (const path of paths.sort(compareText)) {
-    const after = latest.get(path);
+    const { heads, head } = stateOf(touches.get(path) ?? []);
     const onDisk = await readTolerant(store, path);
-    if (after === undefined || jsonEqual(onDisk, after)) continue;
+    if (head !== undefined && jsonEqual(onDisk, head.after)) continue;
     const diskRev = hasRev(onDisk) ? `rev ${String(onDisk.rev)}` : 'no readable record';
+    const revs = heads.map(({ after }) => `rev ${String(after.rev)}`).join(' and ');
     throw new Error(
       `Cannot undo: ${path} is not as the journal leaves it (on disk ${diskRev}, in the journal ` +
-        `rev ${String(after.rev)}). Wait until the shared folder has finished syncing, or check ` +
-        'it with checkConsistency, then try again',
+        `${revs}). Wait until the shared folder has finished syncing, or check it with ` +
+        'checkConsistency, then try again',
     );
   }
 }
@@ -695,16 +847,6 @@ export async function undoOperation(
 
 // --- Consistency -----------------------------------------------------------------------------
 
-/** For every path in `operations`, the `after` of the latest change to it (see `compareTouches`). */
-function latestAfter(operations: readonly Operation[]): Map<string, JsonRecord & { rev: number }> {
-  const latest = new Map<string, JsonRecord & { rev: number }>();
-  for (const [path, touches] of touchesByPath(operations)) {
-    const last = touches.at(-1);
-    if (last !== undefined) latest.set(path, last.after);
-  }
-  return latest;
-}
-
 /** Structural equality of two JSON values; the order of the keys of an object does not matter. */
 function jsonEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -748,18 +890,14 @@ async function readOrMark(store: Store, path: string): Promise<unknown> {
 }
 
 /**
- * The paths whose latest `rev` is left by two operations or more with different content: a fork.
- * Two machines (or two windows) changed the same record from the same `rev` at once, and both
- * operation files reached the journal. Which one is right is for the person to decide
- * (`resolveFork`); the clock does not decide it.
+ * The paths with two heads or more (see `stateOf`): a fork. Two machines (or two windows) changed
+ * the same record and neither saw the other's change, and both operation files reached the
+ * journal. Which one is right is for the person to decide (`resolveFork`); the clock does not.
  */
 function forkedPaths(operations: readonly Operation[]): Set<string> {
   const forked = new Set<string>();
   for (const [path, touches] of touchesByPath(operations)) {
-    const last = touches.at(-1);
-    if (last === undefined) continue;
-    const top = touches.filter(({ after }) => after.rev === last.after.rev);
-    if (top.some(({ after }) => !jsonEqual(after, last.after))) forked.add(path);
+    if (stateOf(touches).forked) forked.add(path);
   }
   return forked;
 }
@@ -790,15 +928,14 @@ async function conflictCopies(
 }
 
 /**
- * Compares every record in the journal with its latest operation and reports each one that is not
- * as that operation's `after` says as `diverged`, by path. The latest operation on a record is
- * the one that leaves the highest `rev`, not the one with the latest time: the clocks of two
- * machines can disagree, and the `rev`s of a record are in the order of its changes. A record
- * is also `diverged` when its file is missing or cut short. This is what an interruption
- * between the journal and the record leaves, or an edit by hand.
+ * Checks every record in the journal against the one invariant: its changes leave exactly one
+ * head (see `stateOf`) and the record on disk is that head. A record with one head and something
+ * else on disk is `diverged`, by path: its file is behind (an interruption between the journal and
+ * the record), missing, cut short, edited by hand, or ahead (its operation file has not arrived).
+ * Two heads or more while an operation file is still missing are `diverged` too: synchronisation
+ * is not over. The clocks play no part: two machines can disagree.
  *
- * A record whose highest `rev` is left by two operations with different content is `forked`
- * instead (see `forkedPaths`), whatever is on disk: `repairDiverged` refuses it and the person
+ * A record with two heads or more is `forked` instead, whatever is on disk: `repairDiverged` refuses it and the person
  * chooses with `resolveFork`. Every conflict copy of a record, of an operation file or of
  * `workspace.json` is reported too (`conflicted-copy`): until the person has compared it and set
  * it aside, nothing is written, since the copy may hold a change that is confirmed nowhere else.
@@ -809,10 +946,10 @@ export async function checkConsistency(
   conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
 ): Promise<Problem[]> {
   const { operations, problems: journalProblems } = await readJournal(store, conflictRules);
-  const latest = latestAfter(operations);
+  const touches = touchesByPath(operations);
   const forked = forkedPaths(operations);
   noteForkedPaths(store, forked);
-  const problems: Problem[] = await conflictCopies(store, latest.keys(), conflictRules);
+  const problems: Problem[] = await conflictCopies(store, touches.keys(), conflictRules);
   // A conflict copy of an operation file, or one that cannot be read now, is reported by
   // readJournal; it blocks as the others do.
   problems.push(
@@ -820,43 +957,52 @@ export async function checkConsistency(
       ({ reason }) => reason === 'conflicted-copy' || reason === 'unreadable',
     ),
   );
-  for (const [path, after] of [...latest].sort(([a], [b]) => compareText(a, b))) {
+  for (const [path, list] of [...touches].sort(([a], [b]) => compareText(a, b))) {
     if (forked.has(path)) {
       problems.push({ path, reason: 'forked' });
       continue;
     }
+    const { head } = stateOf(list);
     const onDisk = await readOrMark(store, path);
     if (onDisk === UNREADABLE) problems.push({ path, reason: 'unreadable' });
-    else if (!jsonEqual(onDisk, after)) problems.push({ path, reason: 'diverged' });
+    else if (head === undefined || !jsonEqual(onDisk, head.after)) {
+      problems.push({ path, reason: 'diverged' });
+    }
   }
   return problems.sort((a, b) => compareText(a.path, b.path));
 }
 
 /**
- * Writes the record at `path` as its latest operation in the journal says (its `after`),
+ * Writes the record at `path` as the one head of its changes in the journal (see `stateOf`),
  * without the `rev` check of `writeRecord`: the journal is the authority here. It finishes what an
- * interruption between the journal and the record left, which always leaves the record at a lower
- * `rev` (or missing, or cut short). Throws, writing nothing:
+ * interruption between the journal and the record left, which always leaves the record at a
+ * version the head builds on (or missing, or cut short). Throws, writing nothing:
  *
  * - if no operation in the journal touches `path`;
- * - if the record is `forked` (two operations left its latest `rev` with different content): the
- *   person chooses with `resolveFork`, the clock never does;
- * - if the record on disk has a `rev` at or above that `after` with other content: putting the
- *   journal's version over it could replace a change that went through with one that failed, so
- *   that case is left to the person (the journal is then the one that is behind, for instance
- *   because a file of it did not arrive yet).
+ * - if the record is `forked`: the person chooses with `resolveFork`, the clock never does;
+ * - if it has two heads while an operation file has not arrived yet: wait for the synchronisation;
+ * - if the record on disk is a version the head does not build on (a `rev` at or above it, or a
+ *   change it knew nothing of): writing over it could lose a change, so it is left to the person.
  */
 export async function repairDiverged(store: Store, path: string): Promise<void> {
   const normalised = path.normalize('NFC');
   const { operations } = await readJournal(store);
-  const after = latestAfter(operations).get(normalised);
-  if (after === undefined) throw new Error(`No operation in the journal touches ${path}`);
-  if (forkedPaths(operations).has(normalised)) {
+  const touches = touchesByPath(operations).get(normalised);
+  if (touches === undefined) throw new Error(`No operation in the journal touches ${path}`);
+  const { head, forked, builtOn } = stateOf(touches);
+  if (forked) {
     throw new Error(
-      `Refusing to repair ${path}: two operations left rev ${String(after.rev)} with different ` +
-        'content; choose the version to keep with resolveFork',
+      `Refusing to repair ${path}: it was changed in two places; choose the version to keep ` +
+        'with resolveFork',
     );
   }
+  if (head === undefined) {
+    throw new Error(
+      `Refusing to repair ${path}: an operation file has not arrived yet; wait for the ` +
+        'synchronisation',
+    );
+  }
+  const { after } = head;
   const onDisk = await readTolerant(store, normalised);
   if (jsonEqual(onDisk, after)) return;
   if (hasRev(onDisk) && onDisk.rev >= after.rev) {
@@ -865,9 +1011,8 @@ export async function repairDiverged(store: Store, path: string): Promise<void> 
         `not below rev ${String(after.rev)} of its latest operation in the journal`,
     );
   }
-  // A record on disk that the latest operation does not build on (through the chain of `before`s)
-  // is a change that operation knew nothing of: writing over it would lose it.
-  if (hasRev(onDisk) && !onChain(touchesByPath(operations).get(normalised) ?? [], onDisk)) {
+  // A record on disk that the head does not build on is a change it knew nothing of.
+  if (hasRev(onDisk) && !builtOn(onDisk)) {
     throw new Error(
       `Refusing to repair ${path}: the record on disk is not a state its latest operation builds on`,
     );
@@ -876,44 +1021,41 @@ export async function repairDiverged(store: Store, path: string): Promise<void> 
 }
 
 /**
- * Whether `record` is a state the latest of `touches` builds on: its `before`, or the `before` of
- * the operation that left that state, and so on down the chain.
- */
-function onChain(touches: readonly Touch[], record: unknown): boolean {
-  const seen = new Set<Touch>();
-  for (let touch = touches.at(-1); touch !== undefined && !seen.has(touch);) {
-    seen.add(touch);
-    const { before } = touch;
-    if (before === undefined) return false;
-    if (jsonEqual(before, record)) return true;
-    touch = touches.find(({ after }) => jsonEqual(after, before));
-  }
-  return false;
-}
-
-/**
- * The versions of a `forked` record to choose from: the operations that left its latest `rev`,
- * by time then `id`. Empty when the record at `path` is not forked.
+ * The versions of a `forked` record to choose from: for each head (see `stateOf`) the operation
+ * that left it, by time then `id`. Empty when the record at `path` is not forked.
  */
 export async function forkVersions(store: Store, path: string): Promise<Operation[]> {
-  const normalised = path.normalize('NFC');
+  return (await forkHeads(store, path)).map(({ operation }) => operation);
+}
+
+/** Every operation that left one of `heads` at `path` (the same version can be left by several). */
+async function headOperations(
+  store: Store,
+  path: string,
+  heads: readonly Touch[],
+): Promise<string[]> {
   const { operations } = await readJournal(store);
-  if (!forkedPaths(operations).has(normalised)) return [];
-  const touches = touchesByPath(operations).get(normalised) ?? [];
-  const top = touches.at(-1)?.after.rev;
-  return touches
-    .filter(({ after }) => after.rev === top)
-    .map(({ operation }) => operation)
-    .sort(compareByTime);
+  const wanted = new Set(heads.map(({ after }) => versionKey(after)));
+  return (touchesByPath(operations).get(path) ?? [])
+    .filter(({ after }) => wanted.has(versionKey(after)))
+    .map(({ operation }) => operation.id);
+}
+
+async function forkHeads(store: Store, path: string): Promise<Touch[]> {
+  const { operations } = await readJournal(store);
+  const state = stateOf(touchesByPath(operations).get(path.normalize('NFC')) ?? []);
+  return state.forked ? state.heads : [];
 }
 
 /**
  * Ends a fork with the version the person chose: one new operation (kind `fork.resolve`) that
- * writes the `after` of operation `keepOpId` on top of what is on disk, with the next `rev`, so
- * the record has one latest `rev` again. Nothing is lost: the other version stays in the journal
- * and in the `before` of this operation when it was the one on disk, and the operation can be
- * undone. Throws, writing nothing, when `path` is not forked or `keepOpId` is not one of its
- * versions (see `forkVersions`).
+ * writes the `after` of operation `keepOpId` with a `rev` above every head, and lists in
+ * `supersedes` the heads it merged, so the record has one head again. A version that was not
+ * there at the choice (a third computer's, still on its way) stays a head: the record is forked
+ * again when it arrives. Nothing is lost: the other versions stay in the journal, the one on disk
+ * is the `before` of this operation when it was a head, and the operation can be undone. Throws,
+ * writing nothing, when `path` is not forked or `keepOpId` is not one of its versions (see
+ * `forkVersions`).
  */
 export async function resolveFork(
   store: Store,
@@ -924,38 +1066,41 @@ export async function resolveFork(
   newId: () => string,
 ): Promise<Operation> {
   const normalised = path.normalize('NFC');
-  const keep = (await forkVersions(store, normalised)).find(({ id }) => id === keepOpId);
-  const after = keep?.changes.find((change) => change.path === normalised)?.after;
-  if (keep === undefined || !hasRev(after)) {
+  const heads = await forkHeads(store, normalised);
+  const keep = heads.find(({ operation }) => operation.id === keepOpId);
+  if (keep === undefined) {
     throw new Error(`${path} is not forked, or ${keepOpId} is not one of its versions`);
   }
-  // The `before` is the version on disk when it is one of the forked ones (an undo then brings it
-  // back); otherwise (a file cut short, no file) the journal's latest. Either way it has the top
-  // rev, so the new one is above every version.
-  const versions = (await forkVersions(store, normalised)).flatMap(({ changes }) =>
-    changes.filter((change) => change.path === normalised).map((change) => change.after),
-  );
+  const { after } = keep;
+  const top = Math.max(...heads.map((head) => head.after.rev));
   const onDisk = await readTolerant(store, normalised);
   // A rev above the versions is a save whose journal has not arrived: choosing now would hide it.
-  if (hasRev(onDisk) && onDisk.rev > after.rev) {
+  if (hasRev(onDisk) && onDisk.rev > top) {
     throw new Error(
       `${path}: on disk there is a newer rev than the versions to choose from (another computer ` +
         'saved it, its journal has not arrived): wait for the synchronisation and try again',
     );
   }
-  const before = versions.find((version) => jsonEqual(version, onDisk)) ?? after;
+  // The `before` is the version on disk when it is a head (an undo then brings it back); otherwise
+  // (a file cut short, no file) the chosen one.
+  const before = heads.find((head) => jsonEqual(head.after, onDisk))?.after ?? after;
   const operation = await commitOperation(
     store,
     {
       profileId,
       kind: 'fork.resolve',
-      ...(keep.apartmentId === undefined ? {} : { apartmentId: keep.apartmentId }),
+      ...(keep.operation.apartmentId === undefined
+        ? {}
+        : { apartmentId: keep.operation.apartmentId }),
       summary: 'Scelta la versione da tenere di un dato modificato in due posti.',
       changes: [{ path: normalised, before, after }],
     },
     clock,
     newId,
-    true,
+    {
+      rev: top + 1,
+      supersedes: await headOperations(store, normalised, heads),
+    },
   );
   await checkConsistency(store); // refreshes what loadAll knows of the forks
   return operation;
