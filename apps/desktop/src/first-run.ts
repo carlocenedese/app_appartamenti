@@ -18,6 +18,7 @@ import {
 } from '@bollette/core';
 import type { Store, User, WorkspaceAssessment } from '@bollette/core';
 import { loadMachineSettings, saveMachineSettings } from './machine-settings';
+import { isTooBroadFolder } from './tauri-store';
 import type { SettingsBackend } from './machine-settings';
 import { button, el } from './view-util';
 
@@ -39,6 +40,9 @@ export interface FirstRunInput {
 }
 
 const APP = { version: CORE_VERSION, schemaVersion: CORE_SCHEMA_VERSION };
+const TOO_BROAD =
+  'La cartella scelta è troppo ampia (la cartella principale del disco o la cartella home): ' +
+  "l'app avrebbe accesso a tutti i file che contiene. Scegli una cartella dentro, per esempio in Dropbox.";
 
 /** Draws the first-start screens into `root`; `stop` ends the presence signal. */
 export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop: () => void } {
@@ -97,6 +101,10 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
       try {
         const folder = await input.pickFolder();
         if (folder === null) return;
+        if (isTooBroadFolder(folder)) {
+          error.textContent = TOO_BROAD;
+          return;
+        }
         const settings = await load();
         // The ids are fixed once and saved before any write, so a retry on the same folder resumes.
         const pending =
@@ -173,6 +181,10 @@ export function renderFirstRun(root: HTMLElement, input: FirstRunInput): { stop:
 
   async function openFolder(folder: string, note: string): Promise<void> {
     stopPresence();
+    if (isTooBroadFolder(folder)) {
+      message('Cartella troppo ampia', TOO_BROAD);
+      return;
+    }
     const store = input.openStore(folder);
     const assessment = await assessWorkspace(store, APP);
     if (assessment.compat === 'invalid') {

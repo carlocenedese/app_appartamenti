@@ -56,6 +56,14 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      # Before the checks below, so the lock can be downloaded even when one of them is red.
+      - name: Upload Cargo.lock
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cargo-lock
+          path: apps/desktop/src-tauri/Cargo.lock
+          if-no-files-found: error
+
       # deny.toml allows MPL-2.0 for the crates Tauri already had; a crate with a licence outside
       # the list of CLAUDE.md that is new compared with main (on main: with the previous commit)
       # is red here, for user1 to decide (scripts/rust-licenses.mjs, R287). Same targets as deny.toml.
@@ -64,18 +72,16 @@ jobs:
           base=$(git merge-base HEAD origin/main)
           if [ "$base" = "$(git rev-parse HEAD)" ]; then base=$(git rev-parse HEAD^); fi
           git worktree add --detach "$RUNNER_TEMP/base" "$base"
-          targets="--filter-platform x86_64-pc-windows-msvc --filter-platform aarch64-apple-darwin --filter-platform x86_64-apple-darwin"
-          # $targets unquoted on purpose: several arguments.
-          cargo metadata --format-version 1 $targets --manifest-path "$RUNNER_TEMP/base/apps/desktop/src-tauri/Cargo.toml" > "$RUNNER_TEMP/before.json"
-          cargo metadata --format-version 1 $targets --locked --manifest-path apps/desktop/src-tauri/Cargo.toml > "$RUNNER_TEMP/after.json"
-          node scripts/rust-licenses.mjs "$RUNNER_TEMP/before.json" "$RUNNER_TEMP/after.json"
-
-      - name: Upload Cargo.lock
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: cargo-lock
-          path: apps/desktop/src-tauri/Cargo.lock
-          if-no-files-found: error
+          # One run per target: cargo metadata panicked («no entry found for key») with several
+          # --filter-platform in one call (run 44211432179).
+          before=""; after=""
+          for target in x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo metadata --format-version 1 --filter-platform "$target" --manifest-path "$RUNNER_TEMP/base/apps/desktop/src-tauri/Cargo.toml" > "$RUNNER_TEMP/before-$target.json"
+            cargo metadata --format-version 1 --filter-platform "$target" --locked --manifest-path apps/desktop/src-tauri/Cargo.toml > "$RUNNER_TEMP/after-$target.json"
+            before="$before${before:+,}$RUNNER_TEMP/before-$target.json"
+            after="$after${after:+,}$RUNNER_TEMP/after-$target.json"
+          done
+          node scripts/rust-licenses.mjs "$before" "$after"
 
       - name: Check that the committed Cargo.lock was up to date
         run: |

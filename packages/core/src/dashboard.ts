@@ -6,6 +6,8 @@
  */
 import { pendingDocuments } from './bill-import';
 import { loadCondo } from './condo-store';
+import { compareConsumption, worstLevel } from './consumption';
+import { consumptionThresholdsFor } from './consumption-store';
 import { calcConguaglio, SettlementInputError } from './conguaglio';
 import { loadContractChecks, loadContractStatus } from './contract-store';
 import { loadExcelInput } from './excel-store';
@@ -15,6 +17,8 @@ import {
   ApartmentSchema,
   BankTransactionSchema,
   BillMatchSchema,
+  BillSchema,
+  ConsumptionSettingsSchema,
   ContractSchema,
   MovementClassSchema,
   PaymentSchema,
@@ -58,6 +62,8 @@ export interface ApartmentDashboard {
   apartmentId: string;
   /** Count by code, only the codes with a count above 0, keys sorted. */
   counts: Record<string, number>;
+  /** False: no consumption thresholds for the apartment, so no alarm («soglie non impostate»). */
+  consumptionThresholds: boolean;
 }
 
 export type DashboardResult =
@@ -108,7 +114,10 @@ async function currentSettlements(
  * `tasse:stima-mancante` (`loadTaxTable`, only with `taxYear`, for each apartment of the taxpayer),
  * and for each settlement period given (else the one in course of each apartment, R316)
  * `conguaglio:voci-in-attesa` (the pending items),
- * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`.
+ * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`,
+ * and `consumi:giallo` / `consumi:rosso` (the last live bill of each apartment and kind by its
+ * worst level, `compareConsumption` with the thresholds of its apartment; none without
+ * thresholds: plan 19, R331).
  * States that mean done (`pagata`, `versata`, `in-linea`, `confermata`) are not counted.
  */
 export async function loadDashboard(
@@ -227,6 +236,27 @@ export async function loadDashboard(
   }
 
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+  const settings = (await loadAll(store, 'consumptionSettings', ConsumptionSettingsSchema)).records;
+  const bills = (await loadAll(store, 'bill', BillSchema)).records;
+  // The state now: only the last live bill of each apartment and kind (latest end, then id).
+  const last = new Map<string, (typeof bills)[number]>();
+  for (const bill of bills) {
+    const key = `${bill.apartmentId}\u0000${bill.category}`;
+    const seen = last.get(key);
+    if (
+      seen === undefined ||
+      bill.periodEnd > seen.periodEnd ||
+      (bill.periodEnd === seen.periodEnd && bill.id > seen.id)
+    ) {
+      last.set(key, bill);
+    }
+  }
+  for (const bill of last.values()) {
+    const thresholds = consumptionThresholdsFor(settings, bill.apartmentId);
+    if (thresholds === undefined) continue;
+    const level = worstLevel(compareConsumption(bill, bills, { thresholds }));
+    if (level !== undefined) add(bill.apartmentId, `consumi:${level}`);
+  }
   return {
     status: 'computed',
     apartments: apartments.map((a) => ({
@@ -236,6 +266,7 @@ export async function loadDashboard(
           x < y ? -1 : x > y ? 1 : 0,
         ),
       ),
+      consumptionThresholds: consumptionThresholdsFor(settings, a.id) !== undefined,
     })),
     settlements,
   };

@@ -4,6 +4,8 @@
 //
 // The folder holds the key pair made with `tauri signer generate` (R31): one `<name>.key`
 // (private) and `<name>.key.pub` (public). The script
+//   0. stops, before reading the key, unless the environment `release` exists, has a required
+//      reviewer and admits only v* tags (`release.mjs environment`, read with `gh api` GET);
 //   1. sends the private key to `gh secret set TAURI_SIGNING_PRIVATE_KEY --env release --repo
 //      <owner/name of git remote origin, printed first>` on stdin: never as an argument, never
 //      printed, never written anywhere else. A secret of the `release` environment reaches only
@@ -11,13 +13,13 @@
 //   2. writes the public key in tauri.conf.json in place of the placeholder (it is not a secret
 //      and is committed).
 // It never makes a key. Needs the GitHub CLI logged in (`gh auth login`) with admin rights on the
-// repository and the `release` environment already made. See docs/distribuzione.md. Only Node built-ins.
+// repository and the `release` environment already made and protected. See docs/distribuzione.md. Only Node built-ins.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PUBKEY_PLACEHOLDER } from './release.mjs';
+import { PUBKEY_PLACEHOLDER, ghApiGet, releaseEnvironmentProblems } from './release.mjs';
 
 const BASE64 = /^[A-Za-z0-9+/]+=*$/;
 
@@ -45,14 +47,17 @@ function runGh(command, args, input) {
 
 /**
  * Sets the signing secret and writes the public key. `run(command, args, stdin)` runs gh,
- * `origin` is the address of git remote origin, `log` prints.
+ * `api(path)` is a GET of the GitHub API (null on failure), `origin` is the address of git remote
+ * origin, `log` prints.
  */
 export function setupUpdater(
   root,
   folder,
-  { run = runGh, origin = originOf(root), log = console.log } = {},
+  { run = runGh, api = ghApiGet, origin = originOf(root), log = console.log } = {},
 ) {
   const repository = repositoryOf(origin);
+  const unprotected = releaseEnvironmentProblems(repository, api);
+  if (unprotected.length > 0) throw new Error(unprotected.join('\n'));
   if (!existsSync(folder)) throw new Error(`La cartella ${folder} non esiste.`);
   const keys = readdirSync(folder).filter((name) => name.endsWith('.key'));
   if (keys.length !== 1 || !existsSync(join(folder, `${keys[0]}.pub`))) {

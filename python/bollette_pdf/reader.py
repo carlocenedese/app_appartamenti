@@ -38,6 +38,14 @@ _PDFMINER_LOG.propagate = False
 _PDFMINER_LOG.setLevel(logging.CRITICAL + 1)
 
 MIN_TEXT_CHARS = 80
+# Limits against a hostile file (S7 of the security review of 18 November 2026): bigger files and
+# longer documents are refused before or while parsing, never truncated. Far above a real bill or
+# a scan of several bills (the fixtures have at most 10 pages). Not covered: a small stream that
+# FlateDecode expands to gigabytes, which pdfminer.six offers no way to cap.
+MAX_FILE_BYTES = 50 * 1024 * 1024
+MAX_PAGES = 200
+TOO_BIG = "Il file è troppo grande per essere una bolletta: va controllato a mano."
+TOO_MANY_PAGES = "Il documento ha troppe pagine per essere una bolletta: va controllato a mano."
 # Text lines whose baseline differs by less than this many points are on the same row. The
 # baseline (glyph origin) is used, not the glyph box, because the box grows with the font size.
 ROW_TOLERANCE = 2.0
@@ -225,17 +233,22 @@ def read_pdf(
     counts them alone (the call is for those pages; the caller then applies `restrict`)."""
     path = Path(path)
     try:
-        data = path.read_bytes()
+        with path.open("rb") as file:
+            # One byte more than the limit, so a file that grows while being read is caught too.
+            data = file.read(MAX_FILE_BYTES + 1)
     except OSError as error:
         raise PdfReadError("Impossibile aprire il file.") from error
+    if len(data) > MAX_FILE_BYTES:
+        raise PdfReadError(TOO_BIG)
     file_hash = hashlib.sha256(data).hexdigest()
     if images.sniff(data) is not None:  # by the first bytes, whatever the extension
         return _read_image(path, data, file_hash, ocr_data)
     by_page: list[list[Line]] = []
     try:
         # The bytes read once are both hashed and parsed, so the hash always matches the content.
+        # One page more than the limit is parsed, so a longer document is refused below.
         for number, layout in enumerate(
-            extract_pages(io.BytesIO(data), laparams=LA_PARAMS), start=1
+            extract_pages(io.BytesIO(data), laparams=LA_PARAMS, maxpages=MAX_PAGES + 1), start=1
         ):
             by_page.append(_page_lines(layout, number))
     except (KeyboardInterrupt, MemoryError):
@@ -251,6 +264,8 @@ def read_pdf(
             "Il file non è un PDF leggibile: potrebbe essere danneggiato o protetto da password."
         ) from None
     pages = len(by_page)
+    if pages > MAX_PAGES:
+        raise PdfReadError(TOO_MANY_PAGES)
     if pages == 0:
         raise PdfReadError("Il file non contiene pagine leggibili.")
     text_source, ocr_pages, warnings = _read_with_ocr(

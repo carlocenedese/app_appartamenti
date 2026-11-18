@@ -2245,10 +2245,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'bolletta') {
     // The reading comes from `python -I -m bollette_pdf extract` (plan 2a): no new reader here.
-    need(values, 'appartamento', 'lettura', 'soglia-consumi');
+    need(values, 'appartamento', 'lettura');
     if (positionals.length !== 1) throw invalid('bad-arguments');
-    // The threshold of the anomaly check is not decided in the code (R262).
-    if (!/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(values['soglia-consumi'])) {
+    // The alarm reads `soglie-consumi` (plan 19, R330); --soglia-consumi, optional, still adds the
+    // old check on the same months of the year before (R262), never a default.
+    const percent = values['soglia-consumi'];
+    if (percent !== undefined && !/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(percent)) {
       throw invalid('bad-arguments');
     }
     const bytes = readBytes(positionals[0]);
@@ -2271,7 +2273,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
         bytes,
         apartmentId: values.appartamento,
         knownCodes,
-        thresholds: { consumptionAnomalyPercent: Number(values['soglia-consumi']) },
+        ...optional(
+          'thresholds',
+          percent === undefined ? undefined : { consumptionAnomalyPercent: Number(percent) },
+        ),
         mode: values.conferma === true ? 'manual' : 'auto',
       },
       who,
@@ -2286,6 +2291,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
         severity: c.severity,
         ...(details ? { message: c.message } : {}),
       }));
+    // The comparison as `consumi`: differences and levels; the sides (amounts) with --dettagli.
+    const consumptionOf = (c) => {
+      if (c === undefined) return {};
+      const side = (x) =>
+        x === undefined
+          ? undefined
+          : { differences: x.differences, ...(details ? { reference: x.reference } : {}) };
+      return {
+        consumption: {
+          thresholds: c.thresholds,
+          ...(c.thresholds ? {} : { message: MESSAGES['no-consumption-thresholds'] }),
+          yearBefore: side(c.yearBefore),
+          recent: side(c.recent),
+          ...(details ? { current: c.current } : {}),
+        },
+      };
+    };
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     if (result.status === 'rejected') {
       throw new Stop('rejected', 'bill-rejected', {
@@ -2303,6 +2325,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...optional('operationId', result.operationId),
         codes: result.codes,
         checks: checks(result.checks),
+        ...consumptionOf(result.consumption),
         ...(details ? { reasons: result.reasons } : {}),
       };
     }
@@ -2328,6 +2351,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ids: result.ids,
       operationId: result.operationId,
       checks: checks(result.checks),
+      ...consumptionOf(result.consumption),
       file,
     };
   }

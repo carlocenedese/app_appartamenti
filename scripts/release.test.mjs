@@ -9,6 +9,7 @@ import {
   PUBKEY_PLACEHOLDER,
   buildRelease,
   preflightProblems,
+  releaseEnvironmentProblems,
   readVersions,
   verifyUpdateSignature,
 } from './release.mjs';
@@ -35,7 +36,7 @@ function fakeRoot({
     'updater:allow-download-and-install',
     'process:allow-restart',
   ],
-  locked = { updater: '2.14.0', process: '2.4.0' },
+  locked = { updater: '2.14.1', process: '2.4.0' },
 } = {}) {
   const tauri = join(dir, 'apps', 'desktop', 'src-tauri');
   mkdirSync(join(tauri, 'src'), { recursive: true });
@@ -46,7 +47,7 @@ function fakeRoot({
   writeFileSync(
     join(tauri, 'Cargo.toml'),
     `[package]\nname = "x"\nversion = "${version}"\n\n[dependencies]\ntauri = { version = "=2.12.5" }\n` +
-      (plugin ? 'tauri-plugin-updater = "=2.14.0"\ntauri-plugin-process = "=2.4.0"\n' : ''),
+      (plugin ? 'tauri-plugin-updater = "=2.14.1"\ntauri-plugin-process = "=2.4.0"\n' : ''),
   );
   writeFileSync(
     join(tauri, 'Cargo.lock'),
@@ -296,5 +297,76 @@ describe('command line', { timeout: 30_000 }, () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/etichetta/);
     expect(run('manifest', join(dir, 'manca'), 'v1.2.3', BASE).status).toBe(1);
+  });
+});
+
+// The answers of `gh api` for a release environment protected as docs/distribuzione.md asks.
+const ENV_PATH = 'repos/o/r/environments/release';
+const POLICIES_PATH = `${ENV_PATH}/deployment-branch-policies`;
+function protectedRelease() {
+  return {
+    [ENV_PATH]: {
+      name: 'release',
+      protection_rules: [
+        { type: 'required_reviewers', reviewers: [{ type: 'User', reviewer: { id: 1 } }] },
+        { type: 'branch_policy' },
+      ],
+      deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+      can_admins_bypass: false,
+    },
+    [POLICIES_PATH]: { total_count: 1, branch_policies: [{ name: 'v*', type: 'tag' }] },
+  };
+}
+const fakeApi = (answers) => (path) => answers[path] ?? null;
+
+describe('releaseEnvironmentProblems', () => {
+  it('accepts an environment with a reviewer that admits only v* tags', () => {
+    expect(releaseEnvironmentProblems('o/r', fakeApi(protectedRelease()))).toEqual([]);
+  });
+
+  it('refuses a missing or unreadable environment', () => {
+    expect(releaseEnvironmentProblems('o/r', fakeApi({}))).toEqual([
+      expect.stringMatching(/environment «release» non esiste o non si può leggere/),
+    ]);
+  });
+
+  it('refuses an environment without a required reviewer', () => {
+    for (const rules of [[], [{ type: 'required_reviewers', reviewers: [] }]]) {
+      const answers = protectedRelease();
+      answers[ENV_PATH].protection_rules = rules;
+      expect(releaseEnvironmentProblems('o/r', fakeApi(answers))).toEqual([
+        expect.stringMatching(/revisore/),
+      ]);
+    }
+  });
+
+  it('refuses an environment that administrators can bypass', () => {
+    for (const bypass of [true, undefined]) {
+      const answers = protectedRelease();
+      answers[ENV_PATH].can_admins_bypass = bypass;
+      expect(releaseEnvironmentProblems('o/r', fakeApi(answers))).toEqual([
+        expect.stringMatching(/amministratori/),
+      ]);
+    }
+  });
+
+  it('refuses any deployment policy other than v* tags only', () => {
+    const cases = [
+      (a) => (a[ENV_PATH].deployment_branch_policy = null),
+      (a) => (a[ENV_PATH].deployment_branch_policy.custom_branch_policies = false),
+      (a) => (a[POLICIES_PATH] = null),
+      (a) => (a[POLICIES_PATH] = { total_count: 0, branch_policies: [] }),
+      (a) => a[POLICIES_PATH].branch_policies.push({ name: 'main', type: 'branch' }),
+      (a) => (a[POLICIES_PATH].branch_policies = [{ name: 'v*' }]),
+      (a) => (a[POLICIES_PATH].branch_policies = [{ name: '*', type: 'tag' }]),
+      (a) => (a[POLICIES_PATH].total_count = 2),
+    ];
+    for (const change of cases) {
+      const answers = protectedRelease();
+      change(answers);
+      expect(releaseEnvironmentProblems('o/r', fakeApi(answers))).toEqual([
+        expect.stringMatching(/solo le etichette v\*/),
+      ]);
+    }
   });
 });
