@@ -160,7 +160,8 @@ function ratio(
   const rm = BigInt(reference.days);
   if (metric === 'amount') {
     const [c, r] = [BigInt(current.amount), BigInt(reference.amount)];
-    return r > 0n && cm > 0n ? { num: c * rm - r * cm, den: r * cm } : undefined;
+    // A credit note (amount ≤ 0) is not compared: no level (plan 19, R333).
+    return c > 0n && r > 0n && cm > 0n ? { num: c * rm - r * cm, den: r * cm } : undefined;
   }
   if (current.consumption === undefined || reference.consumption === undefined) return undefined;
   const scale = Math.max(
@@ -170,11 +171,14 @@ function ratio(
   const qc = scaled(current.consumption.quantity, scale);
   const qr = scaled(reference.consumption.quantity, scale);
   if (metric === 'consumption') {
-    return qr > 0n && cm > 0n ? { num: qc * rm - qr * cm, den: qr * cm } : undefined;
+    // A consumption of zero is not compared either (R333).
+    return qc > 0n && qr > 0n && cm > 0n ? { num: qc * rm - qr * cm, den: qr * cm } : undefined;
   }
   const [ac, ar] = [BigInt(current.amount), BigInt(reference.amount)];
   // price_c / price_r − 1 = (ac·qr − ar·qc) / (ar·qc)
-  return ar > 0n && qc > 0n && qr > 0n ? { num: ac * qr - ar * qc, den: ar * qc } : undefined;
+  return ac > 0n && ar > 0n && qc > 0n && qr > 0n
+    ? { num: ac * qr - ar * qc, den: ar * qc }
+    : undefined;
 }
 
 function differences(
@@ -208,7 +212,7 @@ function differences(
  * The comparison of `bill` with the bill of the same months a year before (`yearBeforeBill`) and
  * with the live bills of the same kind whose months all fall in the `recentMonths` months before
  * the first month of `bill` (R263; `CONSUMPTION_AVERAGE_MONTHS` unless given). A side without
- * bills is absent; a metric without a positive reference is left out. `recentMonths` and
+ * bills is absent; a metric without a positive reference or current value is left out (R333). `recentMonths` and
  * `thresholds` must be whole numbers ≥ 0 (else `RangeError`).
  */
 export function compareConsumption(
@@ -245,4 +249,12 @@ export function compareConsumption(
     comparison.recent = { reference, differences: differences(current, reference, thresholds) };
   }
   return comparison;
+}
+
+/** The worst level of a comparison, over both sides and every metric (plan 19, R330). */
+export function worstLevel(comparison: ConsumptionComparison): 'giallo' | 'rosso' | undefined {
+  const levels = [comparison.yearBefore, comparison.recent].flatMap(
+    (side) => side?.differences.map((d) => d.level) ?? [],
+  );
+  return levels.includes('rosso') ? 'rosso' : levels.includes('giallo') ? 'giallo' : undefined;
 }

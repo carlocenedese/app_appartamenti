@@ -32,6 +32,8 @@
 // month of a stay), subentro (a takeover inside a contract), stato-contratti (tenancies, takeovers,
 // deposits and checks of each contract) and caparra-restituzione (the return statement of a deposit,
 // read only).
+// Plan 18 adds scambio-camera (two tenants of one contract swap rooms from a month, in one
+// operation; only tenancy ids and codes in the output).
 // Plan 10 adds tasse-stima (the start-of-year estimate of an apartment, year and voce typed by
 // user1), tasse-assegna (a «tasse» debit assigned to cedolare or registro and tax years),
 // tasse-copia (the estimates of the year before, copied only on this command) and tasse (the
@@ -109,6 +111,7 @@ import {
   setContractRent,
   saveTenancy,
   endTenancy,
+  recordRoomSwap,
   recordTakeover,
   loadContractStatus,
   loadDepositReturn,
@@ -275,6 +278,18 @@ const MESSAGES = {
     'Rifiutato: versamenti, recuperi o presenze nello stesso posto dipendono da questa operazione: annullarli prima.',
   'takeover-unlinked':
     'Rifiutato: il contratto ha un subentro: ripetere --presenze con le presenze del subentro.',
+  'no-room': 'Rifiutato: una delle due presenze non ha un posto.',
+  'same-room': 'Rifiutato: le due presenze sono nello stesso posto.',
+  'different-contract': 'Rifiutato: le due presenze sono in contratti diversi.',
+  'pending-takeover':
+    'Rifiutato: una delle due presenze ha già un subentro registrato: annullare prima il subentro.',
+  'id-too-long':
+    'Rifiutato: l’identificativo della presenza nuova supera 64 caratteri (vedi part): indicarlo con --id-a o --id-b.',
+  'swap-unlinked':
+    'Rifiutato: il contratto ha un cambio di posto: ripetere --presenze con entrambe le presenze di ciascun inquilino.',
+  'swap-rent-unchanged':
+    'Nota: i due posti hanno affitti diversi e almeno uno resta quello di prima: indicare --canone-a e --canone-b se cambiano.',
+  'swap-forfait-unchanged': 'Nota: i due forfait sono diversi e ciascuno tiene il proprio.',
   'has-recoveries':
     'Rifiutato: l’inquilino ha un recupero in un periodo in cui non sarebbe più presente: correggere prima il recupero.',
   'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
@@ -342,6 +357,14 @@ const MESSAGES = {
 };
 
 /** Thrown to stop with a status; `invalid` is exit 2, `rejected` exit 1. */
+// Plan 18: the refusals of scambio-camera whose general message speaks of a takeover or an arrival.
+const SWAP_MESSAGES = {
+  'same-tenant': 'Rifiutato: nello scambio le due presenze sono dello stesso inquilino.',
+  'no-contract': 'Rifiutato: una delle due presenze non è in esattamente un contratto vivo.',
+  'tenancy-exists':
+    'Rifiutato: una presenza nuova esiste già con altri dati: annullare lo scambio precedente (annulla-riconciliazione) o scegliere altri identificativi con --id-a e --id-b.',
+};
+
 class Stop extends Error {
   constructor(status, reason, extra = {}) {
     super(reason);
@@ -445,6 +468,12 @@ const OPTIONS = {
   forfait: { type: 'string' },
   'caparra-attesa': { type: 'string' },
   presenza: { type: 'string' },
+  'presenza-a': { type: 'string' },
+  'presenza-b': { type: 'string' },
+  'canone-a': { type: 'string' },
+  'id-a': { type: 'string' },
+  'id-b': { type: 'string' },
+  'canone-b': { type: 'string' },
   tasso: { type: 'string', multiple: true },
   addebito: { type: 'string', multiple: true },
   lettura: { type: 'string' },
@@ -486,6 +515,7 @@ const RECONCILE_KINDS = [
   'tenancy.save',
   'tenancy.end',
   'tenancy.takeover',
+  'tenancy.swap',
   'tax.estimate',
   'tax.copy',
   'tax.assign',
@@ -2059,6 +2089,60 @@ async function command(name, values, positionals, store, who, clock, newId) {
     };
   }
 
+  if (name === 'scambio-camera') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const v = values;
+    need(v, 'appartamento', 'presenza-a', 'presenza-b', 'mese');
+    const rent = (text) => {
+      if (text === undefined) return undefined;
+      const amount = euro(text);
+      if (amount < 0) throw invalid('bad-arguments');
+      return amount;
+    };
+    let result;
+    try {
+      result = await recordRoomSwap(
+        store,
+        {
+          apartmentId: v.appartamento,
+          tenancyIdA: v['presenza-a'],
+          tenancyIdB: v['presenza-b'],
+          month: month(v.mese),
+          ...optional('monthlyRentA', rent(v['canone-a'])),
+          ...optional('idA', v['id-a']),
+          ...optional('idB', v['id-b']),
+          ...optional('monthlyRentB', rent(v['canone-b'])),
+        },
+        who,
+        clock,
+        newId,
+      );
+    } catch (error) {
+      // An id the store refuses (a name reserved on Windows) is a bad argument.
+      if (error instanceof RangeError) throw invalid('bad-arguments');
+      throw error;
+    }
+    if (result.status === 'refused') {
+      throw new Stop('rejected', result.reason, {
+        ...optional('message', SWAP_MESSAGES[result.reason]),
+        ...optional('part', result.part),
+        ...optional('code', result.code),
+        ...optional('month', result.month),
+      });
+    }
+    return {
+      status: result.status,
+      tenancyIds: result.tenancyIds,
+      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
+      ...(result.warnings === undefined
+        ? {}
+        : {
+            warnings: result.warnings,
+            message: result.warnings.map((w) => MESSAGES[w]).join(' '),
+          }),
+    };
+  }
+
   if (name === 'stato-contratti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const result = await loadContractStatus(store, {
@@ -2161,10 +2245,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'bolletta') {
     // The reading comes from `python -I -m bollette_pdf extract` (plan 2a): no new reader here.
-    need(values, 'appartamento', 'lettura', 'soglia-consumi');
+    need(values, 'appartamento', 'lettura');
     if (positionals.length !== 1) throw invalid('bad-arguments');
-    // The threshold of the anomaly check is not decided in the code (R262).
-    if (!/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(values['soglia-consumi'])) {
+    // The alarm reads `soglie-consumi` (plan 19, R330); --soglia-consumi, optional, still adds the
+    // old check on the same months of the year before (R262), never a default.
+    const percent = values['soglia-consumi'];
+    if (percent !== undefined && !/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(percent)) {
       throw invalid('bad-arguments');
     }
     const bytes = readBytes(positionals[0]);
@@ -2187,7 +2273,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
         bytes,
         apartmentId: values.appartamento,
         knownCodes,
-        thresholds: { consumptionAnomalyPercent: Number(values['soglia-consumi']) },
+        ...optional(
+          'thresholds',
+          percent === undefined ? undefined : { consumptionAnomalyPercent: Number(percent) },
+        ),
         mode: values.conferma === true ? 'manual' : 'auto',
       },
       who,
@@ -2202,6 +2291,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
         severity: c.severity,
         ...(details ? { message: c.message } : {}),
       }));
+    // The comparison as `consumi`: differences and levels; the sides (amounts) with --dettagli.
+    const consumptionOf = (c) => {
+      if (c === undefined) return {};
+      const side = (x) =>
+        x === undefined
+          ? undefined
+          : { differences: x.differences, ...(details ? { reference: x.reference } : {}) };
+      return {
+        consumption: {
+          thresholds: c.thresholds,
+          ...(c.thresholds ? {} : { message: MESSAGES['no-consumption-thresholds'] }),
+          yearBefore: side(c.yearBefore),
+          recent: side(c.recent),
+          ...(details ? { current: c.current } : {}),
+        },
+      };
+    };
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     if (result.status === 'rejected') {
       throw new Stop('rejected', 'bill-rejected', {
@@ -2219,6 +2325,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...optional('operationId', result.operationId),
         codes: result.codes,
         checks: checks(result.checks),
+        ...consumptionOf(result.consumption),
         ...(details ? { reasons: result.reasons } : {}),
       };
     }
@@ -2244,6 +2351,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ids: result.ids,
       operationId: result.operationId,
       checks: checks(result.checks),
+      ...consumptionOf(result.consumption),
       file,
     };
   }
@@ -2698,6 +2806,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'presenza',
         'fine-presenza',
         'subentro',
+        'scambio-camera',
         'stato-contratti',
         'caparra-restituzione',
         'tasso-legale',
@@ -2782,6 +2891,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'condominio-stima',
         'recupero',
         'presenza',
+        'scambio-camera',
         'stato-contratti',
         'caparra-restituzione',
         'tasse-stima',
@@ -2825,7 +2935,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino', 'contratto', 'scadenze', 'scadenza-nuova', 'condominio-documento'],
-      mese: ['uscita-inquilino', 'fine-presenza', 'subentro'],
+      mese: ['uscita-inquilino', 'fine-presenza', 'subentro', 'scambio-camera'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],
       gambe: ['giroconto'],
@@ -2857,6 +2967,12 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       forfait: ['presenza', 'subentro'],
       'caparra-attesa': ['presenza', 'subentro'],
       presenza: ['fine-presenza', 'subentro'],
+      ...Object.fromEntries(
+        ['presenza-a', 'presenza-b', 'canone-a', 'canone-b', 'id-a', 'id-b'].map((o) => [
+          o,
+          ['scambio-camera'],
+        ]),
+      ),
       tasso: ['tasso-legale'],
       addebito: ['caparra-restituzione'],
       ...Object.fromEntries(

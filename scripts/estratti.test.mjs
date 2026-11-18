@@ -4546,6 +4546,82 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     ]);
     expect((await run(contratto('--presenze', 'tcy-anna,tcy-bruno'))).code).toBe(0);
   });
+
+  it('scambio-camera (piano 18): salvato, unchanged, avviso, rifiuti e annullamento', async () => {
+    const s = await setup();
+    await run(presenza(s));
+    await run(
+      presenza(
+        s,
+        '--id',
+        'tcy-bruno',
+        '--inquilino',
+        'ten-bruno',
+        '--posto',
+        'B',
+        '--affitto',
+        '360,00',
+      ),
+    );
+    const scambio = (...extra) => [
+      'scambio-camera',
+      ...s.common,
+      '--appartamento',
+      'pulci',
+      '--presenza-a',
+      'tcy-anna',
+      '--presenza-b',
+      'tcy-bruno',
+      '--mese',
+      '2026-03',
+      ...extra,
+    ];
+    const saved = await run(scambio());
+    expect([saved.code, saved.json]).toEqual([
+      0,
+      {
+        status: 'saved',
+        tenancyIds: ['tcy-anna-2026-03', 'tcy-bruno-2026-03'],
+        operationId: saved.json.operationId,
+        warnings: ['swap-rent-unchanged'],
+        message: expect.stringMatching(/^Nota: /),
+      },
+    ]);
+    const again = await run(scambio());
+    expect([again.code, again.json.status]).toEqual([0, 'unchanged']);
+    expect(saved.out + again.out).not.toMatch(/ten-|Anna|Bruno|35000|36000/);
+    const other = await run(scambio('--canone-a', '360,00'));
+    expect([other.code, other.json.reason]).toEqual([1, 'tenancy-exists']);
+    const same = await run(scambio('--presenza-b', 'tcy-anna'));
+    expect([same.code, same.json.reason, same.json.message]).toEqual([
+      1,
+      'same-tenant',
+      'Rifiutato: nello scambio le due presenze sono dello stesso inquilino.',
+    ]);
+    for (const args of [
+      scambio('--canone-b', '-1,00'),
+      scambio('--mese', '2026-13'),
+      scambio('--affitto', '1,00'),
+      ['scambio-camera', ...s.common, '--appartamento', 'pulci', '--presenza-a', 'tcy-anna'],
+    ]) {
+      expect((await run(args)).code).toBe(2);
+    }
+    const long = await run(scambio('--mese', '2026-04', '--id-a', 'x'.repeat(65)));
+    expect([long.code, long.json.reason, long.json.part]).toEqual([1, 'id-too-long', 'a']);
+    const undo = await run([
+      'annulla-riconciliazione',
+      ...s.common,
+      '--operazione',
+      saved.json.operationId,
+    ]);
+    expect(undo.code).toBe(0);
+    expect((await run(scambio('--mese', '2026-04', '--id-a', 'CON'))).code).toBe(2);
+    const named = await run(scambio('--mese', '2026-04', '--id-a', 'tcy-a2', '--id-b', 'tcy-b2'));
+    expect([named.code, named.json.tenancyIds]).toEqual([0, ['tcy-a2', 'tcy-b2']]);
+    await run(['annulla-riconciliazione', ...s.common, '--operazione', named.json.operationId]);
+    const redo = await run(scambio('--canone-a', '360,00', '--canone-b', '350,00'));
+    expect([redo.code, redo.json.status, redo.json.warnings]).toEqual([0, 'saved', undefined]);
+  });
 });
 
 describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () => {
@@ -4612,9 +4688,12 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     const common = ['--cartella', dir, '--ora', ORA];
     const args = [...common, '--appartamento', 'pulci', '--lettura', lettura, pdf];
 
-    expect((await run(['bolletta', ...args])).code).toBe(2); // no threshold: not decided (R262)
-    const first = await run(['bolletta', ...args, '--soglia-consumi', '30']);
+    // Plan 19, R330: no threshold needed; without settings no alarm and no error.
+    expect((await run(['bolletta', ...args, '--soglia-consumi', 'x'])).code).toBe(2);
+    const first = await run(['bolletta', ...args]);
     expect(first.code).toBe(0);
+    expect(first.json.consumption).toMatchObject({ thresholds: false });
+    expect(first.json.consumption.message).toBeDefined();
     expect(first.json).toMatchObject({ status: 'da-rivedere' });
     expect(first.json.codes).toContain('apartment-codes-unknown');
     expect(first.json.codes).toContain('profile');
@@ -4629,7 +4708,11 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     const board = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
     expect(board.code).toBe(0);
     expect(board.json.apartments).toEqual([
-      { apartmentId: 'pulci', counts: { 'documento-da-rivedere': 1 } },
+      {
+        apartmentId: 'pulci',
+        counts: { 'documento-da-rivedere': 1 },
+        consumptionThresholds: false,
+      },
     ]);
 
     const confirmed = await run(['bolletta', ...args, '--soglia-consumi', '30', '--conferma']);
@@ -4656,7 +4739,9 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     expect(undone.json.records).toBe(2);
     expect((await run(['annulla-bolletta', ...common, '--pagine', '2-1', pdf])).code).toBe(2);
     const empty = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
-    expect(empty.json.apartments).toEqual([{ apartmentId: 'pulci', counts: {} }]);
+    expect(empty.json.apartments).toEqual([
+      { apartmentId: 'pulci', counts: {}, consumptionThresholds: false },
+    ]);
     expect((await run(['cruscotto', ...common, '--lettura', lettura])).code).toBe(2);
 
     // A file outside the shared folder stays where it is; a taken place is never written over.
@@ -4724,6 +4809,40 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
             path: recordPath('bill', 'b-now'),
             after: bill('b-now', '2026-01-01', '2026-01-31', '160'),
           },
+          // A contract in course, for the settlement period of the dashboard (R316).
+          {
+            path: recordPath('tenancy', 'tcy-p'),
+            after: {
+              id: 'tcy-p',
+              v: 1,
+              rev: 1,
+              apartmentId: 'pulci',
+              tenantId: 'ten-p',
+              from: '2025-10',
+              monthlyRent: 40000,
+              monthlyForfait: 5000,
+            },
+          },
+          {
+            path: recordPath('contract', 'ctr-p'),
+            after: {
+              id: 'ctr-p',
+              v: 1,
+              rev: 1,
+              apartmentId: 'pulci',
+              type: '1+1',
+              start: '2025-10',
+              end: '2027-09',
+              settlement: 'annuale',
+              agreedRent: true,
+              forStudents: true,
+              durationMonths: 12,
+              signedOn: '2025-09-20',
+              taxRegime: 'cedolare',
+              cedolareRateBp: 1000,
+              tenancyIds: ['tcy-p'],
+            },
+          },
         ],
       },
       () => ORA,
@@ -4753,6 +4872,70 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
     const leveled = await run(['consumi', ...common, '--bolletta', 'b-now', '--dettagli']);
     expect(leveled.json.yearBefore.differences[0].level).toBe('rosso');
     expect(leveled.json.current.amount).toBe(4321);
+    // Plan 19, R331: the dashboard says the thresholds are set, counts the alarm, shows the
+    // settlement period in course; no amount without --dettagli.
+    const board = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
+    expect(board.code).toBe(0);
+    expect(board.json.apartments[0]).toMatchObject({
+      apartmentId: 'pulci',
+      consumptionThresholds: true,
+    });
+    expect(board.json.apartments[0].counts['consumi:rosso']).toBe(1);
+    expect(board.json.settlements.map((r) => r.periodLabel)).toEqual(['2026-27']);
+    expect(board.out).not.toMatch(/4321/);
+    // `bolletta` with a level: codes and differences; the amounts only with --dettagli.
+    const pdf = join(dir, 'gas-2027.pdf');
+    writeFileSync(pdf, '%PDF-1.7 bolletta inventata 2027');
+    const f = (value) => ({
+      value,
+      confidence: 'high',
+      source: { page: 1, box: [0, 0, 1, 1], text: 'x' },
+    });
+    const lettura = join(dir, 'lettura-2027.json');
+    writeFileSync(
+      lettura,
+      JSON.stringify({
+        v: 1,
+        engineVersion: '0.1.0',
+        fileHash: await hashBytes(readFileSync(pdf)),
+        fileName: 'gas-2027.pdf',
+        pages: 1,
+        pageRange: [1, 1],
+        status: 'riconosciuta',
+        profileId: 'prof-inventato',
+        profileRev: 1,
+        kind: 'bill',
+        documentKind: 'bill',
+        category: 'gas',
+        fields: {
+          supplier: f('Fornitore-Inventato-Gas'),
+          issueDate: f('2027-02-05'),
+          periodStart: f('2027-01-01'),
+          periodEnd: f('2027-01-31'),
+          amount: f(9876),
+          consumption: f({ quantity: '320', unit: 'Smc' }),
+        },
+        parts: [],
+        identifiers: [],
+        checks: [],
+        warnings: [],
+        textSource: 'pdf',
+        ocrPages: [],
+      }),
+    );
+    const billArgs = [...common, '--appartamento', 'pulci', '--lettura', lettura, pdf];
+    const alarmed = await run(['bolletta', ...billArgs]);
+    expect(alarmed.code).toBe(0);
+    expect(alarmed.json.codes).toContain('consumption-alarm');
+    expect(alarmed.json.consumption.thresholds).toBe(true);
+    expect(alarmed.json.consumption.yearBefore.differences[0]).toMatchObject({
+      metric: 'consumption',
+      level: 'rosso',
+    });
+    expect(alarmed.out).not.toMatch(/9876|4321|98,76|43,21/);
+    const detailed = await run(['bolletta', ...billArgs, '--dettagli']);
+    expect(detailed.json.consumption.current.amount).toBe(9876);
+    expect(detailed.json.consumption.yearBefore.reference.amount).toBe(4321);
     for (const bad of [
       ['soglie-consumi', ...common],
       ['soglie-consumi', ...common, '--giallo', 'acqua:30'],
