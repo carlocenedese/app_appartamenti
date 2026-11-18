@@ -185,6 +185,26 @@ describe('savePayable (plan 9, task 3)', () => {
       payableId: 'scad-x',
     });
     expect((await readJournal(store)).operations).toHaveLength(before);
+    // Paid since: the same line again is still the same payable.
+    await setPayablePaid(
+      store,
+      { payableId: 'scad-x', date: isoDate('2027-02-01') },
+      'user1',
+      clock,
+      ids('p'),
+    );
+    expect(await save({ dueDate: '2027-02-01' }, 'd')).toEqual({
+      status: 'unchanged',
+      payableId: 'scad-x',
+    });
+    // The id of a deleted payable is not brought back.
+    const created = await save({ id: 'scad-y', dueDate: '2027-04-01' }, 'e');
+    if (created.status !== 'saved') throw new Error('not saved');
+    await undoOperation(store, created.operationId, 'user1', clock, ids('u'));
+    expect(await save({ id: 'scad-y', dueDate: '2027-04-01' }, 'f')).toEqual({
+      status: 'refused',
+      reason: 'unknown-payable',
+    });
   });
 });
 

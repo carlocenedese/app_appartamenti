@@ -164,14 +164,20 @@ export async function savePayable(
   ) {
     return { status: 'unchanged', payableId: before.id };
   }
-  // E3: without `id`, a live payable with the same content is a rerun: unchanged.
+  // E3: without `id`, a live payable created with the same fields (paid since or not) is a
+  // rerun: unchanged.
   if (input.id === undefined) {
-    const same = live.find(
-      (p) =>
-        p.paid === undefined &&
-        p.previousId === undefined &&
-        JSON.stringify(toRecord({ ...after, id: p.id }, p.rev)) === JSON.stringify(p),
-    );
+    const created = (p: Omit<Payable, 'v' | 'rev'>) =>
+      JSON.stringify([
+        p.apartmentId,
+        p.kind,
+        p.dueDate,
+        p.expected,
+        p.repeatYearly,
+        p.taxYear,
+        p.taxVoice,
+      ]);
+    const same = live.find((p) => p.previousId === undefined && created(p) === created(after));
     if (same !== undefined) return { status: 'unchanged', payableId: same.id };
   }
   return write(
