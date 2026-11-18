@@ -61,6 +61,7 @@ import {
   AccountSchema,
   ApartmentSchema,
   BillSchema,
+  InstalmentSchema,
   BankProfileSchema,
   CsvError,
   ExcludeReasonSchema,
@@ -2291,7 +2292,6 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (percent !== undefined && !/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(percent)) {
       throw invalid('bad-arguments');
     }
-    const bytes = readBytes(positionals[0]);
     let read;
     try {
       read = ExtractionResultSchema.safeParse(
@@ -2300,7 +2300,30 @@ async function command(name, values, positionals, store, who, clock, newId) {
     } catch {
       throw invalid('bad-reading');
     }
-    if (!read.success) throw invalid('bad-reading');
+    // E15: with --dettagli, the paths of the fields that do not fit (names, never values).
+    if (!read.success) {
+      throw invalid(
+        'bad-reading',
+        values.dettagli === true
+          ? { fields: [...new Set(read.error.issues.map((i) => i.path.join('.')))].sort() }
+          : {},
+      );
+    }
+    let bytes;
+    try {
+      bytes = readBytes(positionals[0]);
+    } catch (error) {
+      // E14: the PDF moved by an earlier registration of this same reading: say so.
+      const { fileHash } = read.data;
+      const registered = [
+        ...(await loadAll(store, 'bill', BillSchema)).records,
+        ...(await loadAll(store, 'instalment', InstalmentSchema)).records,
+      ].find((r) => r.fileHash === fileHash);
+      if (registered !== undefined) {
+        throw new Stop('rejected', 'duplicate-bill', { existingId: registered.id });
+      }
+      throw error;
+    }
     // Without --codici, those of the apartment (`appartamento --codici`, R314).
     const knownCodes =
       values.codici === undefined ? undefined : values.codici.split(',').filter((c) => c !== '');

@@ -1225,6 +1225,16 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(shared.nextOfList.json.message).toContain('rilanciare riconcilia');
   });
 
+  it('E14: la stessa bolletta rilanciata, dal vecchio o dal nuovo percorso, è «già registrata»', () => {
+    const again = steps.filter(
+      (s) => s.label.startsWith('bolletta ') && s.label.includes('di nuovo'),
+    );
+    expect(again).toHaveLength(8);
+    expect([...new Set(again.map((s) => `${String(s.code)} ${String(s.json.reason)}`))]).toEqual([
+      '1 duplicate-bill',
+    ]);
+  });
+
   it('E12: un importo negativo scritto `--importo -15,00` è accettato, come `--importo=-15,00`', () => {
     expect([shared.negativeSpaced.code, shared.negativeSpaced.json.status]).toEqual([0, 'saved']);
   });
@@ -1491,6 +1501,24 @@ describe('sonde fuori dal ciclo', () => {
     expect([first.code, second.code]).toEqual([0, 0]);
     expect([second.json.status, second.json.id]).toEqual(['unchanged', first.json.id]);
     rmSync(probe, { recursive: true, force: true });
+  });
+
+  it('E15: una lettura non valida dice quali campi, solo con --dettagli', async () => {
+    const { probe, cli } = await probeFolder();
+    const pdf = join(probe, 'x.pdf');
+    writeFileSync(pdf, '%PDF-1.7 inventato');
+    const lettura = join(probe, 'l.json');
+    writeFileSync(lettura, JSON.stringify({ v: 1, kind: 'tari', category: 'tari' }));
+    const args = ['--appartamento', 'x', '--lettura', lettura, pdf];
+    const plain = await cli('bolletta', ...args);
+    const detailed = await cli('bolletta', ...args, '--dettagli');
+    rmSync(probe, { recursive: true, force: true });
+    expect([plain.code, plain.json.reason, plain.json.fields]).toEqual([
+      2,
+      'bad-reading',
+      undefined,
+    ]);
+    expect(detailed.json.fields).toEqual(expect.arrayContaining(['category', 'fileHash']));
   });
 
   /** Apartment and contract with the lease year from `day`, then the Excel: the exit codes. */
