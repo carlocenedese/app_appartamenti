@@ -7,7 +7,12 @@ import {
   loadDashboard,
   loadExcelInput,
   closePeriod,
+  closeState,
   commitChange,
+  markPeriodSent,
+  markTenantSettled,
+  reopenPeriod,
+  unsettledTenants,
   loadAll,
   loadPeriodClosing,
   readJournal,
@@ -15,7 +20,7 @@ import {
   tariDecembers,
   undoOperation,
 } from '../src/index';
-import type { RecordKind } from '../src/index';
+import type { PeriodClose, RecordKind } from '../src/index';
 import { isoDate, yearMonth } from '../src/period';
 import {
   apartment,
@@ -220,9 +225,16 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     });
   });
 
-  it('a payment cancelled after the closing changes the data: said in the files and the dashboard', async () => {
+  it('F11: after a reopening a flat charge cancelled is asked in the supplementary as its own line', async () => {
     const store = await setUp();
     await closePeriod(store, QUERY, 'p1', clock, ids('c'));
+    await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-11-20', reason: 'Bonifico di ottobre respinto' },
+      'p1',
+      clock,
+      ids('r'),
+    );
     const [first] = (await loadAll(store, 'payment', PaymentSchema)).records;
     if (first === undefined) throw new Error('payment');
     await commitChange(
@@ -243,23 +255,125 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
       ids('del'),
     );
     expect(await loadPeriodClosing(store, QUERY, isoDate('2026-11-18'))).toMatchObject({
-      changed: false,
-      dataChanged: true,
+      status: 'reopened',
+      reopened: { on: '2026-11-20', reason: 'Bonifico di ottobre respinto' },
+      changed: true,
+      dataChanged: false,
+      tenants: [{ tenantId: 't-a', delta: 0, forfaitDelta: 3000, action: 'da-pagare' }],
     });
+    // Reopened: the files and the dashboard show the period as open again.
     const loaded = await loadExcelInput(store, QUERY);
     if (loaded.status !== 'ok') throw new Error(loaded.reason);
-    const day = `${clock().slice(8, 10)}/${clock().slice(5, 7)}/${clock().slice(0, 4)}`;
-    const text = `Conguaglio chiuso il ${day}: dati cambiati dopo la chiusura, da controllare`;
+    expect(loaded.input.closing).toBeUndefined();
     expect(buildConguaglioWorkbook(loaded.input).sheets[0]?.rows[0]?.[0]).toEqual({
       kind: 'text',
-      value: text,
+      value: 'Conguaglio provvisorio: voci in attesa 0',
     });
-    expect(buildOwnersWorkbook(loaded.input).sheets[0]?.rows[0]?.[0]).toEqual({
-      kind: 'text',
-      value: text,
+    // A new closing waits for the flat charge (R5).
+    expect(await closePeriod(store, QUERY, 'p1', clock, ids('c2'))).toMatchObject({
+      status: 'refused',
+      reason: 'cannot-close',
     });
-    const d = await loadDashboard(store, { today: isoDate('2026-11-18'), settlements: [QUERY] });
-    expect(d.status === 'computed' && d.apartments[0]?.counts['conguaglio:dati-cambiati']).toBe(1);
+  });
+
+  it('F1: sent and settled are marked by user1, settled per tenant and never automatic', async () => {
+    const store = await setUp();
+    const sent = { ...QUERY, on: '2026-11-20' };
+    expect(await markPeriodSent(store, sent, 'p1', clock, ids('s'))).toEqual({
+      status: 'refused',
+      reason: 'not-closed',
+    });
+    await closePeriod(store, QUERY, 'p1', clock, ids('c'));
+    const record = async () => (await loadAll(store, 'periodClose', PeriodCloseSchema)).records[0];
+    expect(closeState((await record()) as PeriodClose)).toBe('chiuso');
+    expect(await markPeriodSent(store, sent, 'p1', clock, ids('s'))).toMatchObject({
+      status: 'saved',
+    });
+    expect(await markPeriodSent(store, sent, 'p1', clock, ids('s2'))).toMatchObject({
+      status: 'unchanged',
+    });
+    // 90,00 of the bill against 360,00 of flat charge: a credit of 270,00 to settle.
+    expect(closeState((await record()) as PeriodClose)).toBe('inviato');
+    expect(unsettledTenants((await record()) as PeriodClose)).toEqual(['t-a']);
+    const settle = { ...QUERY, tenantId: 't-a', on: '2026-12-01' };
+    expect(
+      await markTenantSettled(store, { ...settle, tenantId: 't-x' }, 'p1', clock, ids('x')),
+    ).toEqual({ status: 'refused', reason: 'unknown-tenant' });
+    expect(
+      await markTenantSettled(store, { ...settle, transactionId: 'tx-no' }, 'p1', clock, ids('x')),
+    ).toEqual({ status: 'refused', reason: 'unknown-movement' });
+    await put(store, 'transaction', {
+      id: 'tx-1',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt',
+      date: '2026-12-01',
+      amount: -27000,
+      description: 'Bonifico a inquilino',
+      statementHash: 'h',
+    });
+    expect(
+      await markTenantSettled(store, { ...settle, transactionId: 'tx-1' }, 'p1', clock, ids('t')),
+    ).toMatchObject({ status: 'saved' });
+    expect(await record()).toMatchObject({
+      sentOn: '2026-11-20',
+      settled: [{ tenantId: 't-a', on: '2026-12-01', transactionId: 'tx-1' }],
+    });
+    expect(closeState((await record()) as PeriodClose)).toBe('saldato');
+    expect(await loadPeriodClosing(store, QUERY, isoDate('2026-12-02'))).toMatchObject({
+      status: 'closed',
+      sentOn: '2026-11-20',
+      settled: [{ tenantId: 't-a' }],
+    });
+    const kinds = (await readJournal(store)).operations.map((o) => o.kind);
+    expect(kinds.filter((k) => k.startsWith('period.'))).toEqual([
+      'period.close',
+      'period.send',
+      'period.settle',
+    ]);
+  });
+
+  it('F3: a reopening needs a reason, keeps the snapshot, and a second closing moves it into history', async () => {
+    const store = await setUp();
+    await closePeriod(store, QUERY, 'p1', clock, ids('c'));
+    await markPeriodSent(store, { ...QUERY, on: '2026-11-20' }, 'p1', clock, ids('s'));
+    const reopen = { ...QUERY, on: '2026-11-25', reason: '  ' };
+    expect(await reopenPeriod(store, reopen, 'p1', clock, ids('r'))).toEqual({
+      status: 'refused',
+      reason: 'missing-reason',
+    });
+    const done = await reopenPeriod(
+      store,
+      { ...reopen, reason: 'Bolletta corretta dal fornitore' },
+      'p1',
+      clock,
+      ids('r'),
+    );
+    expect(done).toMatchObject({ status: 'saved', operationId: 'r-1' });
+    const op = (await readJournal(store)).operations.find((o) => o.id === 'r-1');
+    expect(op).toMatchObject({
+      kind: 'period.reopen',
+      profileId: 'p1',
+      reason: 'Bolletta corretta dal fornitore',
+    });
+    // Open again: no second reopening, no marks, a new closing.
+    expect(await reopenPeriod(store, { ...reopen, reason: 'x' }, 'p1', clock, ids('r2'))).toEqual({
+      status: 'refused',
+      reason: 'not-closed',
+    });
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('c2'))).status).toBe('closed');
+    const [record] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    expect(record?.reopened).toBeUndefined();
+    expect(record?.sentOn).toBeUndefined();
+    expect(record?.history).toEqual([
+      {
+        closedAt: clock(),
+        engineVersion: record?.engineVersion,
+        snapshot: record?.snapshot,
+        sentOn: '2026-11-20',
+        reopened: { on: '2026-11-25', reason: 'Bolletta corretta dal fornitore' },
+      },
+    ]);
   });
 
   const decemberNotice = (year: string) =>

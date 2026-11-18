@@ -24,7 +24,7 @@ import {
   TenantRecoverySchema,
   TenantSchema,
 } from './model';
-import { periodCloseId } from './closing';
+import { isLiveClose, periodCloseId } from './closing';
 import { settlementPeriods } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
@@ -75,9 +75,9 @@ export async function loadExcelInput(
   const spans = [
     ...new Map(all.map((p) => [`${p.from}/${p.to}`, { from: p.from, to: p.to }])).values(),
   ].sort((a, b) => compareText(a.from, b.from) || compareText(a.to, b.to));
-  // R5: the live closing of the period, if it is closed.
+  // R5: the live closing of the period, if it is closed (a reopened one is open again, F3).
   const closing = (await records('periodClose', PeriodCloseSchema)).find(
-    (c) => c.id === periodCloseId(apartment.id, period.label),
+    (c) => c.id === periodCloseId(apartment.id, period.label) && isLiveClose(c),
   );
   return {
     status: 'ok',

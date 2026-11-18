@@ -4,14 +4,14 @@
  * with it (`calcConguaglioSupplementare`). One `period.close` operation, undone with the
  * reconciliation undo. No amount or name in a summary.
  */
-import { closingOf, periodCloseId, snapshotOf } from './closing';
+import { closingOf, isLiveClose, periodCloseId, snapshotOf } from './closing';
 import type { PeriodClosed } from './closing';
 import { SettlementInputError, calcConguaglio, canClosePeriod } from './conguaglio';
 import type { CloseMissing, ConguaglioResult, SettlementInputErrorCode } from './conguaglio';
 import { loadExcelInput } from './excel-store';
 import type { ExcelInput } from './excel';
 import { commitChange, writesBlocked } from './journal';
-import { PeriodCloseSchema, SupplySchema } from './model';
+import { BankTransactionSchema, PeriodCloseSchema, SupplySchema } from './model';
 import type { PeriodClose } from './model';
 import { isoDate, monthsInPeriod } from './period';
 import type { ISODate } from './period';
@@ -50,10 +50,16 @@ async function computed(
   }
 }
 
-/** The live closing of the period, if any. */
-async function liveClose(store: Store, query: Query): Promise<PeriodClose | undefined> {
+/** The closing record of the period, not deleted, reopened or not (F3). */
+async function currentClose(store: Store, query: Query): Promise<PeriodClose | undefined> {
   const id = periodCloseId(query.apartmentId, query.periodLabel);
   return (await loadAll(store, 'periodClose', PeriodCloseSchema)).records.find((c) => c.id === id);
+}
+
+/** The live closing of the period (closed, not reopened), if any. */
+async function liveClose(store: Store, query: Query): Promise<PeriodClose | undefined> {
+  const close = await currentClose(store, query);
+  return close !== undefined && isLiveClose(close) ? close : undefined;
 }
 
 /**
@@ -130,6 +136,21 @@ export async function closePeriod(
   const before = (
     await loadAll(store, 'periodClose', PeriodCloseSchema, { includeDeleted: true })
   ).records.find((c) => c.id === id);
+  // F3: a closing after a reopening keeps the one before in `history`, never deleted.
+  const earlier =
+    before !== undefined && before.deleted !== true && before.reopened !== undefined
+      ? [
+          ...(before.history ?? []),
+          {
+            closedAt: before.closedAt,
+            engineVersion: before.engineVersion,
+            snapshot: before.snapshot,
+            ...(before.sentOn === undefined ? {} : { sentOn: before.sentOn }),
+            ...(before.settled === undefined ? {} : { settled: before.settled }),
+            reopened: before.reopened,
+          },
+        ]
+      : (before?.history ?? []);
   const after = PeriodCloseSchema.parse({
     id,
     v: 1,
@@ -141,6 +162,7 @@ export async function closePeriod(
     closedAt: clock(),
     engineVersion: result.engineVersion,
     snapshot: snapshotOf(result),
+    ...(earlier.length === 0 ? {} : { history: earlier }),
   });
   const operation = await commitChange(
     store,
@@ -175,7 +197,165 @@ export async function loadPeriodClosing(
 ): Promise<PeriodClosingResult> {
   const calc = await computed(store, query);
   if (calc.status === 'refused') return calc;
-  const close = await liveClose(store, query);
+  const close = await currentClose(store, query);
   if (close === undefined) return { status: 'open' };
   return closingOf(close, calc.result, calc.input, asOf);
+}
+
+export type MarkCloseResult =
+  | { status: 'saved'; operationId: string; closeId: string }
+  | { status: 'unchanged'; closeId: string }
+  | {
+      status: 'refused';
+      reason:
+        | 'inconsistent-store'
+        | 'not-closed'
+        | 'unknown-tenant'
+        | 'unknown-movement'
+        | 'missing-reason'
+        | 'invalid-input';
+    };
+
+/**
+ * One change of the live closing of the period (F1, F3), in one operation of `kind`: `change`
+ * gives the new fields, or a refusal. `not-closed` without a live closing; `unchanged` when the
+ * record would stay the same.
+ */
+async function changeClose(
+  store: Store,
+  query: Query,
+  kind: string,
+  summary: string,
+  change: (
+    close: PeriodClose,
+  ) => Promise<
+    { fields: Record<string, unknown> } | Extract<MarkCloseResult, { status: 'refused' }>
+  >,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+  reason?: string,
+): Promise<MarkCloseResult> {
+  if (await writesBlocked(store)) return { status: 'refused', reason: 'inconsistent-store' };
+  const before = await liveClose(store, query);
+  if (before === undefined) return { status: 'refused', reason: 'not-closed' };
+  const changed = await change(before);
+  if (!('fields' in changed)) return changed;
+  const parsed = PeriodCloseSchema.safeParse({ ...before, ...changed.fields });
+  if (!parsed.success) return { status: 'refused', reason: 'invalid-input' };
+  if (JSON.stringify(parsed.data) === JSON.stringify(before)) {
+    return { status: 'unchanged', closeId: before.id };
+  }
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind,
+      apartmentId: query.apartmentId,
+      summary,
+      ...(reason === undefined ? {} : { reason }),
+      changes: [{ path: recordPath('periodClose', before.id), before, after: parsed.data }],
+    },
+    clock,
+    newId,
+  );
+  return { status: 'saved', operationId: operation.id, closeId: before.id };
+}
+
+/** F1: the settlement of the closed period was sent to the tenants on `on` (user1's word). */
+export function markPeriodSent(
+  store: Store,
+  input: Query & { on: string },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<MarkCloseResult> {
+  return changeClose(
+    store,
+    input,
+    'period.send',
+    'Conguaglio segnato come inviato.',
+    () => Promise.resolve({ fields: { sentOn: input.on } }),
+    profileId,
+    clock,
+    newId,
+  );
+}
+
+/**
+ * F1: user1 marks the settlement of `tenantId` as settled on `on`, with the bank movement that
+ * paid it if he gives one. Never set by the app on its own. Refused: a tenant who is not in the
+ * snapshot (`unknown-tenant`), a movement that is not a live one (`unknown-movement`).
+ */
+export function markTenantSettled(
+  store: Store,
+  input: Query & { tenantId: string; on: string; transactionId?: string },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<MarkCloseResult> {
+  return changeClose(
+    store,
+    input,
+    'period.settle',
+    'Conguaglio di un inquilino segnato come saldato.',
+    async (close) => {
+      if (!close.snapshot.tenants.some((t) => t.tenantId === input.tenantId)) {
+        return { status: 'refused', reason: 'unknown-tenant' } as const;
+      }
+      if (
+        input.transactionId !== undefined &&
+        !(await loadAll(store, 'transaction', BankTransactionSchema)).records.some(
+          (t) => t.id === input.transactionId,
+        )
+      ) {
+        return { status: 'refused', reason: 'unknown-movement' } as const;
+      }
+      const entry = {
+        tenantId: input.tenantId,
+        on: input.on,
+        ...(input.transactionId === undefined ? {} : { transactionId: input.transactionId }),
+      };
+      const others = (close.settled ?? []).filter((s) => s.tenantId !== input.tenantId);
+      return {
+        fields: {
+          settled: [...others, entry].sort((a, b) => (a.tenantId < b.tenantId ? -1 : 1)),
+        },
+      };
+    },
+    profileId,
+    clock,
+    newId,
+  );
+}
+
+/**
+ * F3: reopens the closed period on `on` for `reason` (not empty). The snapshot stays, with the
+ * marks of F1, and a later `closePeriod` moves it into `history`: nothing is deleted. Until then
+ * the period is open (`loadPeriodClosing` says `reopened`, compared with that snapshot).
+ */
+export function reopenPeriod(
+  store: Store,
+  input: Query & { on: string; reason: string },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<MarkCloseResult> {
+  const reason = input.reason.trim();
+  return changeClose(
+    store,
+    input,
+    'period.reopen',
+    'Periodo di conguaglio riaperto.',
+    () =>
+      Promise.resolve(
+        reason === ''
+          ? ({ status: 'refused', reason: 'missing-reason' } as const)
+          : { fields: { reopened: { on: input.on, reason } } },
+      ),
+    profileId,
+    clock,
+    newId,
+    reason,
+  );
 }
