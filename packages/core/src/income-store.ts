@@ -3,6 +3,7 @@
  * confirmation of a proposal, each one operation of the journal. Nothing is written while
  * `checkConsistency` reports a problem (R106, R107). Summaries carry counts only.
  */
+import { isPresent } from './conguaglio';
 import { reconcileIncome, rentArrears } from './income';
 import type { IncomeProposal, RentArrear } from './income';
 import { checkConsistency, commitChange, latestOperationByPath, readJournal } from './journal';
@@ -228,13 +229,30 @@ export interface ConfirmIncomeInput {
   rememberPayer: boolean;
 }
 
+/**
+ * A rent month to look at, never a refusal (B17, lotto 11 «solo avviso»): `month-outside-presence`
+ * when the tenant has no live presence in the apartment that month, `month-already-paid` when
+ * another confirmed rent payment of the tenant is for the same month.
+ */
+export interface IncomeMonthWarning {
+  code: 'month-outside-presence' | 'month-already-paid';
+  month: YearMonth;
+}
+
 export type ConfirmIncomeResult =
-  | { status: 'confirmed'; operationId: string; paymentIds: string[]; payerId?: string }
+  | {
+      status: 'confirmed';
+      operationId: string;
+      paymentIds: string[];
+      payerId?: string;
+      warnings?: IncomeMonthWarning[];
+    }
   | {
       status: 'refused';
       reason:
         | 'inconsistent-store'
         | 'unknown-proposal'
+        | 'stale-proposal'
         | 'tenant-not-allowed'
         | 'empty-parts'
         | 'sum-mismatch'
@@ -265,7 +283,14 @@ export async function confirmIncome(
   const tx = state.transactions.find((t) => t.id === proposal?.transactionId);
   const account = state.accounts.find((a) => a.id === tx?.accountId);
   if (proposal === undefined || tx === undefined || account === undefined) {
-    return refuse('unknown-proposal');
+    // E7: a proposal of a live movement still without a payment was there before another
+    // confirmation changed the picture (it may now be automatic): run riconcilia again.
+    const txId = /^p-(?:chi|cosa)-(.+)$/.exec(input.proposalId)?.[1];
+    const stale =
+      proposal === undefined &&
+      state.transactions.some((t) => t.id === txId && t.deleted !== true) &&
+      !state.payments.some((p) => p.transactionId === txId && p.deleted !== true);
+    return refuse(stale ? 'stale-proposal' : 'unknown-proposal');
   }
   const { apartmentId } = account;
   const open = proposal.step === 'cosa' || proposal.reason === 'multi-tenant';
@@ -324,6 +349,30 @@ export async function confirmIncome(
       : undefined;
   const oldPayer = state.payers.find((p) => p.id === payer?.id);
 
+  const warnings: IncomeMonthWarning[] = [];
+  for (const p of payments) {
+    if (p.kind !== 'canone' || p.forMonth === undefined) continue;
+    const month = p.forMonth;
+    const present = state.tenancies.some(
+      (t) =>
+        t.deleted !== true &&
+        t.tenantId === input.tenantId &&
+        t.apartmentId === apartmentId &&
+        isPresent(t, month),
+    );
+    if (!present) warnings.push({ code: 'month-outside-presence', month });
+    const paid = state.payments.some(
+      (other) =>
+        other.deleted !== true &&
+        other.confirmed &&
+        other.kind === 'canone' &&
+        other.tenantId === input.tenantId &&
+        other.forMonth === month &&
+        other.transactionId !== tx.id,
+    );
+    if (paid) warnings.push({ code: 'month-already-paid', month });
+  }
+
   const operation = await commitChange(
     store,
     {
@@ -351,6 +400,7 @@ export async function confirmIncome(
     operationId: operation.id,
     paymentIds: payments.map((p) => p.id),
     ...(payer === undefined ? {} : { payerId: payer.id }),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 

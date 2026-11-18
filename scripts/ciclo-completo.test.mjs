@@ -1231,13 +1231,11 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(detailOut.join('')).toContain('Tizio Fittizio');
   });
 
-  it('riconcilia --prova non scrive; la conferma della proposta seguente della lista è rifiutata (E7)', () => {
+  it('riconcilia --prova non scrive; la proposta seguente della lista dice di rilanciare riconcilia (E7)', () => {
     expect([shared.dry.wrote, shared.dry.rerun.wrote]).toEqual([false, false]);
     expect(shared.dry.json.proposals.length).toBeGreaterThan(30);
-    expect([shared.nextOfList.code, shared.nextOfList.json.reason]).toEqual([
-      1,
-      'unknown-proposal',
-    ]);
+    expect([shared.nextOfList.code, shared.nextOfList.json.reason]).toEqual([1, 'stale-proposal']);
+    expect(shared.nextOfList.json.message).toContain('rilanciare riconcilia');
   });
 
   it('E1: l’avviso TARI comune si abbina da solo 101,04 / 84,96 (§42 R3)', () => {

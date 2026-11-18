@@ -182,6 +182,12 @@ const MESSAGES = {
   'inconsistent-store':
     'Rifiutato: i dati non sono come li lascia il registro: eseguire «pnpm estratti ripara».',
   'unknown-proposal': 'Rifiutato: proposta sconosciuta o già confermata.',
+  'month-outside-presence':
+    'Attenzione: il mese del canone è fuori dalla presenza dell’inquilino. Registrato; controllare il mese.',
+  'month-already-paid':
+    'Attenzione: per questo mese c’è già un altro canone confermato dell’inquilino. Registrato; controllare il mese.',
+  'stale-proposal':
+    "Rifiutato: la situazione è cambiata dopo un'altra conferma (il movimento può essere diventato automatico): rilanciare riconcilia e scegliere dalla lista nuova.",
   'tenant-not-allowed': 'Rifiutato: inquilino non ammesso per questa proposta.',
   'empty-parts': 'Rifiutato: nessuna parte, o una parte senza importo positivo.',
   'sum-mismatch': 'Rifiutato: la somma delle parti non è l’importo del movimento.',
@@ -2650,6 +2656,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
       operationId: result.operationId,
       paymentIds: result.paymentIds,
       ...(result.payerId === undefined ? {} : { payerId: result.payerId }),
+      // B17: codes and months only (no amount): a rent month outside the presence or paid twice.
+      ...optional(
+        'warnings',
+        result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
+      ),
     };
   }
 

@@ -184,6 +184,45 @@ describe('confirmIncome', () => {
     );
   });
 
+  it('E7: the next proposal of the same payer, now automatic, is stale: run riconcilia again', async () => {
+    const store = await yearStore();
+    await confirmIncome(store, bruno(), 'p1', clock, ids('op'));
+    const next = bruno({ proposalId: 'p-chi-tx-bruno-2026-02', parts: [canone('2026-02', 43000)] });
+    expect(await confirmIncome(store, next, 'p1', clock, ids('x'))).toEqual({
+      status: 'refused',
+      reason: 'stale-proposal',
+    });
+  });
+
+  it('B17: a rent month outside the presence or already paid is confirmed with a warning', async () => {
+    const store = await yearStore();
+    const r = await confirmIncome(
+      store,
+      bruno({ parts: [canone('2025-06', 43000)] }),
+      'p1',
+      clock,
+      ids('op'),
+    );
+    expect(r).toMatchObject({
+      status: 'confirmed',
+      warnings: [{ code: 'month-outside-presence', month: '2025-06' }],
+    });
+    // «Solo questa volta»: February stays a «chi»; confirmed for January, a month already paid.
+    const once = await yearStore();
+    await confirmIncome(once, bruno({ rememberPayer: false }), 'p1', clock, ids('a'));
+    const twice = await confirmIncome(
+      once,
+      bruno({ proposalId: 'p-chi-tx-bruno-2026-02', parts: [canone('2026-01', 43000)] }),
+      'p1',
+      clock,
+      ids('b'),
+    );
+    expect(twice).toMatchObject({
+      status: 'confirmed',
+      warnings: [{ code: 'month-already-paid', month: '2026-01' }],
+    });
+  });
+
   it('splits a movement into parts whose sum is its amount', async () => {
     const store = await yearStore();
     const parts = [
