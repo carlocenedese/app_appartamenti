@@ -258,14 +258,16 @@ def _run_extract(
     path = Path(pdf)
     file_name = _nfc(path.name)
     try:
-        data = path.read_bytes()
+        # Hashed in chunks: a file over the reader's size limit is never held in memory (S7).
+        with path.open("rb") as file:
+            file_hash = hashlib.file_digest(file, "sha256").hexdigest()
     except OSError:
         raise _Rejected("Impossibile leggere il file indicato con --pdf.") from None
     loaded, warnings = load_profiles(Path(profiles))
     try:
         doc = read_pdf(path, ocr_data=ocr_data, page_range=page_range)
     except PdfReadError as error:
-        result = _unreadable(hashlib.sha256(data).hexdigest(), file_name, str(error))
+        result = _unreadable(file_hash, file_name, str(error))
         warnings = []
     else:
         if page_range is not None:

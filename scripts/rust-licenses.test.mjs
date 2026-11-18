@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { disallowedCrates, newDisallowedCrates, toSpdx } from './rust-licenses.mjs';
+import { disallowedCrates, mergeMetadata, newDisallowedCrates, toSpdx } from './rust-licenses.mjs';
 
 const REGISTRY = 'registry+https://github.com/rust-lang/crates.io-index';
 const crate = (name, license, source = REGISTRY) => ({ name, version: '1.0.0', license, source });
@@ -74,5 +74,19 @@ describe('rust licences', { timeout: 30_000 }, () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('merges one metadata per target: a crate resolved for any target counts once', () => {
+    const pkg = (id, license) => ({ id, name: id, license, source: 'registry' });
+    const windows = {
+      packages: [pkg('a', 'MIT'), pkg('b', 'MPL-2.0')],
+      resolve: { nodes: [{ id: 'a' }] },
+    };
+    const mac = {
+      packages: [pkg('a', 'MIT'), pkg('b', 'MPL-2.0')],
+      resolve: { nodes: [{ id: 'b' }] },
+    };
+    expect([...disallowedCrates(mergeMetadata([windows]))]).toEqual([]);
+    expect([...disallowedCrates(mergeMetadata([windows, mac]))]).toEqual([['b', 'MPL-2.0']]);
   });
 });

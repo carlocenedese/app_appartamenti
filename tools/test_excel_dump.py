@@ -25,7 +25,11 @@ import unittest
 import zipfile
 from pathlib import Path
 
-import openpyxl
+try:
+    import openpyxl
+except ModuleNotFoundError:
+    # A local tool (tools/README.md): CI has no openpyxl, which is not in python/requirements.txt.
+    raise unittest.SkipTest("openpyxl non installato: tools/excel_dump.py non viene provato") from None
 
 SCRIPT = Path(__file__).resolve().with_name("excel_dump.py")
 
