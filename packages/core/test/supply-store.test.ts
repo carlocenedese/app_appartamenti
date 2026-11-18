@@ -332,6 +332,19 @@ describe('saveSupply (CLI, review of 18 Nov 2026, E5)', () => {
     ).toEqual({ status: 'refused', reason: 'label-in-use', supplyId: 'id-1' });
     expect((await readJournal(store)).operations).toHaveLength(1);
   });
+  it('gives the id of its own operation, also when another one sorts after it', async () => {
+    const store = await withApartments();
+    await commitChange(
+      store,
+      { profileId: 'p1', kind: 'test.seed', summary: 'x', changes: [] },
+      clock,
+      () => 'zz-later',
+    );
+    const saved = await saveSupply(store, draft(), 'p1', clock, ids('aa'));
+    const op = (await readJournal(store)).operations.find((o) => o.kind === 'supply.link');
+    expect(saved).toMatchObject({ status: 'saved', operationId: op?.id });
+  });
+
   it('refuses an unknown apartment and a draft that does not add up', async () => {
     const store = await withApartments();
     expect(

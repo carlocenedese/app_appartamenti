@@ -120,8 +120,12 @@ export async function saveSupply(
       : { status: 'refused', reason: 'label-in-use', supplyId: same.id };
   }
   const supply = await linkSupply(store, draft, profileId, clock, newId);
-  const { operations } = await readJournal(store);
-  return { status: 'saved', operationId: operations.at(-1)?.id ?? '', supplyId: supply.id };
+  // The operation that wrote this supply (the last one by order may be another with the same time).
+  const path = recordPath('supply', supply.id);
+  const operation = (await readJournal(store)).operations.find(
+    (o) => o.kind === 'supply.link' && o.changes.some((c) => c.path === path),
+  );
+  return { status: 'saved', operationId: operation?.id ?? '', supplyId: supply.id };
 }
 
 /** Replaces label and apartments with the draft's, one `supply.update`; `StaleWriteError` if changed. */
