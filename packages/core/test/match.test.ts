@@ -654,6 +654,39 @@ describe('matchToTransactions: periods without a statement', () => {
     expect(result.pending).toEqual([]);
   });
 
+  it('C1: never assumes an item whose debit window reaches a statement, before or after', () => {
+    // Due 31/01, statement from 01/02, the real debit of another amount on 03/02 (R2: the debit
+    // counts): a proposal to confirm, not an assumed 214,60.
+    const late = run({
+      bills: [bill('b1', { dueDate: isoDate('2026-01-31') })],
+      transactions: [tx('t1', '2026-02-03', -22000)],
+      statementPeriods: covering('2026-02-01', '2026-02-28'),
+    });
+    expect(late.matches.map((m) => [m.by, m.transactionId, m.amount, m.confirmed])).toEqual([
+      ['auto', 't1', 22000, false],
+    ]);
+    // Without the debit in the statement it stays pending (visible), still never assumed.
+    for (const dueDate of ['2026-01-27', '2026-03-05']) {
+      const r = run({
+        bills: [bill('b1', { dueDate: isoDate(dueDate) })],
+        statementPeriods: covering('2026-02-01', '2026-02-28'),
+      });
+      expect([dueDate, r.matches, r.pending]).toEqual([
+        dueDate,
+        [],
+        [{ itemType: 'bill', itemId: 'b1' }],
+      ]);
+    }
+    // One day outside the window on either side: assumed as before.
+    for (const dueDate of ['2026-01-21', '2026-03-06']) {
+      const r = run({
+        bills: [bill('b1', { dueDate: isoDate(dueDate) })],
+        statementPeriods: covering('2026-02-01', '2026-02-28'),
+      });
+      expect([dueDate, r.matches.map((m) => m.by)]).toEqual([dueDate, ['assumed']]);
+    }
+  });
+
   it('assumes each member of a shared notice for its share', () => {
     const result = run({ instalments: tariShared(), statementPeriods: [] });
     expect(result.matches.map((m) => [m.itemId, m.amount, m.by, m.transactionId])).toEqual([

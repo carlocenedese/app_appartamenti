@@ -32,7 +32,7 @@ import type { Account, BankTransaction, Bill, BillMatch, Instalment, Statement }
 import { commissionLinks, commissionParts } from './commission';
 import { cents } from './money';
 import type { Cents } from './money';
-import { daysBetween } from './period';
+import { addDays, daysBetween } from './period';
 import type { ISODate } from './period';
 import { splitSharedDebit } from './split';
 import { compareText as byText, foldText } from './text';
@@ -372,8 +372,12 @@ export function matchToTransactions(input: MatchInput): MatchResult {
   const { nodes, invalidGroups } = buildNodes(bills, instalments);
   for (const node of nodes) {
     if (node.members.some((member) => covered.has(refKey(member)))) continue;
+    // C1: covered when a statement of the paying account covers at least one day of the window
+    // the debit may fall in; then it is matched or stays pending, never assumed (R2).
+    const windowFrom = addDays(node.ref, -daysBefore);
+    const windowTo = addDays(node.ref, daysAfter);
     const inStatement = input.statementPeriods.some(
-      (p) => p.apartmentId === node.account && p.from <= node.ref && node.ref <= p.to,
+      (p) => p.apartmentId === node.account && p.from <= windowTo && windowFrom <= p.to,
     );
     if (inStatement) {
       open.push(node);

@@ -295,9 +295,13 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
       missingDocument: [],
     });
     expect(result.match).toMatchObject({ status: 'matched', written: 3, yielded: 0 });
-    expect(result.match.status === 'matched' && result.match.assumed).toEqual([
-      { itemType: 'bill', itemId: 'bill-hera-feb' },
-    ]);
+    // C1: bill-hera-feb is due 2027-02-20 in the February gap, but its window (15/02-02/03)
+    // reaches the March statement: the debit could be there, so it stays pending, not assumed.
+    expect(result.match.status === 'matched' && result.match.assumed).toEqual([]);
+    expect(result.match.status === 'matched' && result.match.pending).toContainEqual({
+      itemType: 'bill',
+      itemId: 'bill-hera-feb',
+    });
     expect(result.income).toMatchObject({ status: 'reconciled', written: 2 });
 
     const matches = (await loadAll(store, 'match', BillMatchSchema)).records;
