@@ -864,7 +864,7 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         '--data',
         '2026-02-10',
       ];
-      // As the usage of every other amount suggests: refused as «argomenti non validi» (finding).
+      // As the usage of every other amount suggests (E12): saved; the `=` form is then unchanged.
       shared.negativeSpaced = await step(
         'estratti',
         'recupero',
@@ -1223,6 +1223,10 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(shared.dry.json.proposals.length).toBeGreaterThan(30);
     expect([shared.nextOfList.code, shared.nextOfList.json.reason]).toEqual([1, 'stale-proposal']);
     expect(shared.nextOfList.json.message).toContain('rilanciare riconcilia');
+  });
+
+  it('E12: un importo negativo scritto `--importo -15,00` è accettato, come `--importo=-15,00`', () => {
+    expect([shared.negativeSpaced.code, shared.negativeSpaced.json.status]).toEqual([0, 'saved']);
   });
 
   it('E1: l’avviso TARI comune si abbina da solo 101,04 / 84,96 (§42 R3)', () => {

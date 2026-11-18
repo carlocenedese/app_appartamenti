@@ -375,6 +375,20 @@ const SWAP_MESSAGES = {
     'Rifiutato: una presenza nuova esiste già con altri dati: annullare lo scambio precedente (annulla-riconciliazione) o scegliere altri identificativi con --id-a e --id-b.',
 };
 
+/**
+ * E12: `--importo -15,00` as `--importo=-15,00`: a value that starts with a minus and a digit,
+ * after an option that takes a value, is that value (parseArgs would read an option `-1`).
+ */
+const negativeValues = (args) =>
+  args.flatMap((arg, i) => {
+    const previous = args[i - 1] ?? '';
+    const name = previous.startsWith('--') && !previous.includes('=') ? previous.slice(2) : '';
+    if (/^-\d/.test(arg) && OPTIONS[name]?.type === 'string') return [];
+    const next = args[i + 1] ?? '';
+    const own = arg.startsWith('--') && !arg.includes('=') ? arg.slice(2) : '';
+    return /^-\d/.test(next) && OPTIONS[own]?.type === 'string' ? [`${arg}=${next}`] : [arg];
+  });
+
 class Stop extends Error {
   constructor(status, reason, extra = {}) {
     super(reason);
@@ -2864,7 +2878,12 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     }
     let parsed;
     try {
-      parsed = parseArgs({ args: rest, options: OPTIONS, allowPositionals: true, strict: true });
+      parsed = parseArgs({
+        args: negativeValues(rest),
+        options: OPTIONS,
+        allowPositionals: true,
+        strict: true,
+      });
     } catch {
       throw invalid('bad-arguments');
     }
