@@ -189,6 +189,10 @@ const MESSAGES = {
     'Attenzione: il mese del canone è fuori dalla presenza dell’inquilino. Registrato; controllare il mese.',
   'month-already-paid':
     'Attenzione: per questo mese c’è già un altro canone confermato dell’inquilino. Registrato; controllare il mese.',
+  'invalid-shared-notice':
+    'Un avviso comune (TARI) non si può abbinare: se è stato registrato prima del 18 novembre 2026, annullarlo con «annulla-bolletta» e registrarlo di nuovo con «bolletta».',
+  'already-recorded':
+    'Già registrato, nessuna modifica: per registrarne un secondo uguale usare --id.',
   'stale-proposal':
     "Rifiutato: la situazione è cambiata dopo un'altra conferma (il movimento può essere diventato automatico): rilanciare riconcilia e scegliere dalla lista nuova.",
   'tenant-not-allowed': 'Rifiutato: inquilino non ammesso per questa proposta.',
@@ -1140,6 +1144,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         pending: match.pending.length,
         assumed: match.assumed.length,
         invalidGroups: match.invalidGroups.length,
+        // E1: a shared notice registered before the fix has no paying account on its rates.
+        ...(match.invalidGroups.length > 0 ? { message: MESSAGES['invalid-shared-notice'] } : {}),
         ...(match.operationId === undefined ? {} : { operationId: match.operationId }),
       },
       // Ids, reasons and counts only (R132); the movements and the legs with --dettagli.
@@ -1311,7 +1317,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
       newId,
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    if (result.status === 'unchanged') return result;
+    // Ruling (E2): the same transfer again is that transfer; a second identical one needs --id.
+    if (result.status === 'unchanged') {
+      return values.id === undefined
+        ? { ...result, message: MESSAGES['already-recorded'] }
+        : result;
+    }
     return { status: 'recorded', operationId: result.operationId, transferId: result.transferId };
   }
 
@@ -2590,7 +2601,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       positionals.length > 0 ||
       !PayableKindSchema.safeParse(values.tipo).success ||
       ![undefined, 'cedolare', 'registro'].includes(values.voce) ||
-      (values.id !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(values.id))
+      // E3: the ids of payables start with `scad-`, so a typo is no other kind of id.
+      (values.id !== undefined && !/^scad-[A-Za-z0-9_-]{1,59}$/.test(values.id))
     ) {
       throw invalid('bad-arguments');
     }
@@ -2615,6 +2627,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
       newId,
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    // Ruling (E3): the same payable again is that payable; a second identical one needs --id.
+    if (result.status === 'unchanged' && values.id === undefined) {
+      return { ...result, message: MESSAGES['already-recorded'] };
+    }
     return result;
   }
 

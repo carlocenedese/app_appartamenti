@@ -1393,6 +1393,17 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
   it('tasse: il registro atteso è quello di una scadenza, non del suo doppione (E3)', () => {
     const rows = Object.fromEntries(shared.tasse.json.tables[0].rows.map((r) => [r.voce, r]));
     expect(rows.registro.expected).toBe(6700);
+    // A new --id creates the payable and says so; the same line without --id is that payable.
+    expect([shared.scadId.code, shared.scadId.json.action, shared.scadId.json.payableId]).toEqual([
+      0,
+      'created',
+      'scad-cedolare-a',
+    ]);
+    expect([shared.cedolare.json.status, shared.cedolare.json.payableId]).toEqual([
+      'unchanged',
+      'scad-cedolare-a',
+    ]);
+    expect(shared.cedolare.json.message).toContain('usare --id');
   });
 
   it('tasse e scadenze: la TARI pagata con l’addebito comune non è «in ritardo» (E1)', () => {
@@ -1525,6 +1536,173 @@ describe('sonde fuori dal ciclo', () => {
       undefined,
     ]);
     expect(detailed.json.fields).toEqual(expect.arrayContaining(['category', 'fileHash']));
+  });
+
+  it('I5: Excel rifiuta le rate con quota della proprietà diversa e ne dà gli id', async () => {
+    const { probe, cli } = await probeFolder();
+    await cli(
+      'appartamento',
+      ...['--id', 'x', '--nome', 'X', '--locatore', 'L', '--posti', '2', '--annualita', '10-01'],
+      ...['--esercizio-condominio', '10-01', '--differenza-condominio', 'proprietario'],
+    );
+    await cli(
+      'contratto',
+      ...['--id', 'c1', '--appartamento', 'x', '--tipo', '1+1', '--inizio', '2025-10'],
+      ...['--fine', '2026-09', '--conguaglio', 'annuale'],
+    );
+    const rate = [1, 2, 3].map((n) =>
+      recordSchemas.instalment.parse({
+        id: `inst-${String(n)}`,
+        v: 1,
+        rev: 1,
+        apartmentId: 'x',
+        kind: 'condominio',
+        esercizio: '2025-26',
+        rateIndex: n,
+        rateCount: 3,
+        dueDate: ['2025-10-10', '2026-01-10', '2026-04-10'][n - 1],
+        rata: 15000,
+        quotaProprieta: n === 2 ? 3000 : 1800,
+        conguaglioPrec: 0,
+        coversFrom: ['2025-10', '2026-02', '2026-06'][n - 1],
+        coversTo: ['2026-01', '2026-05', '2026-09'][n - 1],
+      }),
+    );
+    await commitChange(
+      new FsStore(probe),
+      {
+        profileId: 'cli',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: rate.map((r) => ({ path: recordPath('instalment', r.id), after: r })),
+      },
+      () => '2026-11-18T08:00:00.000Z',
+      () => 'seed-1',
+    );
+    const r = await excel(['--cartella', probe, '--appartamento', 'x', '--periodo', '2025-26'], {
+      newId: () => 'tmp',
+      link: linkSync,
+    });
+    rmSync(probe, { recursive: true, force: true });
+    const json = JSON.parse(r.output);
+    expect([r.code, json.reason, json.code, json.instalmentIds]).toEqual([
+      1,
+      'settlement-input',
+      'owner-share-inconsistent',
+      ['inst-2'],
+    ]);
+  });
+
+  it('E1: una TARI comune registrata prima della correzione: riconcilia dice di annullarla e registrarla di nuovo', async () => {
+    const { probe, cli } = await probeFolder();
+    for (const id of ['x', 'y']) {
+      await cli(
+        'appartamento',
+        ...['--id', id, '--nome', id.toUpperCase(), '--locatore', 'L', '--posti', '2'],
+        ...['--annualita', '10-01', '--differenza-condominio', 'inquilini'],
+      );
+    }
+    const store = new FsStore(probe);
+    for (const [label, apt] of [
+      ['UTENZA-X', 'x'],
+      ['UTENZA-Y', 'y'],
+    ]) {
+      await linkSupply(
+        store,
+        { label, rows: [{ apartmentId: apt, basisPoints: 10000 }], note: '' },
+        'cli',
+        () => '2026-11-18T08:00:00.000Z',
+        () => `sup-${label}`,
+      );
+    }
+    const pdf = join(probe, 'X', 'Da_smistare', 'tari.pdf');
+    mkdirSync(dirname(pdf), { recursive: true });
+    writeFileSync(pdf, '%PDF-1.7 avviso inventato');
+    const lettura = join(probe, 'tari.json');
+    writeFileSync(
+      lettura,
+      JSON.stringify({
+        v: 1,
+        engineVersion: '0.1.0',
+        fileHash: await hashBytes(readFileSync(pdf)),
+        fileName: 'tari.pdf',
+        pages: 1,
+        pageRange: [1, 1],
+        status: 'riconosciuta',
+        profileId: 'prof-inventato',
+        profileRev: 1,
+        kind: 'tari',
+        documentKind: 'tari',
+        category: null,
+        fields: Object.fromEntries(
+          Object.entries({
+            supplier: 'Comune-Inventato',
+            number: '2026/1/00002',
+            issueDate: '2026-02-15',
+            dueDate: '2026-03-16',
+            periodStart: '2026-01-01',
+            periodEnd: '2026-04-30',
+            amount: 18600,
+          }).map(([k, v]) => [k, field(v)]),
+        ),
+        parts: [
+          ['UTENZA-X', 10075],
+          ['UTENZA-Y', 8471],
+        ].map(([label, amount]) => ({
+          label,
+          amount,
+          source: { page: 1, box: [0, 0, 1, 1], text: 'x' },
+        })),
+        identifiers: [],
+        checks: [],
+        warnings: [],
+        textSource: 'pdf',
+        ocrPages: [],
+      }),
+    );
+    const register = () =>
+      cli('bolletta', '--appartamento', 'x', '--lettura', lettura, '--conferma', pdf);
+    expect((await register()).code).toBe(0);
+    // As before the fix: the same registration, but the rate of y without its paying account.
+    // Written as the registration operation of then (same kind), after undoing today's one.
+    const { operations } = await readJournal(store);
+    const registration = operations.find((o) =>
+      o.changes.some((c) => c.path.includes('/instalment/')),
+    );
+    expect((await cli('annulla-bolletta', pdf)).code).toBe(0);
+    const y = registration.changes.find((c) => c.after?.apartmentId === 'y').after;
+    expect(y.paidFromApartmentId).toBe('x');
+    await commitChange(
+      store,
+      {
+        profileId: 'cli',
+        kind: registration.kind,
+        summary: registration.summary,
+        changes: registration.changes
+          .filter((c) => c.path.includes('/instalment/'))
+          .map((c) => {
+            // New ids, as a registration of then: `before` absent, so annulla-bolletta finds it.
+            const id = `old-${c.after.apartmentId}`;
+            const after = { ...c.after, id };
+            if (c.after.apartmentId === 'y') delete after.paidFromApartmentId;
+            return { path: recordPath('instalment', id), after };
+          }),
+      },
+      () => '2026-11-18T08:00:00.000Z',
+      () => 'seed-1',
+    );
+    const before = await cli('riconcilia', '--prova');
+    expect([before.json.match.invalidGroups, before.json.match.message]).toEqual([
+      1,
+      expect.stringContaining('annulla-bolletta'),
+    ]);
+    // The undo of the notice, then the same registration again: the group is valid.
+    expect((await cli('annulla-bolletta', pdf)).code).toBe(0);
+    const again = await register();
+    expect(again.code).toBe(0);
+    const after = await cli('riconcilia', '--prova');
+    expect([after.json.match.invalidGroups, after.json.match.message]).toEqual([0, undefined]);
+    rmSync(probe, { recursive: true, force: true });
   });
 
   /** Apartment and contract with the lease year from `day`, then the Excel: the exit codes. */
