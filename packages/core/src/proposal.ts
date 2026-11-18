@@ -41,8 +41,11 @@ export type ProposalContext = {
   bills: Bill[];
   instalments: Instalment[];
   tenancies: Tenancy[];
-  /** From the user's configuration, never from the code. */
-  thresholds: { consumptionAnomalyPercent: number };
+  /**
+   * The percentage of the old check `consumption-anomaly` (R262), from the caller, never from the
+   * code; absent, no such check (the alarm of the settings is in `importBill`, plan 19, R330).
+   */
+  thresholds?: { consumptionAnomalyPercent: number };
   /**
    * TARI: the supplies of shared notices (deleted ones are ignored), each with the apartments it is split
    * between by weight (basis points).
@@ -165,15 +168,17 @@ function consumptionCheck(
   consumption: Consumption,
   ctx: ProposalContext,
 ): ProposalCheck[] {
+  const percent = ctx.thresholds?.consumptionAnomalyPercent;
+  if (percent === undefined) return [];
   const previous = yearBeforeBill({ ...bill, id: '', amount: cents(0), consumption }, ctx.bills);
   if (previous?.consumption === undefined) return [];
   const before = previous.consumption.quantity;
-  return exceeds(consumption.quantity, before, ctx.thresholds.consumptionAnomalyPercent)
+  return exceeds(consumption.quantity, before, percent)
     ? [
         warn(
           'consumption-anomaly',
           `Consumo ${consumption.quantity} ${consumption.unit} oltre il ` +
-            `${ctx.thresholds.consumptionAnomalyPercent} % in più dello stesso periodo dell'anno ` +
+            `${percent} % in più dello stesso periodo dell'anno ` +
             `prima (${before} ${previous.consumption.unit}).`,
         ),
       ]
@@ -476,8 +481,8 @@ export function proposalFromExtraction(
   ctx: ProposalContext,
   newId: () => string,
 ): Proposal {
-  const percent = ctx.thresholds.consumptionAnomalyPercent;
-  if (!Number.isFinite(percent) || percent < 0) {
+  const percent = ctx.thresholds?.consumptionAnomalyPercent;
+  if (percent !== undefined && (!Number.isFinite(percent) || percent < 0)) {
     throw new RangeError('The consumption anomaly threshold must be a non-negative percentage');
   }
   const notRead = NOT_READ_STATUS[result.status];

@@ -136,6 +136,7 @@ describe('loadDashboard', () => {
         {
           apartmentId: 'apt-1',
           counts: { 'conguaglio:non-calcolabile': 1, 'documento-da-rivedere': 1 },
+          consumptionThresholds: false,
         },
         {
           apartmentId: 'apt-2',
@@ -149,6 +150,7 @@ describe('loadDashboard', () => {
             'scadenza-controllo:periodo-senza-estratto': 1,
             'scadenza:in-ritardo': 2,
           },
+          consumptionThresholds: false,
         },
       ],
       settlements: [{ apartmentId: 'apt-1', periodLabel: '2025-26', problem: 'unknown-period' }],
@@ -165,6 +167,84 @@ describe('loadDashboard', () => {
       status: 'refused',
       reason: 'bad-year',
     });
+  });
+
+  it('counts the consumption alarms by level, with the state of the thresholds (R331)', async () => {
+    const s = await store();
+    // The gas of the year before cost half for the same days: amount +100 %.
+    await s.writeJsonAtomic(recordPath('bill', 'gas-prev'), {
+      ...base,
+      id: 'gas-prev',
+      apartmentId: 'apt-1',
+      category: 'gas',
+      supplier: 'Fornitore Gas',
+      periodStart: '2025-01-01',
+      periodEnd: '2025-02-28',
+      amount: 2500,
+      includedInConguaglio: true,
+      sharedWithTenants: true,
+      fileHash: 'H0',
+      filePath: 'Bollette/Gas/2025/x.pdf',
+    });
+    const board = async () => {
+      const r = await loadDashboard(s, { today: isoDate('2026-11-17') });
+      if (r.status !== 'computed') throw new Error(r.reason);
+      return r.apartments.map((a) => [
+        a.consumptionThresholds,
+        Object.keys(a.counts).filter((c) => c.startsWith('consumi:')),
+      ]);
+    };
+    expect(await board()).toEqual([
+      [false, []],
+      [false, []],
+    ]);
+    const settings = (id: string, extra: Record<string, unknown>) =>
+      s.writeJsonAtomic(recordPath('consumptionSettings', id), { ...base, id, ...extra });
+    await settings('soglie-consumi-apt-1', { apartmentId: 'apt-1', giallo: { amount: 3000 } });
+    expect(await board()).toEqual([
+      [true, ['consumi:giallo']],
+      [false, []],
+    ]);
+    await settings('soglie-consumi', { rosso: { amount: 9000 } });
+    await settings('soglie-consumi-apt-1', {
+      apartmentId: 'apt-1',
+      rev: 2,
+      giallo: { amount: 3000 },
+      rosso: { amount: 9000 },
+    });
+    expect(await board()).toEqual([
+      [true, ['consumi:rosso']],
+      [true, []],
+    ]);
+    const counts = async () => {
+      const r = await loadDashboard(s, { today: isoDate('2026-11-17') });
+      return r.status === 'computed' ? r.apartments[0]?.counts['consumi:rosso'] : -1;
+    };
+    // A long history, every year double the one before: still only the last bill counts.
+    const gas = (id: string, year: string, amount: number, extra: Record<string, unknown> = {}) =>
+      s.writeJsonAtomic(recordPath('bill', id), {
+        ...base,
+        id,
+        apartmentId: 'apt-1',
+        category: 'gas',
+        supplier: 'Fornitore Gas',
+        periodStart: `${year}-01-01`,
+        periodEnd: `${year}-02-28`,
+        amount,
+        includedInConguaglio: true,
+        sharedWithTenants: true,
+        fileHash: `H-${id}`,
+        filePath: `Bollette/Gas/${year}/x.pdf`,
+        ...extra,
+      });
+    await gas('gas-2023', '2023', 625);
+    await gas('gas-2024', '2024', 1250);
+    expect(await counts()).toBe(1);
+    // The next bill is normal: nothing to count; deleted, the one before counts again.
+    await gas('gas-2027', '2027', 5000);
+    expect(await counts()).toBeUndefined();
+    await gas('gas-2027', '2027', 5000, { rev: 2, deleted: true });
+    expect(await counts()).toBe(1);
   });
 
   it('refuses an inconsistent store', async () => {
@@ -213,8 +293,9 @@ describe('loadDashboard on the Excel fixture', () => {
       {
         apartmentId: 'apt-nord',
         counts: { 'conguaglio:posti-vuoti': 1, 'conguaglio:voci-in-attesa': 1 },
+        consumptionThresholds: false,
       },
-      { apartmentId: 'apt-sud', counts: {} },
+      { apartmentId: 'apt-sud', counts: {}, consumptionThresholds: false },
     ]);
     // Without periods given, the one in course of each apartment (R316).
     const current = await loadDashboard(s, { today: isoDate('2027-01-15'), soonDays: 30 });

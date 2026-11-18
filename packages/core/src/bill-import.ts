@@ -14,6 +14,9 @@ import {
   readSupplierProfile,
   registerProposal,
 } from './confirmation';
+import { compareConsumption, worstLevel } from './consumption';
+import type { ConsumptionComparison, ConsumptionMetric } from './consumption';
+import { consumptionThresholdsFor } from './consumption-store';
 import { hashBytes, samePages } from './dedupe';
 import type { ExtractionResult } from './extraction';
 import { checkConsistency, commitChange } from './journal';
@@ -22,6 +25,7 @@ import {
   ApartmentSchema,
   BillMatchSchema,
   BillSchema,
+  ConsumptionSettingsSchema,
   InstalmentSchema,
   PendingDocumentSchema,
   SupplySchema,
@@ -38,12 +42,20 @@ import { recordPath } from './store/records';
 import type { Store } from './store/store';
 import { undoFile } from './undo-file';
 
+/**
+ * The consumption alarm of a bill proposal (plan 19, R330): `compareConsumption` with the
+ * thresholds of the apartment (`consumptionThresholdsFor`); `thresholds` false when none is set,
+ * and then no level.
+ */
+export type ConsumptionAlarm = ConsumptionComparison & { thresholds: boolean };
+
 export type ImportBillResult =
   | {
       status: 'registrata-automaticamente' | 'confermata';
       ids: string[];
       operationId: string;
       checks: ProposalCheck[];
+      consumption?: ConsumptionAlarm;
     }
   | {
       status: 'da-rivedere';
@@ -54,6 +66,7 @@ export type ImportBillResult =
       codes: string[];
       reasons: string[];
       checks: ProposalCheck[];
+      consumption?: ConsumptionAlarm;
     }
   | { status: 'duplicate' | 'possible-duplicate'; existingId: string }
   | { status: 'rejected'; reason: string; checks: ProposalCheck[] }
@@ -83,10 +96,43 @@ export interface ImportBillInput {
    * in `Apartment.supplyCodes` (plan 17, R314).
    */
   knownCodes?: string[];
-  /** From the user's configuration, never from the code (R262). */
-  thresholds: { consumptionAnomalyPercent: number };
+  /**
+   * The old check `consumption-anomaly` (R262), only when the caller gives it; the alarm reads the
+   * thresholds of `consumptionSettings` (plan 19, R330).
+   */
+  thresholds?: { consumptionAnomalyPercent: number };
   /** `auto`: the policy decides; `manual`: a person confirmed the proposal. */
   mode: 'auto' | 'manual';
+}
+
+const METRIC_LABELS: Record<ConsumptionMetric, string> = {
+  consumption: 'consumo',
+  amount: 'importo',
+  unitPrice: 'prezzo unitario',
+};
+
+/** Basis points as an Italian percentage with sign, `+40,00 %`. */
+function percentText(bp: number): string {
+  const abs = Math.abs(bp);
+  const fraction = String(abs % 100).padStart(2, '0');
+  return `${bp < 0 ? '-' : '+'}${String(Math.trunc(abs / 100))},${fraction} %`;
+}
+
+/** The warning of the alarm: every difference with a level, by side. */
+function alarmMessage(comparison: ConsumptionComparison): string {
+  const sides = [
+    ["rispetto allo stesso periodo dell'anno prima", comparison.yearBefore],
+    ['rispetto alla media dei mesi prima', comparison.recent],
+  ] as const;
+  const parts = sides.flatMap(([where, side]) =>
+    (side?.differences ?? [])
+      .filter((d) => d.level !== undefined)
+      .map(
+        (d) =>
+          `${METRIC_LABELS[d.metric]} ${percentText(d.differenceBp)} ${where} (${d.level ?? ''})`,
+      ),
+  );
+  return `Allarme consumi: ${parts.join('; ')}.`;
 }
 
 /** How two page ranges of one file compare (`samePages` of `dedupe.ts`; absent = whole file). */
@@ -144,18 +190,43 @@ export async function importBill(
     };
   }
 
+  const bills = (await loadAll(store, 'bill', BillSchema)).records;
+  const thresholds = consumptionThresholdsFor(
+    (await loadAll(store, 'consumptionSettings', ConsumptionSettingsSchema)).records,
+    apartmentId,
+  );
+  // With thresholds set, one warning only: the alarm, not the old check of the caller (R330).
+  const legacy = thresholds === undefined ? input.thresholds : undefined;
   const proposal = proposalFromExtraction(
     result,
     {
       apartment: { id: apartmentId, knownCodes },
-      bills: (await loadAll(store, 'bill', BillSchema)).records,
+      bills,
       instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
       tenancies: (await loadAll(store, 'tenancy', TenancySchema)).records,
       supplies: (await loadAll(store, 'supply', SupplySchema)).records,
-      thresholds: input.thresholds,
+      ...(legacy === undefined ? {} : { thresholds: legacy }),
     },
     newId,
   );
+  // Plan 19, R330: a level of the thresholds typed by user1 sends the bill to a person.
+  let consumption: ConsumptionAlarm | undefined;
+  if (proposal.kind === 'bill') {
+    const comparison = compareConsumption(
+      proposal.bill,
+      bills,
+      thresholds === undefined ? {} : { thresholds },
+    );
+    consumption = { ...comparison, thresholds: thresholds !== undefined };
+    if (worstLevel(comparison) !== undefined) {
+      proposal.checks.push({
+        code: 'consumption-alarm',
+        severity: 'warn',
+        message: alarmMessage(comparison),
+      });
+    }
+  }
+  const withAlarm = consumption === undefined ? {} : { consumption };
   const { checks } = proposal;
   const register = async (how: 'auto' | 'manual'): Promise<ImportBillResult> => {
     const written = await registerProposal(
@@ -170,6 +241,7 @@ export async function importBill(
       ids: written.ids,
       operationId: written.operationId,
       checks,
+      ...withAlarm,
     };
   };
   if (mode === 'manual') return register('manual');
@@ -193,7 +265,7 @@ export async function importBill(
       pagesCompare(d.pages, pages) === 'same',
   );
   if (waiting !== undefined) {
-    return { status: 'da-rivedere', pendingId: waiting.id, codes, reasons, checks };
+    return { status: 'da-rivedere', pendingId: waiting.id, codes, reasons, checks, ...withAlarm };
   }
   const record = parseOrThrow(
     PendingDocumentSchema,
@@ -229,6 +301,7 @@ export async function importBill(
     codes,
     reasons,
     checks,
+    ...withAlarm,
   };
 }
 
