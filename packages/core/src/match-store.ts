@@ -24,8 +24,11 @@ import {
   BillSchema,
   InstalmentSchema,
   MovementClassSchema,
+  PayableSchema,
   PaymentSchema,
   StatementSchema,
+  TaxPaymentSchema,
+  TenantRecoverySchema,
   TransferSchema,
 } from './model';
 import type { BankTransaction, Bill, BillMatch, Instalment, MovementClass } from './model';
@@ -45,7 +48,8 @@ export interface MatchProposal {
   itemType: MatchItemType;
   itemId: string;
   transactionId: string;
-  reason: 'no-supplier' | 'amount-differs' | 'classified';
+  /** `has-dependents`: the automatic class carries a recovery, a tax payment or a payable (U3). */
+  reason: 'no-supplier' | 'amount-differs' | 'classified' | 'has-dependents';
 }
 
 export type MatchRunResult =
@@ -78,7 +82,19 @@ async function loadMatchState(store: Store) {
   const classes = (await loadAll(store, 'movementClass', MovementClassSchema, all)).records;
   const payments = live((await loadAll(store, 'payment', PaymentSchema, all)).records);
   const transfers = live((await loadAll(store, 'transfer', TransferSchema, all)).records);
+  // U3: what leans on the class of a movement; replacing that class with a match would drop it
+  // in silence. Who wins (the bill or the recovery) is the owner's call: never yield.
+  const dependents = new Set([
+    ...(await loadAll(store, 'tenantRecovery', TenantRecoverySchema)).records.flatMap((r) =>
+      r.transactionId === undefined ? [] : [r.transactionId],
+    ),
+    ...(await loadAll(store, 'taxPayment', TaxPaymentSchema)).records.map((t) => t.transactionId),
+    ...(await loadAll(store, 'payable', PayableSchema)).records.flatMap((p) =>
+      p.paid?.transactionId === undefined ? [] : [p.paid.transactionId],
+    ),
+  ]);
   return {
+    dependents,
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
     statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
     bills: (await loadAll(store, 'bill', BillSchema, all)).records,
@@ -188,6 +204,12 @@ export async function planMatch(store: Store) {
   const blocked = new Set(
     automatic.filter((m) => byHand(state.classOf.get(m.transactionId))).map(refKey),
   );
+  const dependentItems = new Set(
+    automatic
+      .filter((m) => state.classOf.has(m.transactionId) && state.dependents.has(m.transactionId))
+      .map(refKey),
+  );
+  for (const key of dependentItems) blocked.add(key);
   const written = automatic.filter((m) => !blocked.has(refKey(m)));
   const billAmount = new Map(state.bills.map((b) => [b.id, expectedDebit(b)]));
   const proposal = (m: BillMatch, reason: MatchProposal['reason']): MatchProposal => ({
@@ -204,7 +226,7 @@ export async function planMatch(store: Store) {
       ),
     ...automatic
       .filter((m) => m.part === 'amount' && blocked.has(refKey(m)))
-      .map((m) => proposal(m, 'classified')),
+      .map((m) => proposal(m, dependentItems.has(refKey(m)) ? 'has-dependents' : 'classified')),
   ].sort((a, b) => compareText(a.id, b.id));
   const { yielded, changes, where } = changesOf(state, written);
   // The assumed matches themselves, for the readers that settle with them (R2, plan 5).
@@ -249,7 +271,8 @@ export type ConfirmMatchResult =
         | 'unknown-transaction'
         | 'transaction-used'
         | 'duplicate-part'
-        | 'invalid-group';
+        | 'invalid-group'
+        | 'class-has-dependents';
     }
   | { status: 'refused'; reason: 'invalid-matches'; errors: MatchCheckError[] };
 
@@ -313,6 +336,14 @@ export async function confirmMatch(
   }
   const used = (id: string) => state.used.has(id) || byHand(state.classOf.get(id));
   if (input.parts.some((p) => used(p.transactionId))) return refuse('transaction-used');
+  // U3: an automatic class with a recovery, a tax payment or a payable on it never yields.
+  if (
+    input.parts.some(
+      (p) => state.classOf.has(p.transactionId) && state.dependents.has(p.transactionId),
+    )
+  ) {
+    return refuse('class-has-dependents');
+  }
   const ids = input.parts.map((p) => matchId(p, p.part, p.transactionId));
   if (new Set(ids).size !== ids.length) return refuse('duplicate-part');
   const expected = new Map(

@@ -200,6 +200,8 @@ const MESSAGES = {
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
   'already-undone': 'Rifiutato: l’operazione è già stata annullata.',
   'has-dependents': 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
+  'class-has-dependents':
+    'Rifiutato: la classificazione automatica del movimento ha un recupero, un pagamento di tasse o una scadenza pagata: decidere prima se vale la bolletta o il recupero.',
   'movement-has-dependents':
     'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
   'unknown-transaction': 'Rifiutato: movimento sconosciuto o cancellato.',
