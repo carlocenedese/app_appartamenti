@@ -140,7 +140,10 @@ export class TauriStore implements Store {
       text = await this.fs.readText(file);
     } catch (error) {
       // The file is there but cannot be read now (permissions, held open, offline Dropbox file).
-      throw new FileAccessError(rel, accessCode(error), { cause: error });
+      // Text that is not UTF-8 is a damaged file, not one that cannot be reached.
+      if (/utf-?8/i.test(String(error))) throw new MalformedJsonError(rel);
+      // No `cause`: the plugin's message has the absolute path, which can hold the user's name.
+      throw new FileAccessError(rel, accessCode(error));
     }
     try {
       return JSON.parse(text.startsWith(BYTE_ORDER_MARK) ? text.slice(1) : text);
@@ -167,7 +170,7 @@ export class TauriStore implements Store {
         return;
       } catch (error) {
         const wait = RENAME_RETRY_MS[attempt];
-        if (wait === undefined) throw new FileAccessError(rel, accessCode(error), { cause: error });
+        if (wait === undefined) throw new FileAccessError(rel, accessCode(error));
         await new Promise((done) => setTimeout(done, wait));
       }
     }

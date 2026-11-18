@@ -281,6 +281,18 @@ describe('renderFirstRun: opening a folder', () => {
     expect((await liveUsers(store)).filter((u) => u.name === 'Lucia')).toHaveLength(1);
   });
 
+  it('a conflict copy: says what it is and lists it, never «sincronizzazione in corso»', async () => {
+    await existingGroup();
+    const copy = '_app/dati/user/u-1 (Copia in conflitto di PC 2026-11-18).json';
+    fs.put(`${ROOT}/${copy}`, await fs.readText(`${ROOT}/_app/dati/user/u-1.json`));
+    renderFirstRun(root, input());
+    await screen('Sola lettura');
+    expect(root.textContent).toContain('copie in conflitto');
+    expect(root.textContent).toContain(copy);
+    expect(root.textContent).not.toContain('sincronizzazione in corso');
+    expect(buttonNamed('Ripara')).toBeUndefined();
+  });
+
   it('with only a cut-short journal file: no «Ripara», the wait message and a way to check again', async () => {
     await existingGroup();
     fs.put(`${ROOT}/_app/journal/2026-11-13T10-00-00.000Z-u-1-zz.json`, '{"id":');

@@ -41,7 +41,8 @@ function isMissing(error: unknown): boolean {
 /** `error` as a `FileAccessError` on `rel` when it is one (see `isFileAccessError`), else as is. */
 function asAccessError(error: unknown, rel: string): unknown {
   if (!isFileAccessError(error) || error instanceof FileAccessError) return error;
-  return new FileAccessError(rel, (error as { code: FileAccessCode }).code, { cause: error });
+  // No `cause`: the error of node:fs has the absolute path, which can hold the user's name.
+  return new FileAccessError(rel, (error as { code: FileAccessCode }).code);
 }
 
 /** The waits before each new attempt of a rename that a busy file refused (Windows). */

@@ -285,7 +285,7 @@ describe('TauriStore: an interrupted write never leaves a partial .json file', (
     await expect(store.writeJsonAtomic('dati/a.json', bill)).rejects.toMatchObject({
       name: 'FileAccessError',
       path: 'dati/a.json',
-      cause: new Error('operation not permitted'),
+      code: 'unknown',
     });
     expect(spy).toHaveBeenCalledTimes(6);
     spy.mockRestore();
@@ -298,7 +298,7 @@ describe('TauriStore: an interrupted write never leaves a partial .json file', (
     const before = await fs.readText(`${ROOT}/dati/a.json`);
     const spy = vi.spyOn(fs, 'rename').mockRejectedValue(new Error('disk full'));
     await expect(store.writeJsonAtomic('dati/a.json', { id: 'a', rev: 2 })).rejects.toMatchObject({
-      cause: new Error('disk full'),
+      name: 'FileAccessError',
     });
     spy.mockRestore();
     expect(await fs.readText(`${ROOT}/dati/a.json`)).toBe(before);
@@ -314,6 +314,21 @@ describe('TauriStore: an interrupted write never leaves a partial .json file', (
     await store.writeJsonAtomic('dati/a.json', { id: 'a' });
     expect(spy).toHaveBeenCalledTimes(2);
     expect(await store.readJson('dati/a.json')).toEqual({ id: 'a' });
+    spy.mockRestore();
+  });
+
+  it('tells a file that is not UTF-8 (damaged) from one it cannot reach, without absolute paths', async () => {
+    fs.put(`${ROOT}/dati/a.json`, '{}');
+    const spy = vi
+      .spyOn(fs, 'readText')
+      .mockRejectedValueOnce(new Error(`stream did not contain valid UTF-8 (${ROOT}/dati/a.json)`))
+      .mockRejectedValueOnce(new Error(`Permission denied (os error 13): ${ROOT}/dati/a.json`));
+    await expect(store.readJson('dati/a.json')).rejects.toBeInstanceOf(MalformedJsonError);
+    const error: unknown = await store.readJson('dati/a.json').catch((e: unknown) => e);
+    expect(error).toMatchObject({ name: 'FileAccessError', code: 'EACCES', path: 'dati/a.json' });
+    expect(JSON.stringify(error) + String(error) + String((error as Error).cause)).not.toContain(
+      ROOT,
+    );
     spy.mockRestore();
   });
 
@@ -333,7 +348,7 @@ describe('TauriStore: an interrupted write never leaves a partial .json file', (
   it('writes again normally after a failure', async () => {
     const spy = vi.spyOn(fs, 'rename').mockRejectedValue(new Error('boom'));
     await expect(store.writeJsonAtomic('a.json', { id: 'a' })).rejects.toMatchObject({
-      cause: new Error('boom'),
+      name: 'FileAccessError',
     });
     spy.mockRestore();
     await store.writeJsonAtomic('a.json', { id: 'a' });

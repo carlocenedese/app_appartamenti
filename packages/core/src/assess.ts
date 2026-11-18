@@ -55,21 +55,24 @@ const READ_ONLY_MESSAGES: Record<ReadOnlyCode, string> = {
   'newer-format':
     "La cartella è stata scritta da una versione più nuova dell'app: aggiorna l'app per modificarla.",
   'older-format':
-    'I dati della cartella sono di una versione precedente e vanno aggiornati: per ora è aperta in sola lettura.',
+    'I dati della cartella sono di una versione precedente: per ora è aperta in sola lettura. ' +
+    "Aggiornali con «Aggiorna i dati della cartella»; dopo, le versioni più vecchie dell'app " +
+    'la apriranno in sola lettura.',
   'conflict-copies':
     'Dropbox (o iCloud) ha creato delle copie in conflitto: due persone hanno salvato gli stessi ' +
-    'dati insieme. Confronta ogni copia con il file originale, tieni la versione giusta e sposta ' +
-    "la copia fuori dalla cartella _app; l'app non sceglie da sola.",
+    'dati insieme. Confronta a mano ogni copia con il file originale e, quando la versione giusta ' +
+    "è quella del file originale, sposta la copia fuori dalla cartella _app; l'app non sceglie da sola.",
   forked:
     'Due persone hanno modificato gli stessi dati nello stesso momento e il registro ha tutte e ' +
-    'due le versioni: scegli quale tenere. Nessuna delle due viene scelta in automatico.',
+    'due le versioni: nessuna viene scelta in automatico. Si sceglie quale tenere con il comando ' +
+    '«pnpm estratti scegli-versione --file <percorso>»; il resto della cartella resta usabile.',
   diverged:
-    'Alcuni dati non sono come dice il registro: sincronizzazione in corso o un salvataggio ' +
-    'interrotto. Aspetta che Dropbox finisca; se il messaggio resta, usa «Ripara».',
+    'Alcuni dati non sono come dice il registro: sincronizzazione in corso o incompleta, o un ' +
+    'salvataggio interrotto. Aspetta che Dropbox finisca; se il messaggio resta, usa «Ripara».',
   'damaged-journal':
-    'Un file del registro è vuoto o rovinato. Se Dropbox ha finito di sincronizzare, ' +
-    'ripristinalo dalla cronologia delle versioni di Dropbox; se è dimostrato che non ha lasciato ' +
-    'effetti, si può mettere da parte.',
+    'Un file del registro è vuoto o rovinato. Aspetta che Dropbox finisca e ricontrolla; se il ' +
+    'messaggio resta, ripristina il file dalla cronologia delle versioni di Dropbox (non ' +
+    'cancellarlo).',
   'unreadable-files':
     'Alcuni file dei dati non si possono usare: sono vuoti o rovinati, di una forma che questa ' +
     'app non conosce, con un nome diverso dal loro id, oppure non si leggono ora (aperti in un ' +

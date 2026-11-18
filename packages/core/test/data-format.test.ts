@@ -32,7 +32,7 @@ import { MemoryStore } from './helpers/memory-store';
  * docs/revisione-2026-11-18-dati.md. A change of descriptions only does not change it.
  */
 const FINGERPRINTS: Record<number, string> = {
-  1: 'a184f551a7e9d9835a6bf57dccf6e6e8d33accc075fba467bb8f02068939c1bc',
+  1: 'b3a6c89ee02f30219d3ab56ea958c3f8b8ca0d7c3ea3dcbfa345baee3423fea4',
 };
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));
@@ -42,7 +42,8 @@ function withoutDescriptions(value: unknown): unknown {
   if (typeof value !== 'object' || value === null) return value;
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => key !== 'description')
+      // A `description` text, not a property of the record that happens to be called so.
+      .filter(([key, item]) => key !== 'description' || typeof item !== 'string')
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([key, item]) => [key, withoutDescriptions(item)]),
   );
@@ -64,6 +65,20 @@ describe('DATA_FORMAT', () => {
       FINGERPRINTS[DATA_FORMAT],
       'docs/schemas changed: raise DATA_FORMAT and add its fingerprint',
     ).toBe(schemasFingerprint());
+  });
+
+  it('raising it is wired where the desktop opens a folder of an older format', () => {
+    const firstRun = readFileSync(
+      fileURLToPath(new URL('../../../apps/desktop/src/first-run.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(firstRun).toContain('raiseDataFormat(store)');
+  });
+
+  it('keeps a property called description in the fingerprint', () => {
+    expect(withoutDescriptions({ properties: { description: { type: 'string' } } })).toEqual({
+      properties: { description: { type: 'string' } },
+    });
   });
 
   it('ignores descriptions in the fingerprint', () => {
