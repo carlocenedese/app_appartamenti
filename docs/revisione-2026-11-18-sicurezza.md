@@ -40,9 +40,9 @@ Ramo `fix/revisione-sicurezza`. Gli ID (S1-S14) sono quelli del rapporto della r
 - Il job `rust` e `cargo deny check advisories`: Rust non c'è su questo Mac. Il primo giro può essere rosso, sia per un avviso vero sia perché `tauri-build` non accetta le cartelle delle risorse con il solo file segnaposto.
 - La CSP nuova non è stata provata nell'app compilata.
 
-## Nomi delle vie e della città (decisione del proprietario, non toccati)
+## Nomi delle vie
 
-I nomi delle tre vie compaiono in 60 file tracciati (`git grep -l -i -E 'berchet|lovarini|pulci'`): 24 in `packages/core/test`, 15 in `docs/plans` e poi `docs/glossary.md`, `docs/progress.md`, `docs/spec.md`, `docs/rules/conguaglio-rules.md`, `docs/rules/lettura-pdf.md`, `fixtures/README.md`, `fixtures/contracts/due-appartamenti.json`, `fixtures/golden/berchet-2024-25.json`, `fixtures/reconcile/tre-conti.json`, `packages/core/src/{accounts,conguaglio,match,split,tari-note}.ts`, `reports/golden/berchet-2024-25-differenze.md`, `scripts/{check-personal-data,golden-report}.mjs` e i loro test, `scripts/estratti.test.mjs`, `tools/README.md`. La città compare in `docs/README.md`, `docs/progress.md`, `docs/spec.md`, `docs/rules/lettura-pdf.md` e `fixtures/pdf/acegas-tari-0{1..5}.json`. Insieme ai nomi delle vie, identifica gli immobili.
+I nomi delle tre vie sono stati sostituiti con «Appartamento A», «Appartamento B» e «Appartamento C» in tutti i file tracciati tranne `scripts/check-personal-data.mjs` e il suo test, dove i nomi sono i modelli del controllo dei dati personali (R337, deciso da user1). La cronologia di git non è riscritta. La città compare ancora nel nome del progetto condiviso citato in `docs/README.md` e come qualificatore della TARI nei profili e nei documenti sui profili di lettura.
 
 ## Azioni e domande per user1
 
@@ -102,8 +102,6 @@ Domande:
    - **(c) Privato, con un piano a pagamento** che offre i revisori degli environment nei repository privati.
      - Pro: nulla da cambiare nel flusso; codice privato.
      - Contro: costo ricorrente; da verificare prima quale piano basta e se vale per un account personale.
-
-   Resta poi una domanda: i nomi delle vie e della città restano così (vedi l’elenco sopra)?
 
 2. **S3:** spostare la chiave privata fuori da iCloud e dalle cartelle in cui lavorano gli agenti? Aggiungere una password (secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, due righe in `build.yml`)? Come revisore di `release`, un account o un dispositivo che gli agenti non usano?
 3. **S4:** la regola «Unione PR autonoma» va ristretta alle PR il cui ramo e autore sono di user1 e che non toccano `.github/`, `scripts/release.mjs`, `scripts/bundle-python.mjs`, `tauri.conf.json`, `capabilities/` e i file di lock? Le PR di Dependabot non si uniscono mai in automatico? Serve un `CODEOWNERS` su quei percorsi?

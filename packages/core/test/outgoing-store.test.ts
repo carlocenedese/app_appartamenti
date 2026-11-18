@@ -24,8 +24,8 @@ import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
 // Synthetic records only: the own accounts and the invented supplier of fixtures/README.md.
-const BERCHET = 'IT85X0542811101000000000301';
-const PULCI = 'IT52A9999999999000000000001';
+const APT_A = 'IT85X0542811101000000000301';
+const APT_C = 'IT52A9999999999000000000001';
 const SUPPLIER = 'IT04X0542811101000000000401';
 const TENANT = 'IT09X0542811101000000000311';
 const base = { v: 1, rev: 1 };
@@ -50,7 +50,7 @@ const tx = (
   date: string,
   amount: number,
   counterparty?: { name?: string; iban?: string },
-  where = 'berchet',
+  where = 'app-a',
 ) => ({
   ...base,
   id,
@@ -76,8 +76,8 @@ async function put(
 }
 async function storeWith(...transactions: ReturnType<typeof tx>[]) {
   const store = new MemoryStore();
-  await put(store, 'apartment', [apartment('berchet'), apartment('pulci')]);
-  await put(store, 'account', [account('berchet', BERCHET), account('pulci', PULCI)]);
+  await put(store, 'apartment', [apartment('app-a'), apartment('app-c')]);
+  await put(store, 'account', [account('app-a', APT_A), account('app-c', APT_C)]);
   await put(store, 'transaction', transactions);
   return store;
 }
@@ -98,7 +98,7 @@ const confirm = (
 ) =>
   confirmOutgoing(
     store,
-    { proposalId, kind, apartmentId: 'berchet', rememberRule: true, ...extra },
+    { proposalId, kind, apartmentId: 'app-a', rememberRule: true, ...extra },
     'p1',
     clock,
     ids(prefix),
@@ -146,17 +146,17 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
     });
     expectNoPersonalData(confirmed);
     expect(await classes(store)).toEqual([
-      { ...base, id: 'mc-x', transactionId: 'x', kind: 'altro', apartmentId: 'berchet' },
+      { ...base, id: 'mc-x', transactionId: 'x', kind: 'altro', apartmentId: 'app-a' },
     ]);
     expect(await rules(store)).toEqual([
       {
         ...base,
         id: 'rule-x',
         direction: 'out',
-        accountId: 'acc-berchet',
+        accountId: 'acc-app-a',
         key: `iban:${SUPPLIER}`,
         kind: 'altro',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
       },
     ]);
     const [op] = (await readJournal(store)).operations;
@@ -169,7 +169,7 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
 
     await put(store, 'transaction', [
       tx('y', '2028-02-10', -4200, supplier),
-      tx('z', '2028-02-10', -4200, supplier, 'pulci'),
+      tx('z', '2028-02-10', -4200, supplier, 'app-c'),
     ]);
     const second = await run(store);
     expect(second).toEqual({
@@ -188,13 +188,13 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
       id: 'mc-y',
       transactionId: 'y',
       kind: 'altro',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       ruleId: 'rule-x',
     });
     const ops = (await readJournal(store)).operations;
     expect(ops.find((o) => o.id === 'r-1')).toMatchObject({
       kind: 'outgoing.reconcile',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       summary: 'Classificate le uscite: 1 automatica, 1 da rivedere.',
     });
     expectNoPersonalData(ops.map((o) => o.summary));
@@ -281,10 +281,10 @@ describe('runOutgoing and confirmOutgoing (plan 3c, task 6, question 1)', () => 
       ...base,
       id,
       direction: 'out',
-      accountId: 'acc-berchet',
+      accountId: 'acc-app-a',
       key: `iban:${SUPPLIER}`,
       kind,
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       ...extra,
     });
     async function conflicted(date = '2028-02-10', extra: Record<string, unknown> = {}) {
@@ -629,9 +629,9 @@ describe('cancelAutomaticClass and the undo chain (plan 3c, task 6, review focus
 describe('incoming movements without a payer (plan 3c, task 6, question 2)', () => {
   async function refunds() {
     const store = await storeWith(
-      tx('r1', '2027-02-10', 1230, supplier, 'pulci'),
-      tx('rent', '2027-02-05', 50000, { name: 'Inquilino Inventato', iban: TENANT }, 'pulci'),
-      tx('n1', '2027-02-11', 700, { name: 'Genitore Inventato' }, 'pulci'),
+      tx('r1', '2027-02-10', 1230, supplier, 'app-c'),
+      tx('rent', '2027-02-05', 50000, { name: 'Inquilino Inventato', iban: TENANT }, 'app-c'),
+      tx('n1', '2027-02-11', 700, { name: 'Genitore Inventato' }, 'app-c'),
     );
     await put(store, 'tenant', [{ ...base, id: 't-mario', name: 'Mario Inventato' }]);
     await put(store, 'payer', [
@@ -660,15 +660,15 @@ describe('incoming movements without a payer (plan 3c, task 6, question 2)', () 
     expect(first.outgoing).toMatchObject({ written: 0, proposals: [] });
 
     // A «chi» with a name key only is never an outgoing to confirm.
-    expect(await confirm(store, 'p-chi-n1', 'altro', { apartmentId: 'pulci' })).toEqual({
+    expect(await confirm(store, 'p-chi-n1', 'altro', { apartmentId: 'app-c' })).toEqual({
       status: 'refused',
       reason: 'unknown-proposal',
     });
-    expect(await confirm(store, 'p-cosa-rent', 'altro', { apartmentId: 'pulci' })).toEqual({
+    expect(await confirm(store, 'p-cosa-rent', 'altro', { apartmentId: 'app-c' })).toEqual({
       status: 'refused',
       reason: 'unknown-proposal',
     });
-    expect(await confirm(store, 'p-chi-r1', 'utenze', { apartmentId: 'pulci' })).toEqual({
+    expect(await confirm(store, 'p-chi-r1', 'utenze', { apartmentId: 'app-c' })).toEqual({
       status: 'confirmed',
       operationId: 'c-1',
       classId: 'mc-r1',
@@ -676,13 +676,13 @@ describe('incoming movements without a payer (plan 3c, task 6, question 2)', () 
     });
     expect((await rules(store))[0]).toMatchObject({
       direction: 'in',
-      accountId: 'acc-pulci',
+      accountId: 'acc-app-c',
       key: `iban:${SUPPLIER}`,
       kind: 'utenze',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
     });
 
-    await put(store, 'transaction', [tx('r2', '2027-03-10', 810, supplier, 'pulci')]);
+    await put(store, 'transaction', [tx('r2', '2027-03-10', 810, supplier, 'app-c')]);
     const second = await reconcile(store, 's');
     if (second.status !== 'reconciled') throw new Error('refused');
     expect(second.outgoing).toMatchObject({ written: 1, classified: ['r2'] });
@@ -691,7 +691,7 @@ describe('incoming movements without a payer (plan 3c, task 6, question 2)', () 
     expect(ids2).not.toContain('r1');
     expect((await classes(store)).find((c) => c.id === 'mc-r2')).toMatchObject({
       kind: 'utenze',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       ruleId: 'rule-r1',
     });
     // The rent of the tenant is never classified.
@@ -711,7 +711,7 @@ describe('incoming movements without a payer (plan 3c, task 6, question 2)', () 
         source: 'manual',
       },
     ]);
-    expect(await confirm(store, 'p-chi-r1', 'utenze', { apartmentId: 'pulci' })).toEqual({
+    expect(await confirm(store, 'p-chi-r1', 'utenze', { apartmentId: 'app-c' })).toEqual({
       status: 'refused',
       reason: 'unknown-proposal',
     });
@@ -721,7 +721,7 @@ describe('incoming movements without a payer (plan 3c, task 6, question 2)', () 
     const store = await refunds();
     await reconcile(store);
     const before = await snapshot(store);
-    expect(await confirm(store, 'p-chi-r1', 'tasse', { apartmentId: 'pulci', f24: true })).toEqual({
+    expect(await confirm(store, 'p-chi-r1', 'tasse', { apartmentId: 'app-c', f24: true })).toEqual({
       status: 'refused',
       reason: 'f24-not-outgoing',
     });
@@ -747,14 +747,14 @@ describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
       ...tx('f', '2028-02-10', -6700, supplier),
       description: 'PAGAMENTO F24 DELEGA 0001',
     });
-    await put(store, 'apartment', [apartment('lovarini')]);
+    await put(store, 'apartment', [apartment('app-b')]);
     await put(store, 'bankProfile', [profile(f24Pattern)]);
     return store;
   }
   const f24 = (store: MemoryStore, proposalId: string, kind: OutgoingKind, isF24: boolean) =>
     confirmOutgoing(
       store,
-      { proposalId, kind, apartmentId: 'lovarini', rememberRule: true, f24: isF24 },
+      { proposalId, kind, apartmentId: 'app-b', rememberRule: true, f24: isF24 },
       'p1',
       clock,
       ids('c'),
@@ -767,10 +767,10 @@ describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
         ...base,
         id: 'rule-old',
         direction: 'out',
-        accountId: 'acc-berchet',
+        accountId: 'acc-app-a',
         key: `iban:${SUPPLIER}`,
         kind: 'tasse',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
       },
     ]);
     const before = await snapshot(store);
@@ -786,7 +786,7 @@ describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
-  it('confirmed tasse for Lovarini on the account of Berchet: f24 true, no rule', async () => {
+  it('confirmed tasse for Appartamento B on the account of Appartamento A: f24 true, no rule', async () => {
     const store = await f24Store('^PAGAMENTO F24\\b');
     const confirmed = await f24(store, 'p-f24-f', 'tasse', true);
     expect(confirmed).toEqual({ status: 'confirmed', operationId: 'c-1', classId: 'mc-f' });
@@ -797,7 +797,7 @@ describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
         id: 'mc-f',
         transactionId: 'f',
         kind: 'tasse',
-        apartmentId: 'lovarini',
+        apartmentId: 'app-b',
         f24: true,
       },
     ]);
@@ -831,7 +831,7 @@ describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
       ruleId: 'rule-f',
     });
     const [cls] = await classes(wrong);
-    expect(cls).toMatchObject({ kind: 'altro', apartmentId: 'lovarini' });
+    expect(cls).toMatchObject({ kind: 'altro', apartmentId: 'app-b' });
     expect(cls).not.toHaveProperty('f24');
   });
 
@@ -842,10 +842,10 @@ describe('F24 (plan 3c, task 7, decision 5, question 5)', () => {
         ...base,
         id: 'rule-old',
         direction: 'out',
-        accountId: 'acc-berchet',
+        accountId: 'acc-app-a',
         key: `iban:${SUPPLIER}`,
         kind: 'altro',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
       },
     ]);
     expect((await run(store)).classified).toEqual(['f']);
@@ -872,7 +872,7 @@ describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
   const tenancy = (id: string, tenantId: string) => ({
     ...base,
     id,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     tenantId,
     from: '2026-01',
     monthlyRent: 50000,
@@ -907,7 +907,7 @@ describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
     expect(await payments(store)).toMatchObject([
       {
         id: 'pay-x-1',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         tenantId: 't1',
         date: '2027-03-05',
         amount: -53840,
@@ -921,7 +921,7 @@ describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
     const op = (await readJournal(store)).operations.find((o) => o.id === 't-1');
     expect(op).toMatchObject({
       kind: 'outgoing.tenant',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       summary: "Registrata un'uscita verso un inquilino.",
     });
     const again = await run(store);
@@ -994,10 +994,10 @@ describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
         ...base,
         id: 'rule-t',
         direction: 'out',
-        accountId: 'acc-berchet',
+        accountId: 'acc-app-a',
         key: `iban:${TENANT}`,
         kind: 'altro',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
       },
     ]);
     const after = await run(store, 'r2');

@@ -92,8 +92,8 @@ function tariResult(fileHash: string): ExtractionResult {
       consumption: undefined,
     },
     parts: [
-      { label: 'Berchet', amount: 10075, source },
-      { label: 'Lovarini', amount: 8471, source },
+      { label: 'Appartamento A', amount: 10075, source },
+      { label: 'Appartamento B', amount: 8471, source },
     ],
     identifiers: [],
   });
@@ -127,13 +127,13 @@ const tariContext = () =>
     tenancies: [tenancy('b', 'apt-b'), tenancy('l', 'apt-l')] as ProposalContext['tenancies'],
     supplies: [
       {
-        id: 'sup-berchet',
-        label: 'Berchet',
+        id: 'sup-app-a',
+        label: 'Appartamento A',
         apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
       },
       {
-        id: 'sup-lovarini',
-        label: 'Lovarini',
+        id: 'sup-app-b',
+        label: 'Appartamento B',
         apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
       },
     ],

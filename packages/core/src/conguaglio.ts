@@ -944,7 +944,7 @@ export type CloseMissing =
 /**
  * Whether the period can be closed (R5): every rent and flat charge of `months` collected in full
  * with confirmed payments, and no item with months in the period still waiting for its debit
- * (for Berchet, the December TARI notice that covers September). `missing` lists what is not.
+ * (for Appartamento A, the December TARI notice that covers September). `missing` lists what is not.
  */
 export function canClosePeriod(input: {
   tenancies: Tenancy[];

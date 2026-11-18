@@ -24,7 +24,7 @@ const tenancy = (id: string, extra: Record<string, unknown> = {}) =>
   TenancySchema.parse({
     ...base,
     id,
-    apartmentId: 'pulci',
+    apartmentId: 'app-c',
     tenantId: 'ten-anna',
     room: 'A',
     from: '2025-10',
@@ -38,7 +38,7 @@ const payment = (id: string, extra: Record<string, unknown> = {}) =>
   PaymentSchema.parse({
     ...base,
     id,
-    apartmentId: 'pulci',
+    apartmentId: 'app-c',
     tenantId: 'ten-anna',
     date: '2025-09-25',
     amount: 50000,
@@ -64,11 +64,11 @@ describe('depositChecks (plan 11, task 3)', () => {
       payment('p-carla-unconfirmed', { tenantId: 'ten-carla', confirmed: false }),
       payment('p-carla-rent', { tenantId: 'ten-carla', kind: 'canone' }),
       payment('p-carla-del', { tenantId: 'ten-carla', deleted: true }),
-      payment('p-carla-other', { tenantId: 'ten-carla', apartmentId: 'berchet' }),
+      payment('p-carla-other', { tenantId: 'ten-carla', apartmentId: 'app-a' }),
     ];
     expect(depositChecks({ tenancies, payments })).toEqual([
       {
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         tenantId: 'ten-anna',
         expected: 50000,
         paid: 50000,
@@ -76,7 +76,7 @@ describe('depositChecks (plan 11, task 3)', () => {
         status: 'versata',
       },
       {
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         tenantId: 'ten-bruno',
         expected: 50000,
         paid: 30000,
@@ -84,7 +84,7 @@ describe('depositChecks (plan 11, task 3)', () => {
         status: 'diversa',
       },
       {
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         tenantId: 'ten-carla',
         expected: 50000,
         paid: 0,
@@ -92,7 +92,7 @@ describe('depositChecks (plan 11, task 3)', () => {
         status: 'mancante',
       },
       {
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         tenantId: 'ten-dario',
         paid: 0,
         returned: 0,
@@ -108,7 +108,7 @@ describe('depositChecks (plan 11, task 3)', () => {
     ];
     expect(depositChecks({ tenancies, payments: [payment('p')] })).toEqual([
       {
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         tenantId: 'ten-anna',
         expected: 60000,
         paid: 50000,
@@ -140,7 +140,7 @@ async function seed(
 }
 
 const returnInput = (extra: Partial<DepositReturnInput> = {}): DepositReturnInput => ({
-  apartmentId: 'pulci',
+  apartmentId: 'app-c',
   tenantId: 'ten-anna',
   extraCharges: [{ label: 'Zanzariera', amount: cents(2500) }],
   ...extra,
@@ -149,8 +149,8 @@ const returnInput = (extra: Partial<DepositReturnInput> = {}): DepositReturnInpu
 // Plan 17 (R301, R302): rates from the store, dates from the stay, conguaglio from the settlement.
 const apartmentRecord = {
   ...base,
-  id: 'pulci',
-  name: 'pulci',
+  id: 'app-c',
+  name: 'app-c',
   locatore: 'user2',
   posti: 2,
   annualitaStart: { month: 10, day: 1 },
@@ -158,7 +158,7 @@ const apartmentRecord = {
 const contractRecord = (id: string, start: string, end: string, tenancyIds: string[]) => ({
   ...base,
   id,
-  apartmentId: 'pulci',
+  apartmentId: 'app-c',
   type: '1+1',
   start,
   end,
@@ -188,7 +188,7 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
         {
           ...base,
           id: 'luce',
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
           supplier: 'Luce',
           category: 'elettricita',
           periodStart: '2025-10-01',
@@ -281,7 +281,7 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
     const recovery = (id: string, extra: Record<string, unknown>) => ({
       ...base,
       id,
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       transactionId: 'tx-x',
       amount: 1500,
       shares: [{ tenantId: 'ten-anna', amount: 1500 }],
@@ -297,7 +297,7 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
         {
           ...base,
           id: 'tx-x',
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
           date: '2026-10-15',
           amount: -1500,
           description: 'Fornitore',
@@ -306,14 +306,14 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
       ],
       [
         'movementClass',
-        { ...base, id: 'mc-tx-x', transactionId: 'tx-x', kind: 'altro', apartmentId: 'pulci' },
+        { ...base, id: 'mc-tx-x', transactionId: 'tx-x', kind: 'altro', apartmentId: 'app-c' },
       ],
       [
         'instalment',
         {
           ...base,
           id: 'str-1',
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
           kind: 'condominio',
           esercizio: '2026-27',
           rateIndex: 1,
@@ -427,8 +427,8 @@ describe('loadContractStatus (plan 11, task 3)', () => {
         'apartment',
         {
           ...base,
-          id: 'pulci',
-          name: 'pulci',
+          id: 'app-c',
+          name: 'app-c',
           locatore: 'user2',
           posti: 2,
           annualitaStart: { month: 10, day: 1 },
@@ -445,8 +445,8 @@ describe('loadContractStatus (plan 11, task 3)', () => {
         'contract',
         {
           ...base,
-          id: 'ctr-pulci',
-          apartmentId: 'pulci',
+          id: 'ctr-app-c',
+          apartmentId: 'app-c',
           type: '1+1',
           start: '2025-10',
           end: '2026-09',
@@ -480,7 +480,7 @@ describe('withheldRecoveries (plan 17, R300)', () => {
     const r = recordSchemas.tenantRecovery.parse({
       ...base,
       id: 'rec-w',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       instalmentId: 'str-1',
       amount: 1000,
       shares: [{ tenantId: 'ten-anna', amount: 1000 }],

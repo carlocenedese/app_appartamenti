@@ -82,13 +82,13 @@ async function usesOf(store: MemoryStore) {
   });
 }
 
-/** A debit to the invented supplier on the account of Pulci, with its name in the description. */
+/** A debit to the invented supplier on the account of Appartamento C, with its name in the description. */
 const enel = {
   id: 'tx-p-enel',
   v: 1,
   rev: 1,
-  apartmentId: 'pulci',
-  accountId: 'acc-pulci',
+  apartmentId: 'app-c',
+  accountId: 'acc-app-c',
   date: '2027-03-20',
   amount: -4820,
   description: 'ADDEBITO DIRETTO ENEL',
@@ -264,7 +264,7 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
     if (result.status !== 'reconciled') throw new Error('refused');
     const { operations } = await readJournal(store);
     expect(operations.map((o) => o.kind)).toEqual(['match.reconcile', 'income.reconcile']);
-    // The transfer between Lovarini and Berchet: a first pair, so a proposal with its two legs.
+    // The transfer between Appartamento B and Appartamento A: a first pair, so a proposal with its two legs.
     expect(result.transfers).toEqual({
       status: 'reconciled',
       written: 0,
@@ -273,8 +273,8 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
         {
           id: 'p-giro-tx-l-giro',
           transactionId: 'tx-l-giro',
-          fromAccountId: 'acc-lovarini',
-          toAccountId: 'acc-berchet',
+          fromAccountId: 'acc-app-b',
+          toAccountId: 'acc-app-a',
           legIds: ['tx-b-giro'],
           reason: 'new-pair',
         },
@@ -331,14 +331,14 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
 
   it('every phase gives the same result in any order of its arrays (ledger)', async () => {
     const store = await treConti();
-    // A rule for the supplier on the account of Pulci and a new debit it classifies.
+    // A rule for the supplier on the account of Appartamento C and a new debit it classifies.
     expect(
       await confirmOutgoing(
         store,
         {
           proposalId: 'p-uscita-tx-p-fornitore-feb',
           kind: 'altro',
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
           rememberRule: true,
         },
         'p1',
@@ -388,7 +388,7 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
       {
         proposalId: 'p-uscita-tx-p-fornitore-feb',
         kind: 'altro',
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         rememberRule: true,
       },
       'p1',
@@ -407,7 +407,7 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
       id: 'bill-enel',
       v: 1,
       rev: 1,
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       category: 'elettricita',
       supplier: 'Enel',
       dueDate: '2027-03-18',
@@ -437,18 +437,18 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
         v: 1,
         rev: 1,
         direction: 'in',
-        accountId: 'acc-berchet',
+        accountId: 'acc-app-a',
         key: 'iban:IT04X0542811101000000000401',
         kind: 'utenze',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
       });
       await store.writeJsonAtomic(recordPath('movementRule', rule.id), rule);
       // A refund of the supplier two days before the March rent of the same apartment.
       const refund = recordSchemas.transaction.parse({
         ...enel,
         id: 'tx-b-rimborso',
-        apartmentId: 'berchet',
-        accountId: 'acc-berchet',
+        apartmentId: 'app-a',
+        accountId: 'acc-app-a',
         date: '2027-03-03',
         amount: 1230,
         description: 'RIMBORSO',
@@ -488,10 +488,10 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
         statementHash: 's',
         ...(iban === undefined ? {} : { counterparty: { name: 'Conto', iban } }),
       });
-    // Berchet → Lovarini: only the incoming row names the other account.
+    // Appartamento A → Appartamento B: only the incoming row names the other account.
     for (const t of [
-      leg('tx-b-out', 'acc-berchet', -7000, '2027-03-19'),
-      leg('tx-l-in', 'acc-lovarini', 7000, '2027-03-20', 'IT85X0542811101000000000301'),
+      leg('tx-b-out', 'acc-app-a', -7000, '2027-03-19'),
+      leg('tx-l-in', 'acc-app-b', 7000, '2027-03-20', 'IT85X0542811101000000000301'),
     ]) {
       await store.writeJsonAtomic(recordPath('transaction', t.id), t);
     }
@@ -505,7 +505,7 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
 
   it('a dry run of the transfers skips the movements the income would take (fix round 1)', async () => {
     const store = await treConti();
-    // −500,00 € from Lovarini to Berchet two days before the automatic March rent of Berchet,
+    // −500,00 € from Appartamento B to Appartamento A two days before the automatic March rent of Appartamento A,
     // with the same amount: in a real run the rent is a payment first, so it is no leg.
     await store.writeJsonAtomic(
       recordPath('transaction', 'tx-l-giro-mar'),
@@ -513,13 +513,13 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
         id: 'tx-l-giro-mar',
         v: 1,
         rev: 1,
-        apartmentId: 'lovarini',
-        accountId: 'acc-lovarini',
+        apartmentId: 'app-b',
+        accountId: 'acc-app-b',
         date: '2027-03-03',
         amount: -50000,
         description: 'GIROCONTO',
         statementHash: 's-l',
-        counterparty: { name: 'Conto Berchet', iban: 'IT85X0542811101000000000301' },
+        counterparty: { name: 'Conto Appartamento A', iban: 'IT85X0542811101000000000301' },
       }),
     );
     const dry = await reconcile(store, 'd', true);
@@ -624,8 +624,8 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
       id: 'tr-tx-l-cond',
       v: 1,
       rev: 1,
-      fromAccountId: 'acc-lovarini',
-      toAccountId: 'acc-berchet',
+      fromAccountId: 'acc-app-b',
+      toAccountId: 'acc-app-a',
       amount: 30000,
       date: '2027-02-16',
       outTransactionId: 'tx-l-cond',
@@ -759,12 +759,12 @@ describe('runReconciliation: transfers against the dry run and the income (final
       statementHash: 's',
       counterparty: cp,
     });
-  const toBerchet = { name: 'C', iban: 'IT85X0542811101000000000301' };
-  const toLovarini = { name: 'C', iban: 'IT58X0542811101000000000302' };
+  const toAptA = { name: 'C', iban: 'IT85X0542811101000000000301' };
+  const toAptB = { name: 'C', iban: 'IT58X0542811101000000000302' };
   const write = async (store: MemoryStore, list: ReturnType<typeof giro>[]) => {
     for (const t of list) await store.writeJsonAtomic(recordPath('transaction', t.id), t);
   };
-  /** tre-conti with the pair Lovarini → Berchet confirmed and remembered. */
+  /** tre-conti with the pair Appartamento B → Appartamento A confirmed and remembered. */
   async function knownPair(): Promise<MemoryStore> {
     const store = await treConti();
     await confirmTransfer(
@@ -781,8 +781,8 @@ describe('runReconciliation: transfers against the dry run and the income (final
     const make = async () => {
       const store = await knownPair();
       await write(store, [
-        giro('tx-l-giro2', 'acc-lovarini', '2027-03-20', -3000, toBerchet),
-        giro('tx-b-giro2', 'acc-berchet', '2027-03-21', 3000, toLovarini),
+        giro('tx-l-giro2', 'acc-app-b', '2027-03-20', -3000, toAptA),
+        giro('tx-b-giro2', 'acc-app-a', '2027-03-21', 3000, toAptB),
       ]);
       return store;
     };
@@ -796,9 +796,9 @@ describe('runReconciliation: transfers against the dry run and the income (final
   it('I1: a dry run counts the completed transfers as the real run writes', async () => {
     const make = async () => {
       const store = await knownPair();
-      await write(store, [giro('tx-l-giro2', 'acc-lovarini', '2027-03-20', -3000, toBerchet)]);
+      await write(store, [giro('tx-l-giro2', 'acc-app-b', '2027-03-20', -3000, toAptA)]);
       await reconcile(store, 'a');
-      await write(store, [giro('tx-b-giro2', 'acc-berchet', '2027-03-21', 3000, toLovarini)]);
+      await write(store, [giro('tx-b-giro2', 'acc-app-a', '2027-03-21', 3000, toAptB)]);
       return store;
     };
     const dry = await reconcile(await make(), 'd', true);
@@ -808,11 +808,11 @@ describe('runReconciliation: transfers against the dry run and the income (final
     expect({ ...dry.transfers, operationId: real.transfers.operationId }).toEqual(real.transfers);
   });
 
-  // −30,00 € from Lovarini with the IBAN of Berchet on 3 March, +30,00 € on Berchet with only a
-  // name on 4 March, the day before the March rent of Berchet.
+  // −30,00 € from Appartamento B with the IBAN of Appartamento A on 3 March, +30,00 € on Appartamento A with only a
+  // name on 4 March, the day before the March rent of Appartamento A.
   const legs = () => [
-    giro('tx-l-out2', 'acc-lovarini', '2027-03-03', -3000, toBerchet),
-    giro('tx-b-in2', 'acc-berchet', '2027-03-04', 3000, { name: 'Conto Lovarini' }),
+    giro('tx-l-out2', 'acc-app-b', '2027-03-03', -3000, toAptA),
+    giro('tx-b-in2', 'acc-app-a', '2027-03-04', 3000, { name: 'Conto Appartamento B' }),
   ];
 
   it('I3: a leg without IBAN of a known pair is no «chi»: the second run writes nothing', async () => {
@@ -888,7 +888,7 @@ describe('undo of a cancellation after a new use of its movement (final fix wave
       {
         proposalId: 'p-uscita-tx-p-fornitore-feb',
         kind: 'altro',
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         rememberRule: true,
       },
       'p1',
@@ -934,7 +934,7 @@ describe('undo of a cancellation after a new use of its movement (final fix wave
       id: 'ten-luisa-p',
       v: 1,
       rev: 1,
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       tenantId: 't-luisa',
       from: '2027-01',
       to: '2027-12',
@@ -965,7 +965,7 @@ describe('undo of a cancellation after a new use of its movement (final fix wave
       id: 'bill-enel',
       v: 1,
       rev: 1,
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       category: 'elettricita',
       supplier: 'Altro Fornitore',
       dueDate: '2027-03-25',
@@ -1002,21 +1002,21 @@ describe('undo of a cancellation after a new use of its movement (final fix wave
   it('outgoing.cancel-auto, then a transfer with the movement as its leg: the transfer blocks it', async () => {
     const { store, op } = await cancelledClass();
     const back = recordSchemas.transaction.parse({
-      id: 'tx-b-da-pulci',
+      id: 'tx-b-da-app-c',
       v: 1,
       rev: 1,
-      apartmentId: 'berchet',
-      accountId: 'acc-berchet',
+      apartmentId: 'app-a',
+      accountId: 'acc-app-a',
       date: '2027-03-21',
       amount: 4820,
       description: 'GIRO',
       statementHash: 's',
-      counterparty: { name: 'Conto Pulci', iban: 'IT52A9999999999000000000001' },
+      counterparty: { name: 'Conto Appartamento C', iban: 'IT52A9999999999000000000001' },
     });
     await store.writeJsonAtomic(recordPath('transaction', back.id), back);
     const confirmed = await confirmTransfer(
       store,
-      { proposalId: 'p-giro-tx-b-da-pulci', purpose: 'altro', rememberPair: false },
+      { proposalId: 'p-giro-tx-b-da-app-c', purpose: 'altro', rememberPair: false },
       'p1',
       clock,
       ids('g'),
@@ -1053,7 +1053,7 @@ describe('undo of a cancellation after a new use of its movement (final fix wave
       {
         proposalId: `p-uscita-${enel.id}`,
         kind: 'utenze',
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         rememberRule: false,
       },
       'p1',
@@ -1076,7 +1076,7 @@ describe('undo of a cancellation after a new use of its movement (final fix wave
       {
         proposalId: 'p-uscita-tx-p-fornitore-feb',
         kind: 'altro',
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         rememberRule: true,
       },
       'p1',

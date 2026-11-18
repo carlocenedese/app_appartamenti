@@ -247,11 +247,11 @@ describe('Step 1: values of the specification', () => {
 
 describe('Step 2: review focus', () => {
   const settembreOttobre = bill('luce', '2026-09-01', '2026-10-31', 20000);
-  const BERCHET_START = { month: 10, day: 1 };
+  const APT_A_START = { month: 10, day: 1 };
 
   it('puts September in 2025-26 and October in 2026-27 (Review Focus 1)', () => {
-    const before = billsForAnnualita([settembreOttobre], annualitaRange('2025-26', BERCHET_START));
-    const after = billsForAnnualita([settembreOttobre], annualitaRange('2026-27', BERCHET_START));
+    const before = billsForAnnualita([settembreOttobre], annualitaRange('2025-26', APT_A_START));
+    const after = billsForAnnualita([settembreOttobre], annualitaRange('2026-27', APT_A_START));
     // 30 and 31 days of 61 (B2).
     expect(before).toEqual([{ month: '2026-09', amount: 9837, bill: settembreOttobre }]);
     expect(after).toEqual([{ month: '2026-10', amount: 10163, bill: settembreOttobre }]);
@@ -576,7 +576,7 @@ describe('Step 3b: items paid in instalments (R3)', () => {
     expect(result.pending).toEqual([]);
   });
 
-  it('assigns September of the December TARI notice to the earlier Berchet lease year', () => {
+  it('assigns September of the December TARI notice to the earlier Appartamento A lease year', () => {
     const terzo = instalment('tari-2025-3', {
       kind: 'tari',
       esercizio: '2025',
@@ -586,10 +586,10 @@ describe('Step 3b: items paid in instalments (R3)', () => {
       coversFrom: yearMonth('2025-09'),
       coversTo: yearMonth('2025-12'),
     });
-    const berchet = apartment({ posti: 5 });
+    const aptA = apartment({ posti: 5 });
     const tenants = ['a', 'b', 'c', 'd', 'e'].map((id) => tenancy(id, '2024-10', undefined));
     const input = {
-      apartment: berchet,
+      apartment: aptA,
       instalments: [terzo],
       matches: [match(terzo, 12186)],
       tenancies: tenants,
@@ -604,7 +604,7 @@ describe('Step 3b: items paid in instalments (R3)', () => {
   });
 
   it('splits a shared TARI by the amount matched to this apartment', () => {
-    const quota = instalment('tari-berchet', {
+    const quota = instalment('tari-app-a', {
       kind: 'tari',
       esercizio: '2027',
       rateIndex: 1,
@@ -685,7 +685,7 @@ describe('Step 3c: flat charge (R4)', () => {
     expect(collectedForfait({ tenancies: one, payments, months })[0]?.forfaitCollected).toBe(0);
   });
 
-  const berchet = [
+  const aptA = [
     tenancy('a', '2026-10', undefined, { monthlyRent: cents(45000) }),
     ...['b', 'c', 'd', 'e'].map((id) =>
       tenancy(id, '2026-10', undefined, { monthlyRent: cents(35000) }),
@@ -695,7 +695,7 @@ describe('Step 3c: flat charge (R4)', () => {
   it('gives no warning when the rents and flat charges add up to the contract', () => {
     const result = calc({
       apartment: apartment({ posti: 5, contrattoMensile: cents(200000) }),
-      tenancies: berchet,
+      tenancies: aptA,
     });
     expect(result.warnings).toEqual([]);
   });
@@ -704,7 +704,7 @@ describe('Step 3c: flat charge (R4)', () => {
     const luce = bill('luce', '2026-10-01', '2026-10-31', 50000);
     const result = calc({
       apartment: apartment({ posti: 5, contrattoMensile: cents(199000) }),
-      tenancies: berchet,
+      tenancies: aptA,
       bills: [luce],
       matches: [match(luce, 50000)],
     });
@@ -739,7 +739,7 @@ describe('Step 3c: flat charge (R4)', () => {
     // The renewal in 2027-01 adds up to the tenancies: one warning, for the months before it.
     const result = calc({
       apartment: apartment({ posti: 5, contrattoMensile: cents(150000) }),
-      tenancies: berchet,
+      tenancies: aptA,
       contracts: [lease()],
     });
     expect(result.warnings).toEqual([
@@ -750,11 +750,11 @@ describe('Step 3c: flat charge (R4)', () => {
   it('falls back to contrattoMensile outside the contracts and their rent (R34)', () => {
     const result = calc({
       apartment: apartment({ posti: 5, contrattoMensile: cents(150000) }),
-      tenancies: berchet,
+      tenancies: aptA,
       contracts: [
         lease({ start: '2026-11', rent: entry('2026-12', 190000) }),
         lease({ id: 'gone', deleted: true, rent: entry('2026-10', 1) }),
-        lease({ id: 'other', apartmentId: 'lovarini' }),
+        lease({ id: 'other', apartmentId: 'app-b' }),
       ],
     });
     // 2026-10 outside c1 and 2026-11 before its first entry: both contrattoMensile, one warning.
@@ -766,7 +766,7 @@ describe('Step 3c: flat charge (R4)', () => {
   it('on the same start the first id wins; an older contract when the latest has no entry', () => {
     const tie = calc({
       apartment: apartment({ posti: 5 }),
-      tenancies: berchet,
+      tenancies: aptA,
       contracts: [
         lease({ id: 'c2', rent: entry('2026-10', 1) }),
         lease({ id: 'c1', rent: entry('2026-10', 170000) }),
@@ -775,7 +775,7 @@ describe('Step 3c: flat charge (R4)', () => {
     expect(tie.warnings).toEqual([{ code: 'contratto-mensile', expected: 180000, actual: 200000 }]);
     const older = calc({
       apartment: apartment({ posti: 5, contrattoMensile: cents(150000) }),
-      tenancies: berchet,
+      tenancies: aptA,
       contracts: [
         lease({ id: 'new', start: '2026-10', rent: entry('2027-01', 190000) }),
         lease({ id: 'old', start: '2026-09', rent: entry('2026-09', 170000) }),
@@ -790,7 +790,7 @@ describe('Step 3c: flat charge (R4)', () => {
   it('takes the contract with the latest start when two live ones cover a month (R34)', () => {
     const result = calc({
       apartment: apartment({ posti: 5 }),
-      tenancies: berchet,
+      tenancies: aptA,
       contracts: [
         lease({ rent: entry('2026-10', 170000) }),
         lease({ id: 'c0', start: '2026-09', rent: entry('2026-09', 1) }),
@@ -801,8 +801,8 @@ describe('Step 3c: flat charge (R4)', () => {
     ]);
   });
 
-  it('Lovarini: one period for the whole contract with two takeovers', () => {
-    const lovarini = apartment({
+  it('Appartamento B: one period for the whole contract with two takeovers', () => {
+    const aptB = apartment({
       posti: 4,
       rooms: ['R1', 'R2', 'R3', 'R4'],
       annualitaStart: { month: 4, day: 1 },
@@ -827,7 +827,7 @@ describe('Step 3c: flat charge (R4)', () => {
       conguaglioPrec: cents(4800),
     });
     const result = calc({
-      apartment: lovarini,
+      apartment: aptB,
       period: period('2024-04', '2029-03', '2024-29'),
       bills: [acqua],
       instalments: [conguaglio],
@@ -851,7 +851,7 @@ describe('Step 3c: flat charge (R4)', () => {
 });
 
 describe('Step 3d: supplementary settlement (R5)', () => {
-  const berchet = apartment({ posti: 5 });
+  const aptA = apartment({ posti: 5 });
   const annualita = period('2024-10', '2025-09', '2024-25');
   const tenancies = [
     ...['a', 'b', 'c', 'e'].map((id) => tenancy(id, '2024-10', undefined)),
@@ -859,7 +859,7 @@ describe('Step 3d: supplementary settlement (R5)', () => {
     tenancy('f', '2025-09', undefined),
   ];
   const internet = bill('internet', '2024-10-01', '2024-10-31', 3000, { category: 'internet' });
-  const base = { apartment: berchet, period: annualita, tenancies, instalments: [], payments: [] };
+  const base = { apartment: aptA, period: annualita, tenancies, instalments: [], payments: [] };
   const snapshot = calcConguaglio({ ...base, bills: [internet], matches: [match(internet, 3000)] });
   const frozen = structuredClone(snapshot);
   const asOf = isoDate('2025-11-20');

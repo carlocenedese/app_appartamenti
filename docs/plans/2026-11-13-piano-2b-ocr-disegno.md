@@ -4,7 +4,7 @@ Stato: **approvato da user1 il 13 novembre 2026**, comprese le «Mie scelte». S
 
 ## Perché
 
-39 PDF reali non hanno testo (19 a Pulci, 20 a Berchet), e l'acqua scansionata continua ad arrivare, in qualche caso come foto JPEG. Oggi questi file restano `senza-testo` e si compilano a mano. Le Enel 2020-21 di Pulci hanno glifi rotti (`(cid:…)`) e vanno disegnate come immagine.
+39 PDF reali non hanno testo (19 a Appartamento C, 20 a Appartamento A), e l'acqua scansionata continua ad arrivare, in qualche caso come foto JPEG. Oggi questi file restano `senza-testo` e si compilano a mano. Le Enel 2020-21 di Appartamento C hanno glifi rotti (`(cid:…)`) e vanno disegnate come immagine.
 
 ## Decisioni di user1 (13 novembre 2026)
 

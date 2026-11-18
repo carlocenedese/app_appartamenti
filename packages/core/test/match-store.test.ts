@@ -16,12 +16,12 @@ import type { ConfirmMatchInput, RecordKind } from '../src/index';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
-// Synthetic records only: one account of Berchet with the statements of January and March 2027.
+// Synthetic records only: one account of Appartamento A with the statements of January and March 2027.
 const base = { v: 1, rev: 1 };
 const account = {
   ...base,
   id: 'acc-b',
-  apartmentId: 'berchet',
+  apartmentId: 'app-a',
   label: 'Conto',
   bankProfileId: 'bp',
 };
@@ -42,7 +42,7 @@ const statement = (id: string, from: string, to: string) => ({
 const instalment = (id: string, dueDate: string, rata = 15000, extra = {}) => ({
   ...base,
   id,
-  apartmentId: 'berchet',
+  apartmentId: 'app-a',
   kind: 'condominio',
   esercizio: '2026-27',
   rateIndex: 1,
@@ -58,7 +58,7 @@ const instalment = (id: string, dueDate: string, rata = 15000, extra = {}) => ({
 const bill = (id: string, amount: number, dueDate: string, supplier = 'Hera') => ({
   ...base,
   id,
-  apartmentId: 'berchet',
+  apartmentId: 'app-a',
   category: 'gas',
   supplier,
   dueDate,
@@ -73,7 +73,7 @@ const bill = (id: string, amount: number, dueDate: string, supplier = 'Hera') =>
 const tx = (id: string, date: string, amount: number, description = 'ADDEBITO CONDOMINIO') => ({
   ...base,
   id,
-  apartmentId: 'berchet',
+  apartmentId: 'app-a',
   accountId: 'acc-b',
   date,
   amount,
@@ -116,7 +116,7 @@ const hera = (extra = {}) => ({
   id: 'mc-tx-hera',
   transactionId: 'tx-hera',
   kind: 'utenze',
-  apartmentId: 'berchet',
+  apartmentId: 'app-a',
   ...extra,
 });
 
@@ -153,7 +153,7 @@ describe('runMatch (plan 3c, task 3)', () => {
     ]);
     const { operations } = await readJournal(store);
     expect(operations.map((o) => [o.kind, o.summary, o.apartmentId])).toEqual([
-      ['match.reconcile', 'Abbinate le voci: 1 automatica, 0 da rivedere.', 'berchet'],
+      ['match.reconcile', 'Abbinate le voci: 1 automatica, 0 da rivedere.', 'app-a'],
     ]);
   });
 
@@ -244,7 +244,7 @@ describe('runMatch (plan 3c, task 3)', () => {
         {
           ...base,
           id: 'rec-1',
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
           transactionId: 'tx-hera',
           amount: 6300,
           shares: [{ tenantId: 't-a', amount: 6300 }],
@@ -312,7 +312,7 @@ describe('runMatch (plan 3c, task 3)', () => {
         {
           ...base,
           id: 'pay-tx-jan-1',
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
           tenantId: 't1',
           date: '2027-01-22',
           amount: -15000,
@@ -407,7 +407,7 @@ describe('confirmMatch (plan 3c, task 3)', () => {
           id: 'mc-tx-c',
           transactionId: 'tx-c',
           kind: 'altro',
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
         },
       ],
     });
@@ -457,11 +457,11 @@ describe('confirmMatch (plan 3c, task 3)', () => {
         kind: 'tari',
         esercizio: '2027',
         apartmentId,
-        paidFromApartmentId: 'berchet',
+        paidFromApartmentId: 'app-a',
         shared: { groupId: 'avviso-1', groupTotal: 18600, weight },
       });
     const store = await build({
-      instalment: [shared('tari-b', 'berchet', 10075), shared('tari-l', 'lovarini', 8525)],
+      instalment: [shared('tari-b', 'app-a', 10075), shared('tari-l', 'app-b', 8525)],
       transaction: [tx('tx-t', '2027-01-21', -18600, 'BONIFICO')],
       movementClass: [
         {
@@ -469,7 +469,7 @@ describe('confirmMatch (plan 3c, task 3)', () => {
           id: 'mc-tx-t',
           transactionId: 'tx-t',
           kind: 'utenze',
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
           ruleId: 'rule-x',
         },
       ],
@@ -502,7 +502,7 @@ describe('confirmMatch (plan 3c, task 3)', () => {
         {
           ...base,
           id: 'pay-tx-p-1',
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
           tenantId: 't1',
           date: '2027-01-11',
           amount: -10000,
@@ -542,7 +542,7 @@ describe('confirmMatch (plan 3c, task 3)', () => {
         kind: 'tari',
         esercizio: '2027',
         apartmentId,
-        paidFromApartmentId: 'berchet',
+        paidFromApartmentId: 'app-a',
         shared: { groupId: 'avviso-1', groupTotal, weight },
       });
     const tari = (itemId: string, amount: number): ConfirmMatchInput['parts'][number] => ({
@@ -550,9 +550,9 @@ describe('confirmMatch (plan 3c, task 3)', () => {
       itemType: 'instalment',
     });
     const cases = [
-      [notice('tari-b', 'berchet', 10075)],
-      [notice('tari-b', 'berchet', 10075), notice('tari-l', 'lovarini', 8525, 18700)],
-      [notice('tari-b', 'berchet', 10075), notice('tari-l', 'lovarini', 0)],
+      [notice('tari-b', 'app-a', 10075)],
+      [notice('tari-b', 'app-a', 10075), notice('tari-l', 'app-b', 8525, 18700)],
+      [notice('tari-b', 'app-a', 10075), notice('tari-l', 'app-b', 0)],
     ];
     for (const group of cases) {
       const s = await build({

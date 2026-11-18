@@ -38,7 +38,7 @@
 2. **Righe doppie (Task 2 e 7).** Due righe identiche nello stesso giorno sono due movimenti, non uno. Il file di oggi riletto domani con una riga identica in più aggiunge solo quella.
 3. **XLSX insidiosi (Task 4 e 5).** Date seriali con `date1904="1"` o come testo `27/10/2026`; numeri `-92.810000000000002` (esce `-92.81`) e `1234.5`. Un numero `1.234` (tre decimali) è un errore, mai 1.234 €. Celle vuote in mezzo alla riga, stringhe condivise e `inlineStr`.
 4. **Segno e conto sbagliato (Task 5 e 7).** Senza segno: importo positivo con colonna «Segno» dal valore sconosciuto, dare e avere entrambi pieni o entrambi vuoti, importo 0. Conto sbagliato: IBAN dichiarato nel file diverso da `account.iban`, conto cancellato, profilo diverso da `account.bankProfileId`. Ognuno è un errore con riga e codice.
-5. **Difetto di `match.ts` (Task 2).** Un estratto del conto di Berchet non rende «in attesa» le voci di Pulci, che restano «assunte». Una rata con `paidFromApartmentId` di Berchet è coperta dall'estratto di Berchet, non da quello del suo appartamento.
+5. **Difetto di `match.ts` (Task 2).** Un estratto del conto di Appartamento A non rende «in attesa» le voci di Appartamento C, che restano «assunte». Una rata con `paidFromApartmentId` di Appartamento A è coperta dall'estratto di Appartamento A, non da quello del suo appartamento.
 
 ---
 
@@ -84,7 +84,7 @@
 - [ ] **Step 1: test che falliscono.**
   - Due movimenti uguali su `acc-1` e `acc-2` dello stesso appartamento hanno `id` diversi; senza `accountId` l'impronta è uguale a quella di oggi (valore fissato nel test esistente).
   - Tre righe identiche nello stesso giorno danno occorrenze 0, 1, 2; la stessa lista con una quarta riga identica dà gli stessi primi tre `id`.
-  - `match`: con il solo periodo di `berchet` la bolletta di `pulci` dello stesso mese è `assumed`, quella di `berchet` senza addebito è `pending`; una rata di `lovarini` con `paidFromApartmentId: 'berchet'` è coperta dal periodo di `berchet`.
+  - `match`: con il solo periodo di `app-a` la bolletta di `app-c` dello stesso mese è `assumed`, quella di `app-a` senza addebito è `pending`; una rata di `app-b` con `paidFromApartmentId: 'app-a'` è coperta dal periodo di `app-a`.
 - [ ] **Step 2:** `pnpm test -- dedupe match` fallisce.
 - [ ] **Step 3: implementare**; aggiornare i test di `match` esistenti con il conto nei periodi; scrivere la prossima R libera.
 - [ ] **Step 4:** lint, typecheck, test con i due `TZ` passano.
@@ -180,7 +180,7 @@
   - `saveAccount(store, draft: Omit<Account, 'id' | 'v' | 'rev'>, profileId, clock, newId): Promise<{ status: 'saved'; account: Account; operationId: string } | { status: 'rejected'; reason: 'unknown-apartment' | 'unknown-bank-profile' | 'bad-iban' | 'iban-in-use' }>`; l'IBAN passa da `normaliseIban`.
   - `statementFilePath(input: { apartment: Apartment; to: ISODate; bank: string; ext: 'xlsx' | 'csv' }): string`.
 
-- [ ] **Step 1: test che falliscono.** `saveAccount` con l'IBAN di esempio scritto con spazi salva `'IT60X0542811101000000123456'`. Danno `rejected`: lo stesso IBAN su un secondo conto (`iban-in-use`), un appartamento inesistente o cancellato, un profilo inesistente. Ogni salvataggio è un'operazione annullabile. `statementFilePath({ apartment: { name: 'Berchet_Nord', annualitaStart: { month: 10, day: 1 } }, to: '2026-10-31', bank: 'Banca', ext: 'xlsx' })` dà `'Riservato_proprietari/Estratti_conto/Berchet_Nord/2026-27/2026-10-31_Estratto_Banca_2026-10.xlsx'`; un nome con `:` o accenti esce sicuro.
+- [ ] **Step 1: test che falliscono.** `saveAccount` con l'IBAN di esempio scritto con spazi salva `'IT60X0542811101000000123456'`. Danno `rejected`: lo stesso IBAN su un secondo conto (`iban-in-use`), un appartamento inesistente o cancellato, un profilo inesistente. Ogni salvataggio è un'operazione annullabile. `statementFilePath({ apartment: { name: 'Appartamento_A_Nord', annualitaStart: { month: 10, day: 1 } }, to: '2026-10-31', bank: 'Banca', ext: 'xlsx' })` dà `'Riservato_proprietari/Estratti_conto/Appartamento_A_Nord/2026-27/2026-10-31_Estratto_Banca_2026-10.xlsx'`; un nome con `:` o accenti esce sicuro.
 - [ ] **Step 2:** `pnpm test -- accounts` fallisce.
 - [ ] **Step 3: implementare.**
 - [ ] **Step 4:** lint, typecheck, test passano.

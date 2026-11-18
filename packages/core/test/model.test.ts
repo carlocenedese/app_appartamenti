@@ -701,8 +701,8 @@ describe('Contract data and rent history (plan 7, task 1)', () => {
   // Invented figures and codes only (fixtures/README.md).
   const full = {
     ...base,
-    id: 'ctr-berchet',
-    apartmentId: 'berchet',
+    id: 'ctr-app-a',
+    apartmentId: 'app-a',
     type: '1+1',
     start: '2025-10',
     end: '2027-09',
@@ -727,7 +727,7 @@ describe('Contract data and rent history (plan 7, task 1)', () => {
   it('a contract without the new fields stays valid and equal, as do the fixtures', () => {
     expect(ContractSchema.parse(validRecords.contract)).toEqual(validRecords.contract);
     const excel = fixture('../../../fixtures/excel/anno-esempio.json') as { contracts: unknown[] };
-    const golden = fixture('../../../fixtures/golden/berchet-2024-25.json') as {
+    const golden = fixture('../../../fixtures/golden/app-a-2024-25.json') as {
       contract: unknown;
     };
     for (const contract of [...excel.contracts, golden.contract]) {
@@ -1658,10 +1658,10 @@ describe('MovementClassSchema (plan 3c, task 1)', () => {
 describe('ImuYearSchema (plan 3d, task 1)', () => {
   const year = {
     ...base,
-    id: 'imu-berchet-2026',
-    apartmentId: 'berchet',
+    id: 'imu-app-a-2026',
+    apartmentId: 'app-a',
     year: '2026',
-    f24Group: 'berchet-lovarini',
+    f24Group: 'app-a-app-b',
     rates: [{ index: 1 }, { index: 2, expected: 60000 }],
   };
   const ok = (changes: Record<string, unknown>) =>
@@ -1673,7 +1673,7 @@ describe('ImuYearSchema (plan 3d, task 1)', () => {
   });
 
   it('refuses another id, a year not AAAA, indices not 1 to n, amounts not positive', () => {
-    expect(ok({ id: 'imu-berchet-2025' })).toBe(false);
+    expect(ok({ id: 'imu-app-a-2025' })).toBe(false);
     expect(ok({ year: '26' })).toBe(false);
     expect(ok({ rates: [{ index: 1 }, { index: 3 }] })).toBe(false);
     expect(ok({ rates: [{ index: 2 }, { index: 1 }] })).toBe(false);
@@ -1685,7 +1685,7 @@ describe('ImuYearSchema (plan 3d, task 1)', () => {
 });
 
 describe('ImuRuleSchema (plan 3d, task 5)', () => {
-  const rule = { ...base, id: 'imur-f', accountId: 'acc-1', f24Group: 'berchet-lovarini' };
+  const rule = { ...base, id: 'imur-f', accountId: 'acc-1', f24Group: 'app-a-app-b' };
   const ok = (changes: Record<string, unknown>) =>
     ImuRuleSchema.safeParse(changed(rule, changes)).success;
 
@@ -1704,7 +1704,7 @@ describe('PayableSchema (plan 9, task 1)', () => {
   const payable = {
     ...base,
     id: 'scad-a1',
-    apartmentId: 'pulci',
+    apartmentId: 'app-c',
     kind: 'f24',
     dueDate: '2026-12-16',
   };

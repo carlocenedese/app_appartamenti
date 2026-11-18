@@ -13,7 +13,7 @@
  *   as an unconfirmed proposal (`confirmed: false`, `by: 'auto'`) for a person to confirm by
  *   hand. It is not pending, as with every other proposal. Instalments and shared notices have no
  *   supplier and keep being confirmed.
- * - A shared notice (the TARI of Berchet and Lovarini) is one item: its instalments are matched
+ * - A shared notice (the TARI of Appartamento A and Appartamento B) is one item: its instalments are matched
  *   together to one debit of `groupTotal` and the debit is split by their `weight`. A notice with
  *   one instalment only (the others not entered yet) or whose instalments disagree on paying
  *   account, due date or total, or carry a weight that is not positive, is reported in

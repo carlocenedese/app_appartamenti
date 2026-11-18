@@ -84,14 +84,14 @@ user1 ha confrontato i valori letti con i PDF; le righe che non ha citato valgon
 Con `python/tools/pdf_report.py` sulle cartelle in Dropbox, in sola lettura. Il rapporto stampa
 solo conteggi e non è conservato nel repository: si rifà con lo stesso comando.
 
-| Appartamento       | PDF | Riconosciute | Da confermare | Non riconosciute | Senza testo |
-| ------------------ | --- | ------------ | ------------- | ---------------- | ----------- |
-| Lovarini 2024-2027 | 86  | 82           | 0             | 4                | 0           |
-| Pulci, 2020-2026   | 224 | 139          | 1             | 65               | 19          |
-| Berchet, 2020-2026 | 150 | 103          | 0             | 27               | 20          |
+| Appartamento              | PDF | Riconosciute | Da confermare | Non riconosciute | Senza testo |
+| ------------------------- | --- | ------------ | ------------- | ---------------- | ----------- |
+| Appartamento B 2024-2027  | 86  | 82           | 0             | 4                | 0           |
+| Appartamento C, 2020-2026 | 224 | 139          | 1             | 65               | 19          |
+| Appartamento A, 2020-2026 | 150 | 103          | 0             | 27               | 20          |
 
-Controllo dell'importo: per Lovarini (Hera, acqua, TARI) e per le bollette Enel di Pulci e
-Berchet (esclusi i tre PDF Enel 2020-21 con testo parziale) un programma di prova, non
+Controllo dell'importo: per Appartamento B (Hera, acqua, TARI) e per le bollette Enel di Appartamento C e
+Appartamento A (esclusi i tre PDF Enel 2020-21 con testo parziale) un programma di prova, non
 conservato nel repository, ha confrontato l'importo letto con il valore scritto accanto a «da
 pagare» nello stesso documento: nessuna differenza. **Non è il campione di dieci PDF per fornitore
 controllati a mano che chiede il piano: resta da fare con user1.**
@@ -100,35 +100,35 @@ controllati a mano che chiede il piano: resta da fare con user1.**
 
 Con `python/tools/pdf_report.py --ocr-data` (motore Tesseract 5.5.3, dati `ita.traineddata` di
 `tessdata_fast` 4.1.0, profili `python/seed-profiles/`, data `2026-11-13`), in sola lettura sulle
-cartelle in Dropbox di Berchet e Pulci (Lovarini non ha scansioni). Il rapporto stampa solo
+cartelle in Dropbox di Appartamento A e Appartamento C (Appartamento B non ha scansioni). Il rapporto stampa solo
 conteggi e non è conservato nel repository: nessun PDF, nome, importo o testo letto è stato
 copiato o scritto. **Questi conteggi NON sono il campione controllato a mano: da controllare a
 mano con user1, un campione di dieci scansioni, prima di fidarsi dell'OCR.**
 
-| Appartamento | PDF | Senza testo prima | Letti con OCR (`ocr`) | Con qualche pagina OCR (`mixed`) | Solo testo (`pdf`) | Riconosciute | Da confermare | Non riconosciute | Senza testo | Illeggibili | Avviso «OCR non disponibile» |
-| ------------ | --- | ----------------- | --------------------- | -------------------------------- | ------------------ | ------------ | ------------- | ---------------- | ----------- | ----------- | ---------------------------- |
-| Berchet      | 150 | 20                | 20                    | 77                               | 53                 | 103          | 0             | 47               | 0           | 0           | 0                            |
-| Pulci        | 224 | 19                | 19                    | 83                               | 122                | 139          | 1             | 84               | 0           | 0           | 0                            |
+| Appartamento   | PDF | Senza testo prima | Letti con OCR (`ocr`) | Con qualche pagina OCR (`mixed`) | Solo testo (`pdf`) | Riconosciute | Da confermare | Non riconosciute | Senza testo | Illeggibili | Avviso «OCR non disponibile» |
+| -------------- | --- | ----------------- | --------------------- | -------------------------------- | ------------------ | ------------ | ------------- | ---------------- | ----------- | ----------- | ---------------------------- |
+| Appartamento A | 150 | 20                | 20                    | 77                               | 53                 | 103          | 0             | 47               | 0           | 0           | 0                            |
+| Appartamento C | 224 | 19                | 19                    | 83                               | 122                | 139          | 1             | 84               | 0           | 0           | 0                            |
 
 Stato per origine del testo (riconosciute / da confermare / non riconosciute):
 
-| Appartamento | `pdf`       | `ocr`      | `mixed`    |
-| ------------ | ----------- | ---------- | ---------- |
-| Berchet      | 28 / 0 / 25 | 0 / 0 / 20 | 75 / 0 / 2 |
-| Pulci        | 61 / 0 / 61 | 0 / 0 / 19 | 78 / 1 / 4 |
+| Appartamento   | `pdf`       | `ocr`      | `mixed`    |
+| -------------- | ----------- | ---------- | ---------- |
+| Appartamento A | 28 / 0 / 25 | 0 / 0 / 20 | 75 / 0 / 2 |
+| Appartamento C | 61 / 0 / 61 | 0 / 0 / 19 | 78 / 1 / 4 |
 
-Prima (solo testo del PDF, stesse cartelle): Berchet: 103 riconosciute, 0 da confermare, 27 non
-riconosciute; Pulci: 139, 1 e 65. Durata: circa 5 minuti per Berchet e 1,5 per Pulci. Con la
+Prima (solo testo del PDF, stesse cartelle): Appartamento A: 103 riconosciute, 0 da confermare, 27 non
+riconosciute; Appartamento C: 139, 1 e 65. Durata: circa 5 minuti per Appartamento A e 1,5 per Appartamento C. Con la
 regola per campo (R87, task 7) le riconosciute tornano ai valori di prima; la prima corsa di questa
 sezione, con il tetto su tutto il documento, dava 28 e 61.
 
 - Tutte le scansioni senza testo (39) ora hanno testo. Nessuna è `senza-testo` e nessuna è
   `illeggibile`. Un PDF letto per intero con OCR (`ocr`) non è mai `riconosciuta` (R87), ma nessun
   profilo ne riconosce uno: le 39 scansioni restano `non-riconosciuta` (non c'è un profilo
-  dell'acqua di Berchet e Pulci, e le Enel con glifi rotti non corrispondono ai profili).
-- 160 PDF hanno testo e qualche pagina solo immagine (77 di Berchet, 83 di Pulci): sono `mixed`, e
+  dell'acqua di Appartamento A e Appartamento C, e le Enel con glifi rotti non corrispondono ai profili).
+- 160 PDF hanno testo e qualche pagina solo immagine (77 di Appartamento A, 83 di Appartamento C): sono `mixed`, e
   con la regola per campo restano `riconosciuta` quando nessun campo con valore viene da una pagina
-  OCR (153 su 160); solo uno (Pulci) è `da-confermare` per questo motivo.
+  OCR (153 su 160); solo uno (Appartamento C) è `da-confermare` per questo motivo.
 - I messaggi di Leptonica (`box outside rectangle`) non arrivano più sull'errore standard: nella
   corsa il descrittore 2 è rimasto vuoto.
 
@@ -165,12 +165,12 @@ Con `python/tools/pdf_report.py` (che ora conta anche i file con l'avviso «Il f
 più documenti», in totale e per profilo), profili `python/seed-profiles/`, data `2026-11-14`, OCR
 attivo, in sola lettura sulle cartelle in Dropbox. Solo conteggi: nessun nome, importo o testo.
 
-| Appartamento | PDF | Con l'avviso | Per profilo              |
-| ------------ | --- | ------------ | ------------------------ |
-| Lovarini     | 86  | 1            | `hera-luce-2024` 1       |
-| Pulci        | 224 | 1            | `enel-luce-2020` 1       |
-| Berchet      | 150 | 2            | `acegas-tari-2024-b` 2   |
-| Totale       | 460 | 4            | nessuno «nessun profilo» |
+| Appartamento   | PDF | Con l'avviso | Per profilo              |
+| -------------- | --- | ------------ | ------------------------ |
+| Appartamento B | 86  | 1            | `hera-luce-2024` 1       |
+| Appartamento C | 224 | 1            | `enel-luce-2020` 1       |
+| Appartamento A | 150 | 2            | `acegas-tari-2024-b` 2   |
+| Totale         | 460 | 4            | nessuno «nessun profilo» |
 
 Gli altri conteggi (stati, origine del testo) sono invariati rispetto alla sezione delle scansioni.
 **L'avviso scatta anche su un documento solo con una tabella di storico** (stessi campi letti con
@@ -180,12 +180,12 @@ che decide se il file contiene davvero più documenti. Le 18 fixture si leggono 
 
 ## Casi dubbi
 
-- **Maggior tutela (Berchet, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il
+- **Maggior tutela (Appartamento A, 21 PDF del 2020-2024):** intestazione «Servizio di Maggior Tutela». Il
   costruttore non ricava una regola stabile per l'importo (l'importo sta sotto «TOTALE DA PAGARE»
   ma il testo cambia). Non ha profilo (spiegazione data a user1 il 12 novembre 2026; decisione di user1: restano in revisione a mano, sono bollette chiuse del passato).
-- **Scansioni:** 39 PDF senza testo (19 a Pulci, 20 a Berchet), tra cui le bollette Enel del 2020-21
-  di Pulci con glifi rotti (`(cid:…)`). Fuori dal piano 2a (OCR nel 2b); i 3 PDF Enel 2020-21 di
-  Pulci con testo parziale sono letti con importo da «Totale bolletta», non confrontato (da
+- **Scansioni:** 39 PDF senza testo (19 a Appartamento C, 20 a Appartamento A), tra cui le bollette Enel del 2020-21
+  di Appartamento C con glifi rotti (`(cid:…)`). Fuori dal piano 2a (OCR nel 2b); i 3 PDF Enel 2020-21 di
+  Appartamento C con testo parziale sono letti con importo da «Totale bolletta», non confrontato (da
   rivedere).
 - **Periodo dell'acqua:** letto come **unione dei periodi di consumo** (decisione di user1, 12
   novembre 2026, R76-R77): «rilevato» e «stimato» insieme, dal primo inizio all'ultima fine
@@ -200,19 +200,19 @@ che decide se il file contiene davvero più documenti. Le 18 fixture si leggono 
   gli «Altri servizi».
 - **Ancore ambigue:** per Enel 2020-23 «PERIODO» compare in più punti, e le regole sono perciò
   `medium`.
-- **TARI condivisa tra Berchet e Lovarini (`[B+L]`):** i profili `acegas-tari-2024` e
+- **TARI condivisa tra Appartamento A e Appartamento B (`[A+B]`):** i profili `acegas-tari-2024` e
   `acegas-tari-2024-b` leggono le utenze con `parts`: per ogni «Utenza N.» il «TOTALE» della riga
   «Parte fissa» nella tabella di pagina 2 (importo da inizio anno, TEFA compreso). Regola di
   ripartizione decisa da user1 (13 novembre 2026): l'«Importo da pagare» si divide in proporzione
   a quei totali; le componenti perequative **non** sono nei totali delle utenze (nell'avviso di dicembre 2025: 306,44 + 257,66 = 564,10 = TARI 537,24 + TEFA 26,86; le perequative, 7,60 € a utenza, sono in una tabella a parte e fanno parte dell'importo da pagare). user1 ha deciso di aggiungerle alla rispettiva utenza (13 novembre 2026): `parts.add` somma al totale di ogni utenza il «TOTALE» della tabella perequative, nel layout dell'avviso di dicembre 2025 (3 componenti UR). Il layout del 2024 (2 componenti) non è letto dall'`add`: lì il peso resta il solo totale (differenza di 1,60 € uguale per le due utenze). Il calcolo e il collegamento
   utenza-appartamento (`tariParts`) sono del modulo di proposta, già previsto dalla sezione 42 R3;
   senza codici noti la bolletta va comunque in revisione. Un avviso senza utenze leggibili
-  (`parts-found`) è `da-confermare`. Letti 2 utenze su tutte le 8 bollette `[B+L]` (e 1 o 2 sulle
+  (`parts-found`) è `da-confermare`. Letti 2 utenze su tutte le 8 bollette `[A+B]` (e 1 o 2 sulle
   altre). Gli avvisi cumulativi (periodo oltre i 4 mesi nuovi) danno `tari-months`.
 - **TARI 2020 e acqua di altri appartamenti:** una bolletta TARI del 2020 non è riconosciuta; non
-  c'è un profilo dell'acqua di Berchet e Pulci.
-- **Non profilati:** Vodafone (Pulci 2020-21), caldaia, Bacchiglione, spese condominiali, acqua di
-  Berchet e Pulci.
+  c'è un profilo dell'acqua di Appartamento A e Appartamento C.
+- **Non profilati:** Vodafone (Appartamento C 2020-21), caldaia, Bacchiglione, spese condominiali, acqua di
+  Appartamento A e Appartamento C.
 
 ## Fixture
 

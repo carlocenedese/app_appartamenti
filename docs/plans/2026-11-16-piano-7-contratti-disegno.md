@@ -128,7 +128,7 @@ solo campi **opzionali**, quindi i contratti già scritti restano validi e nessu
   `month-outside-contract` (`from` prima di `start` o dopo `end`); `bad-amount` (`monthlyRent` ≤ 0 o
   `monthlyAdvance` < 0).
 - Una voce si toglie solo annullando l'operazione che l'ha scritta.
-- **Esempio (importi inventati):** contratto `ctr-berchet` dal 2025-10 al 2027-09, voce 2025-10
+- **Esempio (importi inventati):** contratto `ctr-app-a` dal 2025-10 al 2027-09, voce 2025-10
   1.600,00 € + 150,00 €; rinnovo da 2026-10 1.650,00 € + 150,00 €. Il canone di 2026-09 è 1.600,00 €,
   quello di 2026-10 1.650,00 €.
 
@@ -156,7 +156,7 @@ voce ha un `code`, il `contractId` e quanto serve per trovarla. Ordine: `contrac
   avviso per ogni mese fino alla fine del contratto. `asOf` è un argomento (core puro); la riga di
   comando passa il mese dell'orologio.
 - Un posto vuoto dà `rent-differs` come oggi R34 (rilievo minore rimandato della Fase C): domanda 4.
-- **Esempio (importi inventati):** `ctr-berchet` canone 1.600,00 + 150,00 € = 1.750,00 € da 2025-10;
+- **Esempio (importi inventati):** `ctr-app-a` canone 1.600,00 + 150,00 € = 1.750,00 € da 2025-10;
   presenze di Anna Prova, Bruno Esempio, Carla Finta, Dario Inventato 350,00 + 30,00 € ciascuno e di
   Elena Fittizia 330,00 + 30,00 €: totale 1.880,00 € → `rent-differs` da 2025-10 a 2026-09 con atteso
   175000 e totale 188000. La presenza di Elena Fittizia collegata da 2025-09 → anche
@@ -238,7 +238,7 @@ sotto ognuna; la domanda 5 resta aperta (fuori).
    Raccomando: no, gli arretrati (R117) lo coprono per inquilino. *Aperta: fuori.*
 6. **Rinnovo annuale: un contratto o uno per anno.** Il piano tiene un solo record per i transitori
    rinnovati (`end` con le proroghe certe, R1 con `settlement: 'annuale'`) e il rinnovo come voce del
-   canone. Va bene, o ogni rinnovo è un contratto nuovo con un nuovo codice? Esempio: Berchet
+   canone. Va bene, o ogni rinnovo è un contratto nuovo con un nuovo codice? Esempio: Appartamento A
    2025-10 – 2027-09 con un rinnovo a 2026-10 in una voce del canone. **Decisa da user1:** un record,
    il rinnovo è una voce dello storico del canone.
 7. **Cessione e subentro.** La sezione 26 vuole data e codice della registrazione della cessione
@@ -251,7 +251,7 @@ sotto ognuna; la domanda 5 resta aperta (fuori).
 9. **Contratti vivi sovrapposti.** Due contratti vivi dello stesso appartamento con mesi in comune
    (per esempio un rinnovo salvato come contratto nuovo senza accorciare il primo) danno due canoni
    per lo stesso mese e due confronti di R4. Serve un controllo `contract-overlap` in `contratti`?
-   Raccomando: sì, solo come avviso. Esempio: Berchet 2025-10 – 2027-09 e 2026-10 – 2028-09 →
+   Raccomando: sì, solo come avviso. Esempio: Appartamento A 2025-10 – 2027-09 e 2026-10 – 2028-09 →
    avviso per 2026-10 – 2027-09. **Decisa da user1 (R181):** sì, avviso `contract-overlap` con i mesi
    in comune, in `contractChecks` e in `contratti`.
 

@@ -36,7 +36,7 @@ pagamento (3b), classificato, giroconto, da rivedere.
 
 ## Non obiettivi
 
-- Ripartizione dell'F24 per immobile e IMU di Berchet e Lovarini: **3d**. R3 (IMU) non si tocca.
+- Ripartizione dell'F24 per immobile e IMU di Appartamento A e Appartamento B: **3d**. R3 (IMU) non si tocca.
 - Excel, stato «saldato» del conguaglio (R6) e istantanee: piano 5.
 - Scadenze e pagamenti (voce F2 della ricognizione), Tasse e stime (sezione 34): useranno le uscite
   classificate, in altri piani.
@@ -182,17 +182,17 @@ di un appartamento insieme). Per la coppia (X, Y), «Y deve a X» è:
   commissione legata se la domanda 10 è sì;
 - \+ le `movementClass` confermate (non escluse) su un conto di X con `apartmentId` Y;
 - − i `transfer` `saldo` da un conto di Y a uno di X; + quelli da X a Y;
-- poi il netto con il verso opposto: si mostra una sola riga per coppia («Lovarini deve a Berchet
+- poi il netto con il verso opposto: si mostra una sola riga per coppia («Appartamento B deve a Appartamento A
   185,76 €») con l'elenco delle voci (data, tipo, quota, `id` del documento o del movimento).
 
 `toSplit` elenca gli F24 confermati senza importo. Le voci presunte (senza estratto) sono la domanda
 11. Le entrate (canoni) non entrano mai nel saldo.
 
-**Esempio (importi inventati).** Dal conto di Berchet: quota di Lovarini della TARI comune 84,96 €
-(l'esempio di R3), rata condominiale di Lovarini 300,00 € con commissione 0,80 €, bonifico a un
-fornitore di 50,00 €; dal conto di Lovarini a quello di Berchet un giroconto «saldo» di 200,00 €.
-Saldo: 84,96 + 300,00 + 0,80 − 200,00 = **Lovarini deve a Berchet 185,76 €**. Il bonifico al
-fornitore non entra (è un'uscita di Berchet).
+**Esempio (importi inventati).** Dal conto di Appartamento A: quota di Appartamento B della TARI comune 84,96 €
+(l'esempio di R3), rata condominiale di Appartamento B 300,00 € con commissione 0,80 €, bonifico a un
+fornitore di 50,00 €; dal conto di Appartamento B a quello di Appartamento A un giroconto «saldo» di 200,00 €.
+Saldo: 84,96 + 300,00 + 0,80 − 200,00 = **Appartamento B deve a Appartamento A 185,76 €**. Il bonifico al
+fornitore non entra (è un'uscita di Appartamento A).
 
 Riga di comando `estratti saldi`: di default solo coppie di `id` di appartamento e numero di voci;
 `--dettagli` aggiunge importi, date e voci (R107).
@@ -219,13 +219,13 @@ importi inventati.
 
 1. **Quando una regola appresa vale per un'uscita nuova?** Raccomando: stessa controparte (IBAN, se
    no il nome), stesso conto, uscita; **l'importo non conta**; senza controparte nessuna regola (sempre
-   proposta). Esempio: confermi «SUNIA, IBAN …, conto Berchet → altro, Berchet» per 40,00 €; l'anno
+   proposta). Esempio: confermi «SUNIA, IBAN …, conto Appartamento A → altro, Appartamento A» per 40,00 €; l'anno
    dopo SUNIA addebita 42,00 € sullo stesso conto: classificato da solo. Lo stesso addebito sul conto
-   di Pulci: proposta. (Il disegno del piano 3 parlava di «testo nella causale»: raccomando la
+   di Appartamento C: proposta. (Il disegno del piano 3 parlava di «testo nella causale»: raccomando la
    controparte perché la causale cambia a ogni mese.)
 2. **Regole anche per le entrate che non sono degli inquilini** (rimborsi dei fornitori)? Raccomando:
    sì, solo per IBAN e solo se quell'IBAN non ha nessun `payer` (mai per nome). Esempio: un rimborso
-   Enel di 12,30 € con IBAN Enel, confermato «utenze, Pulci»; il rimborso dopo, 8,10 €, si classifica
+   Enel di 12,30 € con IBAN Enel, confermato «utenze, Appartamento C»; il rimborso dopo, 8,10 €, si classifica
    da solo. Un bonifico da un genitore senza `payer` resta «chi è».
 3. **Proporre l'esclusione di un non contabilizzato superato?** Un movimento tenuto con `booked:
    false` il cui giorno è coperto da un estratto più recente dello stesso conto che non lo contiene
@@ -235,12 +235,12 @@ importi inventati.
    causale diversa: proposta di escludere il primo.
 4. **Giroconti dopo la prima conferma automatici?** Raccomando: sì, per la stessa coppia di conti e
    lo stesso verso, con lo scopo confermato, annullabili (come le regole delle uscite). Esempio:
-   confermi Lovarini → Berchet 200,00 € «saldo»; il mese dopo Lovarini → Berchet 150,00 € diventa da
-   solo «saldo» e il debito scende di 150,00 €. Berchet → Lovarini resta proposta.
+   confermi Appartamento B → Appartamento A 200,00 € «saldo»; il mese dopo Appartamento B → Appartamento A 150,00 € diventa da
+   solo «saldo» e il debito scende di 150,00 €. Appartamento A → Appartamento B resta proposta.
 5. **Un F24 si può assegnare per intero a un altro appartamento già nel 3c?** Raccomando: sì, alla
    conferma, e allora entra nel saldo con l'importo intero; la divisione per righe resta al 3d.
-   Esempio: imposta di registro di 67,00 € di Lovarini pagata con F24 dal conto di Berchet: «Lovarini
-   deve a Berchet 67,00 €». Un F24 IMU con due immobili resta «da ripartire», senza importo.
+   Esempio: imposta di registro di 67,00 € di Appartamento B pagata con F24 dal conto di Appartamento A: «Appartamento B
+   deve a Appartamento A 67,00 €». Un F24 IMU con due immobili resta «da ripartire», senza importo.
 6. **Una bolletta registrata dopo che una regola ha classificato il suo addebito:** vince la bolletta?
    Raccomando: sì per le classificazioni automatiche (la regola cede, nella stessa operazione
    dell'abbinamento, annullabile); una classificazione confermata a mano resta e l'abbinamento diventa
@@ -261,11 +261,11 @@ importi inventati.
    restituzione della caparra di 600,00 € con 5,40 € di interessi meno 67,00 € di imposta: bonifico
    −538,40 € → `Payment` `caparra` −538,40 € all'inquilino uscente; il piano 5 lo userà per R6.
 10. **La commissione di una rata pagata per un altro appartamento va nel saldo?** R7 dice che è parte
-    della voce. Raccomando: sì. Esempio: rata di Lovarini 300,00 € dal conto di Berchet più 0,80 € di
-    commissione: Lovarini deve 300,80 €.
+    della voce. Raccomando: sì. Esempio: rata di Appartamento B 300,00 € dal conto di Appartamento A più 0,80 € di
+    commissione: Appartamento B deve 300,80 €.
 11. **Le voci presunte (periodo senza estratto) entrano nel saldo?** Raccomando: no, elencate a parte
-    «non verificate», senza importo nel netto. Esempio: rata di Lovarini di 300,00 € del 2025, nessun
-    estratto di Berchet per quel mese: non entra nei 185,76 € dell'esempio, ma compare nell'elenco.
+    «non verificate», senza importo nel netto. Esempio: rata di Appartamento B di 300,00 € del 2025, nessun
+    estratto di Appartamento A per quel mese: non entra nei 185,76 € dell'esempio, ma compare nell'elenco.
 
 ## Mie scelte (da controllare)
 
@@ -281,7 +281,7 @@ importi inventati.
 6. **Solo gli abbinamenti confermati si salvano;** proposte, ambigui e presunti si ricalcolano (come le
    proposte del 3b).
 7. **Saldo per coppia di appartamenti**, non di conti: oggi c'è un conto per appartamento e la
-   sezione 24 parla di appartamenti («Lovarini deve a Berchet»).
+   sezione 24 parla di appartamenti («Appartamento B deve a Appartamento A»).
 8. **«Solo questa volta»** anche per le uscite e i giroconti, come la decisione D del 3b.
 9. **Annullare una sola classificazione automatica** lascia il movimento `undone`, come R118 e R121.
 10. **Regole in conflitto** (due regole valide con categorie diverse): proposta, mai automatico.
@@ -291,7 +291,7 @@ importi inventati.
 
 ## Test (solo fixture sintetiche)
 
-Fixture con due conti (Berchet, Lovarini) e un terzo (Pulci), IBAN di prova già in
+Fixture con due conti (Appartamento A, Appartamento B) e un terzo (Appartamento C), IBAN di prova già in
 `fixtures/README.md` per i conti propri, più un IBAN inventato per un fornitore da aggiungere alla
 tabella:
 
@@ -348,7 +348,7 @@ tabella:
 
 - **Interfaccia:** scheda Movimenti di «Da rivedere», Saldo tra conti sulla Home e in Banca, azioni di
   massa, veste grafica (con user1).
-- **3d:** ripartizione dell'F24 per immobile (IMU di Berchet e Lovarini) e correzione di R3.
+- **3d:** ripartizione dell'F24 per immobile (IMU di Appartamento A e Appartamento B) e correzione di R3.
 - **Excel e piano 5:** colonne del file riservato, stato «saldato» dei conguagli (R6), uso dei
   `Payment` negativi.
 - Scadenze e pagamenti, Tasse e stime, smistamento dei file.

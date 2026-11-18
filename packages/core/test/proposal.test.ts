@@ -449,17 +449,21 @@ describe('proposalFromExtraction: TARI', () => {
         consumption: undefined,
       },
       parts: [
-        { label: 'Berchet', amount: 10075, source },
-        { label: 'Lovarini', amount: 8471, source },
+        { label: 'Appartamento A', amount: 10075, source },
+        { label: 'Appartamento B', amount: 8471, source },
       ],
       identifiers: [],
       ...overrides,
     });
   const supplies = [
-    { id: 'sup-berchet', label: 'Berchet', apartments: [{ apartmentId: 'apt-b', weight: 10000 }] },
     {
-      id: 'sup-lovarini',
-      label: 'Lovarini',
+      id: 'sup-app-a',
+      label: 'Appartamento A',
+      apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+    },
+    {
+      id: 'sup-app-b',
+      label: 'Appartamento B',
       apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
     },
   ];
@@ -474,8 +478,8 @@ describe('proposalFromExtraction: TARI', () => {
   it('proposes one instalment per supply, sharing the group, and they split a debit', () => {
     const proposal = asTari(proposalFromExtraction(tariResult(), tariContext(), ids('i')));
     expect(proposal.instalments).toHaveLength(2);
-    const [berchet, lovarini] = proposal.instalments;
-    expect(berchet).toMatchObject({
+    const [aptA, aptB] = proposal.instalments;
+    expect(aptA).toMatchObject({
       apartmentId: 'apt-b',
       kind: 'tari',
       esercizio: '2026',
@@ -488,19 +492,19 @@ describe('proposalFromExtraction: TARI', () => {
       conguaglioPrec: 0,
       coversFrom: '2026-01',
       coversTo: '2026-04',
-      supplyId: 'sup-berchet',
+      supplyId: 'sup-app-a',
       shared: { groupTotal: 18546, weight: 10075 },
     });
-    expect(lovarini).toMatchObject({ apartmentId: 'apt-l', shared: { weight: 8471 } });
+    expect(aptB).toMatchObject({ apartmentId: 'apt-l', shared: { weight: 8471 } });
     // E1: one debit from the account of the notice's apartment, so the group is consistent.
-    expect(berchet?.paidFromApartmentId).toBeUndefined();
-    expect(lovarini?.paidFromApartmentId).toBe('apt-b');
+    expect(aptA?.paidFromApartmentId).toBeUndefined();
+    expect(aptB?.paidFromApartmentId).toBe('apt-b');
     expect(
       sharedGroupProblem(
         proposal.instalments.map((i) => ({ ...i, v: 1, rev: 1, fileHash: 'a'.repeat(64) })),
       ),
     ).toBeUndefined();
-    expect(berchet?.shared?.groupId).toBe(lovarini?.shared?.groupId);
+    expect(aptA?.shared?.groupId).toBe(aptB?.shared?.groupId);
     expect(new Set(proposal.instalments.map((i) => i.id)).size).toBe(2);
     expect(severities(proposal)).not.toContain('fail');
     expect(severities(proposal)).not.toContain('warn');
@@ -523,8 +527,8 @@ describe('proposalFromExtraction: TARI', () => {
         tariContext({
           supplies: [
             {
-              id: 'sup-berchet',
-              label: 'Berchet',
+              id: 'sup-app-a',
+              label: 'Appartamento A',
               apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
             },
           ],
@@ -534,7 +538,7 @@ describe('proposalFromExtraction: TARI', () => {
     );
     expect(proposal.instalments).toHaveLength(1);
     expect(check(proposal, 'unknown-part')?.severity).toBe('fail');
-    expect(check(proposal, 'unknown-part')?.message).toContain('Lovarini');
+    expect(check(proposal, 'unknown-part')?.message).toContain('Appartamento B');
     expect(check(proposal, 'unknown-part')?.message).toContain('Collegala qui sotto');
   });
 
@@ -545,16 +549,16 @@ describe('proposalFromExtraction: TARI', () => {
         tariContext({
           supplies: [
             {
-              id: 'sup-berchet',
-              label: 'Berchet',
+              id: 'sup-app-a',
+              label: 'Appartamento A',
               apartments: [
                 { apartmentId: 'apt-b', weight: 3333 },
                 { apartmentId: 'apt-c', weight: 6667 },
               ],
             },
             {
-              id: 'sup-lovarini',
-              label: 'Lovarini',
+              id: 'sup-app-b',
+              label: 'Appartamento B',
               apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
             },
           ],
@@ -582,23 +586,23 @@ describe('proposalFromExtraction: TARI', () => {
       proposalFromExtraction(
         tariResult({
           parts: [
-            { label: 'Berchet', amount: 4000, source },
-            { label: 'Lovarini', amount: 8471, source },
+            { label: 'Appartamento A', amount: 4000, source },
+            { label: 'Appartamento B', amount: 8471, source },
           ],
         }),
         tariContext({
           supplies: [
             {
-              id: 'sup-berchet',
-              label: 'Berchet',
+              id: 'sup-app-a',
+              label: 'Appartamento A',
               apartments: [
                 { apartmentId: 'apt-b', weight: 1 },
                 { apartmentId: 'apt-c', weight: 9999 },
               ],
             },
             {
-              id: 'sup-lovarini',
-              label: 'Lovarini',
+              id: 'sup-app-b',
+              label: 'Appartamento B',
               apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
             },
           ],
@@ -608,15 +612,15 @@ describe('proposalFromExtraction: TARI', () => {
     );
     expect(check(proposal, 'part-share')?.severity).toBe('fail');
     expect(check(proposal, 'part-share')?.message).toContain(
-      'La quota di un appartamento su questa utenza «Berchet» è zero: la percentuale è troppo piccola per questo importo. Controlla le percentuali.',
+      'La quota di un appartamento su questa utenza «Appartamento A» è zero: la percentuale è troppo piccola per questo importo. Controlla le percentuali.',
     );
     expect(proposal.instalments.map((i) => i.apartmentId)).toEqual(['apt-l']);
   });
 
   it('fails duplicate-supply for two supplies with the same label, proposing neither', () => {
-    const berchet = {
-      id: 'sup-berchet',
-      label: 'Berchet',
+    const aptA = {
+      id: 'sup-app-a',
+      label: 'Appartamento A',
       apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
     };
     const proposal = asTari(
@@ -624,16 +628,16 @@ describe('proposalFromExtraction: TARI', () => {
         tariResult(),
         tariContext({
           supplies: [
-            berchet,
+            aptA,
             {
-              ...berchet,
-              id: 'sup-berchet-2',
-              label: 'berchet',
+              ...aptA,
+              id: 'sup-app-a-2',
+              label: 'appartamento a',
               apartments: [{ apartmentId: 'apt-c', weight: 10000 }],
             },
             {
-              id: 'sup-lovarini',
-              label: 'Lovarini',
+              id: 'sup-app-b',
+              label: 'Appartamento B',
               apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
             },
           ],
@@ -656,12 +660,12 @@ describe('proposalFromExtraction: TARI', () => {
         tariContext({
           supplies: [
             {
-              id: 'sup-berchet',
-              label: 'Berchet',
+              id: 'sup-app-a',
+              label: 'Appartamento A',
               apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
               deleted: true,
             },
-            { id: 'sup-lovarini', label: 'Lovarini', apartments: [] },
+            { id: 'sup-app-b', label: 'Appartamento B', apartments: [] },
           ],
         }),
         ids(),
@@ -678,13 +682,13 @@ describe('proposalFromExtraction: TARI', () => {
         tariContext({
           supplies: [
             {
-              id: 'sup-berchet',
-              label: 'Berchet',
+              id: 'sup-app-a',
+              label: 'Appartamento A',
               apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
             },
             {
-              id: 'sup-lovarini',
-              label: 'Lovarini',
+              id: 'sup-app-b',
+              label: 'Appartamento B',
               apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
             },
           ],
@@ -702,13 +706,13 @@ describe('proposalFromExtraction: TARI', () => {
         tariContext({
           supplies: [
             {
-              id: 'sup-berchet',
-              label: ' BERCHET ',
+              id: 'sup-app-a',
+              label: ' APPARTAMENTO A ',
               apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
             },
             {
-              id: 'sup-lovarini',
-              label: 'lovarini',
+              id: 'sup-app-b',
+              label: 'appartamento b',
               apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
             },
           ],
@@ -741,8 +745,8 @@ describe('proposalFromExtraction: TARI', () => {
     const proposal = proposalFromExtraction(
       tariResult({
         parts: [
-          { label: 'Berchet', amount: 18546, source },
-          { label: 'Lovarini', amount: 0, source },
+          { label: 'Appartamento A', amount: 18546, source },
+          { label: 'Appartamento B', amount: 0, source },
         ],
       }),
       tariContext(),
@@ -837,8 +841,8 @@ describe('proposalFromExtraction: TARI', () => {
     const sameLabel = proposalFromExtraction(
       tariResult({
         parts: [
-          { label: 'Berchet', amount: 10075, source },
-          { label: 'BERCHET ', amount: 8471, source },
+          { label: 'Appartamento A', amount: 10075, source },
+          { label: 'APPARTAMENTO A ', amount: 8471, source },
         ],
       }),
       tariContext(),
@@ -850,13 +854,13 @@ describe('proposalFromExtraction: TARI', () => {
       tariContext({
         supplies: [
           {
-            id: 'sup-berchet',
-            label: 'Berchet',
+            id: 'sup-app-a',
+            label: 'Appartamento A',
             apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
           },
           {
-            id: 'sup-lovarini',
-            label: 'Lovarini',
+            id: 'sup-app-b',
+            label: 'Appartamento B',
             apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
           },
         ],

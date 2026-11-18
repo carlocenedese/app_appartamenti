@@ -48,7 +48,7 @@ const euro = (amount) => (amount === undefined ? '—' : formatEuro(amount));
 const signed = (amount) =>
   amount === undefined ? '—' : amount > 0 ? `+ ${formatEuro(amount)}` : formatEuro(amount);
 
-/** The report file name of a fixture: `berchet-2024-25.json` gives `berchet-2024-25-differenze.md`. */
+/** The report file name of a fixture: `app-a-2024-25.json` gives `app-a-2024-25-differenze.md`. */
 export function reportName(fixtureName) {
   return `${fixtureName.replace(/\.json$/, '')}-differenze.md`;
 }

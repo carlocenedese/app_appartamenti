@@ -39,16 +39,16 @@ const base = { v: 1 as const, rev: 1 };
 const account = (id: string, apartmentId: string): Account =>
   AccountSchema.parse({ ...base, id, apartmentId, label: 'Conto', bankProfileId: 'bp' });
 const accounts = [
-  account('acc-berchet', 'berchet'),
-  account('acc-berchet-2', 'berchet'),
-  account('acc-lovarini', 'lovarini'),
+  account('acc-app-a', 'app-a'),
+  account('acc-app-a-2', 'app-a'),
+  account('acc-app-b', 'app-b'),
 ];
 
 const tx = (id: string, accountId: string, date: string, amount: number): BankTransaction =>
   BankTransactionSchema.parse({
     ...base,
     id,
-    apartmentId: accountId === 'acc-lovarini' ? 'lovarini' : 'berchet',
+    apartmentId: accountId === 'acc-app-b' ? 'app-b' : 'app-a',
     accountId,
     date,
     amount,
@@ -101,8 +101,8 @@ const transfer = (id: string, extra: Record<string, unknown> = {}): Transfer =>
   TransferSchema.parse({
     ...base,
     id,
-    fromAccountId: 'acc-lovarini',
-    toAccountId: 'acc-berchet',
+    fromAccountId: 'acc-app-b',
+    toAccountId: 'acc-app-a',
     amount: 20000,
     date: '2027-04-20',
     outTransactionId: `${id}-o`,
@@ -112,25 +112,25 @@ const transfer = (id: string, extra: Record<string, unknown> = {}): Transfer =>
     ...extra,
   });
 
-// The TARI shared by Berchet and Lovarini, paid from the account of Berchet (R3: 84,96 € of
-// Lovarini); the condominium instalment of Lovarini (300,00 € plus 0,80 € of commission, R7);
-// a bank transfer of 50,00 € to a supplier of Berchet; Lovarini → Berchet 200,00 € «saldo».
+// The TARI shared by Appartamento A and Appartamento B, paid from the account of Appartamento A (R3: 84,96 € of
+// Appartamento B); the condominium instalment of Appartamento B (300,00 € plus 0,80 € of commission, R7);
+// a bank transfer of 50,00 € to a supplier of Appartamento A; Appartamento B → Appartamento A 200,00 € «saldo».
 const tari = { kind: 'tari', esercizio: '2027', coversFrom: '2027-01', coversTo: '2027-12' };
 const shared = (weight: number) => ({ groupId: 'avviso-1', groupTotal: 18600, weight });
 const example = {
   accounts,
   bills: [] as Bill[],
   instalments: [
-    instalment('tari-b', { ...tari, apartmentId: 'berchet', rata: 10104, shared: shared(10104) }),
+    instalment('tari-b', { ...tari, apartmentId: 'app-a', rata: 10104, shared: shared(10104) }),
     instalment('tari-l', {
       ...tari,
-      apartmentId: 'lovarini',
-      paidFromApartmentId: 'berchet',
+      apartmentId: 'app-b',
+      paidFromApartmentId: 'app-a',
       rata: 8496,
       shared: shared(8496),
     }),
-    instalment('condo-l', { apartmentId: 'lovarini', paidFromApartmentId: 'berchet' }),
-    instalment('condo-b', { apartmentId: 'berchet' }),
+    instalment('condo-l', { apartmentId: 'app-b', paidFromApartmentId: 'app-a' }),
+    instalment('condo-b', { apartmentId: 'app-a' }),
   ],
   matches: [
     match('tari-b', 't-tari', '2027-03-31', 10104),
@@ -141,13 +141,13 @@ const example = {
   ],
   unverified: [] as MatchItemRef[],
   transactions: [
-    tx('t-tari', 'acc-berchet', '2027-03-31', -18600),
-    tx('t-condo', 'acc-berchet', '2027-04-05', -30000),
-    tx('t-comm', 'acc-berchet', '2027-04-05', -80),
-    tx('t-condo-b', 'acc-berchet', '2027-04-05', -30000),
-    tx('t-forn', 'acc-berchet', '2027-04-10', -5000),
+    tx('t-tari', 'acc-app-a', '2027-03-31', -18600),
+    tx('t-condo', 'acc-app-a', '2027-04-05', -30000),
+    tx('t-comm', 'acc-app-a', '2027-04-05', -80),
+    tx('t-condo-b', 'acc-app-a', '2027-04-05', -30000),
+    tx('t-forn', 'acc-app-a', '2027-04-10', -5000),
   ],
-  classes: [cls('t-forn', { kind: 'altro', apartmentId: 'berchet' })],
+  classes: [cls('t-forn', { kind: 'altro', apartmentId: 'app-a' })],
   transfers: [transfer('tr-1')],
   imuYears: [] as ImuYear[],
   taxPayments: [] as TaxPayment[],
@@ -167,32 +167,32 @@ const items = [
   {
     date: '2027-03-31',
     kind: 'rata',
-    payerApartmentId: 'berchet',
-    forApartmentId: 'lovarini',
+    payerApartmentId: 'app-a',
+    forApartmentId: 'app-b',
     amount: 8496,
     refId: 'tari-l',
   },
   {
     date: '2027-04-05',
     kind: 'commissione',
-    payerApartmentId: 'berchet',
-    forApartmentId: 'lovarini',
+    payerApartmentId: 'app-a',
+    forApartmentId: 'app-b',
     amount: 80,
     refId: 'condo-l',
   },
   {
     date: '2027-04-05',
     kind: 'rata',
-    payerApartmentId: 'berchet',
-    forApartmentId: 'lovarini',
+    payerApartmentId: 'app-a',
+    forApartmentId: 'app-b',
     amount: 30000,
     refId: 'condo-l',
   },
   {
     date: '2027-04-20',
     kind: 'giroconto',
-    payerApartmentId: 'berchet',
-    forApartmentId: 'lovarini',
+    payerApartmentId: 'app-a',
+    forApartmentId: 'app-b',
     amount: -20000,
     refId: 'tr-1',
   },
@@ -200,11 +200,9 @@ const items = [
 const net = (input: Input) => accountBalances(input).pairs.map((p) => p.amount);
 
 describe('accountBalances (plan 3c, task 9)', () => {
-  it('gives the example of the design: Lovarini owes Berchet 185,76 €', () => {
+  it('gives the example of the design: Appartamento B owes Appartamento A 185,76 €', () => {
     expect(accountBalances(example)).toEqual({
-      pairs: [
-        { creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', amount: 18576, items },
-      ],
+      pairs: [{ creditorApartmentId: 'app-a', debtorApartmentId: 'app-b', amount: 18576, items }],
       toSplit: [],
       unverified: [],
       mixedF24: [],
@@ -213,8 +211,8 @@ describe('accountBalances (plan 3c, task 9)', () => {
 
   it('counts the «saldo» transfers both ways, never «mutuo» nor within one apartment', () => {
     const back = transfer('tr-2', {
-      fromAccountId: 'acc-berchet',
-      toAccountId: 'acc-lovarini',
+      fromAccountId: 'acc-app-a',
+      toAccountId: 'acc-app-b',
       amount: 5000,
     });
     const result = accountBalances(withExtra({ transfers: [back] }));
@@ -222,13 +220,13 @@ describe('accountBalances (plan 3c, task 9)', () => {
     expect(result.pairs[0]?.items.at(-1)).toEqual({
       date: '2027-04-20',
       kind: 'giroconto',
-      payerApartmentId: 'lovarini',
-      forApartmentId: 'berchet',
+      payerApartmentId: 'app-b',
+      forApartmentId: 'app-a',
       amount: -5000,
       refId: 'tr-2',
     });
     const mutuo = transfer('tr-3', { purpose: 'mutuo' });
-    const own = transfer('tr-4', { fromAccountId: 'acc-berchet-2' });
+    const own = transfer('tr-4', { fromAccountId: 'acc-app-a-2' });
     const gone = transfer('tr-5', { deleted: true });
     expect(net(withExtra({ transfers: [mutuo, own, gone] }))).toEqual([18576]);
   });
@@ -236,8 +234,8 @@ describe('accountBalances (plan 3c, task 9)', () => {
   it('dates a transfer across the year on its record (first leg), never on the legs', () => {
     const across = transfer('tr-y', { date: '2027-12-29', amount: 100 });
     const legs = [
-      tx('tr-y-o', 'acc-lovarini', '2027-12-29', -100),
-      tx('tr-y-i', 'acc-berchet', '2028-01-03', 100),
+      tx('tr-y-o', 'acc-app-b', '2027-12-29', -100),
+      tx('tr-y-i', 'acc-app-a', '2028-01-03', 100),
     ];
     const result = accountBalances(withExtra({ transfers: [across], transactions: legs }));
     expect(result.pairs[0]?.items.at(-1)).toMatchObject({ date: '2027-12-29', refId: 'tr-y' });
@@ -248,12 +246,12 @@ describe('accountBalances (plan 3c, task 9)', () => {
     const result = accountBalances(
       withExtra({
         transactions: [
-          tx('t-f24-l', 'acc-berchet', '2027-05-16', -6700),
-          tx('t-f24-b', 'acc-berchet', '2027-06-16', -12000),
+          tx('t-f24-l', 'acc-app-a', '2027-05-16', -6700),
+          tx('t-f24-b', 'acc-app-a', '2027-06-16', -12000),
         ],
         classes: [
-          cls('t-f24-l', { ...f24, apartmentId: 'lovarini' }),
-          cls('t-f24-b', { ...f24, apartmentId: 'berchet' }),
+          cls('t-f24-l', { ...f24, apartmentId: 'app-b' }),
+          cls('t-f24-b', { ...f24, apartmentId: 'app-a' }),
         ],
       }),
     );
@@ -261,13 +259,13 @@ describe('accountBalances (plan 3c, task 9)', () => {
     expect(result.pairs[0]?.items.at(-1)).toEqual({
       date: '2027-05-16',
       kind: 'f24',
-      payerApartmentId: 'berchet',
-      forApartmentId: 'lovarini',
+      payerApartmentId: 'app-a',
+      forApartmentId: 'app-b',
       amount: 6700,
       refId: 't-f24-l',
     });
     expect(result.toSplit).toEqual([
-      { transactionId: 't-f24-b', apartmentId: 'berchet', date: '2027-06-16' },
+      { transactionId: 't-f24-b', apartmentId: 'app-a', date: '2027-06-16' },
     ]);
   });
 
@@ -279,20 +277,20 @@ describe('accountBalances (plan 3c, task 9)', () => {
       matches: [],
       unverified: [],
       transactions: [
-        tx('t-asso', 'acc-berchet', '2027-02-01', -4000),
-        tx('t-rimb', 'acc-berchet', '2027-02-10', 1230),
+        tx('t-asso', 'acc-app-a', '2027-02-01', -4000),
+        tx('t-rimb', 'acc-app-a', '2027-02-10', 1230),
       ],
       classes: [
-        cls('t-asso', { kind: 'altro', apartmentId: 'lovarini', ruleId: 'rule-t-0' }),
-        cls('t-rimb', { kind: 'utenze', apartmentId: 'lovarini' }),
+        cls('t-asso', { kind: 'altro', apartmentId: 'app-b', ruleId: 'rule-t-0' }),
+        cls('t-rimb', { kind: 'utenze', apartmentId: 'app-b' }),
       ],
       transfers: [],
       imuYears: [],
     });
     expect(result.pairs).toEqual([
       {
-        creditorApartmentId: 'berchet',
-        debtorApartmentId: 'lovarini',
+        creditorApartmentId: 'app-a',
+        debtorApartmentId: 'app-b',
         amount: 2770,
         items: [
           expect.objectContaining({ kind: 'uscita', amount: 4000, refId: 't-asso' }),
@@ -300,20 +298,20 @@ describe('accountBalances (plan 3c, task 9)', () => {
         ],
       },
     ]);
-    expect(inBalance(cls('t-asso', { kind: 'altro', apartmentId: 'lovarini' }))).toBe(true);
+    expect(inBalance(cls('t-asso', { kind: 'altro', apartmentId: 'app-b' }))).toBe(true);
     expect(inBalance(cls('t-asso', { kind: 'escluso', excludeReason: 'doppione' }))).toBe(false);
   });
 
   it('lists an instalment to verify paid for another apartment apart, out of the net', () => {
     const presunta = instalment('condo-l-2025', {
-      apartmentId: 'lovarini',
-      paidFromApartmentId: 'berchet',
+      apartmentId: 'app-b',
+      paidFromApartmentId: 'app-a',
       esercizio: '2025-26',
       dueDate: '2025-04-01',
       coversFrom: '2025-04',
       coversTo: '2025-06',
     });
-    const ownAssumed = instalment('condo-b-2025', { apartmentId: 'berchet' });
+    const ownAssumed = instalment('condo-b-2025', { apartmentId: 'app-a' });
     const result = accountBalances({
       ...withExtra({ instalments: [presunta, ownAssumed] }),
       unverified: [
@@ -327,8 +325,8 @@ describe('accountBalances (plan 3c, task 9)', () => {
       {
         itemType: 'instalment',
         itemId: 'condo-l-2025',
-        payerApartmentId: 'berchet',
-        forApartmentId: 'lovarini',
+        payerApartmentId: 'app-a',
+        forApartmentId: 'app-b',
       },
     ]);
   });
@@ -337,16 +335,16 @@ describe('accountBalances (plan 3c, task 9)', () => {
     const result = accountBalances(
       withExtra({
         transactions: [
-          tx('t-escl', 'acc-berchet', '2027-05-01', -999),
-          tx('t-del', 'acc-berchet', '2027-05-02', -999),
-          tx('t-prop', 'acc-berchet', '2027-05-03', -30000),
-          // A rent paid by a tenant on the account of Berchet: it never counts (question 11).
-          tx('t-canone', 'acc-berchet', '2027-05-04', 70000),
+          tx('t-escl', 'acc-app-a', '2027-05-01', -999),
+          tx('t-del', 'acc-app-a', '2027-05-02', -999),
+          tx('t-prop', 'acc-app-a', '2027-05-03', -30000),
+          // A rent paid by a tenant on the account of Appartamento A: it never counts (question 11).
+          tx('t-canone', 'acc-app-a', '2027-05-04', 70000),
         ],
         classes: [
           cls('t-escl', { kind: 'escluso', excludeReason: 'doppione' }),
-          cls('t-del', { kind: 'altro', apartmentId: 'lovarini', deleted: true }),
-          cls('t-missing', { kind: 'altro', apartmentId: 'lovarini' }),
+          cls('t-del', { kind: 'altro', apartmentId: 'app-b', deleted: true }),
+          cls('t-missing', { kind: 'altro', apartmentId: 'app-b' }),
         ],
         matches: [
           match('condo-l', 't-prop', '2027-05-03', 30000, { confirmed: false }),
@@ -355,31 +353,31 @@ describe('accountBalances (plan 3c, task 9)', () => {
         ],
         instalments: [
           instalment('condo-gone', {
-            apartmentId: 'lovarini',
-            paidFromApartmentId: 'berchet',
+            apartmentId: 'app-b',
+            paidFromApartmentId: 'app-a',
             deleted: true,
           }),
         ],
       }),
     );
     expect(result.pairs).toEqual([
-      { creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', amount: 18576, items },
+      { creditorApartmentId: 'app-a', debtorApartmentId: 'app-b', amount: 18576, items },
     ]);
     // The class of a deleted movement does not count either.
-    const deletedTx = { ...tx('t-gone', 'acc-berchet', '2027-05-03', -999), deleted: true };
+    const deletedTx = { ...tx('t-gone', 'acc-app-a', '2027-05-03', -999), deleted: true };
     expect(
       net({
         ...example,
         transactions: [...example.transactions, deletedTx],
-        classes: [cls('t-gone', { kind: 'altro', apartmentId: 'lovarini' })],
+        classes: [cls('t-gone', { kind: 'altro', apartmentId: 'app-b' })],
       }),
     ).toEqual([18576]);
   });
 
   it('nets to zero with the first apartment by compareText as the creditor', () => {
     const back = transfer('tr-z', {
-      fromAccountId: 'acc-berchet',
-      toAccountId: 'acc-lovarini',
+      fromAccountId: 'acc-app-a',
+      toAccountId: 'acc-app-b',
       amount: 1000,
     });
     const result = accountBalances({
@@ -388,19 +386,19 @@ describe('accountBalances (plan 3c, task 9)', () => {
       instalments: [],
       matches: [],
       unverified: [],
-      transactions: [tx('t-l', 'acc-lovarini', '2027-01-05', -1000)],
-      classes: [cls('t-l', { kind: 'altro', apartmentId: 'berchet' })],
+      transactions: [tx('t-l', 'acc-app-b', '2027-01-05', -1000)],
+      classes: [cls('t-l', { kind: 'altro', apartmentId: 'app-a' })],
       transfers: [back],
       imuYears: [],
     });
     expect(result.pairs).toEqual([
       {
-        creditorApartmentId: 'berchet',
-        debtorApartmentId: 'lovarini',
+        creditorApartmentId: 'app-a',
+        debtorApartmentId: 'app-b',
         amount: 0,
         items: [
-          expect.objectContaining({ kind: 'uscita', payerApartmentId: 'lovarini', amount: 1000 }),
-          expect.objectContaining({ kind: 'giroconto', payerApartmentId: 'lovarini' }),
+          expect.objectContaining({ kind: 'uscita', payerApartmentId: 'app-b', amount: 1000 }),
+          expect.objectContaining({ kind: 'giroconto', payerApartmentId: 'app-b' }),
         ],
       },
     ]);
@@ -415,8 +413,8 @@ describe('accountBalances (plan 3c, task 9)', () => {
       ...example,
       matches: parts,
       transactions: [
-        tx('t-p1', 'acc-berchet', '2027-04-05', -20000),
-        tx('t-p2', 'acc-berchet', '2027-04-05', -10000),
+        tx('t-p1', 'acc-app-a', '2027-04-05', -20000),
+        tx('t-p2', 'acc-app-a', '2027-04-05', -10000),
       ],
       transfers: [],
     };
@@ -431,8 +429,8 @@ describe('accountBalances (plan 3c, task 9)', () => {
   it('an instalment of Y without paidFromApartmentId paid from the account of X is a rata', () => {
     const result = accountBalances(
       withExtra({
-        instalments: [instalment('condo-l-2', { apartmentId: 'lovarini' })],
-        transactions: [tx('t-condo-2', 'acc-berchet', '2027-05-05', -30000)],
+        instalments: [instalment('condo-l-2', { apartmentId: 'app-b' })],
+        transactions: [tx('t-condo-2', 'acc-app-a', '2027-05-05', -30000)],
         matches: [match('condo-l-2', 't-condo-2', '2027-05-05', 30000, { by: 'manual' })],
       }),
     );
@@ -440,8 +438,8 @@ describe('accountBalances (plan 3c, task 9)', () => {
     expect(result.pairs[0]?.items).toContainEqual({
       date: '2027-05-05',
       kind: 'rata',
-      payerApartmentId: 'berchet',
-      forApartmentId: 'lovarini',
+      payerApartmentId: 'app-a',
+      forApartmentId: 'app-b',
       amount: 30000,
       refId: 'condo-l-2',
     });
@@ -449,13 +447,13 @@ describe('accountBalances (plan 3c, task 9)', () => {
 
   it('an instalment paid from its own account is no item, whatever paidFromApartmentId says', () => {
     const own = instalment('condo-l-3', {
-      apartmentId: 'lovarini',
-      paidFromApartmentId: 'berchet',
+      apartmentId: 'app-b',
+      paidFromApartmentId: 'app-a',
     });
     const result = accountBalances(
       withExtra({
         instalments: [own],
-        transactions: [tx('t-condo-3', 'acc-lovarini', '2027-05-05', -30000)],
+        transactions: [tx('t-condo-3', 'acc-app-b', '2027-05-05', -30000)],
         matches: [match('condo-l-3', 't-condo-3', '2027-05-05', 30000)],
       }),
     );
@@ -465,12 +463,12 @@ describe('accountBalances (plan 3c, task 9)', () => {
   it('an automatic class yielded to a match by hand stays in the balance as a rata', () => {
     const result = accountBalances(
       withExtra({
-        instalments: [instalment('condo-l-4', { apartmentId: 'lovarini' })],
-        transactions: [tx('t-condo-4', 'acc-berchet', '2027-05-05', -30000)],
+        instalments: [instalment('condo-l-4', { apartmentId: 'app-b' })],
+        transactions: [tx('t-condo-4', 'acc-app-a', '2027-05-05', -30000)],
         classes: [
           cls('t-condo-4', {
             kind: 'condominio',
-            apartmentId: 'lovarini',
+            apartmentId: 'app-b',
             ruleId: 'rule-c',
             deleted: true,
           }),
@@ -488,7 +486,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
     const bill = BillSchema.parse({
       ...base,
       id: 'bill-l',
-      apartmentId: 'lovarini',
+      apartmentId: 'app-b',
       category: 'gas',
       supplier: 'Fornitore',
       dueDate: '2027-05-20',
@@ -510,8 +508,8 @@ describe('accountBalances (plan 3c, task 9)', () => {
       withExtra({
         bills: [bill],
         transactions: [
-          tx('t-gas', 'acc-berchet', '2027-05-20', -6300),
-          tx('t-gas-c', 'acc-berchet', '2027-05-20', -100),
+          tx('t-gas', 'acc-app-a', '2027-05-20', -6300),
+          tx('t-gas-c', 'acc-app-a', '2027-05-20', -100),
         ],
         matches: [billMatch('t-gas', 6300), billMatch('t-gas-c', 100, { part: 'commission' })],
       }),
@@ -520,8 +518,8 @@ describe('accountBalances (plan 3c, task 9)', () => {
     expect(result.pairs[0]?.items).toContainEqual({
       date: '2027-05-20',
       kind: 'bolletta',
-      payerApartmentId: 'berchet',
-      forApartmentId: 'lovarini',
+      payerApartmentId: 'app-a',
+      forApartmentId: 'app-b',
       amount: 6300,
       refId: 'bill-l',
     });
@@ -532,9 +530,9 @@ describe('accountBalances (plan 3c, task 9)', () => {
 
   it('gives the same result in any order of the input', () => {
     const input = withExtra({
-      transfers: [transfer('tr-2', { fromAccountId: 'acc-berchet', toAccountId: 'acc-lovarini' })],
-      transactions: [tx('t-f24-b', 'acc-berchet', '2027-06-16', -12000)],
-      classes: [cls('t-f24-b', { kind: 'tasse', f24: true, apartmentId: 'berchet' })],
+      transfers: [transfer('tr-2', { fromAccountId: 'acc-app-a', toAccountId: 'acc-app-b' })],
+      transactions: [tx('t-f24-b', 'acc-app-a', '2027-06-16', -12000)],
+      classes: [cls('t-f24-b', { kind: 'tasse', f24: true, apartmentId: 'app-a' })],
     });
     const shuffled = Object.fromEntries(
       Object.entries(input).map(([k, v]) => [k, [...(v as unknown[])].reverse()]),
@@ -550,29 +548,29 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
       id: `imu-${apartmentId}-2027`,
       apartmentId,
       year: '2027',
-      f24Group: 'berchet-lovarini',
+      f24Group: 'app-a-app-b',
       rates: [{ index: 1, expected }, { index: 2 }],
     });
   const imu = (rateIndex: number) => ({
     kind: 'tasse',
     f24: true,
-    apartmentId: 'berchet',
-    imu: { f24Group: 'berchet-lovarini', year: '2027', rateIndex },
+    apartmentId: 'app-a',
+    imu: { f24Group: 'app-a-app-b', year: '2027', rateIndex },
   });
   const run = (
     paid: number,
     rateIndex = 1,
-    imuYears = [imuYear('berchet', 60000), imuYear('lovarini', 40000)],
+    imuYears = [imuYear('app-a', 60000), imuYear('app-b', 40000)],
   ) =>
     accountBalances(
       withExtra({
         transactions: [
-          tx('t-imu', 'acc-berchet', '2027-06-14', -paid),
-          tx('t-f24', 'acc-berchet', '2027-06-16', -12000),
+          tx('t-imu', 'acc-app-a', '2027-06-14', -paid),
+          tx('t-f24', 'acc-app-a', '2027-06-16', -12000),
         ],
         classes: [
           cls('t-imu', imu(rateIndex)),
-          cls('t-f24', { kind: 'tasse', f24: true, apartmentId: 'berchet' }),
+          cls('t-f24', { kind: 'tasse', f24: true, apartmentId: 'app-a' }),
         ],
         imuYears,
       }),
@@ -580,11 +578,11 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
   const split = (reason: string, rateIndex = 1) => [
     {
       transactionId: 't-imu',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       date: '2027-06-14',
-      imu: { f24Group: 'berchet-lovarini', year: '2027', rateIndex, reason },
+      imu: { f24Group: 'app-a-app-b', year: '2027', rateIndex, reason },
     },
-    { transactionId: 't-f24', apartmentId: 'berchet', date: '2027-06-16' },
+    { transactionId: 't-f24', apartmentId: 'app-a', date: '2027-06-16' },
   ];
 
   it('an F24 out of the 1% or without the expected stays in toSplit, never in the net', () => {
@@ -599,9 +597,9 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
   it('a mixed F24 shares only its IMU part; the rest stays out, listed (R307)', () => {
     const mixed = accountBalances(
       withExtra({
-        transactions: [tx('t-imu', 'acc-berchet', '2027-06-14', -110500)],
+        transactions: [tx('t-imu', 'acc-app-a', '2027-06-14', -110500)],
         classes: [cls('t-imu', imu(1))],
-        imuYears: [imuYear('berchet', 60000), imuYear('lovarini', 40000)],
+        imuYears: [imuYear('app-a', 60000), imuYear('app-b', 40000)],
         taxPayments: [
           {
             id: 'taxp-t-imu',
@@ -614,10 +612,10 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
       }),
     );
     expect(mixed.mixedF24).toEqual([
-      { transactionId: 't-imu', apartmentId: 'berchet', amount: 10000 },
+      { transactionId: 't-imu', apartmentId: 'app-a', amount: 10000 },
     ]);
     expect(mixed.pairs[0]?.items).toContainEqual(
-      expect.objectContaining({ kind: 'imu', forApartmentId: 'lovarini', amount: 40200 }),
+      expect.objectContaining({ kind: 'imu', forApartmentId: 'app-b', amount: 40200 }),
     );
   });
 
@@ -630,8 +628,8 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
     expect(pair?.items).toContainEqual({
       date: '2027-06-14',
       kind: 'imu',
-      payerApartmentId: 'berchet',
-      forApartmentId: 'lovarini',
+      payerApartmentId: 'app-a',
+      forApartmentId: 'app-b',
       amount: 40200,
       refId: 't-imu',
     });
@@ -639,11 +637,11 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
     const twice = accountBalances(
       withExtra({
         transactions: [
-          tx('t-imu', 'acc-berchet', '2027-06-14', -100500),
-          tx('t-imu2', 'acc-berchet', '2027-06-15', -100500),
+          tx('t-imu', 'acc-app-a', '2027-06-14', -100500),
+          tx('t-imu2', 'acc-app-a', '2027-06-15', -100500),
         ],
         classes: [cls('t-imu', imu(1)), cls('t-imu2', imu(1))],
-        imuYears: [imuYear('berchet', 60000), imuYear('lovarini', 40000)],
+        imuYears: [imuYear('app-a', 60000), imuYear('app-b', 40000)],
       }),
     );
     expect(twice.pairs[0]?.items.filter((i) => i.kind === 'imu').map((i) => i.refId)).toEqual([
@@ -652,10 +650,10 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
     expect(twice.toSplit).toEqual([
       {
         transactionId: 't-imu2',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         date: '2027-06-15',
         imu: {
-          f24Group: 'berchet-lovarini',
+          f24Group: 'app-a-app-b',
           year: '2027',
           rateIndex: 1,
           reason: 'imu-da-riconciliare',
@@ -663,7 +661,7 @@ describe('accountBalances with the IMU (plan 3d, task 3, Review Focus 4)', () =>
       },
     ]);
     // The payer outside the group of the rate (possible only by hand-edited data): no split.
-    const others = [imuYear('lovarini', 60000), imuYear('pulci', 40000)];
+    const others = [imuYear('app-b', 60000), imuYear('app-c', 40000)];
     expect(run(100000, 1, others).toSplit).toEqual(split('imu-da-ripartire'));
   });
 });
@@ -678,19 +676,19 @@ describe('loadAccountBalances (plan 3c, task 9)', () => {
   it('reads the records, lists the items to verify apart and writes nothing', async () => {
     const store = new MemoryStore();
     await put(store, 'account', accounts);
-    // No statement at all: the instalment of Lovarini paid from Berchet is to verify (B1).
+    // No statement at all: the instalment of Appartamento B paid from Appartamento A is to verify (B1).
     await put(store, 'instalment', [
-      instalment('condo-l', { apartmentId: 'lovarini', paidFromApartmentId: 'berchet' }),
+      instalment('condo-l', { apartmentId: 'app-b', paidFromApartmentId: 'app-a' }),
     ]);
-    await put(store, 'transaction', [tx('t-f24-l', 'acc-berchet', '2027-05-16', -6700)]);
+    await put(store, 'transaction', [tx('t-f24-l', 'acc-app-a', '2027-05-16', -6700)]);
     await put(store, 'movementClass', [
-      cls('t-f24-l', { kind: 'tasse', f24: true, apartmentId: 'lovarini' }),
+      cls('t-f24-l', { kind: 'tasse', f24: true, apartmentId: 'app-b' }),
     ]);
     const manual = await recordManualTransfer(
       store,
       {
-        fromAccountId: 'acc-lovarini',
-        toAccountId: 'acc-berchet',
+        fromAccountId: 'acc-app-b',
+        toAccountId: 'acc-app-a',
         amount: cents(20000),
         date: isoDate('2027-04-20'),
         purpose: 'saldo',
@@ -704,14 +702,14 @@ describe('loadAccountBalances (plan 3c, task 9)', () => {
     const result = await loadAccountBalances(store);
     if (result.status !== 'computed') throw new Error('expected a balance');
     expect(result.pairs.map((p) => [p.creditorApartmentId, p.amount])).toEqual([
-      ['lovarini', 20000 - 6700],
+      ['app-b', 20000 - 6700],
     ]);
     expect(result.unverified).toEqual([
       {
         itemType: 'instalment',
         itemId: 'condo-l',
-        payerApartmentId: 'berchet',
-        forApartmentId: 'lovarini',
+        payerApartmentId: 'app-a',
+        forApartmentId: 'app-b',
       },
     ]);
     expect(await snapshot(store)).toEqual(before);
@@ -729,31 +727,31 @@ describe('loadAccountBalances (plan 3c, task 9)', () => {
 });
 
 describe('extraordinary instalments in the balance (plan 8, task 5, decision 5)', () => {
-  it('an extraordinary instalment of Lovarini paid from the account of Berchet enters as rata', () => {
+  it('an extraordinary instalment of Appartamento B paid from the account of Appartamento A enters as rata', () => {
     const result = accountBalances({
       accounts,
       bills: [],
       instalments: [
-        instalment('str-l', { apartmentId: 'lovarini', straordinaria: true, rateCount: 1 }),
+        instalment('str-l', { apartmentId: 'app-b', straordinaria: true, rateCount: 1 }),
       ],
       matches: [match('str-l', 't-str', '2027-04-05', 30000)],
       unverified: [],
-      transactions: [tx('t-str', 'acc-berchet', '2027-04-05', -30000)],
+      transactions: [tx('t-str', 'acc-app-a', '2027-04-05', -30000)],
       classes: [],
       transfers: [],
       imuYears: [],
     });
     expect(result.pairs).toEqual([
       {
-        creditorApartmentId: 'berchet',
-        debtorApartmentId: 'lovarini',
+        creditorApartmentId: 'app-a',
+        debtorApartmentId: 'app-b',
         amount: 30000,
         items: [
           {
             date: '2027-04-05',
             kind: 'rata',
-            payerApartmentId: 'berchet',
-            forApartmentId: 'lovarini',
+            payerApartmentId: 'app-a',
+            forApartmentId: 'app-b',
             amount: 30000,
             refId: 'str-l',
           },

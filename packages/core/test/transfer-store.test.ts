@@ -21,9 +21,9 @@ import type { RecordKind, TransferPurpose } from '../src/index';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
-// Synthetic records only: the own accounts of fixtures/README.md (…0301 Berchet, …0302 Lovarini).
-const BERCHET = 'IT85X0542811101000000000301';
-const LOVARINI = 'IT58X0542811101000000000302';
+// Synthetic records only: the own accounts of fixtures/README.md (…0301 Appartamento A, …0302 Appartamento B).
+const APT_A = 'IT85X0542811101000000000301';
+const APT_B = 'IT58X0542811101000000000302';
 const base = { v: 1, rev: 1 };
 const account = (id: string, iban: string) => ({
   ...base,
@@ -44,14 +44,14 @@ const tx = (id: string, accountId: string, date: string, amount: number, iban?: 
   statementHash: 's',
   ...(iban === undefined ? {} : { counterparty: { name: 'Conto', iban } }),
 });
-/** Lovarini → Berchet: −200,00 € on the account of Lovarini, +200,00 € on Berchet. */
+/** Appartamento B → Appartamento A: −200,00 € on the account of Appartamento B, +200,00 € on Appartamento A. */
 const april = [
-  tx('o', 'acc-lovarini', '2027-04-02', -20000, BERCHET),
-  tx('i', 'acc-berchet', '2027-04-07', 20000),
+  tx('o', 'acc-app-b', '2027-04-02', -20000, APT_A),
+  tx('i', 'acc-app-a', '2027-04-07', 20000),
 ];
 const may = [
-  tx('o2', 'acc-lovarini', '2027-05-03', -15000, BERCHET),
-  tx('i2', 'acc-berchet', '2027-05-05', 15000),
+  tx('o2', 'acc-app-b', '2027-05-03', -15000, APT_A),
+  tx('i2', 'acc-app-a', '2027-05-05', 15000),
 ];
 
 async function put(store: MemoryStore, kind: RecordKind, records: { id: string }[]) {
@@ -61,7 +61,7 @@ async function put(store: MemoryStore, kind: RecordKind, records: { id: string }
 }
 async function storeWith(...transactions: ReturnType<typeof tx>[]) {
   const store = new MemoryStore();
-  await put(store, 'account', [account('acc-berchet', BERCHET), account('acc-lovarini', LOVARINI)]);
+  await put(store, 'account', [account('acc-app-a', APT_A), account('acc-app-b', APT_B)]);
   await put(store, 'transaction', transactions);
   return store;
 }
@@ -97,8 +97,8 @@ async function diverge(store: MemoryStore) {
   await recordManualTransfer(
     store,
     {
-      fromAccountId: 'acc-berchet',
-      toAccountId: 'acc-lovarini',
+      fromAccountId: 'acc-app-a',
+      toAccountId: 'acc-app-b',
       amount: cents(100),
       date: isoDate('2027-01-01'),
       purpose: 'saldo',
@@ -123,8 +123,8 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
         {
           id: 'p-giro-o',
           transactionId: 'o',
-          fromAccountId: 'acc-lovarini',
-          toAccountId: 'acc-berchet',
+          fromAccountId: 'acc-app-b',
+          toAccountId: 'acc-app-a',
           legIds: ['i'],
           reason: 'new-pair',
         },
@@ -145,8 +145,8 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
         id: 'tr-o',
         v: 1,
         rev: 1,
-        fromAccountId: 'acc-lovarini',
-        toAccountId: 'acc-berchet',
+        fromAccountId: 'acc-app-b',
+        toAccountId: 'acc-app-a',
         amount: 20000,
         date: '2027-04-02',
         outTransactionId: 'o',
@@ -164,8 +164,8 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
 
     await put(store, 'transaction', [
       ...may,
-      // Berchet → Lovarini: the other direction is a new pair.
-      tx('b', 'acc-berchet', '2027-05-10', -8000, LOVARINI),
+      // Appartamento A → Appartamento B: the other direction is a new pair.
+      tx('b', 'acc-app-a', '2027-05-10', -8000, APT_B),
     ]);
     const result = await run(store);
     expect(result).toEqual({
@@ -220,8 +220,8 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
     const store = await storeWith(
       ...april,
       ...may,
-      tx('i2b', 'acc-berchet', '2027-05-06', 15000),
-      tx('o3', 'acc-lovarini', '2027-06-01', -5000, BERCHET),
+      tx('i2b', 'acc-app-a', '2027-05-06', 15000),
+      tx('o3', 'acc-app-b', '2027-06-01', -5000, APT_A),
     );
     await confirm(store, 'p-giro-o', 'saldo', {}, 'c');
     expect(await run(store, 'd', true)).toMatchObject({
@@ -238,7 +238,7 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
   });
 
   it('several legs: the person picks one; an id outside the legs is refused', async () => {
-    const store = await storeWith(...april, tx('i-bis', 'acc-berchet', '2027-04-03', 20000));
+    const store = await storeWith(...april, tx('i-bis', 'acc-app-a', '2027-04-03', 20000));
     expect(await run(store)).toMatchObject({
       proposals: [{ id: 'p-giro-o', legIds: ['i', 'i-bis'], reason: 'several-legs' }],
     });
@@ -258,20 +258,20 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
   });
 
   it('several legs without a choice: only the movement of the proposal', async () => {
-    const store = await storeWith(...april, tx('i-bis', 'acc-berchet', '2027-04-03', 20000));
+    const store = await storeWith(...april, tx('i-bis', 'acc-app-a', '2027-04-03', 20000));
     await confirm(store, 'p-giro-o');
     expect((await transfers(store))[0]).not.toHaveProperty('inTransactionId');
   });
 
   it('one leg without a statement of the other account is enough', async () => {
-    const store = await storeWith(tx('i', 'acc-berchet', '2027-04-07', 20000, LOVARINI));
+    const store = await storeWith(tx('i', 'acc-app-a', '2027-04-07', 20000, APT_B));
     expect(await confirm(store, 'p-giro-i', 'saldo')).toMatchObject({ transferId: 'tr-i' });
     expect((await transfers(store))[0]).toEqual({
       id: 'tr-i',
       v: 1,
       rev: 1,
-      fromAccountId: 'acc-lovarini',
-      toAccountId: 'acc-berchet',
+      fromAccountId: 'acc-app-b',
+      toAccountId: 'acc-app-a',
       amount: 20000,
       date: '2027-04-07',
       inTransactionId: 'i',
@@ -281,7 +281,7 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
   });
 
   it('one leg confirmed, then the other statement: the transfer is completed, never doubled', async () => {
-    const store = await storeWith(tx('i', 'acc-berchet', '2027-04-07', 20000, LOVARINI));
+    const store = await storeWith(tx('i', 'acc-app-a', '2027-04-07', 20000, APT_B));
     await confirm(store, 'p-giro-i');
     await put(store, 'transaction', [april[0] as ReturnType<typeof tx>]);
     expect(await run(store, 'd', true)).toEqual({
@@ -297,8 +297,8 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
         id: 'tr-i',
         v: 1,
         rev: 2,
-        fromAccountId: 'acc-lovarini',
-        toAccountId: 'acc-berchet',
+        fromAccountId: 'acc-app-b',
+        toAccountId: 'acc-app-a',
         amount: 20000,
         date: '2027-04-07',
         outTransactionId: 'o',
@@ -344,7 +344,7 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
 
     // The movement of the proposal became a leg of another transfer: the statement of the
     // other account came in later, and its outgoing was confirmed with it.
-    const linked = await storeWith(tx('i', 'acc-berchet', '2027-04-07', 20000, LOVARINI));
+    const linked = await storeWith(tx('i', 'acc-app-a', '2027-04-07', 20000, APT_B));
     expect(await run(linked, 'd', true)).toMatchObject({ proposals: [{ id: 'p-giro-i' }] });
     await put(linked, 'transaction', [april[0] as ReturnType<typeof tx>]);
     expect(await confirm(linked, 'p-giro-o', 'saldo', { otherLegId: 'i' })).toMatchObject({
@@ -416,8 +416,8 @@ describe('runTransfers and confirmTransfer (plan 3c, task 5)', () => {
       await recordManualTransfer(
         store,
         {
-          fromAccountId: 'acc-berchet',
-          toAccountId: 'acc-lovarini',
+          fromAccountId: 'acc-app-a',
+          toAccountId: 'acc-app-b',
           amount: cents(100),
           date: isoDate('2027-01-01'),
           purpose: 'saldo',
@@ -436,8 +436,8 @@ describe('recordManualTransfer (plan 3c, task 5; section 24)', () => {
     recordManualTransfer(
       store,
       {
-        fromAccountId: 'acc-berchet',
-        toAccountId: 'acc-lovarini',
+        fromAccountId: 'acc-app-a',
+        toAccountId: 'acc-app-b',
         amount: cents(6300),
         date: isoDate('2027-04-30'),
         purpose: 'saldo',
@@ -460,8 +460,8 @@ describe('recordManualTransfer (plan 3c, task 5; section 24)', () => {
         id: 'tr-m-1',
         v: 1,
         rev: 1,
-        fromAccountId: 'acc-berchet',
-        toAccountId: 'acc-lovarini',
+        fromAccountId: 'acc-app-a',
+        toAccountId: 'acc-app-b',
         amount: 6300,
         date: '2027-04-30',
         purpose: 'saldo',
@@ -494,7 +494,7 @@ describe('recordManualTransfer (plan 3c, task 5; section 24)', () => {
 
   it.each([
     ['unknown-account', { toAccountId: 'acc-nessuno' }],
-    ['same-account', { toAccountId: 'acc-berchet' }],
+    ['same-account', { toAccountId: 'acc-app-a' }],
     ['invalid-amount', { amount: cents(0) }],
     ['invalid-amount', { amount: cents(-100) }],
   ])('refuses %s and writes nothing', async (reason, extra) => {
