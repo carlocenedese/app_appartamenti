@@ -88,10 +88,22 @@ describe('readStatementTable', () => {
       description: 'Bonifico',
     });
     const iso = readStatementTable(
-      table(HEADER, line(s('2026-10-27'), s('x'), null, s('1,5'), s('A'))),
+      table(HEADER, line(s('2026-10-27'), s('x'), null, s('1,50'), s('A'))),
       profile({ dateFormat: 'YYYY-MM-DD' }),
     );
     expect(iso.rows[0]?.amount).toBe(150);
+    // M1: a text amount with one decimal is never guessed (as the Python reader); a number cell is.
+    expect(() =>
+      readStatementTable(
+        table(HEADER, line(s('2026-10-27'), s('x'), null, s('1,5'), s('A'))),
+        profile({ dateFormat: 'YYYY-MM-DD' }),
+      ),
+    ).toThrow(expect.objectContaining({ code: 'bad-amount' }));
+    const number = readStatementTable(
+      table(HEADER, line(s('2026-10-27'), s('x'), null, n('12.5'), s('A'))),
+      profile({ dateFormat: 'YYYY-MM-DD' }),
+    );
+    expect(number.rows[0]?.amount).toBe(1250);
   });
 
   it('rejects a bad date with the row', () => {
