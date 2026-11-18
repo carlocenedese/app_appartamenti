@@ -6,6 +6,7 @@ import {
   TenancySchema,
   cents,
   proposalFromExtraction,
+  sharedGroupProblem,
   splitSharedDebit,
   suggestedFilePath,
 } from '../src/index';
@@ -491,6 +492,14 @@ describe('proposalFromExtraction: TARI', () => {
       shared: { groupTotal: 18546, weight: 10075 },
     });
     expect(lovarini).toMatchObject({ apartmentId: 'apt-l', shared: { weight: 8471 } });
+    // E1: one debit from the account of the notice's apartment, so the group is consistent.
+    expect(berchet?.paidFromApartmentId).toBeUndefined();
+    expect(lovarini?.paidFromApartmentId).toBe('apt-b');
+    expect(
+      sharedGroupProblem(
+        proposal.instalments.map((i) => ({ ...i, v: 1, rev: 1, fileHash: 'a'.repeat(64) })),
+      ),
+    ).toBeUndefined();
     expect(berchet?.shared?.groupId).toBe(lovarini?.shared?.groupId);
     expect(new Set(proposal.instalments.map((i) => i.id)).size).toBe(2);
     expect(severities(proposal)).not.toContain('fail');

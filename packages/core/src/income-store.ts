@@ -3,6 +3,7 @@
  * confirmation of a proposal, each one operation of the journal. Nothing is written while
  * `checkConsistency` reports a problem (R106, R107). Summaries carry counts only.
  */
+import { isPresent } from './conguaglio';
 import { reconcileIncome, rentArrears } from './income';
 import type { IncomeProposal, RentArrear } from './income';
 import { checkConsistency, commitChange, latestOperationByPath, readJournal } from './journal';
@@ -31,18 +32,29 @@ import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
 
-/** Creates the tenant `draft.id`, or writes a new `rev` of it (a deleted one comes back). */
+/**
+ * Creates the tenant `draft.id`, or writes a new `rev` of it (a deleted one comes back). The same
+ * name and language on a live tenant write nothing: `undefined` (E8, a rerun is unchanged).
+ */
 export async function saveTenant(
   store: Store,
   draft: { id: string; name: string; language?: 'it' | 'en' },
   profileId: string,
   clock: () => string,
   newId: () => string,
-): Promise<Operation> {
+): Promise<Operation | undefined> {
   const before = (
     await loadAll(store, 'tenant', TenantSchema, { includeDeleted: true })
   ).records.find((t) => t.id === draft.id);
   const after = parseOrThrow(TenantSchema, { ...draft, v: 1, rev: 1 }, 'tenant');
+  if (
+    before !== undefined &&
+    before.deleted !== true &&
+    before.name === after.name &&
+    before.language === after.language
+  ) {
+    return undefined;
+  }
   return commitChange(
     store,
     {
@@ -228,13 +240,30 @@ export interface ConfirmIncomeInput {
   rememberPayer: boolean;
 }
 
+/**
+ * A rent month to look at, never a refusal (B17, lotto 11 «solo avviso»): `month-outside-presence`
+ * when the tenant has no live presence in the apartment that month, `month-already-paid` when
+ * another confirmed rent payment of the tenant is for the same month.
+ */
+export interface IncomeMonthWarning {
+  code: 'month-outside-presence' | 'month-already-paid';
+  month: YearMonth;
+}
+
 export type ConfirmIncomeResult =
-  | { status: 'confirmed'; operationId: string; paymentIds: string[]; payerId?: string }
+  | {
+      status: 'confirmed';
+      operationId: string;
+      paymentIds: string[];
+      payerId?: string;
+      warnings?: IncomeMonthWarning[];
+    }
   | {
       status: 'refused';
       reason:
         | 'inconsistent-store'
         | 'unknown-proposal'
+        | 'stale-proposal'
         | 'tenant-not-allowed'
         | 'empty-parts'
         | 'sum-mismatch'
@@ -261,11 +290,16 @@ export async function confirmIncome(
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   const state = await loadIncomeState(store);
-  const proposal = reconcileIncome(state).proposals.find((p) => p.id === input.proposalId);
+  const income = reconcileIncome(state);
+  const proposal = income.proposals.find((p) => p.id === input.proposalId);
   const tx = state.transactions.find((t) => t.id === proposal?.transactionId);
   const account = state.accounts.find((a) => a.id === tx?.accountId);
   if (proposal === undefined || tx === undefined || account === undefined) {
-    return refuse('unknown-proposal');
+    // E7: the movement of the proposal has become automatic after another confirmation: run
+    // riconcilia again (it writes the payment), the listing in hand is out of date.
+    const txId = /^p-(?:chi|cosa)-(.+)$/.exec(input.proposalId)?.[1];
+    const stale = proposal === undefined && income.payments.some((p) => p.transactionId === txId);
+    return refuse(stale ? 'stale-proposal' : 'unknown-proposal');
   }
   const { apartmentId } = account;
   const open = proposal.step === 'cosa' || proposal.reason === 'multi-tenant';
@@ -324,6 +358,30 @@ export async function confirmIncome(
       : undefined;
   const oldPayer = state.payers.find((p) => p.id === payer?.id);
 
+  const warnings: IncomeMonthWarning[] = [];
+  for (const p of payments) {
+    if (p.kind !== 'canone' || p.forMonth === undefined) continue;
+    const month = p.forMonth;
+    const present = state.tenancies.some(
+      (t) =>
+        t.deleted !== true &&
+        t.tenantId === input.tenantId &&
+        t.apartmentId === apartmentId &&
+        isPresent(t, month),
+    );
+    if (!present) warnings.push({ code: 'month-outside-presence', month });
+    const paid = state.payments.some(
+      (other) =>
+        other.deleted !== true &&
+        other.confirmed &&
+        other.kind === 'canone' &&
+        other.tenantId === input.tenantId &&
+        other.forMonth === month &&
+        other.transactionId !== tx.id,
+    );
+    if (paid) warnings.push({ code: 'month-already-paid', month });
+  }
+
   const operation = await commitChange(
     store,
     {
@@ -351,6 +409,7 @@ export async function confirmIncome(
     operationId: operation.id,
     paymentIds: payments.map((p) => p.id),
     ...(payer === undefined ? {} : { payerId: payer.id }),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 

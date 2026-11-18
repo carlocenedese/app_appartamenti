@@ -22,11 +22,20 @@ export async function saveBankProfile(
   profileId: string,
   clock: () => string,
   newId: () => string,
-): Promise<Operation> {
+): Promise<Operation | undefined> {
   const checked = parseOrThrow(BankProfileSchema, profile, 'bankProfile');
   const existing = (
     await loadAll(store, 'bankProfile', BankProfileSchema, { includeDeleted: true })
   ).records.find((p) => p.id === checked.id);
+  // E8: the same profile, live, writes nothing (`undefined`): a rerun is unchanged.
+  const content = (p: BankProfile) => JSON.stringify({ ...p, v: 0, rev: 0 });
+  if (
+    existing !== undefined &&
+    existing.deleted !== true &&
+    content(existing) === content(checked)
+  ) {
+    return undefined;
+  }
   return commitChange(
     store,
     {
@@ -42,12 +51,16 @@ export async function saveBankProfile(
 
 export type SaveAccountResult =
   | { status: 'saved'; account: Account; operationId: string }
+  | { status: 'unchanged'; account: Account }
   | {
       status: 'rejected';
       reason: 'unknown-apartment' | 'unknown-bank-profile' | 'bad-iban' | 'iban-in-use';
     };
 
-/** Writes a new account, one `account.save`; the IBAN is stored normalised and is unique among live accounts. */
+/**
+ * Writes a new account, one `account.save`; the IBAN is stored normalised and is unique among live
+ * accounts. A live account with the same apartment, profile, label and IBAN is `unchanged`.
+ */
 export async function saveAccount(
   store: Store,
   draft: Omit<Account, 'id' | 'v' | 'rev'>,
@@ -64,13 +77,22 @@ export async function saveAccount(
     return { status: 'rejected', reason: 'unknown-bank-profile' };
   }
   let iban: string | undefined;
+  const accounts = (await loadAll(store, 'account', AccountSchema)).records;
   if (draft.iban !== undefined) {
     iban = normaliseIban(draft.iban);
     if (iban === undefined) return { status: 'rejected', reason: 'bad-iban' };
-    const accounts = await loadAll(store, 'account', AccountSchema);
-    if (accounts.records.some((a) => a.iban === iban)) {
-      return { status: 'rejected', reason: 'iban-in-use' };
-    }
+  }
+  // E9, E10: the same apartment, profile, label and IBAN as a live account is a rerun: unchanged.
+  const same = accounts.find(
+    (a) =>
+      a.apartmentId === draft.apartmentId &&
+      a.bankProfileId === draft.bankProfileId &&
+      a.label === draft.label &&
+      a.iban === iban,
+  );
+  if (same !== undefined) return { status: 'unchanged', account: same };
+  if (iban !== undefined && accounts.some((a) => a.iban === iban)) {
+    return { status: 'rejected', reason: 'iban-in-use' };
   }
   const account = parseOrThrow(
     AccountSchema,

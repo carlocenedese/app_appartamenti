@@ -193,18 +193,24 @@ export async function confirmTransfer(
 
 export type ManualTransferResult =
   | { status: 'recorded'; operationId: string; transferId: string }
+  | { status: 'unchanged'; transferId: string }
   | {
       status: 'refused';
-      reason: 'inconsistent-store' | 'unknown-account' | 'same-account' | 'invalid-amount';
+      reason:
+        'inconsistent-store' | 'unknown-account' | 'same-account' | 'invalid-amount' | 'id-in-use';
     };
 
 /**
  * Records by hand a repayment between two live accounts without movements (section 24):
- * `tr-<newId()>`, `source: 'manual'`, in one `transfer.manual` operation.
+ * `tr-<newId()>` (or `id`), `source: 'manual'`, in one `transfer.manual` operation. A rerun is
+ * `unchanged` (E2): without `id`, a live manual transfer with the same accounts, amount, date and
+ * purpose; with `id`, the same transfer under that id. An `id` already used otherwise (deleted
+ * records included) is `id-in-use`. Two identical transfers on one day need an `id` each.
  */
 export async function recordManualTransfer(
   store: Store,
   input: {
+    id?: string;
     fromAccountId: string;
     toAccountId: string;
     amount: Cents;
@@ -226,9 +232,29 @@ export async function recordManualTransfer(
   }
   if (input.fromAccountId === input.toAccountId) return refuse('same-account');
   if (!Number.isSafeInteger(input.amount) || input.amount <= 0) return refuse('invalid-amount');
+  const transfers = (await loadAll(store, 'transfer', TransferSchema, { includeDeleted: true }))
+    .records;
+  const sameAs = (t: (typeof transfers)[number]) =>
+    t.deleted !== true &&
+    t.source === 'manual' &&
+    t.fromAccountId === input.fromAccountId &&
+    t.toAccountId === input.toAccountId &&
+    t.amount === input.amount &&
+    t.date === input.date &&
+    t.purpose === input.purpose;
+  if (input.id !== undefined) {
+    const taken = transfers.find((t) => t.id === input.id);
+    if (taken !== undefined) {
+      return sameAs(taken) ? { status: 'unchanged', transferId: taken.id } : refuse('id-in-use');
+    }
+  } else {
+    const same = transfers.find(sameAs);
+    if (same !== undefined) return { status: 'unchanged', transferId: same.id };
+  }
+  const { id, ...fields } = input;
   const change = changeOf([], {
-    id: `tr-${newId()}`,
-    ...input,
+    id: id ?? `tr-${newId()}`,
+    ...fields,
     source: 'manual',
   });
   const operation = await commitChange(

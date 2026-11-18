@@ -439,6 +439,9 @@ function tariProposal(
         id: newId(),
         apartmentId,
         supplyId,
+        // One notice, one debit (R3): the account of the apartment the notice is filed for pays
+        // every share, so the group agrees on its paying account (E1).
+        ...(apartmentId === ctx.apartment.id ? {} : { paidFromApartmentId: ctx.apartment.id }),
         ...base,
         rata: amount,
         shared: { groupId, groupTotal: total, weight: amount },

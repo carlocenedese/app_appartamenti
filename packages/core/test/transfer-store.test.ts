@@ -473,6 +473,25 @@ describe('recordManualTransfer (plan 3c, task 5; section 24)', () => {
     ]);
   });
 
+  it('E2: the same transfer again is unchanged; a second identical one needs its own id', async () => {
+    const store = await storeWith();
+    await manual(store);
+    expect(await manual(store)).toEqual({ status: 'unchanged', transferId: 'tr-m-1' });
+    expect(await manual(store, { id: 'tr-contanti-2' })).toMatchObject({
+      status: 'recorded',
+      transferId: 'tr-contanti-2',
+    });
+    expect(await manual(store, { id: 'tr-contanti-2' })).toEqual({
+      status: 'unchanged',
+      transferId: 'tr-contanti-2',
+    });
+    expect(await manual(store, { id: 'tr-contanti-2', amount: cents(100) })).toEqual({
+      status: 'refused',
+      reason: 'id-in-use',
+    });
+    expect(await transfers(store)).toHaveLength(2);
+  });
+
   it.each([
     ['unknown-account', { toAccountId: 'acc-nessuno' }],
     ['same-account', { toAccountId: 'acc-berchet' }],

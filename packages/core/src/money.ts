@@ -26,7 +26,8 @@ const THOUSANDS_GROUPED = /^[1-9]\d{0,2}(?:\.\d{3})+$/;
 // The same with one space as the separator: "1 234", "1 234 567". Never mixed with dots.
 const THOUSANDS_SPACED = /^[1-9]\d{0,2}(?:\s\d{3})+$/;
 const PLAIN_DIGITS = /^\d+$/;
-const ONE_OR_TWO_DIGITS = /^\d{1,2}$/;
+// Exactly two decimals, as the Python reader (R49, M1): «1,5» or «12.5» are never guessed.
+const TWO_DIGITS = /^\d{2}$/;
 
 /**
  * The digits of an integer part written plainly, with thousands dots or with thousands spaces,
@@ -48,13 +49,13 @@ function integerDigits(raw: string): string | undefined {
  *   exactly three digits ("1 234,56", "1 234 567,00"), and never together with thousands dots.
  *   "98 46" or "9 8,46" throw: a misread amount must never be silent.
  * - A leading `-` is allowed, before or after the currency marker.
- * - With a comma, the comma is the decimal separator (1 or 2 digits) and dots are thousands
+ * - With a comma, the comma is the decimal separator (exactly 2 digits) and dots are thousands
  *   separators; a dot after the comma is an error ("1,234.56").
- * - Without a comma, a last group of 1 or 2 digits after the dot makes the dot the decimal
+ * - Without a comma, a last group of exactly 2 digits after the dot makes the dot the decimal
  *   separator ("98.46"); otherwise the dots are thousands separators ("1.234" is 1234 euro).
  *
- * Anything else (empty input, several commas, misplaced thousands groups, more than two
- * decimals, amounts beyond the safe integers) throws a `RangeError` instead of guessing.
+ * Anything else (empty input, several commas, misplaced thousands groups, one or more than two
+ * decimals (M1: «1,5», «1.234,5», «12.5»), amounts beyond the safe integers) throws a `RangeError` instead of guessing.
  */
 export function parseEuro(input: string): Cents {
   const fail = (reason: string): never => {
@@ -77,13 +78,13 @@ export function parseEuro(input: string): Cents {
     if (parts.length > 2) return fail('more than one decimal comma');
     const [rawInteger = '', rawDecimal = ''] = parts;
     if (rawDecimal.includes('.')) return fail('a dot after the decimal comma');
-    if (!ONE_OR_TWO_DIGITS.test(rawDecimal)) return fail('expected one or two decimal digits');
+    if (!TWO_DIGITS.test(rawDecimal)) return fail('expected two decimal digits');
     integerPart = integerDigits(rawInteger);
     decimalPart = rawDecimal;
   } else {
     const parts = digits.split('.');
     const last = parts[parts.length - 1] ?? '';
-    if (parts.length > 1 && ONE_OR_TWO_DIGITS.test(last)) {
+    if (parts.length > 1 && TWO_DIGITS.test(last)) {
       // The dot is the decimal separator, so there is room for no other dot.
       if (parts.length > 2) return fail('mixed decimal and thousands dots');
       integerPart = integerDigits(parts[0] ?? '');

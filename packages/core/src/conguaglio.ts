@@ -205,7 +205,8 @@ export type SettlementInputErrorCode =
   | 'unknown-room'
   | 'too-many-tenants'
   | 'missing-condominio-start'
-  | 'recovery-tenant-absent';
+  | 'recovery-tenant-absent'
+  | 'owner-share-inconsistent';
 
 /**
  * Input that cannot be settled: tenancies that do not fit the beds, or a condominium instalment
@@ -220,6 +221,8 @@ export class SettlementInputError extends Error {
   readonly tenancyIds?: string[];
   readonly tenantId?: string;
   readonly instalmentId?: string;
+  /** `owner-share-inconsistent`: the rates whose share differs from most of the esercizio. */
+  readonly instalmentIds?: string[];
 
   constructor(
     code: SettlementInputErrorCode,
@@ -230,6 +233,7 @@ export class SettlementInputError extends Error {
       tenancyIds?: string[];
       tenantId?: string;
       instalmentId?: string;
+      instalmentIds?: string[];
     } = {},
   ) {
     super(message);
@@ -512,6 +516,27 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     .filter((instalment) => instalment.straordinaria !== true)
     .sort((a, b) => compareText(a.id, b.id));
   const toTenants = previousToTenants(apartment);
+  // R3, I5: per esercizio, the ordinary condominium rates whose (owner share, rate count) is not
+  // the one most of them have (all of them on a tie); a record with `rata` 0 carries no owner
+  // share (R-C8) and is left out.
+  const ownerShareOdd = new Map<string, string[]>();
+  {
+    const byEsercizio = new Map<string, Instalment[]>();
+    for (const i of instalments) {
+      if (i.kind !== 'condominio' || i.rata === 0) continue;
+      byEsercizio.set(i.esercizio, [...(byEsercizio.get(i.esercizio) ?? []), i]);
+    }
+    const kindOf = (i: Instalment) => `${String(i.quotaProprieta)}/${String(i.rateCount)}`;
+    for (const [esercizio, rates] of byEsercizio) {
+      const counts = new Map<string, number>();
+      for (const i of rates) counts.set(kindOf(i), (counts.get(kindOf(i)) ?? 0) + 1);
+      if (counts.size === 1) continue;
+      const top = Math.max(...counts.values());
+      const winners = [...counts].filter(([, n]) => n === top);
+      const odd = rates.filter((i) => winners.length > 1 || kindOf(i) !== winners[0]?.[0]);
+      ownerShareOdd.set(esercizio, odd.map((i) => i.id).sort(compareText));
+    }
+  }
   for (const instalment of instalments) {
     if (
       toTenants &&
@@ -571,14 +596,24 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   };
 
   // Confirmed matches by item and part.
-  const matched = new Map<string, { amount: number; commission: number; hasAmount: boolean }>();
+  const matched = new Map<
+    string,
+    { amount: number; commission: number; hasAmount: boolean; debited: boolean }
+  >();
   for (const match of live(input.matches)) {
     if (!match.confirmed) continue;
     const key = `${match.itemType}\u0000${match.itemId}`;
-    const entry = matched.get(key) ?? { amount: 0, commission: 0, hasAmount: false };
+    const entry = matched.get(key) ?? {
+      amount: 0,
+      commission: 0,
+      hasAmount: false,
+      debited: false,
+    };
     if (match.part === 'amount') {
       entry.amount += match.amount;
       entry.hasAmount = true;
+      // A real debit in the statement, not an item assumed paid (lotto 10, I10).
+      if (match.by !== 'assumed') entry.debited = true;
     } else {
       entry.commission += match.amount;
     }
@@ -652,6 +687,19 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
         ? monthsInPeriod(esercizio.from, esercizio.to)
         : [];
     if (!touchesPeriod([...covered, ...previousYear])) continue;
+    const odd =
+      instalment.kind === 'condominio' ? ownerShareOdd.get(instalment.esercizio) : undefined;
+    if (odd !== undefined) {
+      // One yearly owner share per apartment and esercizio, split over `rateCount` rates: records
+      // that disagree cannot be settled without guessing which one is right.
+      throw new SettlementInputError(
+        'owner-share-inconsistent',
+        `Le rate del condominio ${instalment.esercizio} di ${apartment.name} non hanno la stessa ` +
+          `quota della proprietà o lo stesso numero di rate (diverse: ${odd.join(', ')}): ` +
+          `correggi le rate, poi rifai il conguaglio.`,
+        { instalmentIds: odd },
+      );
+    }
     const paid = matched.get(`instalment\u0000${instalment.id}`);
     if (paid === undefined || !paid.hasAmount) {
       pending.push({ itemType: 'instalment', itemId: instalment.id });
@@ -682,14 +730,15 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     });
   }
 
-  // R2: a recovery counts once the expense it recovers is debited.
+  // R2: a recovery counts once the expense it recovers is debited, never on an assumed match
+  // (lotto 10: only after it is paid).
   const recovered = new Map<string, number>();
   const waiting = new Set<string>();
   for (const recovery of recoveries) {
     const { instalmentId } = recovery;
     if (
       instalmentId !== undefined &&
-      matched.get(`instalment\u0000${instalmentId}`)?.hasAmount !== true
+      matched.get(`instalment\u0000${instalmentId}`)?.debited !== true
     ) {
       waiting.add(instalmentId);
       continue;

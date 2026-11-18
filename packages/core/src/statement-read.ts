@@ -200,7 +200,10 @@ export function readStatementTable(table: StatementTable, profile: BankProfile):
     if (cell?.t === 'n') {
       if (/^-?[0-9]+(\.[0-9]{1,2})?$/.test(cell.v)) {
         try {
-          return parseEuro(cell.v); // throws on a number beyond the safe integers, with the value
+          // A number cell («12.5» is 12,50 €): its decimals padded to the two parseEuro wants.
+          const [whole = '', decimals] = cell.v.split('.');
+          // throws on a number beyond the safe integers, with the value
+          return parseEuro(decimals === undefined ? whole : `${whole}.${decimals.padEnd(2, '0')}`);
         } catch {
           throw new StatementReadError('bad-amount', row, column);
         }

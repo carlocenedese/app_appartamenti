@@ -654,6 +654,73 @@ describe('matchToTransactions: periods without a statement', () => {
     expect(result.pending).toEqual([]);
   });
 
+  it('C1: a gap item with a candidate debit in a statement of its window is proposed, not assumed', () => {
+    // Due 31/01, statement from 01/02, the debit of 220,00 on 03/02 names the supplier (R2: the
+    // debit counts): a proposal «amount-differs», not an assumed 214,60.
+    const late = run({
+      bills: [bill('b1', { dueDate: isoDate('2026-01-31') })],
+      transactions: [tx('t1', '2026-02-03', -22000)],
+      statementPeriods: covering('2026-02-01', '2026-02-28'),
+    });
+    expect(late.matches.map((m) => [m.by, m.transactionId, m.amount, m.confirmed])).toEqual([
+      ['auto', 't1', 22000, false],
+    ]);
+  });
+
+  it('C1: a gap item without a candidate stays assumed (R125)', () => {
+    const r = run({
+      bills: [bill('b1', { dueDate: isoDate('2026-01-31') })],
+      transactions: [tx('t1', '2026-02-03', -5000, { description: 'BONIFICO ALTRO' })],
+      statementPeriods: covering('2026-02-01', '2026-02-28'),
+    });
+    expect(r.matches.map((m) => [m.itemId, m.by])).toEqual([['b1', 'assumed']]);
+  });
+
+  it('C1: a gap item whose only candidate another gap item took is assumed, in any order', () => {
+    // Statement from 02/02; b1 Luce 50,00 due 28/01, b2 Gas 70,00 due 27/01; one debit of 70,00
+    // on 03/02 naming LUCE SRL: b2 takes it, b1 has nothing left and stays assumed (R125).
+    const bills = [
+      bill('b1', { dueDate: isoDate('2026-01-28'), amount: cents(5000) }),
+      bill('b2', {
+        dueDate: isoDate('2026-01-27'),
+        amount: cents(7000),
+        supplier: 'Gas Spa',
+        fileHash: 'hash-b2',
+      }),
+    ];
+    const transactions = [tx('t1', '2026-02-03', -7000)];
+    const statementPeriods = covering('2026-02-02', '2026-02-28');
+    const first = run({ bills, transactions, statementPeriods });
+    expect(first.matches.map((m) => [m.itemId, m.by, m.transactionId, m.confirmed])).toEqual([
+      ['b1', 'assumed', 'assumed-b1', true],
+      ['b2', 'auto', 't1', false],
+    ]);
+    expect(first.pending).toEqual([]);
+    expect(run({ bills: [...bills].reverse(), transactions, statementPeriods })).toEqual(first);
+  });
+
+  it('C1: a debit taken by a covered item is no candidate for a gap item (as before)', () => {
+    // Two bills of 50,00 due 28/01 (gap) and 05/02 (covered), one debit on 03/02.
+    const r = run({
+      bills: [
+        bill('b1', { dueDate: isoDate('2026-01-28'), amount: cents(5000) }),
+        bill('b2', {
+          dueDate: isoDate('2026-02-05'),
+          amount: cents(5000),
+          supplier: 'Gas Spa',
+          fileHash: 'hash-b2',
+        }),
+      ],
+      transactions: [tx('t1', '2026-02-03', -5000, { description: 'ADDEBITO LUCE SRL GAS SPA' })],
+      statementPeriods: covering('2026-02-01', '2026-02-28'),
+    });
+    expect(r.matches.map((m) => [m.itemId, m.by, m.transactionId])).toEqual([
+      ['b1', 'assumed', 'assumed-b1'],
+      ['b2', 'auto', 't1'],
+    ]);
+    expect(r.ambiguous).toEqual([]);
+  });
+
   it('assumes each member of a shared notice for its share', () => {
     const result = run({ instalments: tariShared(), statementPeriods: [] });
     expect(result.matches.map((m) => [m.itemId, m.amount, m.by, m.transactionId])).toEqual([
