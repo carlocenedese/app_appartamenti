@@ -968,6 +968,19 @@ describe('splitSharedDebit', () => {
     expect(shares.reduce((sum, { amount }) => sum + amount, 0)).toBe(18600);
   });
 
+  it('B3: splits the second notice in proportion to the year-to-date totals of the supplies', () => {
+    // Section 15: second notice 250,00 €, totals 200,00 and 250,00 → 111,11 and 138,89.
+    expect(
+      splitSharedDebit(cents(-25000), [
+        { itemId: 'tari-a', weight: cents(20000) },
+        { itemId: 'tari-b', weight: cents(25000) },
+      ]),
+    ).toEqual([
+      { itemId: 'tari-a', amount: 11111 },
+      { itemId: 'tari-b', amount: 13889 },
+    ]);
+  });
+
   it('gives the odd cent to the first item when the weights are equal', () => {
     expect(
       splitSharedDebit(cents(-1001), [
