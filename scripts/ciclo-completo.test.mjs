@@ -10,7 +10,7 @@
 // the review report.
 
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { cpSync, existsSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -822,60 +822,17 @@ describe.sequential('ciclo completo con la CLI vera', () => {
   );
 
   it(
-    'fase 5: TARI condivisa abbinata a mano (se il comando lo permette)',
+    'fase 5: TARI condivisa abbinata in automatico dalla riconciliazione',
     async () => {
       const tari = records('instalment').filter((i) => i.kind === 'tari');
       shared.tariInstalments = tari;
       const debit = tx('apt-a', '2026-03-16', 'TARI');
-      const parts = tari
-        .sort((a, b) => a.apartmentId.localeCompare(b.apartmentId))
-        .flatMap((i, k) => [
-          '--parte',
-          `instalment:${i.id}:${debit}:${k === 0 ? '101,04' : '84,96'}`,
-        ]);
-      shared.tariAbbina = await step('estratti', 'abbina', parts, { label: 'abbina tari' });
-      // What if B's instalment said it is paid from A's account (the fix proposed for E1)? On a
-      // copy of the folder, never on the lifecycle's.
-      const copy = join(root, 'copia-e1');
-      cpSync(dir, copy, { recursive: true });
-      const b = tari.find((i) => i.apartmentId === 'apt-b');
-      let w = 0;
-      await commitChange(
-        new FsStore(copy),
-        {
-          profileId: 'cli',
-          kind: 'test.seed',
-          summary: 'x',
-          changes: [
-            {
-              path: recordPath('instalment', b.id),
-              before: b,
-              after: { ...b, rev: b.rev + 1, paidFromApartmentId: 'apt-a' },
-            },
-          ],
-        },
-        () => clock,
-        () => `w-${String((w += 1))}`,
-      );
-      const plan = await planMatch(new FsStore(copy));
-      shared.whatIf = {
-        invalidGroups: plan.run.invalidGroups,
-        tari: plan.written
-          .filter((m) => tari.some((i) => i.id === m.itemId))
-          .map((m) => [tari.find((i) => i.id === m.itemId).apartmentId, m.amount])
-          .sort(),
-      };
-      rmSync(copy, { recursive: true, force: true });
-      const p = shared.r3.json.outgoing.proposals.find((x) => x.description.includes('TARI'));
-      if (shared.tariAbbina.code !== 0 && p !== undefined) {
-        // The debit stays an outgoing proposal: it goes to the expenses of A, «utenze».
-        shared.tariUscita = await step(
-          'estratti',
-          'uscita',
-          ['--proposta', p.id, '--categoria', 'utenze', '--appartamento', 'apt-a'],
-          { label: 'uscita tari' },
-        );
-      }
+      // E1: the notice filed for A is paid from A's account, so the group matches one debit.
+      shared.tariMatches = records('match')
+        .filter((m) => m.transactionId === debit && tari.some((i) => i.id === m.itemId))
+        .map((m) => [tari.find((i) => i.id === m.itemId).apartmentId, m.amount, m.confirmed])
+        .sort();
+      shared.tariInvalid = shared.plan.run.invalidGroups;
     },
     TIMEOUT,
   );
@@ -1187,7 +1144,6 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         if (existsSync(file)) shared.sheets[folder] = readSheets(file);
       }
       shared.matches = records('match');
-      notes.push({ whatIf: shared.whatIf });
       notes.push({ files: shared.files, sheets: shared.sheets, calc: shared.calc });
     },
     TIMEOUT,
@@ -1284,14 +1240,12 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     ]);
   });
 
-  it('E1: con paidFromApartmentId sulla rata di B l’avviso comune si abbina 101,04 / 84,96', () => {
-    expect(shared.whatIf).toEqual({
-      invalidGroups: [],
-      tari: [
-        ['apt-a', 10104],
-        ['apt-b', 8496],
-      ],
-    });
+  it('E1: l’avviso TARI comune si abbina da solo 101,04 / 84,96 (§42 R3)', () => {
+    expect(shared.tariInvalid).toEqual([]);
+    expect(shared.tariMatches).toEqual([
+      ['apt-a', 10104, true],
+      ['apt-b', 8496, true],
+    ]);
   });
 
   it('cruscotto del periodo = conguaglio: voci in attesa e posti vuoti', () => {
@@ -1363,21 +1317,27 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     );
   };
 
-  it('conguaglio = Excel degli inquilini = somme dei movimenti abbinati (stato attuale)', () => {
+  it('conguaglio = Excel degli inquilini = somme dei movimenti abbinati, TARI compresa', () => {
     const t = conguagliA();
     for (const id of Object.keys(t)) expect([id, t[id].excel]).toEqual([id, t[id].calc]);
-    // Hand oracle without the TARI (spec §42 R1, R3, R4, R7; posti 2, always two tenants).
+    // Hand oracle (spec §42 R1, R3, R4, R7; posti 2, always two tenants). The TARI share of A,
+    // 101,04 over January–April, is 12,63 a tenant and month.
     expect(Object.fromEntries(Object.entries(t).map(([id, v]) => [id, v.calc]))).toEqual({
       't-uno': {
-        spese: 10500 + 40 + 1000 - 1500,
+        spese: 10500 + 40 + 1000 - 1500 + 5052,
         condominio: 7200 + 2400,
         forfait: 60000,
-        due: -40360,
+        due: -40360 + 5052,
       },
-      't-due': { spese: 10500 + 40, condominio: 7200 + 1200, forfait: 30000, due: -11060 },
-      't-tre': { spese: 1000, condominio: 1200, forfait: 30000, due: -27800 },
+      't-due': {
+        spese: 10500 + 40 + 3789,
+        condominio: 7200 + 1200,
+        forfait: 30000,
+        due: -11060 + 3789,
+      },
+      't-tre': { spese: 1000 + 1263, condominio: 1200, forfait: 30000, due: -27800 + 1263 },
     });
-    // The matched debits of A (gas, luce + commission, condominio) less the owner share of the rata
+    // The matched debits of A (gas, luce + commission, condominio, TARI share) less the owner share of the rata
     // (18,00 a year / 3) are exactly what the tenants carry, and the «Quota nel periodo» total.
     const items = new Set([
       ...shared.input['apt-a'].bills.map((b) => b.id),
@@ -1386,7 +1346,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     const matched = shared.matches
       .filter((m) => items.has(m.itemId) && m.confirmed !== false)
       .reduce((sum, m) => sum + m.amount, 0);
-    expect(matched).toBe(12000 + 9000 + 80 + 19800);
+    expect(matched).toBe(12000 + 9000 + 80 + 19800 + 10104);
     const carried = shared.calc['apt-a'].tenants.reduce(
       (sum, c) => sum + c.spese + c.commissione + c.condominio.rata + c.condominio.conguaglioPrec,
       shared.calc['apt-a'].unassigned,
@@ -1396,33 +1356,25 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(cents(total[9])).toBe(matched - 600);
     const totals = shared.sheets['Appartamento-A'].Conguagli.find((r) => r[0] === 'Totale');
     expect([cents(totals[4]) + cents(totals[5])]).toEqual([carried + 1000 + 1000 - 1500]);
-    // B: one tenant on two beds, the empty bed to the owners.
+    // B: one tenant on two beds, the empty bed to the owners; TARI 84,96 = 10,62 a bed and month.
     expect(shared.calc['apt-b'].tenants[0]).toMatchObject({
-      spese: 4000,
+      spese: 4000 + 4248,
       forfaitIncassato: 54000,
-      due: -50000,
+      due: -50000 + 4248,
     });
-    expect(shared.calc['apt-b'].unassigned).toBe(4000);
-  });
-
-  // E1: the shared TARI notice registered with `bolletta` is never matched (invalidGroups), so
-  // its 101,04 / 84,96 never reach the settlement (spec R3, example 186,00).
-  it.fails('conguaglio con la TARI condivisa abbinata, come §42 R3 (E1)', () => {
-    const t = conguagliA();
-    expect(t['t-uno'].calc.due).toBe(-40360 + 5052);
-    expect(t['t-due'].calc.due).toBe(-11060 + 3789);
-    expect(t['t-tre'].calc.due).toBe(-27800 + 1263);
+    expect(shared.calc['apt-b'].unassigned).toBe(4000 + 4248);
   });
 
   it('saldi tra conti coerenti con il F24, i giroconti e il giroconto a mano (stato attuale)', () => {
     const [pair] = shared.saldi.json.pairs;
     expect([pair.creditorApartmentId, pair.debtorApartmentId]).toEqual(['apt-a', 'apt-b']);
     // B's IMU share of the F24 paid by A (400,00 of 1.000,00) + 300,00 sent by A to B + the
-    // 50,00 by hand, counted twice because the rerun of giroconto-manuale wrote a second one (E2).
-    expect(pair.amount).toBe(40000 + 30000 + 5000 + 5000);
+    // 50,00 by hand, counted twice because the rerun of giroconto-manuale wrote a second one (E2),
+    // + B's share of the shared TARI paid by A (84,96, E1).
+    expect(pair.amount).toBe(40000 + 30000 + 5000 + 5000 + 8496);
   });
 
-  it.fails('saldi con un solo giroconto a mano e lo storno della TARI comune (E1, E2)', () => {
+  it.fails('saldi con un solo giroconto a mano e lo storno della TARI comune (E2)', () => {
     expect(shared.saldi.json.pairs[0].amount).toBe(40000 + 30000 + 5000 + 8496);
   });
 
@@ -1449,7 +1401,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(rows.registro.expected).toBe(6700);
   });
 
-  it.fails('tasse e scadenze: la TARI pagata con l’addebito comune non è «in ritardo» (E1)', () => {
+  it('tasse e scadenze: la TARI pagata con l’addebito comune non è «in ritardo» (E1)', () => {
     const rows = Object.fromEntries(shared.tasse.json.tables[0].rows.map((r) => [r.voce, r]));
     expect(rows.tari.paid).toBe(18600);
     expect(shared.scadenze.json.items.filter((i) => i.kind === 'tari').map((i) => i.state)).toEqual(
@@ -1462,9 +1414,9 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(shared.caparraA.json.statement.lines).toEqual([
       { label: 'Caparra', amount: 50000 },
       { label: 'Interessi legali', amount: 450 },
-      { label: 'Conguaglio bollette', amount: 11060 },
+      { label: 'Conguaglio bollette', amount: 11060 - 3789 },
     ]);
-    expect(shared.caparraB.json.statement.total).toBe(50000 + 650 + 50000);
+    expect(shared.caparraB.json.statement.total).toBe(50000 + 650 + 50000 - 4248);
   });
 
   it('modulo Word scritto nella cartella dell’inquilino con i valori della scheda', () => {
