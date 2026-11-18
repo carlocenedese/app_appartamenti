@@ -680,6 +680,17 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
       sentOn: '2026-11-20',
       tenants: [{ tenantId: 't-x', settled: true }],
     });
+    // D: no supplementary to settle yet.
+    const noSup = await cli(
+      'conguaglio-saldato',
+      ...args,
+      '--inquilino',
+      't-x',
+      '--data',
+      '2026-12-01',
+      '--supplementare',
+    );
+    expect(noSup.json.reason).toBe('no-supplementary');
     // The reason is required.
     expect((await cli('riapri-periodo', ...args, '--data', '2026-12-05')).code).toBe(2);
     const reopened = await cli(
@@ -748,7 +759,10 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
       't-x',
       '--dettagli',
     );
-    expect(d.json.toRequestLines[0].label).toBe('Conguaglio 2025-26 non saldato');
+    // Signs of a statement and euro (finding 8): a credit of the tenant is positive.
+    expect(d.json.toRequestLines).toEqual([
+      { label: 'Conguaglio 2025-26 non saldato', amount: '€ 270,00' },
+    ]);
   });
 
   it('senza cambiamenti l’annullo della chiusura riapre il periodo', async () => {

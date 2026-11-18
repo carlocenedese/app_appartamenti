@@ -82,6 +82,7 @@ import {
   FileAccessError,
   forkVersions,
   ClosedPeriodError,
+  ClosingUndoError,
   InconsistentRecordError,
   NewerDataError,
   resolveFork,
@@ -165,6 +166,8 @@ import {
   DATA_FORMAT,
   PeriodCloseSchema,
   isLiveClose,
+  closeMarks,
+  formatEuro,
   WORKSPACE_PATH,
   findWorkspace,
   raiseDataFormat,
@@ -279,6 +282,7 @@ export const MESSAGES = {
     'Rifiutato: l’inquilino non è nell’istantanea della chiusura del periodo.',
   'unknown-movement-in-close': 'Rifiutato: il movimento non esiste.',
   'missing-reason': 'Rifiutato: per riaprire il periodo serve il motivo (--motivo).',
+  'no-supplementary': 'Rifiutato: l’inquilino non ha un conguaglio supplementare da saldare.',
   'invalid-close-input': 'Rifiutato: data non valida.',
   'period-reopened':
     'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
@@ -516,6 +520,7 @@ const OPTIONS = {
   tieni: { type: 'boolean' },
   escludi: { type: 'boolean' },
   dettagli: { type: 'boolean' },
+  supplementare: { type: 'boolean' },
   file: { type: 'string' },
   id: { type: 'string' },
   nome: { type: 'string' },
@@ -2434,7 +2439,15 @@ async function command(name, values, positionals, store, who, clock, newId) {
           ? {
               toRequest: result.toRequest.length,
               warning: MESSAGES['deposit-to-request'],
-              ...(values.dettagli === true ? { toRequestLines: result.toRequest } : {}),
+              // Finding 8: the signs of a statement (a debt is negative), in euro.
+              ...(values.dettagli === true
+                ? {
+                    toRequestLines: result.toRequest.map(({ label, amount }) => ({
+                      label,
+                      amount: formatEuro(amount),
+                    })),
+                  }
+                : {}),
             }
           : {},
       );
@@ -2907,26 +2920,6 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
     // A cancellation whose movement has had another use since: undoing it would give a second one;
     // an imu.expected under an assigned F24 would change its rate (plan 3d).
-    // R5: undoing a closing after a late item would take the difference into a new snapshot
-    // and lose the supplementary settlement: refused while it is due (question 3).
-    const closed = ['period.close', 'period.reopen'].includes(target.kind)
-      ? target.changes[0]?.after
-      : undefined;
-    if (closed?.deleted !== true && closed?.apartmentId !== undefined) {
-      const closing = await loadPeriodClosing(
-        store,
-        { apartmentId: closed.apartmentId, periodLabel: closed.periodLabel },
-        day(clock().slice(0, 10)),
-      );
-      if (closing.status === 'refused') throw new Stop('rejected', 'closing-unknown');
-      // F3: undoing a reopening after changes would close the period without a new snapshot.
-      if (closing.status !== 'open' && (closing.changed || closing.dataChanged)) {
-        throw new Stop(
-          'rejected',
-          target.kind === 'period.reopen' ? 'reopen-changed' : 'closing-changed',
-        );
-      }
-    }
     const recordIds = await undoBlockedBy(store, target.id);
     // U8: records pointing at what the operation created, with the counts by kind (no names).
     const created = recordIds.length > 0 ? await undoDependents(store, target.id) : [];
@@ -2954,6 +2947,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       const undone = await undoOperation(store, target.id, who, clock, newId);
       return { status: 'undone', operationId: undone.id };
     } catch (error) {
+      // Finding 9: the core refuses an undo that would close a period without a new snapshot.
+      if (error instanceof ClosingUndoError) throw new Stop('rejected', error.reason);
       const text = error instanceof Error ? error.message : '';
       if (text.includes('was already undone')) throw new Stop('rejected', 'already-undone');
       if (text.includes('depend on it')) throw new Stop('rejected', 'has-dependents');
@@ -3138,6 +3133,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
           tenantId: values.inquilino,
           on,
           ...optional('transactionId', values.movimento),
+          // D: the supplementary settlement instead of the closing's.
+          ...(values.supplementare === true ? { supplementary: true } : {}),
         },
         who,
         clock,
@@ -3157,6 +3154,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       const message = {
         'unknown-tenant': 'unknown-tenant-in-close',
         'unknown-movement': 'unknown-movement-in-close',
+        'no-supplementary': 'no-supplementary',
         'invalid-input': 'invalid-close-input',
       }[result.reason];
       throw new Stop(
@@ -3284,14 +3282,18 @@ async function command(name, values, positionals, store, who, clock, newId) {
       // Operation ids, times and profile ids only; the content with --dettagli.
       return {
         status: 'versions',
-        versions: versions.map((op) => ({
-          operationId: op.id,
-          at: op.at,
-          profileId: op.profileId,
-          ...(values.dettagli === true
-            ? { record: op.changes.find((change) => change.path === values.file)?.after }
-            : {}),
-        })),
+        versions: versions.map((op) => {
+          const after = op.changes.find((change) => change.path === values.file)?.after;
+          // Finding 6: the marks of each version of a closing, so that choosing loses none unseen.
+          const close = PeriodCloseSchema.safeParse(after);
+          return {
+            operationId: op.id,
+            at: op.at,
+            profileId: op.profileId,
+            ...(close.success ? { marks: closeMarks(close.data) } : {}),
+            ...(values.dettagli === true ? { record: after } : {}),
+          };
+        }),
       };
     }
     if (!versions.some((op) => op.id === values.operazione))
@@ -3515,6 +3517,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'conguaglio-saldato',
       ],
       motivo: ['escludi', 'riapri-periodo'],
+      supplementare: ['conguaglio-saldato'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: [
         'conferma',

@@ -74,7 +74,7 @@ export const COMMAND_HELP = {
     'Mostra lo stato e il conguaglio supplementare di un periodo chiuso o riaperto (importi con --dettagli).',
   'invia-conguaglio': 'Segna il conguaglio di un periodo chiuso come inviato (--data).',
   'conguaglio-saldato':
-    'Segna saldato il conguaglio di un inquilino (--inquilino, --data, --movimento facoltativo).',
+    'Segna saldato il conguaglio di un inquilino (--inquilino, --data, --movimento facoltativo; --supplementare per il supplementare).',
   'riapri-periodo':
     'Riapre un periodo chiuso con --data e --motivo; l’istantanea resta nello storico.',
   'scegli-versione':
