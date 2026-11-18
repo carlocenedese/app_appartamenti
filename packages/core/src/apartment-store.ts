@@ -6,7 +6,7 @@
 import { checkConsistency, commitChange } from './journal';
 import { ApartmentSchema } from './model';
 import type { Apartment } from './model';
-import { loadAll } from './store/load';
+import { isSafePath, loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
 
@@ -48,10 +48,17 @@ export async function saveApartment(
   const refuse = (reason: Extract<SaveApartmentResult, { status: 'refused' }>['reason']) =>
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id)) return refuse('invalid-apartment');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id) || !isSafePath(input.id)) {
+    return refuse('invalid-apartment'); // isSafePath: no CON, NUL, COM1 (Windows device names)
+  }
   const all = (await loadAll(store, 'apartment', ApartmentSchema, { includeDeleted: true }))
     .records;
   const before = all.find((a) => a.id === input.id);
+  // `nord` next to `Nord` is the same file on macOS and Windows.
+  const lower = input.id.toLowerCase();
+  if (before === undefined && all.some((a) => a.id.toLowerCase() === lower)) {
+    return refuse('invalid-apartment');
+  }
   const live = before !== undefined && before.deleted !== true;
   const given: Partial<DataFields> = Object.fromEntries(
     Object.entries(input).filter(([, v]) => v !== undefined),
