@@ -149,6 +149,8 @@ const PYTHON_TIMEOUT_MS = 60_000;
 
 const MESSAGES = {
   'bad-arguments': 'Argomenti non validi: vedere l’uso di «pnpm estratti».',
+  'annualita-not-first-day':
+    'Argomenti non validi: l’annualità comincia il giorno 1 di un mese (per esempio --annualita 10-01), perché i periodi di conguaglio sono a mesi interi.',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
   'bad-file': 'Il file non esiste, non si può leggere o è troppo grande.',
   'bad-profile': 'Il profilo della banca non è valido.',
@@ -662,6 +664,12 @@ const yearStart = (text) => {
   const found = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.exec(text);
   if (found === null) throw invalid('bad-arguments');
   return { month: Number(found[1]), day: Number(found[2]) };
+};
+/** E6: settlement periods are whole months, so the lease year starts on day 1 (`MM-01`). */
+const leaseYearStart = (text) => {
+  const start = yearStart(text);
+  if (start.day !== 1) throw invalid('annualita-not-first-day');
+  return start;
 };
 const DIFFERENCE_TO = { inquilini: 'tenants', proprietario: 'owner' };
 
@@ -1418,7 +1426,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...optional('posti', v.posti === undefined ? undefined : Number(v.posti)),
         ...optional(
           'annualitaStart',
-          v.annualita === undefined ? undefined : yearStart(v.annualita),
+          v.annualita === undefined ? undefined : leaseYearStart(v.annualita),
         ),
         ...optional(
           'condominioStart',

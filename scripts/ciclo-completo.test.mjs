@@ -1511,16 +1511,51 @@ describe('sonde fuori dal ciclo', () => {
   }
   const yearProbe = {};
 
-  it('annualità dal 1° ottobre: Excel scritto; dal 15 ottobre: accettata, poi Excel 3 (E6)', async () => {
+  it('annualità dal 1° ottobre: Excel scritto; dal 15 ottobre: rifiutata subito (E6)', async () => {
     yearProbe.first = await yearFrom('10-01');
     yearProbe.fifteenth = await yearFrom('10-15');
     expect(yearProbe.first).toEqual([0, 0]);
-    expect(yearProbe.fifteenth).toEqual([0, 3]);
+    // The apartment is refused (2), so the Excel finds no apartment (1): never a crash (3).
+    expect(yearProbe.fifteenth).toEqual([2, 1]);
   });
 
-  // E6: an annualità that does not start on day 1 is accepted, then the Excel fails with code 3.
-  it.fails('annualità dal 15 ottobre: rifiutata subito, o Excel senza crash (E6)', () => {
-    const [saved, written] = yearProbe.fifteenth;
-    expect(saved === 1 || written !== 3).toBe(true);
+  it('annualità dal 15 già salvata (dati di prima): Excel rifiuta con un motivo, mai 3 (E6)', async () => {
+    const { probe, cli } = await probeFolder();
+    await cli(
+      'appartamento',
+      ...['--id', 'x', '--nome', 'X', '--locatore', 'L', '--posti', '2', '--annualita', '10-01'],
+      ...['--differenza-condominio', 'proprietario'],
+    );
+    await cli(
+      'contratto',
+      ...['--id', 'c1', '--appartamento', 'x', '--tipo', '1+1', '--inizio', '2025-10'],
+      ...['--fine', '2026-09', '--conguaglio', 'annuale'],
+    );
+    const store = new FsStore(probe);
+    const path = recordPath('apartment', 'x');
+    const apt = JSON.parse(readFileSync(join(probe, ...path.split('/')), 'utf8'));
+    await commitChange(
+      store,
+      {
+        profileId: 'cli',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          {
+            path,
+            before: apt,
+            after: { ...apt, rev: apt.rev + 1, annualitaStart: { month: 10, day: 15 } },
+          },
+        ],
+      },
+      () => '2026-11-18T08:00:00.000Z',
+      () => 'seed-1',
+    );
+    const r = await excel(['--cartella', probe, '--appartamento', 'x', '--periodo', '2025-26'], {
+      newId: () => 'tmp',
+      link: linkSync,
+    });
+    rmSync(probe, { recursive: true, force: true });
+    expect([r.code, JSON.parse(r.output).reason]).toEqual([1, 'bad-periods']);
   });
 });

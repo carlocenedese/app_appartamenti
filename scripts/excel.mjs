@@ -62,6 +62,8 @@ const MESSAGES = {
   'ambiguous-period': 'Rifiutato: due contratti danno periodi diversi con questa etichetta.',
   'missing-tenant': 'Rifiutato: un inquilino del periodo non ha un’anagrafica.',
   'settlement-input': 'Rifiutato: le presenze o le rate non permettono il conguaglio.',
+  'bad-periods':
+    'Rifiutato: con i dati dell’appartamento non si costruiscono i periodi di conguaglio (per esempio un’annualità che non comincia il giorno 1): correggerli, ripetere non serve.',
   failed: 'Operazione non riuscita: ripetere il comando.',
 };
 
@@ -127,10 +129,17 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
       });
     }
 
-    const loaded = await loadExcelInput(new FsStore(values.cartella), {
-      apartmentId: values.appartamento,
-      periodLabel: values.periodo,
-    });
+    let loaded;
+    try {
+      loaded = await loadExcelInput(new FsStore(values.cartella), {
+        apartmentId: values.appartamento,
+        periodLabel: values.periodo,
+      });
+    } catch (error) {
+      // E6: periods that cannot be built from the saved data (a lease year not from day 1).
+      if (error instanceof RangeError) throw rejected('bad-periods');
+      throw error;
+    }
     if (loaded.status !== 'ok') throw rejected(loaded.reason);
     if (target === undefined) {
       const file = join(
