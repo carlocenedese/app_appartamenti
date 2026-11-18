@@ -11,32 +11,50 @@ Nessuna regola di calcolo nuova. Dove serviva una scelta del proprietario, il co
 
 ## Fatto, un commit per reperto
 
-| Reperto     | Correzione                                                                                                                                                                                                                                                                                                                               |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| E1          | **TARI comune.** Le rate di un altro appartamento hanno ora `paidFromApartmentId` = l'appartamento dell'avviso. Il gruppo è coerente e l'addebito unico si abbina da solo: 101,04 / 84,96 €. Così tornano giusti il conguaglio, lo storno nei saldi (84,96 €), le tasse (TARI pagata) e le scadenze.                                     |
-| C1          | **Voce non più «assunta».** Una voce è coperta quando un estratto del conto pagante copre almeno un giorno di [rif − 5, rif + 10]. In quel caso si abbina oppure resta «in attesa»: mai «assunta». Il bordo vale nei due sensi: anche una voce che scade fino a 5 giorni dopo la fine di un estratto ora resta in attesa.                |
-| I1          | **Importo addebitato.** Una bolletta (non una rata, non un F24) si può confermare per l'intero addebito del suo movimento quando è diverso dal documento (R2). `abbina` restituisce `amountDiffers` con gli `id`. L'abbinamento conserva l'importo addebitato, quindi l'«importo diverso» si vede sempre dal confronto con il documento. |
-| I5          | **Quota della proprietà.** Le rate ordinarie dello stesso esercizio con quota o numero di rate diversi danno il rifiuto del conguaglio `owner-share-inconsistent`, con un messaggio chiaro. Excel, cruscotto e caparra lo trattano già come rifiuto. La divisione per indice di rata c'era già (`equalSplit` su `rateCount`).            |
-| I10/B19     | **Recupero dopo il pagamento.** Un recupero su una rata straordinaria conta solo con un abbinamento vero, non «assunto» (lotto 10).                                                                                                                                                                                                      |
-| B17         | **Mese del canone.** `conferma` di un canone il cui mese è fuori dalla presenza (`month-outside-presence`) o già coperto da un altro canone confermato dell'inquilino (`month-already-paid`): avviso nel risultato, mai rifiuto (lotto 11).                                                                                              |
-| E7          | **Proposta superata.** Una proposta che dopo un'altra conferma è diventata un incasso automatico dà `stale-proposal`: «rilanciare riconcilia». Gli `id` delle proposte sono già stabili (`p-chi-<movimento>`): cambia lo stato, non l'`id`. Un movimento escluso o abbinato nel frattempo resta `unknown-proposal`.                      |
-| U3          | **Classe con dipendenti.** Una classe automatica con un recupero, un pagamento di tasse o una scadenza pagata sul movimento non cede all'abbinamento. `riconcilia` la lascia come proposta `has-dependents`; `abbina` rifiuta con `class-has-dependents`.                                                                                |
-| E8, E9, E10 | **Profilo, inquilino e conto.** `profilo` e `inquilino` identici non scrivono più. `conto` con stesso appartamento, profilo, etichetta e IBAN dà `unchanged`, con o senza IBAN.                                                                                                                                                          |
-| E2, E3      | **Giroconto a mano e scadenza.** `giroconto-manuale` identico a uno vivo dà `unchanged`; con `--id` facoltativo si registrano due giroconti uguali nello stesso giorno (`id-in-use` se l'`id` è già usato). `scadenza-nuova` con un `--id` nuovo crea la scadenza, e la stessa scadenza senza `--id` dà `unchanged`.                     |
-| E6          | **Annualità dal giorno 1.** `appartamento --annualita` con un giorno diverso da 01 dà `annualita-not-first-day` (codice 2). Per i dati salvati prima, `excel` dà `bad-periods` (1) con un messaggio che dice di correggere, non di ripetere.                                                                                             |
-| M1          | **Due decimali.** `parseEuro` vuole due decimali, come il lettore Python: rifiuta «1,5», «1.234,5», «12.5». Le celle numeriche degli estratti XLSX (12.5) si leggono ancora. Ho controllato i chiamanti: argomenti della CLI ed estratti; i tassi e le aliquote hanno un lettore loro.                                                   |
-| E12         | **Importo negativo.** `--importo -15,00` funziona: un valore che comincia con «-» e una cifra, dopo un'opzione con valore, è quel valore.                                                                                                                                                                                                |
-| E14         | **Bolletta rilanciata.** `bolletta` rilanciata dopo lo spostamento del PDF dà `duplicate-bill`, non più `bad-file`.                                                                                                                                                                                                                      |
-| E15         | **Lettura non valida.** `bad-reading` con `--dettagli` elenca i campi non validi: solo i nomi, mai i valori.                                                                                                                                                                                                                             |
+| Reperto     | Correzione                                                                                                                                                                                                                                                                                                                                          |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1          | **TARI comune.** Le rate di un altro appartamento hanno ora `paidFromApartmentId` = l'appartamento dell'avviso. Il gruppo è coerente e l'addebito unico si abbina da solo: 101,04 / 84,96 €. Così tornano giusti il conguaglio, lo storno nei saldi (84,96 €), le tasse (TARI pagata) e le scadenze.                                                |
+| C1          | **Voce non più «assunta».** Una voce è coperta quando un estratto del conto pagante copre almeno un giorno di [rif − 5, rif + 10]. In quel caso si abbina oppure resta «in attesa»: mai «assunta». Il bordo vale nei due sensi: anche una voce che scade fino a 5 giorni dopo la fine di un estratto ora resta in attesa.                           |
+| I1          | **Importo addebitato.** Una bolletta (non una rata, non un F24) si può confermare per l'intero addebito del suo movimento quando è diverso dal documento (R2). `abbina` restituisce `amountDiffers` con gli `id`. L'abbinamento conserva l'importo addebitato, quindi l'«importo diverso» si vede sempre dal confronto con il documento.            |
+| I5          | **Quota della proprietà.** Le rate ordinarie dello stesso esercizio con quota o numero di rate diversi danno il rifiuto del conguaglio `owner-share-inconsistent`, con un messaggio chiaro. Excel, cruscotto e caparra lo trattano già come rifiuto. La divisione per indice di rata c'era già (`equalSplit` su `rateCount`); resta B8, vedi sotto. |
+| I10/B19     | **Recupero dopo il pagamento.** Un recupero su una rata straordinaria conta solo con un abbinamento vero, non «assunto» (lotto 10).                                                                                                                                                                                                                 |
+| B17         | **Mese del canone.** `conferma` di un canone il cui mese è fuori dalla presenza (`month-outside-presence`) o già coperto da un altro canone confermato dell'inquilino (`month-already-paid`): avviso nel risultato, mai rifiuto (lotto 11).                                                                                                         |
+| E7          | **Proposta superata.** Una proposta che dopo un'altra conferma è diventata un incasso automatico dà `stale-proposal`: «rilanciare riconcilia». Gli `id` delle proposte sono già stabili (`p-chi-<movimento>`): cambia lo stato, non l'`id`. Un movimento escluso o abbinato nel frattempo resta `unknown-proposal`.                                 |
+| U3          | **Classe con dipendenti.** Una classe automatica con un recupero, un pagamento di tasse o una scadenza pagata sul movimento non cede all'abbinamento. `riconcilia` la lascia come proposta `has-dependents`; `abbina` rifiuta con `class-has-dependents`.                                                                                           |
+| E8, E9, E10 | **Profilo, inquilino e conto.** `profilo` e `inquilino` identici non scrivono più. `conto` con stesso appartamento, profilo, etichetta e IBAN dà `unchanged`, con o senza IBAN.                                                                                                                                                                     |
+| E2, E3      | **Giroconto a mano e scadenza.** `giroconto-manuale` identico a uno vivo dà `unchanged`; con `--id` facoltativo si registrano due giroconti uguali nello stesso giorno (`id-in-use` se l'`id` è già usato). `scadenza-nuova` con un `--id` nuovo crea la scadenza, e la stessa scadenza senza `--id` dà `unchanged`.                                |
+| E6          | **Annualità dal giorno 1.** `appartamento --annualita` con un giorno diverso da 01 dà `annualita-not-first-day` (codice 2). Per i dati salvati prima, `excel` dà `bad-periods` (1) con un messaggio che dice di correggere, non di ripetere.                                                                                                        |
+| M1          | **Due decimali.** `parseEuro` vuole due decimali quando c'è un separatore decimale, come il lettore Python: rifiuta «1,5», «1.234,5», «12.5». Le celle numeriche degli estratti XLSX (12.5) si leggono ancora. Ho controllato i chiamanti: argomenti della CLI ed estratti; i tassi e le aliquote hanno un lettore loro.                            |
+| E12         | **Importo negativo.** `--importo -15,00` funziona: un valore che comincia con «-» e una cifra, dopo un'opzione con valore, è quel valore.                                                                                                                                                                                                           |
+| E14         | **Bolletta rilanciata.** `bolletta` rilanciata dopo lo spostamento del PDF dà `duplicate-bill`, non più `bad-file`.                                                                                                                                                                                                                                 |
+| E15         | **Lettura non valida.** `bad-reading` con `--dettagli` elenca i campi non validi: solo i nomi, mai i valori.                                                                                                                                                                                                                                        |
 
 **Idempotenza dei rilanci.**
 
 - Nel ciclo completo ogni comando viene rilanciato, e ora nessun rilancio scrive.
-- Gli altri comandi di scrittura li ho controllati leggendo il codice. Hanno già un «unchanged» o un rifiuto al secondo invio:
-  - `contatto`, `soglie-consumi`, `tasse-stima`, `tasse-copia`, `tasse-assegna`, `tasse-conferma`;
-  - `condominio-stima`, `scambio-camera`, `imu-*`, `affitti-anno`;
-  - `scadenza-ripeti` (`already-repeated`) e `recupero` (`--id`).
+- Già provati dai test della CLI (`unchanged` al secondo invio): `contatto`, `affitti-anno`, `tasse-copia`,
+  `tasse-stima`, `tasse-conferma`, `scambio-camera`.
+- `scadenza-ripeti` rifiuta `already-repeated` al secondo invio, e `recupero` ha un `--id`. Questi li ho letti nel
+  codice, non provati.
+- **Non provati da me:** `soglie-consumi` e `tasse-assegna`. Nel codice c'è un ramo `unchanged`.
 - `abbina` e `conferma` rilanciati non scrivono: rifiutano.
+
+**Limiti rimasti delle correzioni.**
+
+- **E1.** Le rate TARI registrate prima della correzione non hanno `paidFromApartmentId` e restano non valide. Vanno
+  annullate e registrate di nuovo. Il conto pagante si suppone quello dell'appartamento per cui si registra l'avviso.
+- **I5.** Resta B8: se di un indice di rata c'è solo un record con `rata` 0 (il solo conguaglio dell'anno prima), la
+  quota di quell'indice non si toglie finché non arriva la rata ordinaria.
+- **M1.** Restano due differenze dal lettore Python: qui un intero («63») e «1.234» (mille e duecentotrentaquattro
+  euro) sono accettati come importi degli argomenti, lì no.
+- **E6.**
+  - Il rifiuto è nel comando `appartamento`. `saveApartment` (di un altro scrittore) accetta ancora un giorno
+    diverso da 1 da altri chiamanti.
+  - Con i dati salvati prima ho provato solo `excel`, non `cruscotto --periodo-conguaglio`, `caparra-restituzione`
+    né `contratti`.
+  - `--esercizio-condominio` non è controllato.
+- **E10.** Con lo stesso IBAN e un'etichetta nuova il risultato resta `iban-in-use`. Un comando per cambiare
+  l'etichetta non c'è.
 
 ## `it.fails` del ciclo completo
 
@@ -73,8 +91,11 @@ Nessuna regola di calcolo nuova. Dove serviva una scelta del proprietario, il co
 2. **U3, bolletta e recupero.** Una spesa di 63 € è già stata recuperata dagli inquilini come recupero sul movimento; poi arriva la bolletta dello stesso addebito, da dividere tra gli inquilini. Quale dei due vale? Oggi l'app non sceglie: lascia la bolletta «da rivedere» e il recupero resta.
 3. **B17, mese già pagato.** Confermi un canone «per gennaio» quando gennaio è già pagato. Oggi è registrato con un avviso. Deve essere un rifiuto, superabile solo con una conferma esplicita?
 4. **I10, versamento in più.** Un inquilino versa 520 € invece di 480 € per coprire 40 € mancati a gennaio. Li sposto su gennaio da solo o te lo chiedo? Oggi l'eccedenza oltre affitto e forfait non conta.
-5. **I5, quota dal preventivo.** La decisione del 14 novembre dice che la quota della proprietà si legge dal preventivo. Oggi è un campo di ogni rata, e l'app controlla solo che sia uguale su tutte. Esempio: preventivo con 18,00 € di quota l'anno e rate da 6,00 € ciascuna. Vuoi che l'app la prenda dal preventivo e rifiuti le rate che dicono altro?
-6. **E6.** Esiste un appartamento la cui annualità non comincia il giorno 1 di un mese? Oggi è rifiutata.
+5. **I5 e B8, rata con il solo conguaglio.** La rata 2 di 3 arriva solo come conguaglio dell'anno prima (rata 0 €,
+   conguaglio 48 €), la quota della proprietà è 18 € l'anno. I 6 € della rata 2 si tolgono comunque da quel record,
+   o aspetto la rata ordinaria?
+6. **I5, quota dal preventivo.** La decisione del 14 novembre dice che la quota della proprietà si legge dal preventivo. Oggi è un campo di ogni rata, e l'app controlla solo che sia uguale su tutte. Esempio: preventivo con 18,00 € di quota l'anno e rate da 6,00 € ciascuna. Vuoi che l'app la prenda dal preventivo e rifiuti le rate che dicono altro?
+7. **E6.** Esiste un appartamento la cui annualità non comincia il giorno 1 di un mese? Oggi è rifiutata.
 
 ## Arretrato (non fatto) e motivo
 
