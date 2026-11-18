@@ -752,6 +752,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw error instanceof Stop ? error : invalid('bad-profile');
     }
     const operation = await saveBankProfile(store, profile, who, clock, newId);
+    if (operation === undefined) return { status: 'unchanged', id: profile.id };
     return { status: 'saved', id: profile.id, operationId: operation.id };
   }
 
@@ -770,6 +771,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       newId,
     );
     if (result.status === 'rejected') throw new Stop('rejected', result.reason);
+    if (result.status === 'unchanged') return { status: 'unchanged', id: result.account.id };
     return { status: 'saved', id: result.account.id, operationId: result.operationId };
   }
 
@@ -1030,6 +1032,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (error instanceof RangeError) throw invalid('bad-arguments');
       throw error;
     }
+    if (operation === undefined) return { status: 'unchanged', id: values.id };
     return { status: 'saved', id: values.id, operationId: operation.id };
   }
 

@@ -32,18 +32,29 @@ import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
 
-/** Creates the tenant `draft.id`, or writes a new `rev` of it (a deleted one comes back). */
+/**
+ * Creates the tenant `draft.id`, or writes a new `rev` of it (a deleted one comes back). The same
+ * name and language on a live tenant write nothing: `undefined` (E8, a rerun is unchanged).
+ */
 export async function saveTenant(
   store: Store,
   draft: { id: string; name: string; language?: 'it' | 'en' },
   profileId: string,
   clock: () => string,
   newId: () => string,
-): Promise<Operation> {
+): Promise<Operation | undefined> {
   const before = (
     await loadAll(store, 'tenant', TenantSchema, { includeDeleted: true })
   ).records.find((t) => t.id === draft.id);
   const after = parseOrThrow(TenantSchema, { ...draft, v: 1, rev: 1 }, 'tenant');
+  if (
+    before !== undefined &&
+    before.deleted !== true &&
+    before.name === after.name &&
+    before.language === after.language
+  ) {
+    return undefined;
+  }
   return commitChange(
     store,
     {

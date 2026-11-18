@@ -86,6 +86,16 @@ describe('saveTenant', () => {
     );
     const t = (await loadAll(store, 'tenant', TenantSchema)).records.find((x) => x.id === 't-new');
     expect(t).toEqual({ id: 't-new', v: 1, rev: 2, name: 'Nome Cambiato', language: 'en' });
+    // E8: the same name and language again write nothing.
+    expect(
+      await saveTenant(
+        store,
+        { id: 't-new', name: 'Nome Cambiato', language: 'en' },
+        'p1',
+        clock,
+        ids('c'),
+      ),
+    ).toBeUndefined();
   });
 
   it('brings a deleted tenant back with a new rev', async () => {
@@ -139,7 +149,13 @@ describe('runReconcile', () => {
 
   it('refuses on a record changed by hand over the journal, also for a dry run', async () => {
     const store = await yearStore();
-    await saveTenant(store, { id: 't-anna', name: 'Anna Verdi' }, 'p1', clock, ids('a'));
+    await saveTenant(
+      store,
+      { id: 't-anna', name: 'Anna Verdi', language: 'it' },
+      'p1',
+      clock,
+      ids('a'),
+    );
     store.putRaw(recordPath('tenant', 't-anna'), '{"id":"t-anna","v":1,"rev":1,"name":"Altro"}\n');
     const before = await snapshot(store);
     const refused = { status: 'refused', reason: 'inconsistent-store' };
@@ -592,7 +608,13 @@ describe('confirmIncome', () => {
   it('never puts names, IBANs, descriptions or amounts in a summary', async () => {
     const store = await yearStore();
     const newId = ids('op');
-    await saveTenant(store, { id: 't-anna', name: 'Anna Verdi' }, 'p1', clock, newId);
+    await saveTenant(
+      store,
+      { id: 't-anna', name: 'Anna Verdi', language: 'it' },
+      'p1',
+      clock,
+      newId,
+    );
     await runReconcile(store, 'p1', clock, newId);
     for (const c of year.expected.confirmations) await confirmIncome(store, c, 'p1', clock, newId);
     await runReconcile(store, 'p1', clock, newId);

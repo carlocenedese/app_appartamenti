@@ -550,7 +550,13 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
 
   it('refuses a diverged store and writes nothing: no phase runs', async () => {
     const store = await treConti();
-    await saveTenant(store, { id: 't-mario', name: 'Mario Inventato' }, 'p1', clock, ids('t'));
+    await saveTenant(
+      store,
+      { id: 't-mario', name: 'Mario Inventato', language: 'it' },
+      'p1',
+      clock,
+      ids('t'),
+    );
     store.putRaw(
       recordPath('tenant', 't-mario'),
       '{"id":"t-mario","v":1,"rev":1,"name":"Altro"}\n',
@@ -718,7 +724,13 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
 describe('excludeMovement: order of the refusals (plan 3c, task 4, ledger)', () => {
   it('a diverged store and an unknown movement: inconsistent-store first', async () => {
     const store = await treConti();
-    await saveTenant(store, { id: 't-mario', name: 'Mario Inventato' }, 'p1', clock, ids('t'));
+    await saveTenant(
+      store,
+      { id: 't-mario', name: 'Mario Inventato', language: 'it' },
+      'p1',
+      clock,
+      ids('t'),
+    );
     store.putRaw(
       recordPath('tenant', 't-mario'),
       '{"id":"t-mario","v":1,"rev":1,"name":"Altro"}\n',

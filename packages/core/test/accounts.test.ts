@@ -66,9 +66,14 @@ describe('saveBankProfile', () => {
     expect(records).toHaveLength(1);
     expect(records[0]?.rev).toBe(1);
     const op = await saveBankProfile(store, { ...profile, bank: 'Altra' }, 'p1', clock, ids('c'));
-    expect(op.kind).toBe('bank-profile.save');
+    expect(op?.kind).toBe('bank-profile.save');
     const again = await loadAll(store, 'bankProfile', BankProfileSchema);
     expect(again.records[0]).toMatchObject({ bank: 'Altra', rev: 2 });
+    // E8: the same profile again writes nothing.
+    expect(
+      await saveBankProfile(store, { ...profile, bank: 'Altra' }, 'p1', clock, ids('d')),
+    ).toBeUndefined();
+    expect((await loadAll(store, 'bankProfile', BankProfileSchema)).records[0]?.rev).toBe(2);
   });
 
   it('saves again a profile that was deleted, on top of its rev', async () => {
@@ -114,17 +119,30 @@ describe('saveAccount', () => {
     expect((await loadAll(store, 'account', AccountSchema)).records).toEqual([]);
   });
 
-  it('saves an account without IBAN, twice', async () => {
+  it('E9: an account without IBAN saved again is unchanged; another label is a second account', async () => {
     const store = await seeded();
     const bare = draft({ iban: undefined });
-    expect((await saveAccount(store, bare, 'p1', clock, ids('a'))).status).toBe('saved');
-    expect((await saveAccount(store, bare, 'p1', clock, ids('b'))).status).toBe('saved');
+    const first = await saveAccount(store, bare, 'p1', clock, ids('a'));
+    expect(first.status).toBe('saved');
+    const again = await saveAccount(store, bare, 'p1', clock, ids('b'));
+    expect(again.status).toBe('unchanged');
+    if (first.status === 'saved' && again.status === 'unchanged') {
+      expect(again.account.id).toBe(first.account.id);
+    }
+    const other = draft({ iban: undefined, label: 'Altro conto' });
+    expect((await saveAccount(store, other, 'p1', clock, ids('c'))).status).toBe('saved');
+    expect((await store.list('_app/dati/account')).length).toBe(2);
   });
 
-  it('rejects the same IBAN on a second account, however it is written', async () => {
+  it('E10: the same account again is unchanged; its IBAN on another account is rejected', async () => {
     const store = await seeded();
     await saveAccount(store, draft(), 'p1', clock, ids('a'));
-    expect(await saveAccount(store, draft({ iban: NORMAL }), 'p1', clock, ids('b'))).toEqual({
+    expect((await saveAccount(store, draft({ iban: NORMAL }), 'p1', clock, ids('b'))).status).toBe(
+      'unchanged',
+    );
+    expect(
+      await saveAccount(store, draft({ iban: NORMAL, label: 'Altro' }), 'p1', clock, ids('c')),
+    ).toEqual({
       status: 'rejected',
       reason: 'iban-in-use',
     });
