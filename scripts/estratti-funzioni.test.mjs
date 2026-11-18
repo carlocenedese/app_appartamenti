@@ -644,6 +644,76 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     expect(r.json.message).toMatch(/^Rifiutato: /);
   });
 
+  it('F1, F3: inviato, saldato per inquilino, riaperto con il motivo e chiuso di nuovo', async () => {
+    await closable();
+    await cli('chiudi-periodo', ...args);
+    const state = async () =>
+      (await cli('cruscotto', '--periodo-conguaglio', 'apt-x:2025-26')).json.settlements[0].state;
+    expect(await state()).toBe('chiuso');
+    const sent = await cli('invia-conguaglio', ...args, '--data', '2026-11-20');
+    expect(sent.code, sent.out).toBe(0);
+    expect(sent.json.status).toBe('saved');
+    expect(await state()).toBe('inviato');
+    const unknown = await cli(
+      'conguaglio-saldato',
+      ...args,
+      '--inquilino',
+      't-no',
+      '--data',
+      '2026-12-01',
+    );
+    expect(unknown.json).toMatchObject({ status: 'rejected', reason: 'unknown-tenant' });
+    const settled = await cli(
+      'conguaglio-saldato',
+      ...args,
+      '--inquilino',
+      't-x',
+      '--data',
+      '2026-12-01',
+    );
+    expect(settled.code, settled.out).toBe(0);
+    expect(await state()).toBe('saldato');
+    const sup = await cli('conguaglio-supplementare', ...args);
+    expect(sup.json).toMatchObject({
+      status: 'closed',
+      state: 'saldato',
+      sentOn: '2026-11-20',
+      tenants: [{ tenantId: 't-x', settled: true }],
+    });
+    // The reason is required.
+    expect((await cli('riapri-periodo', ...args, '--data', '2026-12-05')).code).toBe(2);
+    const reopened = await cli(
+      'riapri-periodo',
+      ...args,
+      '--data',
+      '2026-12-05',
+      '--motivo',
+      'Uscita anticipata registrata tardi',
+    );
+    expect(reopened.code, reopened.out).toBe(0);
+    expect(reopened.json).not.toHaveProperty('closedPeriods');
+    expect((await cli('conguaglio-supplementare', ...args)).json).toMatchObject({
+      status: 'reopened',
+      state: 'riaperto',
+      reopenedOn: '2026-12-05',
+    });
+    expect((await cli('invia-conguaglio', ...args, '--data', '2026-12-06')).json.reason).toBe(
+      'not-closed',
+    );
+    // Open again: the change inside the period goes through.
+    const end = await cli('fine-presenza', '--presenza', 'tcy-x', '--mese', '2026-08');
+    expect(end.code, end.out).toBe(0);
+    // Undoing the reopening now would close the period without a new snapshot.
+    const reopenOp = (await readJournal(new FsStore(dir))).operations.find(
+      (o) => o.kind === 'period.reopen',
+    );
+    const refused = await cli('annulla-riconciliazione', '--operazione', reopenOp.id);
+    expect(refused.json.reason).toBe('reopen-changed');
+    const again = await cli('chiudi-periodo', ...args);
+    expect(again.code, again.out).toBe(0);
+    expect(await state()).toBe('chiuso');
+  });
+
   it('senza cambiamenti l’annullo della chiusura riapre il periodo', async () => {
     await closable();
     const closed = await cli('chiudi-periodo', ...args);

@@ -24,6 +24,8 @@ export interface ClosingRow extends Omit<SupplementaryRow, 'action'> {
 export interface PeriodClosed {
   /** `reopened`: the period is open again; the comparison is with its last snapshot. */
   status: 'closed' | 'reopened';
+  /** F1, F3: the step of the closing (`closeState`). */
+  state: 'chiuso' | 'inviato' | 'saldato' | 'riaperto';
   closedAt: string;
   /** F1: the day the settlement was sent to the tenants, when user1 marked it. */
   sentOn?: string;
@@ -145,6 +147,7 @@ export function closingOf(
   });
   return {
     status: close.reopened === undefined ? 'closed' : 'reopened',
+    state: closeState(close),
     closedAt: close.closedAt,
     ...(close.sentOn === undefined ? {} : { sentOn: close.sentOn }),
     settled: close.settled ?? [],

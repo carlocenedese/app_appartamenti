@@ -120,6 +120,9 @@ import {
   loadSettings,
   closePeriod,
   loadPeriodClosing,
+  markPeriodSent,
+  markTenantSettled,
+  reopenPeriod,
   equalShares,
   saveContract,
   setContractRent,
@@ -268,7 +271,17 @@ export const MESSAGES = {
     'Attenzione: le rate dell’esercizio non hanno la stessa quota della proprietà o lo stesso numero di rate («instalmentIds»): il conguaglio le rifiuta finché non si corregge.',
   'invalid-workspace-settings': 'Rifiutato: impostazione non valida.',
   'closing-changed':
-    'Rifiutato: dopo la chiusura sono cambiati costi o dati del periodo, e annullarla perderebbe il conguaglio supplementare. Due vie: tenere la chiusura e usare «conguaglio-supplementare»; oppure annullare prima, in ordine inverso, le operazioni fatte dopo la chiusura (bollette, pagamenti, recuperi), poi la chiusura.',
+    'Rifiutato: dopo la chiusura sono cambiati costi o dati del periodo, e annullarla perderebbe il conguaglio supplementare. Due vie: tenere la chiusura e usare «conguaglio-supplementare»; oppure riaprire il periodo con il motivo («riapri-periodo»), che tiene l’istantanea nello storico.',
+  'reopen-changed':
+    'Rifiutato: dopo la riapertura sono cambiati costi o dati del periodo: annullarla chiuderebbe il periodo senza un’istantanea nuova. Chiudere di nuovo con «chiudi-periodo».',
+  'not-closed': 'Rifiutato: il periodo non è chiuso (mai chiuso, o riaperto).',
+  'unknown-tenant-in-close':
+    'Rifiutato: l’inquilino non è nell’istantanea della chiusura del periodo.',
+  'unknown-movement-in-close': 'Rifiutato: il movimento non esiste.',
+  'missing-reason': 'Rifiutato: per riaprire il periodo serve il motivo (--motivo).',
+  'invalid-close-input': 'Rifiutato: data non valida.',
+  'period-reopened':
+    'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
   'instalment-esercizio-format':
     'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 (il conguaglio divide solo questa forma).',
   'tari-december-missing':
@@ -278,7 +291,7 @@ export const MESSAGES = {
   'closing-unknown':
     'Rifiutato: il conguaglio del periodo ora non si calcola, quindi non si sa se annullare la chiusura perderebbe un conguaglio supplementare: correggere prima i dati del periodo.',
   'already-closed':
-    'Rifiutato: il periodo è già chiuso: per riaprirlo annullare la chiusura (annulla-riconciliazione), finché non c’è un conguaglio supplementare.',
+    'Rifiutato: il periodo è già chiuso: per riaprirlo «riapri-periodo» con data e motivo.',
   'cannot-close':
     'Rifiutato: il periodo non si chiude: mancano affitti o forfait, o ci sono voci in attesa («missing»; importi solo con --dettagli).',
   'period-settlement-error':
@@ -391,6 +404,8 @@ export const MESSAGES = {
   'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
   'no-deposit': 'Rifiutato: nessuna caparra versata da questo inquilino in questo appartamento.',
   'already-returned': 'Rifiutato: la caparra risulta già restituita.',
+  'deposit-to-request':
+    'Attenzione: la caparra è già restituita e il prospetto non cambia: i conguagli dei periodi chiusi non saldati o supplementari sono da richiedere («toRequest»; righe con --dettagli).',
   'missing-rate':
     'Rifiutato: manca il tasso legale di un anno della permanenza: inserirlo con «tasso-legale».',
   'no-exit': 'Rifiutato: la permanenza dell’inquilino non ha ancora una fine.',
@@ -654,6 +669,10 @@ const RECONCILE_KINDS = [
   'settings.save',
   // I2, R5: the closing of a settlement period (its undo opens the period again).
   'period.close',
+  // F1, F3: sent, settled and reopened.
+  'period.send',
+  'period.settle',
+  'period.reopen',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -2405,7 +2424,21 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ...(values.conguaglio === undefined ? {} : { conguaglio: euro(values.conguaglio) }),
       extraCharges,
     });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    if (result.status === 'refused') {
+      // F10: a deposit already returned is not changed: the lines of the closed periods are
+      // «da richiedere» (labels and amounts only with --dettagli, R107).
+      throw new Stop(
+        'rejected',
+        result.reason,
+        result.reason === 'already-returned' && result.toRequest.length > 0
+          ? {
+              toRequest: result.toRequest.length,
+              warning: MESSAGES['deposit-to-request'],
+              ...(values.dettagli === true ? { toRequestLines: result.toRequest } : {}),
+            }
+          : {},
+      );
+    }
     // Every line is an amount: only with --dettagli (R107).
     return {
       status: 'ok',
@@ -2649,7 +2682,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...optional('problem', r.problem),
         ...optional('pending', r.pending),
         // R5: «chiuso» when the period has a live closing, else provisional.
-        ...(r.problem === undefined ? { state: r.closed === true ? 'chiuso' : 'provvisorio' } : {}),
+        ...(r.problem === undefined ? { state: r.step ?? 'provvisorio' } : {}),
         ...(values.dettagli === true ? optional('unassigned', r.unassigned) : {}),
       })),
     };
@@ -2876,7 +2909,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
     // an imu.expected under an assigned F24 would change its rate (plan 3d).
     // R5: undoing a closing after a late item would take the difference into a new snapshot
     // and lose the supplementary settlement: refused while it is due (question 3).
-    const closed = target.kind === 'period.close' ? target.changes[0]?.after : undefined;
+    const closed = ['period.close', 'period.reopen'].includes(target.kind)
+      ? target.changes[0]?.after
+      : undefined;
     if (closed?.deleted !== true && closed?.apartmentId !== undefined) {
       const closing = await loadPeriodClosing(
         store,
@@ -2884,8 +2919,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
         day(clock().slice(0, 10)),
       );
       if (closing.status === 'refused') throw new Stop('rejected', 'closing-unknown');
-      if (closing.status === 'closed' && (closing.changed || closing.dataChanged)) {
-        throw new Stop('rejected', 'closing-changed');
+      // F3: undoing a reopening after changes would close the period without a new snapshot.
+      if (closing.status !== 'open' && (closing.changed || closing.dataChanged)) {
+        throw new Stop(
+          'rejected',
+          target.kind === 'period.reopen' ? 'reopen-changed' : 'closing-changed',
+        );
       }
     }
     const recordIds = await undoBlockedBy(store, target.id);
@@ -3061,14 +3100,72 @@ async function command(name, values, positionals, store, who, clock, newId) {
       });
     }
     if (result.status === 'open') return { status: 'open' };
+    const settledIds = new Set(result.settled.map((s) => s.tenantId));
     return {
-      status: 'closed',
+      status: result.status,
+      // F1, F3: the step of the closing.
+      state: result.state,
       closedAt: result.closedAt,
+      ...optional('sentOn', result.sentOn),
+      ...(result.reopened === undefined ? {} : { reopenedOn: result.reopened.on }),
       changed: result.changed,
       dataChanged: result.dataChanged,
-      tenants: result.tenants.map(({ delta, ...t }) => (details ? { ...t, delta } : t)),
+      tenants: result.tenants.map(({ delta, forfaitDelta, ...t }) => ({
+        ...t,
+        settled: settledIds.has(t.tenantId),
+        // F11: the flat charge no longer collected is a line of its own.
+        ...(details ? { delta, forfaitDelta } : {}),
+      })),
       ...(details ? { unassignedDelta: result.unassignedDelta } : {}),
     };
+  }
+
+  // F1, F3 (decided by user1 on 18 Nov 2026): sent, settled per tenant, reopened with a reason.
+  if (name === 'invia-conguaglio' || name === 'conguaglio-saldato' || name === 'riapri-periodo') {
+    need(values, 'appartamento', 'periodo', 'data');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const query = { apartmentId: values.appartamento, periodLabel: values.periodo };
+    const on = day(values.data);
+    let result;
+    if (name === 'invia-conguaglio') {
+      result = await markPeriodSent(store, { ...query, on }, who, clock, newId);
+    } else if (name === 'conguaglio-saldato') {
+      need(values, 'inquilino');
+      result = await markTenantSettled(
+        store,
+        {
+          ...query,
+          tenantId: values.inquilino,
+          on,
+          ...optional('transactionId', values.movimento),
+        },
+        who,
+        clock,
+        newId,
+      );
+    } else {
+      need(values, 'motivo');
+      result = await reopenPeriod(
+        store,
+        { ...query, on, reason: values.motivo },
+        who,
+        clock,
+        newId,
+      );
+    }
+    if (result.status === 'refused') {
+      const message = {
+        'unknown-tenant': 'unknown-tenant-in-close',
+        'unknown-movement': 'unknown-movement-in-close',
+        'invalid-input': 'invalid-close-input',
+      }[result.reason];
+      throw new Stop(
+        'rejected',
+        result.reason,
+        message === undefined ? {} : { message: MESSAGES[message] },
+      );
+    }
+    return result;
   }
 
   // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
@@ -3294,6 +3391,9 @@ export const COMMAND_NAMES = [
   'impostazioni',
   'chiudi-periodo',
   'conguaglio-supplementare',
+  'invia-conguaglio',
+  'conguaglio-saldato',
+  'riapri-periodo',
   'scegli-versione',
   'aiuto',
 ];
@@ -3412,8 +3512,9 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'scadenza-pagata',
         'tasse-assegna',
         'recupero',
+        'conguaglio-saldato',
       ],
-      motivo: ['escludi'],
+      motivo: ['escludi', 'riapri-periodo'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: [
         'conferma',
@@ -3422,6 +3523,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'subentro',
         'caparra-restituzione',
         'scheda-inquilino',
+        'conguaglio-saldato',
       ],
       giallo: ['soglie-consumi'],
       bolletta: ['consumi'],
@@ -3453,11 +3555,21 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'rata-condominio',
         'chiudi-periodo',
         'conguaglio-supplementare',
+        'invia-conguaglio',
+        'conguaglio-saldato',
+        'riapri-periodo',
       ],
       voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
       inquilini: ['recupero'],
       quote: ['recupero'],
-      periodo: ['recupero', 'chiudi-periodo', 'conguaglio-supplementare'],
+      periodo: [
+        'recupero',
+        'chiudi-periodo',
+        'conguaglio-supplementare',
+        'invia-conguaglio',
+        'conguaglio-saldato',
+        'riapri-periodo',
+      ],
       stato: ['scadenze', 'recupero'],
       nome: ['inquilino', 'appartamento', 'contatto'],
       ruolo: ['contatto', 'contatti'],
@@ -3502,7 +3614,14 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-stima',
         'rata-condominio',
       ],
-      data: ['giroconto-manuale', 'scadenza-pagata', 'recupero'],
+      data: [
+        'giroconto-manuale',
+        'scadenza-pagata',
+        'recupero',
+        'invia-conguaglio',
+        'conguaglio-saldato',
+        'riapri-periodo',
+      ],
       entro: ['scadenze', 'cruscotto'],
       oggi: ['scadenze', 'tasse', 'cruscotto'],
       lettura: ['bolletta'],

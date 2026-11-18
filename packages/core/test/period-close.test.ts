@@ -186,7 +186,8 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     const day = `${clock().slice(8, 10)}/${clock().slice(5, 7)}/${clock().slice(0, 4)}`;
     const closed = { kind: 'text', value: `Conguaglio chiuso il ${day}` };
     expect(await firstRow()).toEqual([closed, closed]);
-    expect(await dashboard()).toMatchObject({ row: { closed: true, pending: 0 } });
+    expect(await dashboard()).toMatchObject({ row: { closed: true, step: 'chiuso', pending: 0 } });
+    expect((await dashboard()).counts?.['conguaglio:da-inviare']).toBe(1);
     expect((await dashboard()).counts?.['conguaglio:supplementare']).toBeUndefined();
     const late = bill('b-tardiva', '2026-07-01', '2026-09-30', 9000, {
       dueDate: isoDate('2026-11-10'),
@@ -199,6 +200,15 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
       value: `Conguaglio chiuso il ${day}: dopo la chiusura c'è un conguaglio supplementare`,
     };
     expect(await firstRow()).toEqual([sup, sup]);
+    // F2 (unchanged): after the closing the files show today's calculation, late bill included;
+    // only the first row differs from the same input without the closing.
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    const open = { ...loaded.input, closing: undefined };
+    const rows = (input: typeof loaded.input) =>
+      buildConguaglioWorkbook(input).sheets.map((sheet) => sheet.rows.slice(1));
+    expect(rows(loaded.input)).toEqual(rows(open));
+    expect(JSON.stringify(rows(loaded.input))).toContain('b-tardiva');
     expect((await dashboard()).counts?.['conguaglio:supplementare']).toBe(1);
   });
 
@@ -295,6 +305,13 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     // 90,00 of the bill against 360,00 of flat charge: a credit of 270,00 to settle.
     expect(closeState((await record()) as PeriodClose)).toBe('inviato');
     expect(unsettledTenants((await record()) as PeriodClose)).toEqual(['t-a']);
+    const sentBoard = await loadDashboard(store, {
+      today: isoDate('2026-11-21'),
+      settlements: [QUERY],
+    });
+    expect(sentBoard.status === 'computed' && sentBoard.apartments[0]?.counts).toMatchObject({
+      'conguaglio:da-saldare': 1,
+    });
     const settle = { ...QUERY, tenantId: 't-a', on: '2026-12-01' };
     expect(
       await markTenantSettled(store, { ...settle, tenantId: 't-x' }, 'p1', clock, ids('x')),
@@ -320,6 +337,19 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
       settled: [{ tenantId: 't-a', on: '2026-12-01', transactionId: 'tx-1' }],
     });
     expect(closeState((await record()) as PeriodClose)).toBe('saldato');
+    // The first row of the files and the dashboard show the steps.
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    const day = `${clock().slice(8, 10)}/${clock().slice(5, 7)}/${clock().slice(0, 4)}`;
+    expect(buildOwnersWorkbook(loaded.input).sheets[0]?.rows[0]?.[0]).toEqual({
+      kind: 'text',
+      value: `Conguaglio chiuso il ${day}, inviato il 20/11/2026, saldato`,
+    });
+    const board = await loadDashboard(store, {
+      today: isoDate('2026-12-02'),
+      settlements: [QUERY],
+    });
+    expect(board.status === 'computed' && board.settlements[0]?.step).toBe('saldato');
     expect(await loadPeriodClosing(store, QUERY, isoDate('2026-12-02'))).toMatchObject({
       status: 'closed',
       sentOn: '2026-11-20',

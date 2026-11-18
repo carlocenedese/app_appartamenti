@@ -8,7 +8,7 @@ import { pendingDocuments } from './bill-import';
 import { loadCondo } from './condo-store';
 import { compareConsumption, worstLevel } from './consumption';
 import { consumptionThresholdsFor } from './consumption-store';
-import { closingOf } from './closing';
+import { closeState, closingOf, unsettledTenants } from './closing';
 import { calcConguaglio, SettlementInputError } from './conguaglio';
 import { loadContractChecks, loadContractStatus } from './contract-store';
 import { loadExcelInput } from './excel-store';
@@ -59,6 +59,8 @@ export interface SettlementStatusRow {
   unassigned?: Cents;
   /** R5: the period is closed («chiuso»); absent, it is provisional. */
   closed?: true;
+  /** F1: the step of a closed period: `chiuso`, `inviato` (sent) or `saldato` (all settled). */
+  step?: 'chiuso' | 'inviato' | 'saldato';
 }
 
 export interface ApartmentDashboard {
@@ -231,8 +233,19 @@ export async function loadDashboard(
         periodLabel,
         pending: result.pending.length,
         unassigned: result.unassigned,
-        ...(closing === undefined ? {} : { closed: true as const }),
+        ...(closing === undefined
+          ? {}
+          : {
+              closed: true as const,
+              step: closeState(closing) as 'chiuso' | 'inviato' | 'saldato',
+            }),
       });
+      // F1: a closed period still to send, then the tenants still to settle.
+      if (closing !== undefined && closing.sentOn === undefined) {
+        add(apartmentId, 'conguaglio:da-inviare');
+      } else if (closing !== undefined) {
+        add(apartmentId, 'conguaglio:da-saldare', unsettledTenants(closing).length);
+      }
       add(apartmentId, 'conguaglio:voci-in-attesa', result.pending.length);
       if (result.unassigned !== 0) add(apartmentId, 'conguaglio:posti-vuoti');
       // R5: a closed period whose costs changed since the snapshot (a late bill): a supplementary

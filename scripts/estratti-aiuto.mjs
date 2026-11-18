@@ -71,7 +71,12 @@ export const COMMAND_HELP = {
   impostazioni: 'Mostra o cambia le impostazioni dell’area di lavoro (--tolleranza-imu).',
   'chiudi-periodo': 'Chiude un periodo di conguaglio con l’istantanea.',
   'conguaglio-supplementare':
-    'Mostra il conguaglio supplementare di un periodo chiuso (importi con --dettagli).',
+    'Mostra lo stato e il conguaglio supplementare di un periodo chiuso o riaperto (importi con --dettagli).',
+  'invia-conguaglio': 'Segna il conguaglio di un periodo chiuso come inviato (--data).',
+  'conguaglio-saldato':
+    'Segna saldato il conguaglio di un inquilino (--inquilino, --data, --movimento facoltativo).',
+  'riapri-periodo':
+    'Riapre un periodo chiuso con --data e --motivo; l’istantanea resta nello storico.',
   'scegli-versione':
     'Sceglie quale versione tenere di un record con due versioni diverse (biforcazione).',
   aiuto: 'Mostra questo aiuto; «aiuto <comando>» le opzioni del comando.',

@@ -18,7 +18,7 @@ import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguagl
 import { apartmentFolder } from './accounts';
 import type { FreeDebit } from './condominio';
 import { safeWord } from './proposal';
-import { closingOf } from './closing';
+import { closeState, closingOf, unsettledTenants } from './closing';
 import type {
   Apartment,
   Bill,
@@ -220,22 +220,36 @@ export interface ExcelInput extends ConguaglioInput {
 /**
  * The first row of the sheets (R171, answer 5 of user1): «Conguaglio provvisorio: voci in attesa
  * N» when the period is not closed or has items waiting; otherwise «Conguaglio chiuso il
- * GG/MM/AAAA», saying when the costs changed since the snapshot (a supplementary settlement, R5).
+ * GG/MM/AAAA», with «, inviato il GG/MM/AAAA» and «, da saldare N» or «, saldato» (F1), saying when
+ * the costs changed since the snapshot (a supplementary settlement, R5). The calculation shown is
+ * always today's (F2).
  */
 export function settlementStateText(
-  closing: { closedAt: string } | undefined,
+  closing: PeriodClose | undefined,
   waiting: number,
   flags: { changed: boolean; dataChanged: boolean } = { changed: false, dataChanged: false },
 ): string {
   if (closing === undefined || waiting > 0) {
     return `Conguaglio provvisorio: voci in attesa ${String(waiting)}`;
   }
-  const [y, m, d] = closing.closedAt.slice(0, 10).split('-');
+  const date = (iso: string) => {
+    const [y, m, d] = iso.slice(0, 10).split('-');
+    return `${d ?? ''}/${m ?? ''}/${y ?? ''}`;
+  };
+  // F1: the steps after the closing, when user1 marked them.
+  const steps = [
+    ...(closing.sentOn === undefined ? [] : [`inviato il ${date(closing.sentOn)}`]),
+    ...(closeState(closing) === 'saldato'
+      ? ['saldato']
+      : closing.sentOn === undefined
+        ? []
+        : [`da saldare ${String(unsettledTenants(closing).length)}`]),
+  ];
   const notes = [
     ...(flags.changed ? ["dopo la chiusura c'è un conguaglio supplementare"] : []),
     ...(flags.dataChanged ? ['dati cambiati dopo la chiusura, da controllare'] : []),
   ];
-  return `Conguaglio chiuso il ${d ?? ''}/${m ?? ''}/${y ?? ''}${notes.length > 0 ? `: ${notes.join('; ')}` : ''}`;
+  return `Conguaglio chiuso il ${date(closing.closedAt)}${steps.map((x) => `, ${x}`).join('')}${notes.length > 0 ? `: ${notes.join('; ')}` : ''}`;
 }
 
 /**
