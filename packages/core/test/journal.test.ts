@@ -9,7 +9,9 @@ import {
   notesFor,
   readJournal,
   recordPath,
+  forkVersions,
   repairDiverged,
+  resolveFork,
   undoOperation,
 } from '../src/index';
 import type { Operation } from '../src/index';
@@ -1167,10 +1169,19 @@ describe('repairDiverged', () => {
     expect(await store.readJson(BILL_PATH)).toEqual(bill('bill-1', { rev: 5, amount: 7 }));
   });
 
-  it('repairs a record that has the same rev with other content, or no usable rev', async () => {
+  it('refuses a record that has the same rev with other content, writing nothing', async () => {
     const { store, commit } = setup();
     await commit(createBill());
-    for (const broken of [bill('bill-1', { amount: 7 }), { id: 'bill-1' }, { rev: 'x' }]) {
+    store.putRaw(BILL_PATH, JSON.stringify(bill('bill-1', { amount: 7 })));
+    store.writes.length = 0;
+    await expect(repairDiverged(store, BILL_PATH)).rejects.toThrow(/rev 1, not below rev 1/);
+    expect(store.writes).toEqual([]);
+  });
+
+  it('repairs a record that has no usable rev', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    for (const broken of [{ id: 'bill-1' }, { rev: 'x' }]) {
       store.putRaw(BILL_PATH, JSON.stringify(broken));
       await repairDiverged(store, BILL_PATH);
       expect(await store.readJson(BILL_PATH)).toEqual(bill('bill-1'));
@@ -1183,6 +1194,113 @@ describe('repairDiverged', () => {
     store.writes.length = 0;
     await expect(repairDiverged(store, BILL_2_PATH)).rejects.toThrow(/No operation/);
     expect(store.writes).toEqual([]);
+  });
+});
+
+describe('forks: two operations leave the same rev (revisione 2026-11-18, G1)', () => {
+  /**
+   * Probe T2 of the review: A passes the rev check, B saves the same record before A's journal
+   * file lands, then A's record write fails with a StaleWriteError (A is told it failed). The
+   * journal has two operations with rev 2 and A's clock is ahead.
+   */
+  async function raceOnOneMachine(): Promise<{ store: TestStore; a: string; b: string }> {
+    const store = new TestStore();
+    await commitChange(store, createBill(), frozen, idList('op-create'));
+    const created = await store.readJson(BILL_PATH);
+    let fired = false;
+    let b = '';
+    const racing = Object.assign(Object.create(store) as TestStore, {
+      async writeJsonAtomic(path: string, value: unknown): Promise<void> {
+        if (!fired && path.startsWith(`${JOURNAL_DIR}/`)) {
+          fired = true;
+          const later = () => '2026-11-10T21:00:01.000Z';
+          b = (
+            await commitChange(
+              store,
+              changeBill(created, bill('bill-1', { amount: 2 })),
+              later,
+              idList('op-b'),
+            )
+          ).id;
+        }
+        await store.writeJsonAtomic(path, value);
+      },
+    });
+    const ahead = () => '2026-11-10T21:00:05.000Z';
+    await expect(
+      commitChange(racing, changeBill(created, bill('bill-1', { amount: 1 })), ahead, () => 'op-a'),
+    ).rejects.toBeInstanceOf(StaleWriteError);
+    return { store, a: 'op-a', b };
+  }
+
+  it('reports the record as forked, not diverged, and «Ripara» refuses it', async () => {
+    const { store } = await raceOnOneMachine();
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 2, rev: 2 });
+    expect(await checkConsistency(store)).toEqual([{ path: BILL_PATH, reason: 'forked' }]);
+    store.writes.length = 0;
+    await expect(repairDiverged(store, BILL_PATH)).rejects.toThrow(/resolveFork/);
+    expect(store.writes).toEqual([]);
+    // The confirmed change of B is still on disk.
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 2, rev: 2 });
+  });
+
+  it('lets the person choose the version to keep, with an operation that can be undone', async () => {
+    const { store, a, b } = await raceOnOneMachine();
+    expect((await forkVersions(store, BILL_PATH)).map(({ id }) => id)).toEqual([b, a]);
+
+    const resolved = await resolveFork(store, BILL_PATH, a, 'prof-b', frozen, idList('op-r'));
+
+    expect(resolved.kind).toBe('fork.resolve');
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 1, rev: 3 });
+    expect(await checkConsistency(store)).toEqual([]);
+    expect(await forkVersions(store, BILL_PATH)).toEqual([]);
+    await undoOperation(store, resolved.id, 'prof-b', frozen, idList('op-u'));
+    expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 2, rev: 4 });
+  });
+
+  it('refuses a choice that is not one of the versions, writing nothing', async () => {
+    const { store } = await raceOnOneMachine();
+    store.writes.length = 0;
+    await expect(
+      resolveFork(store, BILL_PATH, 'op-create', 'prof-b', frozen, idList('x')),
+    ).rejects.toThrow(/not one of its versions/);
+    await expect(
+      resolveFork(store, BILL_2_PATH, 'op-a', 'prof-b', frozen, idList('x')),
+    ).rejects.toThrow(/not forked/);
+    expect(store.writes).toEqual([]);
+  });
+
+  it('blocks an undo while a record is forked', async () => {
+    const { store } = await raceOnOneMachine();
+    await expect(
+      undoOperation(store, 'op-create', 'prof-b', frozen, idList('x'), { cascade: true }),
+    ).rejects.toThrow(/forked/);
+  });
+
+  it('is forked whichever version Dropbox kept, and when both created the record (T3, T12)', async () => {
+    for (const kept of [1, 2]) {
+      const one = new TestStore();
+      const two = new TestStore();
+      await commitChange(one, createBill('bill-1', { amount: 1 }), frozen, idList('op-1'));
+      await commitChange(two, createBill('bill-1', { amount: 2 }), frozen, idList('op-2'));
+      for (const name of await journalNames(two)) {
+        one.putRaw(`${JOURNAL_DIR}/${name}`, two.getRaw(`${JOURNAL_DIR}/${name}`) ?? '');
+      }
+      if (kept === 2) one.putRaw(BILL_PATH, two.getRaw(BILL_PATH) ?? '');
+      expect(await checkConsistency(one)).toEqual([{ path: BILL_PATH, reason: 'forked' }]);
+      await expect(repairDiverged(one, BILL_PATH)).rejects.toThrow(/resolveFork/);
+    }
+  });
+
+  it('is not a fork when two operations left the same content', async () => {
+    const one = new TestStore();
+    const two = new TestStore();
+    await commitChange(one, createBill(), frozen, idList('op-1'));
+    await commitChange(two, createBill(), frozen, idList('op-2'));
+    for (const name of await journalNames(two)) {
+      one.putRaw(`${JOURNAL_DIR}/${name}`, two.getRaw(`${JOURNAL_DIR}/${name}`) ?? '');
+    }
+    expect(await checkConsistency(one)).toEqual([]);
   });
 });
 

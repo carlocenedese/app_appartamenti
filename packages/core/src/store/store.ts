@@ -60,6 +60,8 @@ export type Problem = {
    *   id is loaded, and none of them when no single file is (see `loadAll`).
    * - `diverged`: the record differs from what the last operation in the journal says (a crash
    *   between journal and record); reported by the journal checks, not by `loadAll`.
+   * - `forked`: two operations of the journal left the latest `rev` of the record with different
+   *   content (two people changed it at once); the person chooses which to keep (`resolveFork`).
    */
   reason:
     | 'malformed-json'
@@ -68,7 +70,8 @@ export type Problem = {
     | 'conflicted-copy'
     | 'id-mismatch'
     | 'duplicate-id'
-    | 'diverged';
+    | 'diverged'
+    | 'forked';
   /** For `conflicted-copy`: the file the copy was made from, when its name can be worked out. */
   originalPath?: string;
 };
