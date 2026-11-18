@@ -397,8 +397,8 @@ export function matchToTransactions(input: MatchInput): MatchResult {
     inWindow(node, t);
 
   const ambiguous: Solution['ambiguous'] = [];
-  /** Exact matches, then proposals of another amount; the movements it touched. */
-  const matchPass = (items: ItemNode[], pool: BankTransaction[]): Set<string> => {
+  /** Exact matches, then proposals of another amount; the movements and items it touched. */
+  const matchPass = (items: ItemNode[], pool: BankTransaction[]) => {
     const exact = solve(items, pool, isExact);
     for (const [node, t] of exact.pairs) {
       // R2: the supplier must be in the description. Without it (a bill only) the pair is a
@@ -419,18 +419,23 @@ export function matchToTransactions(input: MatchInput): MatchResult {
       const member = node.members[0] as MatchItemRef;
       created.push(makeMatch(member, 'amount', t, cents(-t.amount), false, 'auto'));
     }
-    return new Set([...exact.touchedTransactions, ...proposals.touchedTransactions]);
+    return {
+      transactions: new Set([...exact.touchedTransactions, ...proposals.touchedTransactions]),
+      nodes: new Set([...exact.touchedNodes, ...proposals.touchedNodes]),
+    };
   };
-  const touched = matchPass(open, free);
+  const touched = matchPass(open, free).transactions;
 
   // C1: an item of a gap is still assumed (R125), unless a movement of a statement in its window,
   // left by the items the statements cover, is a candidate for it (same amount, or another
   // amount with the supplier named): then it is matched or proposed, R2 «conta l'addebitato».
   const left = free.filter((t) => !touched.has(t.id));
   const seen = gap.filter((node) => left.some((t) => isExact(node, t) || isOther(node, t)));
-  matchPass(seen, left);
+  // An item whose only candidate another gap item took is matched, proposed or ambiguous with
+  // nothing: it is assumed, as without a candidate (R125).
+  const reached = matchPass(seen, left).nodes;
   for (const node of gap) {
-    if (seen.includes(node)) continue;
+    if (reached.has(node.key)) continue;
     for (const member of node.members) {
       const assumed = { id: `assumed-${member.itemId}`, date: node.ref };
       created.push(makeMatch(member, 'amount', assumed, member.amount, true, 'assumed'));
