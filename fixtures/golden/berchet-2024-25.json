@@ -1632,10 +1632,10 @@
   "expected": [
     {
       "tenantId": "ten-a",
-      "due": -5991,
+      "due": -5974,
       "forfaitIncassato": 21000,
       "byCategory": {
-        "elettricita": 7375,
+        "elettricita": 7392,
         "internet": 4193,
         "tari": 3441
       }
@@ -1652,10 +1652,10 @@
     },
     {
       "tenantId": "ten-c",
-      "due": -9634,
+      "due": -9617,
       "forfaitIncassato": 33000,
       "byCategory": {
-        "elettricita": 11378,
+        "elettricita": 11395,
         "internet": 6589,
         "tari": 5399
       }
@@ -1671,10 +1671,10 @@
     },
     {
       "tenantId": "ten-e",
-      "due": -8715,
+      "due": -8696,
       "forfaitIncassato": 30000,
       "byCategory": {
-        "elettricita": 10390,
+        "elettricita": 10409,
         "internet": 5990,
         "tari": 4905
       }
@@ -1691,20 +1691,20 @@
     },
     {
       "tenantId": "ten-g",
-      "due": -762,
+      "due": -743,
       "forfaitIncassato": 3000,
       "byCategory": {
-        "elettricita": 1130,
+        "elettricita": 1149,
         "internet": 599,
         "tari": 509
       }
     },
     {
       "tenantId": "ten-h",
-      "due": -7957,
+      "due": -7955,
       "forfaitIncassato": 27000,
       "byCategory": {
-        "elettricita": 9258,
+        "elettricita": 9260,
         "internet": 5391,
         "tari": 4394
       }
@@ -1721,20 +1721,20 @@
     },
     {
       "tenantId": "ten-j",
-      "due": -6897,
+      "due": -6862,
       "forfaitIncassato": 24000,
       "byCategory": {
-        "elettricita": 8387,
+        "elettricita": 8422,
         "internet": 4792,
         "tari": 3924
       }
     },
     {
       "tenantId": "ten-k",
-      "due": -2754,
+      "due": -2771,
       "forfaitIncassato": 9000,
       "byCategory": {
-        "elettricita": 2982,
+        "elettricita": 2965,
         "internet": 1797,
         "tari": 1467
       }
@@ -1862,7 +1862,7 @@
     },
     {
       "what": "Luce dell'inquilino C (Doppia marmo 1, ott 2024 - ago 2025)",
-      "why": "Conguagli D9 somma la luce fino a giugno (RegistroBollette G17:G21) e omette luglio-agosto 2025 (G22-G23): 94,57 € nell'Excel contro 113,78 € dell'app."
+      "why": "Conguagli D9 somma la luce fino a giugno (RegistroBollette G17:G21) e omette luglio-agosto 2025 (G22-G23): 94,57 € nell'Excel contro 113,95 € dell'app."
     },
     {
       "what": "Importi dell'Excel per voce (campo excel)",
@@ -1875,6 +1875,10 @@
     {
       "what": "Condominio",
       "why": "Escluso da expected per costruzione (sezione 42, R3). Le rate 2024-25 non sono disponibili (l'Excel ha solo la quota annua inquilini di 2.103,34 €), quindi la fixture non ha rate di condominio e il controllo di fine esercizio del Task 9 non si applica a questa fixture. Il conguaglio condominiale 2023-24 di 1.302,68 € resta alla proprietà (user1)."
+    },
+    {
+      "what": "Bollette della luce a cavallo di mesi parziali",
+      "why": "Dal 18 novembre 2026 (decisione B2 di user1) una bolletta si divide tra i mesi in proporzione ai giorni del periodo in ciascun mese, non in parti uguali per mese: la luce degli inquilini cambia di qualche centesimo rispetto alla divisione per mesi."
     },
     {
       "what": "Forfait",

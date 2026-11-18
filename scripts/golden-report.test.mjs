@@ -39,13 +39,13 @@ describe('golden report', () => {
   it('gives Excel, app and difference per tenant and category, then the known deviations', () => {
     const fixture = readGolden('berchet-2024-25.json');
     const report = goldenReport('berchet-2024-25.json', fixture);
-    expect(report).toContain('| ten-a | Luce | € 74,20 | € 73,75 | - € 0,45 |');
-    expect(report).toContain('| ten-a | **Totale** | € 159,83 | € 150,09 | - € 9,74 |');
-    expect(report).toContain('- App: € 1.228,33; posti vuoti: € 0,00.');
+    expect(report).toContain('| ten-a | Luce | € 74,20 | € 73,92 | - € 0,28 |');
+    expect(report).toContain('| ten-a | **Totale** | € 159,83 | € 150,26 | - € 9,57 |');
+    expect(report).toContain('- App: € 1.229,25; posti vuoti: € 0,00.');
     expect(report).toContain('- Excel: € 1.265,81.');
-    expect(report).toContain('| ten-c | **Totale** | € 229,43 | € 233,66 | + € 4,23 |');
+    expect(report).toContain('| ten-c | **Totale** | € 229,43 | € 233,83 | + € 4,40 |');
     expect(report).toContain('| ten-b | Internet | € 29,95 | € 29,95 | € 0,00 |');
-    expect(report).toContain('| ten-a | € 150,09 | € 210,00 | - € 59,91 |');
+    expect(report).toContain('| ten-a | € 150,26 | € 210,00 | - € 59,74 |');
     expect(report).toContain('1. **Commissione bancaria di 0,80 € per bolletta.**');
   });
 
@@ -61,7 +61,7 @@ describe('golden report', () => {
     const fixture = readGolden('berchet-2024-25.json');
     const report = goldenReport('prova-2024-25.json', { ...fixture, excel: undefined });
     expect(report).toContain('La fixture non riporta gli importi dell’Excel.');
-    expect(report).toContain('| ten-a | Luce | — | € 73,75 | — |');
+    expect(report).toContain('| ten-a | Luce | — | € 73,92 | — |');
     expect(report).not.toContain('- Excel:');
   });
 });

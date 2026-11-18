@@ -58,9 +58,9 @@ describe('excelItems on the fixture', () => {
   it('notes the months of a bill outside the period', () => {
     const luce = byId(items, 'bill-luce');
     expect(luce?.amount).toBe(12000);
-    expect(luce?.inPeriod).toBe(6000);
+    expect(luce?.inPeriod).toBe(5999);
     expect(luce?.note).toBe(
-      'Bolletta a cavallo: € 60,00 nei mesi agosto–settembre 2026, fuori da questo periodo.',
+      'Bolletta a cavallo: € 60,01 nei mesi agosto–settembre 2026, fuori da questo periodo.',
     );
   });
 
@@ -133,7 +133,7 @@ describe('excelItems variants', () => {
     );
     input.matches.push(amountMatch('bill', 'bill-lunga', 14000));
     expect(byId(itemsOf(input), 'bill-lunga')?.note).toBe(
-      'Bolletta a cavallo: € 20,00 nei mesi settembre 2026 e ottobre 2027, fuori da questo periodo.',
+      'Bolletta a cavallo: € 20,04 nei mesi settembre 2026 e ottobre 2027, fuori da questo periodo.',
     );
   });
 

@@ -44,7 +44,7 @@ App desktop multipiattaforma (Mac e Windows) per organizzare le bollette e le sp
 
 ### Bollette a cavallo tra due annualità
 
-- Una bolletta il cui periodo attraversa il 30 settembre viene duplicata e ripartita **a mesi interi** tra le due annualità (decisione del 4 novembre 2026: sempre mesi interi, mai giorni).
+- Una bolletta il cui periodo attraversa il 30 settembre viene duplicata e ripartita **a mesi interi** tra le due annualità (decisione del 4 novembre 2026: sempre mesi interi, mai giorni; superata per l'importo della bolletta, che dal 18 novembre 2026 si divide tra i mesi in proporzione ai giorni, sezione 42, R1).
 - La bolletta originale resta un unico record con il suo PDF e il suo importo; le due quote sono collegate e si ricalcolano se l'originale viene corretto.
 - Arrotondamento: la somma delle due quote deve coincidere con l'importo originale, quindi la seconda quota si calcola per differenza.
 - Ogni quota riporta l'etichetta di bolletta a cavallo con rimando all'altra.
@@ -143,7 +143,7 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 
 ## 15. Decisioni confermate (4–5 novembre 2026)
 
-- Ripartizione sempre a mesi interi, anche per le bollette a cavallo tra due annualità. Una bolletta si registra una sola volta e si ripartisce in automatico.
+- Ripartizione tra gli inquilini a mesi interi di presenza, anche per le bollette a cavallo tra due annualità; l'importo della bolletta si divide però tra i mesi in proporzione ai giorni (sezione 42, R1, decisione del 18 novembre 2026). Una bolletta si registra una sola volta e si ripartisce in automatico.
 - Commissione bancaria : l'app legge l'importo reale dalla riga "Commissioni e spese" del CSV, legata all'addebito (sezione 42, R7); nessuna opzione per appartamento.
 - Divisore dei conguagli = numero di posti: Berchet: 5, Lovarini: 4, Pulci: 4. È un parametro dell'appartamento, non una formula.
 - Canone TV, tassa consortile Bachiglione e TARI sono a carico degli inquilini.
@@ -484,9 +484,10 @@ Queste 8 regole sono le uniche regole di calcolo in vigore. Prevalgono sulle sez
 ### R1. Competenza e riparto
 
 - Ogni costo ha dei mesi di competenza. L'importo si divide per i mesi, poi per i posti dell'appartamento (divisore), tra gli inquilini presenti in quel mese. I posti vuoti restano a carico della proprietà.
+- Bolletta (deciso da user1 il 18 novembre 2026): l'importo si divide tra i mesi del suo periodo in proporzione ai giorni del periodo che cadono in ciascun mese, anche quando il periodo copre solo mesi interi (un mese di 31 giorni pesa più di uno di 30). Esempio: bolletta dal 30 settembre al 29 novembre, 90,00 €: settembre 1 giorno, ottobre 31, novembre 29, in tutto 61; settembre 1,48 €, ottobre 45,74 €, novembre 42,78 €. Le voci a rata (R3) restano divise in parti uguali tra i mesi che coprono.
 - Periodo di conguaglio: dipende dal contratto. Transitori da 12 mesi rinnovabili (Berchet, Pulci): un periodo per annualità (ottobre–settembre). Contratto 3+2 di Lovarini (aprile 2024 – marzo 2029): un solo periodo per tutta la durata, con i subentri al suo interno. Alla creazione di un appartamento e alla chiusura di un periodo o di un contratto l'app chiede durata e tipo del contratto successivo (1+1 o 3+2).
 - Mesi di competenza: per una bolletta, i mesi del suo periodo; per una voce a rata, i mesi coperti dalla rata (R3); per il conguaglio condominiale dell'anno prima, i 12 mesi dell'esercizio corrente.
-- Arrotondamento: la somma delle quote è sempre uguale all'importo; i resti vanno ai primi mesi.
+- Arrotondamento: la somma delle quote è sempre uguale all'importo; ogni mese riceve la parte intera in centesimi della sua quota, e i centesimi che avanzano vanno uno per mese ai primi mesi.
 
 ### R2. Un costo conta solo se è nel CSV
 
@@ -547,7 +548,7 @@ Queste 8 regole sono le uniche regole di calcolo in vigore. Prevalgono sulle sez
 
 La 2ª rata (agosto–ottobre, 144,00 € al netto) compare nel CSV: A, B, C e D aggiungono 36,00 € ciascuno, E nulla.
 
-**Bolletta tardiva.** Berchet, annualità 1 ottobre – 30 settembre, 5 posti. Una bolletta della luce di luglio–settembre, 90,00 €, arriva ed è pagata a novembre, dopo la chiusura. A, B, C ed E c'erano tutti e tre i mesi, D è partito a fine agosto, F è arrivato a settembre. Quota per posto e mese: 90,00 ÷ 3 ÷ 5 = 6,00 €. Conguaglio supplementare: A, B, C ed E 18,00 € ciascuno, D 12,00 €, F 6,00 €. I 12,00 € di D si trattengono dalla caparra se è ancora in mano.
+**Bolletta tardiva.** Appartamento A, annualità 1 ottobre – 30 settembre, 5 posti. Una bolletta della luce dal 1° luglio al 30 settembre, 90,00 €, arriva ed è pagata a novembre, dopo la chiusura. A, B, C ed E c'erano tutti e tre i mesi, D è partito a fine agosto, F è arrivato a settembre. Quote dei mesi in proporzione ai giorni (31, 31 e 30 su 92): luglio 30,33 €, agosto 30,33 €, settembre 29,34 €; ogni mese si divide per 5 posti, con i centesimi in più ai primi posti. Conguaglio supplementare: A, B e C 18,01 € ciascuno, E 17,99 €, D 12,12 €, F 5,86 €. I 12,12 € di D si trattengono dalla caparra se è ancora in mano.
 
 ### Da confermare
 

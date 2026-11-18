@@ -107,7 +107,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     ]);
     expect(rows.find((r) => r[0] === 'Gas')?.[6]).toBe('assunta, non verificata');
     expect(rows.find((r) => r[0] === 'Elettricità')?.[11]).toBe(
-      'Bolletta a cavallo: € 60,00 nei mesi agosto–settembre 2026, fuori da questo periodo.',
+      'Bolletta a cavallo: € 60,01 nei mesi agosto–settembre 2026, fuori da questo periodo.',
     );
     expect(rows.find((r) => r[0] === 'Condominio')?.slice(1, 3)).toEqual([
       null,
@@ -635,7 +635,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      'f1c08035e4aedea488a253b1338e7f729d9cc012f96f88c94aff79939dfc429e',
+      '66bec46bd41be2fdfd63e0ea850f2e55014f5ed0b118c791a6256fa65301439d',
     );
   });
 });

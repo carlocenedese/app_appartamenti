@@ -43,7 +43,7 @@ import type {
 } from './model';
 import { cents, splitCents } from './money';
 import type { Cents } from './money';
-import { annualitaRange, isoDate, monthsInPeriod } from './period';
+import { annualitaRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
 import { CORE_VERSION } from './version';
@@ -273,11 +273,28 @@ export function checkTenantOverlaps(
   }
 }
 
-/** A bill's amount (or `amount`) split equally over the months of its period. */
+/**
+ * A bill's amount (or `amount`) split over the months of its period in proportion to the days of
+ * the period in each month (B2, decided by user1 on 18 Nov 2026). Each month gets the floor of its
+ * share and the cents left over go one each to the first months (R1), on the absolute value, so
+ * that a credit note is the mirror image.
+ */
 export function allocateBillToMonths(bill: Bill, amount: Cents = bill.amount): MonthShare[] {
-  const months = monthsInPeriod(bill.periodStart, bill.periodEnd);
-  const parts = equalSplit(amount, months.length);
-  return months.map((month, index) => ({ month, amount: parts[index] as Cents }));
+  const { periodStart: start, periodEnd: end } = bill;
+  const months = monthsInPeriod(start, end);
+  const days = months.map((month) => {
+    const first = isoDate(`${month}-01`);
+    const last = lastDayOfMonth(month);
+    return daysBetween(last < end ? last : end, first > start ? first : start) + 1;
+  });
+  const totalDays = days.reduce((sum, d) => sum + d, 0);
+  const magnitude = Math.abs(amount);
+  const parts = days.map((d) => Math.floor((magnitude * d) / totalDays));
+  // Fewer cents are left than there are months.
+  let left = magnitude - parts.reduce((sum, p) => sum + p, 0);
+  for (let i = 0; left > 0; i += 1, left -= 1) parts[i] = (parts[i] as number) + 1;
+  const sign = amount < 0 ? -1 : 1;
+  return months.map((month, index) => ({ month, amount: cents(sign * (parts[index] as number)) }));
 }
 
 /** The monthly shares of the bills that fall inside `range` (a lease year), in input order. */

@@ -287,7 +287,7 @@ describe('loadDashboard on the Excel fixture', () => {
     });
     if (result.status !== 'computed') throw new Error(result.reason);
     expect(result.settlements).toEqual([
-      { apartmentId: 'apt-nord', periodLabel: '2026-27', pending: 1, unassigned: 8894 },
+      { apartmentId: 'apt-nord', periodLabel: '2026-27', pending: 1, unassigned: 8891 },
     ]);
     expect(result.apartments).toEqual([
       {

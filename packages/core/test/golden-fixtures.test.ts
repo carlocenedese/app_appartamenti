@@ -3,7 +3,14 @@
 // reproduce them; this file only checks that every fixture is well formed, free of personal data
 // and consistent with itself. The rules behind the values are in docs/rules/conguaglio-rules.md.
 import { describe, expect, it } from 'vitest';
-import { cents, isoDate, matchToTransactions, monthsInPeriod, splitCents } from '../src/index';
+import {
+  allocateBillToMonths,
+  cents,
+  isoDate,
+  matchToTransactions,
+  monthsInPeriod,
+  splitCents,
+} from '../src/index';
 import { goldenFiles, readGolden } from './helpers/golden';
 
 /** Matching window decided by user1 (R30): 5 days before to 10 days after the due date. */
@@ -104,8 +111,9 @@ describe('golden fixtures', () => {
     });
 
     it('shares out exactly the part of each bill and TARI notice inside the period', () => {
-      // Each item is split equally over its months, remainders to the first months; only the
-      // months of the period count. byCategory leaves out categories with nothing in them.
+      // A bill is split over its months by days (B2), a TARI notice equally over its months,
+      // remainders to the first months; only the months of the period count. byCategory leaves
+      // out categories with nothing in them.
       const inPeriod = (amount: number, from: string, to: string): number => {
         const months = monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`));
         const parts = splitCents(
@@ -117,8 +125,10 @@ describe('golden fixtures', () => {
       };
       const costs =
         sum(
-          fixture.bills.map((b) =>
-            inPeriod(b.amount, b.periodStart.slice(0, 7), b.periodEnd.slice(0, 7)),
+          fixture.bills.flatMap((b) =>
+            allocateBillToMonths(b)
+              .filter((s) => fixture.period.from <= s.month && s.month <= fixture.period.to)
+              .map((s) => s.amount),
           ),
         ) +
         sum(
