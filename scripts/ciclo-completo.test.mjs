@@ -10,7 +10,7 @@
 // the review report.
 
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { existsSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -80,7 +80,7 @@ const SECRETS = [
 ];
 // Distinctive invented amounts in cents (rents 400,00/410,00/460,00, bills, F24...).
 const AMOUNTS =
-  /(?<![0-9a-f-])(40000|41000|46000|50000|12000|9000|4500|8000|18600|10075|8471|10104|8496|19800|15000|4800|100000|60000|40000|3500|2000|1500)(?![0-9a-f-])/;
+  /(?<![0-9a-f-])(40000|41000|46000|50000|12000|9000|4500|8000|18600|10075|8471|10104|8496|19800|15000|4800|100000|60000|40000|3500|2000|1500|35000|36000|5000|6000|70000|10000|6700|120000|80000|30000)(?![0-9a-f-])/;
 
 let root;
 let dir;
@@ -423,7 +423,7 @@ describe.sequential('ciclo completo con la CLI vera', () => {
           acconto,
         ]);
       }
-      const tenancy = (id, apt, tenant, rent, forfait) =>
+      const tenancy = (id, apt, tenant, rent, forfait, room) =>
         run('presenza', [
           '--id',
           id,
@@ -441,10 +441,13 @@ describe.sequential('ciclo completo con la CLI vera', () => {
           '500,00',
           '--contratto',
           `ctr-${apt}`,
+          // No command sets the rooms of an apartment: any --posto is accepted (E19).
+          '--posto',
+          room,
         ]);
-      await tenancy('tcy-uno', 'apt-a', 't-uno', '350,00', '50,00');
-      await tenancy('tcy-due', 'apt-a', 't-due', '350,00', '50,00');
-      await tenancy('tcy-quattro', 'apt-b', 't-quattro', '400,00', '60,00');
+      await tenancy('tcy-uno', 'apt-a', 't-uno', '350,00', '50,00', 'stanza-1');
+      await tenancy('tcy-due', 'apt-a', 't-due', '350,00', '50,00', 'stanza-2');
+      await tenancy('tcy-quattro', 'apt-b', 't-quattro', '400,00', '60,00', 'stanza-1');
       // A takeover in March: t-due leaves after March, t-tre comes in April.
       clock = '2026-03-25T08:00:00.000Z';
       await run('subentro', [
@@ -575,7 +578,7 @@ describe.sequential('ciclo completo con la CLI vera', () => {
           '--conferma',
           tari.pdf,
         ],
-        { rerun: false, label: 'bolletta tari' },
+        { label: 'bolletta tari' },
       );
       shared.tari = t;
       if (t.code === 0) {
@@ -677,6 +680,8 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         String(held[0]),
         '--escludi',
       ]);
+      // The plain reconciliation as a dry run: proposals, arrears and outgoing without --dettagli.
+      shared.dry = await run('riconcilia', ['--prova'], { label: 'riconcilia --prova' });
     },
     TIMEOUT,
   );
@@ -704,6 +709,25 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         await run('conferma', ['--proposta', p.id, '--inquilino', tenant, '--parte', part], {
           label: `conferma ${tenant}`,
         });
+        if (tenant === 't-quattro') {
+          // The next proposal of the same payer in the same listing, as user1 would go down it.
+          const next = first.json.proposals
+            .filter((x) => x.description.includes('Mevia Esempio, affitto'))
+            .sort((a, b) => a.date.localeCompare(b.date))[0];
+          shared.nextOfList = await step(
+            'estratti',
+            'conferma',
+            [
+              '--proposta',
+              next.id,
+              '--inquilino',
+              't-quattro',
+              '--parte',
+              `canone:${next.date.slice(0, 7)}:460,00`,
+            ],
+            { rerun: false, label: 'conferma seconda della stessa lista' },
+          );
+        }
       }
       // What is still proposed is confirmed by hand, one at a time: a confirmation changes the
       // other proposals, so `riconcilia` runs again after each one (finding).
@@ -810,9 +834,41 @@ describe.sequential('ciclo completo con la CLI vera', () => {
           `instalment:${i.id}:${debit}:${k === 0 ? '101,04' : '84,96'}`,
         ]);
       shared.tariAbbina = await step('estratti', 'abbina', parts, { label: 'abbina tari' });
-      if (shared.tariAbbina.code !== 0) {
-        // The debit stays an outgoing proposal: it goes to the expenses of A, «tari».
-        const p = shared.r3.json.outgoing.proposals.find((x) => x.description.includes('TARI'));
+      // What if B's instalment said it is paid from A's account (the fix proposed for E1)? On a
+      // copy of the folder, never on the lifecycle's.
+      const copy = join(root, 'copia-e1');
+      cpSync(dir, copy, { recursive: true });
+      const b = tari.find((i) => i.apartmentId === 'apt-b');
+      let w = 0;
+      await commitChange(
+        new FsStore(copy),
+        {
+          profileId: 'cli',
+          kind: 'test.seed',
+          summary: 'x',
+          changes: [
+            {
+              path: recordPath('instalment', b.id),
+              before: b,
+              after: { ...b, rev: b.rev + 1, paidFromApartmentId: 'apt-a' },
+            },
+          ],
+        },
+        () => clock,
+        () => `w-${String((w += 1))}`,
+      );
+      const plan = await planMatch(new FsStore(copy));
+      shared.whatIf = {
+        invalidGroups: plan.run.invalidGroups,
+        tari: plan.written
+          .filter((m) => tari.some((i) => i.id === m.itemId))
+          .map((m) => [tari.find((i) => i.id === m.itemId).apartmentId, m.amount])
+          .sort(),
+      };
+      rmSync(copy, { recursive: true, force: true });
+      const p = shared.r3.json.outgoing.proposals.find((x) => x.description.includes('TARI'));
+      if (shared.tariAbbina.code !== 0 && p !== undefined) {
+        // The debit stays an outgoing proposal: it goes to the expenses of A, «utenze».
         shared.tariUscita = await step(
           'estratti',
           'uscita',
@@ -1029,6 +1085,19 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         label: 'cruscotto dettagli',
       });
       await run('cruscotto', ['--oggi', '2026-10-20'], { label: 'cruscotto' });
+      shared.cruscottoPeriodo = await run(
+        'cruscotto',
+        [
+          '--oggi',
+          '2026-10-20',
+          '--periodo-conguaglio',
+          'apt-a:2025-26',
+          '--periodo-conguaglio',
+          'apt-b:2025-26',
+          '--dettagli',
+        ],
+        { label: 'cruscotto periodo dettagli' },
+      );
       const template = join(root, 'modello-promessa.docx');
       await ok('moduli', 'moduli', ['--vuoto', '--tipo', 'promessa', '--uscita', template], {
         label: 'moduli vuoto',
@@ -1057,7 +1126,6 @@ describe.sequential('ciclo completo con la CLI vera', () => {
           firmato_il: '2025-09-15',
           indirizzo: 'Via Inventata 1',
           inquilino_uscente: 'nessuno',
-          posto: 'stanza 1',
           registrato_il: '2025-09-30',
           scadenza_versamento: '2025-09-25',
           tipo_promessa: 'nuovo',
@@ -1119,6 +1187,7 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         if (existsSync(file)) shared.sheets[folder] = readSheets(file);
       }
       shared.matches = records('match');
+      notes.push({ whatIf: shared.whatIf });
       notes.push({ files: shared.files, sheets: shared.sheets, calc: shared.calc });
     },
     TIMEOUT,
@@ -1136,7 +1205,6 @@ describe.sequential('ciclo completo con la CLI vera', () => {
       for (const op of [...operations].reverse()) {
         if (op.kind === 'undo' || undone.has(op.id)) continue;
         let r = await step('estratti', 'annulla-riconciliazione', ['--operazione', op.id], {
-          rerun: false,
           label: `annulla ${op.kind}`,
         });
         if (r.code !== 0 && r.json.reason === 'not-reconcile-operation') {
@@ -1147,12 +1215,10 @@ describe.sequential('ciclo completo con la CLI vera', () => {
               .pop()
               .replace(/\.json$/, '');
             r = await step('estratti', 'annulla', ['--estratto', id], {
-              rerun: false,
               label: `annulla estratto`,
             });
           } else if (undoHow.has(op.id)) {
             r = await step('estratti', 'annulla-bolletta', [undoHow.get(op.id).file], {
-              rerun: false,
               label: `annulla-bolletta`,
             });
           }
@@ -1207,6 +1273,48 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(scanText(text)).toEqual([]);
     // --dettagli does show them (the bucket is not empty and holds a name).
     expect(detailOut.join('')).toContain('Tizio Fittizio');
+  });
+
+  it('riconcilia --prova non scrive; la conferma della proposta seguente della lista è rifiutata (E7)', () => {
+    expect([shared.dry.wrote, shared.dry.rerun.wrote]).toEqual([false, false]);
+    expect(shared.dry.json.proposals.length).toBeGreaterThan(30);
+    expect([shared.nextOfList.code, shared.nextOfList.json.reason]).toEqual([
+      1,
+      'unknown-proposal',
+    ]);
+  });
+
+  it('E1: con paidFromApartmentId sulla rata di B l’avviso comune si abbina 101,04 / 84,96', () => {
+    expect(shared.whatIf).toEqual({
+      invalidGroups: [],
+      tari: [
+        ['apt-a', 10104],
+        ['apt-b', 8496],
+      ],
+    });
+  });
+
+  it('cruscotto del periodo = conguaglio: voci in attesa e posti vuoti', () => {
+    const rows = Object.fromEntries(
+      shared.cruscottoPeriodo.json.settlements.map((r) => [r.apartmentId, r]),
+    );
+    for (const apt of ['apt-a', 'apt-b']) {
+      expect([apt, rows[apt].pending, rows[apt].unassigned]).toEqual([
+        apt,
+        shared.calc[apt].pending.length,
+        shared.calc[apt].unassigned,
+      ]);
+    }
+  });
+
+  it('Excel: il posto della presenza, anche quello ereditato dal subentro', () => {
+    const rows = shared.sheets['Appartamento-A'].Conguagli;
+    const posto = (name) => rows.find((r) => r[1] === name)[0];
+    expect([posto('Tizio Fittizio'), posto('Caio Inventato'), posto('Sempronio Prova')]).toEqual([
+      'stanza-1',
+      'stanza-2',
+      'stanza-2',
+    ]);
   });
 
   it('incassi: 4 conferme a mano poi tutto automatico; nessun arretrato a fine ciclo', () => {
@@ -1449,12 +1557,12 @@ describe('sonde fuori dal ciclo', () => {
     rmSync(probe, { recursive: true, force: true });
   });
 
-  // E6: an annualità that does not start on day 1 is accepted, then the Excel fails with code 3.
-  it.fails('annualità dal 15 ottobre: rifiutata subito, o Excel senza crash (E6)', async () => {
+  /** Apartment and contract with the lease year from `day`, then the Excel: the exit codes. */
+  async function yearFrom(day) {
     const { probe, cli } = await probeFolder();
     const saved = await cli(
       'appartamento',
-      ...['--id', 'x', '--nome', 'X', '--locatore', 'L', '--posti', '2', '--annualita', '10-15'],
+      ...['--id', 'x', '--nome', 'X', '--locatore', 'L', '--posti', '2', '--annualita', day],
       ...['--differenza-condominio', 'proprietario'],
     );
     await cli(
@@ -1467,6 +1575,20 @@ describe('sonde fuori dal ciclo', () => {
       link: linkSync,
     });
     rmSync(probe, { recursive: true, force: true });
-    expect(saved.code === 1 || r.code !== 3).toBe(true);
+    return [saved.code, r.code];
+  }
+  const yearProbe = {};
+
+  it('annualità dal 1° ottobre: Excel scritto; dal 15 ottobre: accettata, poi Excel 3 (E6)', async () => {
+    yearProbe.first = await yearFrom('10-01');
+    yearProbe.fifteenth = await yearFrom('10-15');
+    expect(yearProbe.first).toEqual([0, 0]);
+    expect(yearProbe.fifteenth).toEqual([0, 3]);
+  });
+
+  // E6: an annualità that does not start on day 1 is accepted, then the Excel fails with code 3.
+  it.fails('annualità dal 15 ottobre: rifiutata subito, o Excel senza crash (E6)', () => {
+    const [saved, written] = yearProbe.fifteenth;
+    expect(saved === 1 || written !== 3).toBe(true);
   });
 });
