@@ -33,6 +33,7 @@ import type { ISODate } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
+import { loadSettings } from './settings-store';
 
 /** The live `taxPayment`s on these movements, sorted ids (as `payablesUsing`, plan 9). */
 export async function taxPaymentsUsing(
@@ -396,6 +397,7 @@ export async function loadTaxTable(
     apartments,
     estimates,
     imuYears: (await loadAll(store, 'imuYear', ImuYearSchema)).records,
+    imuToleranceBp: (await loadSettings(store)).imuToleranceBp.value,
     classes,
     transactions,
     instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,

@@ -849,15 +849,29 @@ export interface SupplementaryRow {
   /** The tenant's last tenancy ended before the month of `asOf`. */
   departed: boolean;
   /**
-   * `da-rimborsare` for a credit; for a debt `da-pagare`, or `da-trattenere-o-richiedere` when the
+   * `nessuna` for no difference, `da-rimborsare` for a credit; for a debt `da-pagare`, or `da-trattenere-o-richiedere` when the
    * tenant has left (from the deposit, else asked for, else the owner's loss; never shared out).
    */
-  action: 'da-pagare' | 'da-rimborsare' | 'da-trattenere-o-richiedere';
+  action: 'nessuna' | 'da-pagare' | 'da-rimborsare' | 'da-trattenere-o-richiedere';
+}
+
+/** What the supplementary settlement reads of a calculation (a `ConguaglioResult` is one). */
+export interface SettlementCosts {
+  tenants: readonly {
+    tenantId: string;
+    spese: Cents;
+    condominio: { rata: Cents };
+    commissione: Cents;
+    /** What the tenant owes for an intervention (R197); absent is 0. */
+    recupero?: Cents;
+  }[];
+  unassigned: Cents;
+  unassignedByBucket: { conguaglioPrec: Cents };
 }
 
 /**
  * The supplementary settlement of a closed period (R5): for each tenant of either calculation, the
- * difference in costs (`spese + condominio.rata + commissione`) between `current` and the
+ * difference in costs (`spese + condominio.rata + commissione + recupero`) between `current` and the
  * `snapshot` taken at closing. The flat charge is left out (a period closes only when all of it
  * is collected) and so is last year's condominium settlement (it belongs to the next fiscal year).
  * `unassignedDelta` is the same difference for the empty beds, so the deltas and `unassignedDelta`
@@ -865,15 +879,20 @@ export interface SupplementaryRow {
  * departed (R-C10).
  */
 export function calcConguaglioSupplementare(input: {
-  current: ConguaglioResult;
-  snapshot: ConguaglioResult;
+  current: SettlementCosts;
+  snapshot: SettlementCosts;
   tenancies: Tenancy[];
   asOf: ISODate;
 }): { tenants: SupplementaryRow[]; unassignedDelta: Cents } {
-  const emptyBeds = (result: ConguaglioResult): number =>
+  const emptyBeds = (result: SettlementCosts): number =>
     result.unassigned - result.unassignedByBucket.conguaglioPrec;
-  const costs = (result: ConguaglioResult): Map<string, number> =>
-    new Map(result.tenants.map((t) => [t.tenantId, t.spese + t.condominio.rata + t.commissione]));
+  const costs = (result: SettlementCosts): Map<string, number> =>
+    new Map(
+      result.tenants.map((t) => [
+        t.tenantId,
+        t.spese + t.condominio.rata + t.commissione + (t.recupero ?? 0),
+      ]),
+    );
   const now = costs(input.current);
   const before = costs(input.snapshot);
   const asOfMonth = input.asOf.slice(0, 7);
@@ -886,11 +905,13 @@ export function calcConguaglioSupplementare(input: {
       (tenancy) => tenancy.to !== undefined && tenancy.to < asOfMonth,
     );
     const action =
-      delta < 0
-        ? 'da-rimborsare'
-        : departed && delta > 0
-          ? 'da-trattenere-o-richiedere'
-          : 'da-pagare';
+      delta === 0
+        ? 'nessuna'
+        : delta < 0
+          ? 'da-rimborsare'
+          : departed
+            ? 'da-trattenere-o-richiedere'
+            : 'da-pagare';
     return { tenantId, delta, departed, action };
   });
   return {

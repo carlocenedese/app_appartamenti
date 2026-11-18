@@ -113,6 +113,12 @@ import {
   saveCondoDocument,
   saveContact,
   saveTenantRecovery,
+  saveSupply,
+  saveCondoInstalment,
+  saveSettings,
+  loadSettings,
+  closePeriod,
+  loadPeriodClosing,
   equalShares,
   saveContract,
   setContractRent,
@@ -142,6 +148,9 @@ import {
   savePayable,
   setPayablePaid,
   undoBlockedBy,
+  undoDependents,
+  countByType,
+  referenceProblems,
   undoImport,
   undoOperation,
   ExtractionResultSchema,
@@ -149,13 +158,21 @@ import {
   importBill,
   loadDashboard,
   undoBillImport,
+  DATA_FORMAT,
+  PeriodCloseSchema,
+  WORKSPACE_PATH,
+  findWorkspace,
+  raiseDataFormat,
 } from '../packages/core/src/index.ts';
+import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = 60_000;
 
-const MESSAGES = {
-  'bad-arguments': 'Argomenti non validi: vedere l’uso di «pnpm estratti».',
+export const MESSAGES = {
+  'bad-arguments':
+    'Argomenti non validi: vedere «pnpm estratti <comando> --help» (comandi: «pnpm estratti --help»).',
+  'unknown-command': 'Comando sconosciuto: l’elenco dei comandi è in «pnpm estratti --help».',
   'annualita-not-first-day':
     'Argomenti non validi: l’annualità comincia il giorno 1 di un mese (per esempio --annualita 10-01), perché i periodi di conguaglio sono a mesi interi.',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
@@ -223,6 +240,52 @@ const MESSAGES = {
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
   'already-undone': 'Rifiutato: l’operazione è già stata annullata.',
   'has-dependents': 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
+  // Review of 18 Nov 2026 (annullo, U8): the creation of an apartment, a rule, a stay, an account...
+  'record-has-dependents':
+    'Rifiutato: dei record dipendono da ciò che questa operazione ha creato (conteggi per tipo in «counts»): annullarli prima.',
+  'rooms-in-use':
+    'Rifiutato: i posti («rooms») sono usati da presenze («tenancyIds»), anche passate: aggiungere il posto nuovo, spostare le presenze, poi togliere il vecchio.',
+  'apartment-unknown-room':
+    'Rifiutato: una presenza («tenancyIds») non indica un posto dell’appartamento: indicarlo prima di cambiare i posti.',
+  'apartment-beds-conflict':
+    'Rifiutato: con questi posti le presenze non entrano più («code», dal mese «month»).',
+  'tenancy-in-use':
+    'Rifiutato: la presenza ha pagamenti, recuperi o un contratto collegati («recordIds»): per un altro inquilino o appartamento creare una presenza nuova.',
+  'no-references': 'Nessun riferimento pendente.',
+  'label-in-use':
+    'Rifiutato: un’utenza con questa etichetta esiste già con altri appartamenti o quote («supplyId»).',
+  'missing-condominio-start':
+    'Rifiutato: l’appartamento non ha l’inizio dell’esercizio del condominio dal giorno 1 (appartamento --esercizio-condominio MM-01).',
+  'invalid-instalment':
+    'Rifiutato: rata non valida: esercizio AAAA-AA, rata n/N con N divisore di 12, importi e scadenza.',
+  'instalment-in-use':
+    'Rifiutato: la rata ha abbinamenti o recuperi («recordIds»): annullarli prima di cambiarla.',
+  'instalment-id-collision':
+    'Rifiutato: l’identificativo è di una rata TARI o di un altro appartamento.',
+  'owner-share-differs':
+    'Attenzione: le rate dell’esercizio non hanno la stessa quota della proprietà o lo stesso numero di rate («instalmentIds»): il conguaglio le rifiuta finché non si corregge.',
+  'invalid-workspace-settings': 'Rifiutato: impostazione non valida.',
+  'closing-changed':
+    'Rifiutato: dopo la chiusura sono cambiati costi o dati del periodo, e annullarla perderebbe il conguaglio supplementare. Due vie: tenere la chiusura e usare «conguaglio-supplementare»; oppure annullare prima, in ordine inverso, le operazioni fatte dopo la chiusura (bollette, pagamenti, recuperi), poi la chiusura.',
+  'instalment-esercizio-format':
+    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 (il conguaglio divide solo questa forma).',
+  'tari-december-missing':
+    'Rifiutato: l’appartamento è nell’avviso TARI comune e il periodo si chiude solo dopo l’addebito dell’avviso TARI di dicembre («month», R3): registrarlo e abbinarlo, poi chiudere.',
+  'closed-period-changed':
+    'Attenzione: questa scrittura cambia un periodo di conguaglio già chiuso («closedPeriods»): serve un conguaglio supplementare (conguaglio-supplementare).',
+  'closing-unknown':
+    'Rifiutato: il conguaglio del periodo ora non si calcola, quindi non si sa se annullare la chiusura perderebbe un conguaglio supplementare: correggere prima i dati del periodo.',
+  'already-closed':
+    'Rifiutato: il periodo è già chiuso: per riaprirlo annullare la chiusura (annulla-riconciliazione), finché non c’è un conguaglio supplementare.',
+  'cannot-close':
+    'Rifiutato: il periodo non si chiude: mancano affitti o forfait, o ci sono voci in attesa («missing»; importi solo con --dettagli).',
+  'period-settlement-error':
+    'Rifiutato: il conguaglio del periodo non si può calcolare («code»): correggere i dati, poi riprovare.',
+  'unknown-period': 'Rifiutato: periodo di conguaglio sconosciuto per l’appartamento.',
+  'ambiguous-period-label':
+    'Rifiutato: due contratti danno periodi diversi con la stessa etichetta.',
+  'invalid-supply':
+    'Rifiutato: utenza non valida: etichetta vuota, o le quote degli appartamenti non fanno 100%.',
   'class-has-dependents':
     'Rifiutato: la classificazione automatica del movimento ha un recupero, un pagamento di tasse o una scadenza pagata: decidere prima se vale la bolletta o il recupero.',
   'movement-has-dependents':
@@ -528,6 +591,13 @@ const OPTIONS = {
   conferma: { type: 'boolean' },
   'periodo-conguaglio': { type: 'string', multiple: true },
   pagine: { type: 'string' },
+  'posti-nomi': { type: 'string' },
+  ripartizione: { type: 'string' },
+  'quota-proprieta': { type: 'string' },
+  'conguaglio-prec': { type: 'string' },
+  straordinaria: { type: 'boolean' },
+  'tolleranza-imu': { type: 'string' },
+  help: { type: 'boolean', short: 'h' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -570,6 +640,18 @@ const RECONCILE_KINDS = [
   'tax.confirm',
   'tenant.card',
   'consumption.settings',
+  // Review of 18 Nov 2026 (annullo, point 1): an apartment created by mistake can be taken away,
+  // its account and supply first; `undoBlockedBy` refuses while records point at them.
+  'account.save',
+  'supply.link',
+  'tenant.save',
+  'bank-profile.save',
+  // I3, E4: a condominium instalment typed by user1.
+  'condo.instalment',
+  // I9: the workspace settings.
+  'settings.save',
+  // I2, R5: the closing of a settlement period (its undo opens the period again).
+  'period.close',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -1482,12 +1564,34 @@ async function command(name, values, positionals, store, who, clock, newId) {
           'supplyCodes',
           v.codici === undefined ? undefined : v.codici.split(',').filter((c) => c !== ''),
         ),
+        // E19: the names of the beds, in their fixed order (one per bed, unique: the schema checks).
+        ...optional(
+          'rooms',
+          v['posti-nomi']?.split(',').map((r) => r.trim()),
+        ),
       },
       who,
       clock,
       newId,
       { confirmed: v.modifica === true },
     );
+    if (result.status === 'refused' && result.reason === 'rooms-in-use') {
+      throw new Stop('rejected', result.reason, {
+        rooms: result.rooms,
+        tenancyIds: result.tenancyIds,
+      });
+    }
+    if (result.status === 'refused' && result.reason === 'beds-conflict') {
+      throw new Stop('rejected', result.reason, {
+        message:
+          MESSAGES[
+            result.code === 'unknown-room' ? 'apartment-unknown-room' : 'apartment-beds-conflict'
+          ],
+        code: result.code,
+        ...optional('month', result.month),
+        tenancyIds: result.tenancyIds,
+      });
+    }
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     return {
       status: result.status,
@@ -2147,6 +2251,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw new Stop('rejected', result.reason, {
         ...optional('code', result.code),
         ...optional('month', result.month),
+        // Review of 18 Nov 2026 (U4): the payments, recoveries and contracts on the stay (ids).
+        ...optional('recordIds', result.recordIds),
       });
     }
     return {
@@ -2540,6 +2646,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         periodLabel: r.periodLabel,
         ...optional('problem', r.problem),
         ...optional('pending', r.pending),
+        // R5: «chiuso» when the period has a live closing, else provisional.
+        ...(r.problem === undefined ? { state: r.closed === true ? 'chiuso' : 'provvisorio' } : {}),
         ...(values.dettagli === true ? optional('unassigned', r.unassigned) : {}),
       })),
     };
@@ -2764,7 +2872,30 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
     // A cancellation whose movement has had another use since: undoing it would give a second one;
     // an imu.expected under an assigned F24 would change its rate (plan 3d).
+    // R5: undoing a closing after a late item would take the difference into a new snapshot
+    // and lose the supplementary settlement: refused while it is due (question 3).
+    const closed = target.kind === 'period.close' ? target.changes[0]?.after : undefined;
+    if (closed?.deleted !== true && closed?.apartmentId !== undefined) {
+      const closing = await loadPeriodClosing(
+        store,
+        { apartmentId: closed.apartmentId, periodLabel: closed.periodLabel },
+        day(clock().slice(0, 10)),
+      );
+      if (closing.status === 'refused') throw new Stop('rejected', 'closing-unknown');
+      if (closing.status === 'closed' && (closing.changed || closing.dataChanged)) {
+        throw new Stop('rejected', 'closing-changed');
+      }
+    }
     const recordIds = await undoBlockedBy(store, target.id);
+    // U8: records pointing at what the operation created, with the counts by kind (no names).
+    const created = recordIds.length > 0 ? await undoDependents(store, target.id) : [];
+    if (created.length > 0 && target.kind !== 'imu.expected') {
+      throw new Stop('rejected', 'has-dependents', {
+        message: MESSAGES['record-has-dependents'],
+        counts: countByType(created),
+        recordIds,
+      });
+    }
     if (recordIds.length > 0) {
       throw new Stop('rejected', 'has-dependents', {
         message:
@@ -2788,6 +2919,207 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
       throw error;
     }
+  }
+
+  // I3, E4 (review of 18 Nov 2026): a condominium instalment of the plan of a fiscal year, as the
+  // administrator's documents give it (R3): --rata n/N, --importo (the rata), --quota-proprieta
+  // (the owner's yearly share, 0 if absent), --conguaglio-prec (last year's settlement on this
+  // rata, negative for a credit), --straordinaria. Ids and codes only in the output.
+  if (name === 'rata-condominio') {
+    need(values, 'id', 'appartamento', 'esercizio', 'scadenza', 'importo');
+    const found = /^([0-9]{1,2})\/([0-9]{1,2})$/.exec(
+      values.rata?.length === 1 ? values.rata[0] : '',
+    );
+    if (positionals.length > 0 || found === null) throw invalid('bad-arguments');
+    const amountOr0 = (text) => (text === undefined ? euro('0,00') : euro(text));
+    const result = await saveCondoInstalment(
+      store,
+      {
+        id: values.id,
+        apartmentId: values.appartamento,
+        esercizio: values.esercizio,
+        rateIndex: Number(found[1]),
+        rateCount: Number(found[2]),
+        dueDate: day(values.scadenza),
+        rata: euro(values.importo),
+        quotaProprieta: amountOr0(values['quota-proprieta']),
+        conguaglioPrec: amountOr0(values['conguaglio-prec']),
+        ...(values.straordinaria === true ? { straordinaria: true } : {}),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') {
+      throw new Stop(
+        'rejected',
+        result.reason,
+        result.reason === 'esercizio-format'
+          ? {
+              documentIds: result.documentIds,
+              ...(result.documentIds.length === 0
+                ? { message: MESSAGES['instalment-esercizio-format'] }
+                : {}),
+            }
+          : result.reason === 'instalment-in-use'
+            ? { recordIds: result.recordIds }
+            : result.reason === 'id-collision'
+              ? { message: MESSAGES['instalment-id-collision'] }
+              : {},
+      );
+    }
+    return {
+      status: result.status,
+      instalmentId: result.instalmentId,
+      ...optional('operationId', result.operationId),
+      ...optional(
+        'warnings',
+        result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
+      ),
+    };
+  }
+
+  // I9 (review of 18 Nov 2026): the workspace settings, read, or set with --tolleranza-imu
+  // <percentuale> (`predefinita` takes it back to the default of the code).
+  if (name === 'impostazioni') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const imu = values['tolleranza-imu'];
+    let written;
+    if (imu !== undefined) {
+      const result = await saveSettings(
+        store,
+        // 0 is no tolerance at all (the schema allows it); basisPoints starts at 0,01%.
+        {
+          imuToleranceBp:
+            imu === 'predefinita' ? null : /^0(,0{1,2})?$/.test(imu) ? 0 : basisPoints(imu),
+        },
+        who,
+        clock,
+        newId,
+      );
+      if (result.status === 'refused') throw new Stop('rejected', result.reason);
+      written = result;
+    }
+    const settings = await loadSettings(store);
+    return {
+      status: written?.status ?? 'ok',
+      ...optional('operationId', written?.operationId),
+      settings: {
+        // Basis points (100 is 1%): no amount-like text in the output.
+        imuTolerance: {
+          basisPoints: settings.imuToleranceBp.value,
+          isDefault: settings.imuToleranceBp.isDefault,
+        },
+      },
+    };
+  }
+
+  // I2, R5 (review of 18 Nov 2026): the closing of a settlement period with its snapshot, and the
+  // supplementary settlement of what changed since. Ids, months and codes; amounts only with
+  // --dettagli.
+  if (name === 'chiudi-periodo' || name === 'conguaglio-supplementare') {
+    need(values, 'appartamento', 'periodo');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const query = { apartmentId: values.appartamento, periodLabel: values.periodo };
+    const details = values.dettagli === true;
+    if (name === 'chiudi-periodo') {
+      const result = await closePeriod(store, query, who, clock, newId);
+      if (result.status === 'refused') {
+        throw new Stop(
+          'rejected',
+          result.reason,
+          result.reason === 'tari-december-missing'
+            ? { month: result.month }
+            : result.reason === 'cannot-close'
+              ? {
+                  missing: result.missing.map(({ amount, ...m }) =>
+                    details && amount !== undefined ? { ...m, amount } : m,
+                  ),
+                }
+              : result.reason === 'settlement-error'
+                ? { code: result.code, message: MESSAGES['period-settlement-error'] }
+                : result.reason === 'ambiguous-period'
+                  ? { message: MESSAGES['ambiguous-period-label'] }
+                  : {},
+        );
+      }
+      return result;
+    }
+    const result = await loadPeriodClosing(store, query, day(clock().slice(0, 10)));
+    if (result.status === 'refused') {
+      const message =
+        result.reason === 'ambiguous-period'
+          ? 'ambiguous-period-label'
+          : result.reason === 'settlement-error'
+            ? 'period-settlement-error'
+            : result.reason;
+      throw new Stop('rejected', result.reason, {
+        ...optional('code', result.code),
+        message: MESSAGES[message],
+      });
+    }
+    if (result.status === 'open') return { status: 'open' };
+    return {
+      status: 'closed',
+      closedAt: result.closedAt,
+      changed: result.changed,
+      dataChanged: result.dataChanged,
+      tenants: result.tenants.map(({ delta, ...t }) => (details ? { ...t, delta } : t)),
+      ...(details ? { unassignedDelta: result.unassignedDelta } : {}),
+    };
+  }
+
+  // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
+  // and the apartments it belongs to, `--appartamento` alone at 100% or `--ripartizione
+  // apt-a:60;apt-b:40` (percentages); undone with annulla-riconciliazione. Ids only in the output.
+  if (name === 'utenza') {
+    need(values, 'etichetta');
+    if (
+      positionals.length > 0 ||
+      (values.appartamento === undefined) === (values.ripartizione === undefined)
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const rows =
+      values.ripartizione === undefined
+        ? [{ apartmentId: values.appartamento, basisPoints: 10000 }]
+        : values.ripartizione.split(';').map((part) => {
+            const found = /^([A-Za-z0-9_-]{1,64}):(.+)$/.exec(part);
+            if (found === null) throw invalid('bad-arguments');
+            return { apartmentId: found[1], basisPoints: basisPoints(found[2]) };
+          });
+    const result = await saveSupply(
+      store,
+      { label: values.etichetta.trim(), rows, note: '' },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') {
+      throw new Stop('rejected', result.reason, optional('supplyId', result.supplyId));
+    }
+    return {
+      status: result.status,
+      supplyId: result.supplyId,
+      ...optional('operationId', result.operationId),
+    };
+  }
+
+  // Review of 18 Nov 2026 (annullo, point 2): the live records pointing at a missing or deleted
+  // one; kinds, ids and the field only, never a value.
+  if (name === 'riferimenti') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const problems = (await referenceProblems(store)).map(({ from, field, to }) => ({
+      from,
+      field,
+      to,
+      message: `${from.type} ${from.id}: ${field} punta a ${to.type} ${to.id}, che non c’è o è cancellato.`,
+    }));
+    return {
+      status: 'ok',
+      problems,
+      ...(problems.length === 0 ? { message: MESSAGES['no-references'] } : {}),
+    };
   }
 
   if (name === 'annulla-pagamento') {
@@ -2896,6 +3228,119 @@ async function command(name, values, positionals, store, who, clock, newId) {
   }
 }
 
+/** The commands `main` accepts; each one has a line in COMMAND_HELP (estratti-aiuto.mjs). */
+export const COMMAND_NAMES = [
+  'profilo',
+  'conto',
+  'importa',
+  'decidi',
+  'annulla',
+  'inquilino',
+  'riconcilia',
+  'conferma',
+  'ripara',
+  'annulla-incassi',
+  'annulla-riconciliazione',
+  'annulla-pagamento',
+  'escludi',
+  'abbina',
+  'uscita',
+  'annulla-uscita',
+  'uscita-inquilino',
+  'giroconto',
+  'giroconto-manuale',
+  'saldi',
+  'imu-atteso',
+  'imu-f24',
+  'imu',
+  'contratto',
+  'contratto-canone',
+  'contratti',
+  'affitti-anno',
+  'scadenze',
+  'scadenza-nuova',
+  'scadenza-ripeti',
+  'scadenza-pagata',
+  'appartamento',
+  'condominio-documento',
+  'condominio',
+  'condominio-stima',
+  'recupero',
+  'contatto',
+  'contatti',
+  'presenza',
+  'fine-presenza',
+  'subentro',
+  'scambio-camera',
+  'stato-contratti',
+  'caparra-restituzione',
+  'tasso-legale',
+  'tasse-stima',
+  'tasse-copia',
+  'tasse-assegna',
+  'tasse-conferma',
+  'scheda-inquilino',
+  'soglie-consumi',
+  'consumi',
+  'tasse',
+  'bolletta',
+  'annulla-bolletta',
+  'cruscotto',
+  'riferimenti',
+  'utenza',
+  'rata-condominio',
+  'impostazioni',
+  'chiudi-periodo',
+  'conguaglio-supplementare',
+  'scegli-versione',
+  'aiuto',
+];
+
+/**
+ * The state of each closed settlement period (R5), by closing id, as `loadPeriodClosing` gives it:
+ * compared before and after a write to warn that the write changed a closed period (review,
+ * point 6). Nothing when no period is closed; a folder it cannot read gives nothing.
+ */
+async function closedStates(store, today) {
+  const states = new Map();
+  try {
+    const closes = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    for (const c of closes) {
+      const query = { apartmentId: c.apartmentId, periodLabel: c.periodLabel };
+      states.set(c.id, {
+        query,
+        state: JSON.stringify(await loadPeriodClosing(store, query, today)),
+      });
+    }
+  } catch {
+    return new Map();
+  }
+  return states;
+}
+
+/**
+ * The data folder of one command line (review of 18 Nov 2026, data format): before its first
+ * write of a record or an operation, a folder whose `workspace.json` declares an older data format
+ * is raised to `DATA_FORMAT` (`raiseDataFormat`, idempotent), so that an older app opens it
+ * read-only instead of reading records it does not know. A newer format is refused by
+ * `commitChange` (`newer-data`: update the app); a folder without `workspace.json` is left as it is.
+ */
+class CliStore extends FsStore {
+  formatChecked = false;
+  formatRaised = false;
+
+  async writeJsonAtomic(path, value) {
+    if (!this.formatChecked && path !== WORKSPACE_PATH) {
+      this.formatChecked = true;
+      const workspace = await findWorkspace(this);
+      if (workspace !== undefined && workspace.schemaVersion < DATA_FORMAT) {
+        this.formatRaised = (await raiseDataFormat(this)) === 'raised';
+      }
+    }
+    return super.writeJsonAtomic(path, value);
+  }
+}
+
 /**
  * Runs one command line. `io.now` is the clock and `io.newId` the generator of ids (both live
  * outside the core); returns the exit code and the JSON line.
@@ -2903,69 +3348,18 @@ async function command(name, values, positionals, store, who, clock, newId) {
 export async function main(argv, io = { now: () => new Date().toISOString(), newId: randomUUID }) {
   const done = (code, body) => ({ code, output: `${JSON.stringify(body)}\n` });
   try {
-    const [name, ...rest] = argv;
-    if (
-      ![
-        'profilo',
-        'conto',
-        'importa',
-        'decidi',
-        'annulla',
-        'inquilino',
-        'riconcilia',
-        'conferma',
-        'ripara',
-        'annulla-incassi',
-        'annulla-riconciliazione',
-        'annulla-pagamento',
-        'escludi',
-        'abbina',
-        'uscita',
-        'annulla-uscita',
-        'uscita-inquilino',
-        'giroconto',
-        'giroconto-manuale',
-        'saldi',
-        'imu-atteso',
-        'imu-f24',
-        'imu',
-        'contratto',
-        'contratto-canone',
-        'contratti',
-        'affitti-anno',
-        'scadenze',
-        'scadenza-nuova',
-        'scadenza-ripeti',
-        'scadenza-pagata',
-        'appartamento',
-        'condominio-documento',
-        'condominio',
-        'condominio-stima',
-        'recupero',
-        'contatto',
-        'contatti',
-        'presenza',
-        'fine-presenza',
-        'subentro',
-        'scambio-camera',
-        'stato-contratti',
-        'caparra-restituzione',
-        'tasso-legale',
-        'tasse-stima',
-        'tasse-copia',
-        'tasse-assegna',
-        'tasse-conferma',
-        'scheda-inquilino',
-        'soglie-consumi',
-        'consumi',
-        'tasse',
-        'bolletta',
-        'annulla-bolletta',
-        'cruscotto',
-        'scegli-versione',
-      ].includes(name ?? '')
-    ) {
-      throw invalid('bad-arguments');
+    const [first, ...args] = argv;
+    // Q9: `--help` (or `aiuto`) alone lists the commands; `aiuto <comando>` is `<comando> --help`.
+    if (first === '--help' || first === '-h' || (first === 'aiuto' && args.length === 0)) {
+      return done(0, {
+        status: 'help',
+        message: USAGE,
+        commands: COMMAND_NAMES.map((command) => ({ command, description: COMMAND_HELP[command] })),
+      });
+    }
+    const [name, ...rest] = first === 'aiuto' ? [args[0], ...args.slice(1), '--help'] : argv;
+    if (!COMMAND_NAMES.includes(name ?? '')) {
+      throw invalid('bad-arguments', { message: MESSAGES['unknown-command'] });
     }
     let parsed;
     try {
@@ -3000,6 +3394,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'bolletta',
         'annulla-bolletta',
         'cruscotto',
+        'chiudi-periodo',
+        'conguaglio-supplementare',
       ],
       parte: ['conferma', 'abbina', 'tasse-assegna'],
       'solo-questa-volta': ['conferma', 'uscita', 'giroconto', 'imu-f24'],
@@ -3048,11 +3444,15 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'soglie-consumi',
         'bolletta',
         'contatti',
+        'utenza',
+        'rata-condominio',
+        'chiudi-periodo',
+        'conguaglio-supplementare',
       ],
       voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
       inquilini: ['recupero'],
       quote: ['recupero'],
-      periodo: ['recupero'],
+      periodo: ['recupero', 'chiudi-periodo', 'conguaglio-supplementare'],
       stato: ['scadenze', 'recupero'],
       nome: ['inquilino', 'appartamento', 'contatto'],
       ruolo: ['contatto', 'contatti'],
@@ -3063,7 +3463,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
           ['contatto'],
         ]),
       ),
-      esercizio: ['condominio-documento', 'condominio', 'condominio-stima'],
+      esercizio: ['condominio-documento', 'condominio', 'condominio-stima', 'rata-condominio'],
       'quota-conduttore': ['condominio-documento'],
       anno: [
         'tasso-legale',
@@ -3079,7 +3479,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       ],
       gruppo: ['imu-atteso', 'imu-f24'],
       totale: ['imu-atteso', 'affitti-anno', 'condominio-documento'],
-      rata: ['imu-atteso', 'imu-f24'],
+      rata: ['imu-atteso', 'imu-f24', 'rata-condominio'],
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino', 'contratto', 'scadenze', 'scadenza-nuova', 'condominio-documento'],
@@ -3095,6 +3495,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'scadenza-ripeti',
         'recupero',
         'tasse-stima',
+        'rata-condominio',
       ],
       data: ['giroconto-manuale', 'scadenza-pagata', 'recupero'],
       entro: ['scadenze', 'cruscotto'],
@@ -3104,8 +3505,13 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       codici: ['bolletta', 'appartamento'],
       conferma: ['bolletta'],
       'periodo-conguaglio': ['cruscotto'],
+      ripartizione: ['utenza'],
+      'quota-proprieta': ['rata-condominio'],
+      'conguaglio-prec': ['rata-condominio'],
+      straordinaria: ['rata-condominio'],
+      'tolleranza-imu': ['impostazioni'],
       pagine: ['annulla-bolletta'],
-      scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
+      scadenza: ['scadenza-nuova', 'scadenza-ripeti', 'rata-condominio'],
       'ogni-anno': ['scadenza-nuova'],
       'anno-riferimento': ['scadenza-nuova', 'scadenza-ripeti'],
       dal: ['importa', 'contratto-canone', 'presenza'],
@@ -3147,6 +3553,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
           'esercizio-condominio',
           'differenza-condominio',
           'modifica',
+          'posti-nomi',
         ].map((option) => [option, ['appartamento']]),
       ),
       conguaglio: ['contratto', 'caparra-restituzione'],
@@ -3155,6 +3562,20 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       canone: ['contratto-canone'],
       acconto: ['contratto-canone'],
     };
+    if (values.help === true) {
+      // Q9: the options of the command from `only`; the others are not tied to one command.
+      const own = Object.keys(only).filter((option) => only[option].includes(name));
+      return done(0, {
+        status: 'help',
+        command: name,
+        description: COMMAND_HELP[name],
+        message: USAGE,
+        options: own.map((option) => `--${option}`),
+        otherOptions: Object.keys(OPTIONS)
+          .filter((option) => !Object.hasOwn(only, option) && option !== 'help')
+          .map((option) => `--${option}`),
+      });
+    }
     for (const [option, commands] of Object.entries(only)) {
       if (values[option] !== undefined && !commands.includes(name)) throw invalid('bad-arguments');
     }
@@ -3166,8 +3587,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     } catch {
       throw invalid('bad-folder');
     }
-    const store = new FsStore(values.cartella);
-    const body = await command(
+    const store = new CliStore(values.cartella);
+    const today = day(now.slice(0, 10));
+    const closedBefore = await closedStates(store, today);
+    const result = await command(
       name,
       values,
       positionals,
@@ -3176,6 +3599,22 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       () => now,
       io.newId,
     );
+    // The raise of the folder's data format is said in the output (it is not an operation).
+    let body = store.formatRaised ? { ...result, dataFormat: 'raised' } : result;
+    // Point 6: a write that changed a period closed before it (never a refusal of ours).
+    if (store.formatChecked && closedBefore.size > 0) {
+      const after = await closedStates(store, today);
+      const changed = [...closedBefore]
+        .filter(([id, { state }]) => after.has(id) && after.get(id).state !== state)
+        .map(([, { query }]) => query);
+      if (changed.length > 0) {
+        body = {
+          ...body,
+          closedPeriods: changed,
+          closedPeriodMessage: MESSAGES['closed-period-changed'],
+        };
+      }
+    }
     return done(0, body);
   } catch (error) {
     if (error instanceof Stop) {

@@ -30,8 +30,10 @@ import {
   TenancySchema,
   TenantRecoverySchema,
 } from './model';
-import type { BillMatch, CondoDocument, TenantRecovery } from './model';
-import type { ISODate } from './period';
+import type { BillMatch, CondoDocument, Instalment, TenantRecovery } from './model';
+import type { ISODate, YearMonth } from './period';
+import { annualitaRange, rateCoverage } from './period';
+import { recordDependents } from './references';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -123,6 +125,181 @@ export async function saveCondoDocument(
     newId,
   );
   return { status: 'saved', operationId: operation.id, documentId: id };
+}
+
+export type SaveCondoInstalmentInput = Pick<
+  Instalment,
+  | 'id'
+  | 'apartmentId'
+  | 'esercizio'
+  | 'rateIndex'
+  | 'rateCount'
+  | 'dueDate'
+  | 'rata'
+  | 'quotaProprieta'
+  | 'conguaglioPrec'
+  | 'straordinaria'
+>;
+
+export type SaveCondoInstalmentResult =
+  | {
+      status: 'saved';
+      operationId: string;
+      instalmentId: string;
+      /**
+       * I5: the live ordinary instalments of the esercizio do not share one owner share and one
+       * number of rates (the settlement refuses them until they are corrected); ids only.
+       */
+      warnings?: { code: 'owner-share-differs'; instalmentIds: string[] }[];
+    }
+  | { status: 'unchanged'; instalmentId: string }
+  | {
+      status: 'refused';
+      reason:
+        | 'inconsistent-store'
+        | 'unknown-apartment'
+        | 'missing-condominio-start'
+        | 'invalid-instalment'
+        | 'id-collision';
+    }
+  | { status: 'refused'; reason: 'esercizio-format'; documentIds: string[] }
+  /** The live records (matches, recoveries) that lean on the instalment as it is. */
+  | { status: 'refused'; reason: 'instalment-in-use'; recordIds: string[] };
+
+/**
+ * Creates or replaces the condominium instalment `input.id` (review of 18 Nov 2026, I3, E4) in one
+ * `condo.instalment` operation, undone with the reconciliation undo. The months it covers come
+ * from the apartment's `condominioStart` (whole months: day 1, else `missing-condominio-start`)
+ * and rate `rateIndex` of `rateCount` (R3: 12/n months in order); the esercizio is `YYYY-YY`
+ * (`annualitaRange`) and of the same form as the apartment's other live condominium documents
+ * and instalments (R310, `esercizio-format`). Refused: an id that is not a safe file name part or
+ * a schema refusal (`invalid-instalment`), an id of a TARI or of another apartment
+ * (`id-collision`), a change to an instalment with live matches or recoveries
+ * (`instalment-in-use`: undo them first). The same request again is `unchanged`. A different
+ * owner share or number of rates in the same esercizio is saved with a warning (I5): the
+ * settlement refuses it (`owner-share-inconsistent`) until one of them is corrected.
+ */
+export async function saveCondoInstalment(
+  store: Store,
+  input: SaveCondoInstalmentInput,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<SaveCondoInstalmentResult> {
+  type Plain = Extract<SaveCondoInstalmentResult, { status: 'refused'; reason: string }>['reason'];
+  const refuse = (
+    reason: Exclude<Plain, 'esercizio-format' | 'instalment-in-use'>,
+  ): SaveCondoInstalmentResult => ({ status: 'refused', reason });
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
+  const apartment = (await loadAll(store, 'apartment', ApartmentSchema)).records.find(
+    (a) => a.id === input.apartmentId,
+  );
+  if (apartment === undefined) return refuse('unknown-apartment');
+  const start = apartment.condominioStart;
+  if (start === undefined || start.day !== 1) return refuse('missing-condominio-start');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id)) return refuse('invalid-instalment');
+  // The settlement splits only a `2026-27` fiscal year (`annualitaRange`): `2026` is another form.
+  if (!/^[0-9]{4}-[0-9]{2}$/.test(input.esercizio)) {
+    return { status: 'refused', reason: 'esercizio-format', documentIds: [] };
+  }
+  let covers: { from: YearMonth; to: YearMonth };
+  try {
+    const first = annualitaRange(input.esercizio, start).from.slice(0, 7) as YearMonth;
+    covers = rateCoverage(first, input.rateCount, input.rateIndex);
+  } catch {
+    return refuse('invalid-instalment');
+  }
+  const all = (await loadAll(store, 'instalment', InstalmentSchema, { includeDeleted: true }))
+    .records;
+  const before = all.find((i) => i.id === input.id);
+  if (
+    before !== undefined &&
+    (before.kind !== 'condominio' || before.apartmentId !== input.apartmentId)
+  ) {
+    return refuse('id-collision');
+  }
+  const docs = (await loadAll(store, 'condoDocument', CondoDocumentSchema)).records;
+  const otherForm = [
+    ...docs.filter((d) => d.apartmentId === input.apartmentId),
+    ...all.filter(
+      (i) =>
+        i.deleted !== true &&
+        i.id !== input.id &&
+        i.kind === 'condominio' &&
+        i.apartmentId === input.apartmentId,
+    ),
+  ]
+    .filter((r) => esercizioForm(r.esercizio) !== esercizioForm(input.esercizio))
+    .map((r) => r.id)
+    .sort(compareText);
+  if (otherForm.length > 0) {
+    return { status: 'refused', reason: 'esercizio-format', documentIds: otherForm };
+  }
+  const record = (rev: number) =>
+    InstalmentSchema.safeParse({
+      ...Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)),
+      kind: 'condominio',
+      coversFrom: covers.from,
+      coversTo: covers.to,
+      v: 1,
+      rev,
+    });
+  const parsed = record((before?.rev ?? 0) + 1);
+  if (!parsed.success) return refuse('invalid-instalment');
+  const live = before !== undefined && before.deleted !== true;
+  if (live && JSON.stringify(record(before.rev).data) === JSON.stringify(before)) {
+    return { status: 'unchanged', instalmentId: input.id };
+  }
+  if (live) {
+    const users = await recordDependents(store, [{ type: 'instalment', id: input.id }]);
+    if (users.length > 0) {
+      return {
+        status: 'refused',
+        reason: 'instalment-in-use',
+        recordIds: users.map((r) => r.id).sort(compareText),
+      };
+    }
+  }
+  const after = parsed.data;
+  const ordinary = [
+    after,
+    ...all.filter(
+      (i) =>
+        i.deleted !== true &&
+        i.id !== after.id &&
+        i.kind === 'condominio' &&
+        i.apartmentId === after.apartmentId &&
+        i.esercizio === after.esercizio,
+    ),
+  ].filter((i) => i.straordinaria !== true && i.rata !== 0);
+  const differs = new Set(ordinary.map((i) => `${i.quotaProprieta}/${i.rateCount}`)).size > 1;
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'condo.instalment',
+      apartmentId: input.apartmentId,
+      summary: 'Rata del condominio salvata.',
+      changes: [{ path: recordPath('instalment', input.id), before, after }],
+    },
+    clock,
+    newId,
+  );
+  return {
+    status: 'saved',
+    operationId: operation.id,
+    instalmentId: input.id,
+    ...(differs
+      ? {
+          warnings: [
+            {
+              code: 'owner-share-differs' as const,
+              instalmentIds: ordinary.map((i) => i.id).sort(compareText),
+            },
+          ],
+        }
+      : {}),
+  };
 }
 
 export type LoadCondoResult =

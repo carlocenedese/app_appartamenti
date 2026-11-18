@@ -4,7 +4,7 @@ import {
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
-  IMU_TOLERANCE_PERCENT,
+  DEFAULT_IMU_TOLERANCE_BP,
   InstalmentSchema,
   PaymentSchema,
   TenancySchema,
@@ -16,6 +16,11 @@ import {
   imuRates,
   imuShares,
   loadImuRates,
+  loadAccountBalances,
+  loadScadenzario,
+  loadSettings,
+  loadTaxTable,
+  saveSettings,
   readJournal,
   recordPath,
   recordSchemas,
@@ -29,6 +34,7 @@ import type {
   MovementClass,
 } from '../src/index';
 import { cents } from '../src/money';
+import { isoDate } from '../src/period';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 import * as builders from './helpers/conguaglio-builders';
@@ -82,7 +88,7 @@ const status = (paid: number, ys: ImuYear[] = years) =>
 
 describe('imuRates (plan 3d, task 3)', () => {
   it('the 1% on the expected of the group, integers only (Review Focus 1)', () => {
-    expect(IMU_TOLERANCE_PERCENT).toBe(1);
+    expect(DEFAULT_IMU_TOLERANCE_BP).toBe(100);
     for (const paid of [100000, 101000, 99000])
       expect([paid, status(paid)]).toEqual([paid, 'pagata']);
     for (const paid of [101001, 98999]) {
@@ -91,6 +97,20 @@ describe('imuRates (plan 3d, task 3)', () => {
     const one = [year('berchet', [{ index: 1, expected: 1 }])];
     expect(status(1, one)).toBe('pagata');
     expect(status(2, one)).toBe('da-riconciliare');
+  });
+
+  it('the tolerance of the workspace setting, in basis points (I9)', () => {
+    const at = (paid: number, toleranceBp: number) =>
+      imuRates({
+        years,
+        classes: [assigned('f')],
+        transactions: [tx('f', -paid)],
+        toleranceBp,
+      })[0]?.status;
+    expect(at(101500, 150)).toBe('pagata');
+    expect(at(101501, 150)).toBe('da-riconciliare');
+    expect(at(100000, 0)).toBe('pagata');
+    expect(at(100001, 0)).toBe('da-riconciliare');
   });
 
   it('gives the rates of the group with the F24, sorted, apartments sorted', () => {
@@ -256,6 +276,51 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
     const paths = (await readJournal(s)).operations.flatMap((o) => o.changes.map((c) => c.path));
     expect(paths.every((p) => /^_app\/dati\/(imuYear|movementClass)\//.test(p))).toBe(true);
     expectTypeOf<Extract<keyof ConguaglioInput, 'classes' | 'imuYears'>>().toBeNever();
+  });
+
+  it('the tolerance of the workspace settings reaches loadImuRates, loadScadenzario, loadTaxTable and the balances (I9)', async () => {
+    const s = await store();
+    await save(s, 'berchet', 60000, 'a');
+    await save(s, 'lovarini', 40000, 'b');
+    await assignImuF24(
+      s,
+      { transactionId: 'f', f24Group: 'berchet-lovarini', year: '2026', rateIndex: 1 },
+      'p1',
+      clock,
+      ids('c'),
+    );
+    const states = async () => {
+      const rates = await loadImuRates(s);
+      const table = await loadTaxTable(s, { year: '2026', today: isoDate('2026-11-18') });
+      const due = await loadScadenzario(s, { today: isoDate('2026-11-18') });
+      const balances = await loadAccountBalances(s);
+      return [
+        rates.status === 'computed' ? rates.rates[0]?.status : undefined,
+        JSON.stringify(table),
+        due.status === 'computed' &&
+          due.items.some((i) => i.kind === 'imu' && i.state === 'pagata'),
+        JSON.stringify(balances).includes('imu-da-riconciliare'),
+      ];
+    };
+    const before = await states();
+    expect([before[0], before[2], before[3]]).toEqual(['da-riconciliare', false, true]);
+    expect(await saveSettings(s, { imuToleranceBp: 200 }, 'p1', clock, ids('d'))).toMatchObject({
+      status: 'saved',
+    });
+    expect(await loadSettings(s)).toEqual({ imuToleranceBp: { value: 200, isDefault: false } });
+    const after = await states();
+    expect([after[0], after[2], after[3]]).toEqual(['pagata', true, false]);
+    // The tax table reads the rates too: the IMU paid counts once the rate is paid.
+    expect(after[1]).not.toEqual(before[1]);
+    expect(await saveSettings(s, { imuToleranceBp: 200 }, 'p1', clock, ids('e'))).toEqual({
+      status: 'unchanged',
+    });
+    expect(await saveSettings(s, { imuToleranceBp: -1 }, 'p1', clock, ids('f'))).toEqual({
+      status: 'refused',
+      reason: 'invalid-workspace-settings',
+    });
+    await saveSettings(s, { imuToleranceBp: null }, 'p1', clock, ids('g'));
+    expect(await states()).toEqual(before);
   });
 
   it('refuses a diverged store', async () => {

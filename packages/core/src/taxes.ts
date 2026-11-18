@@ -102,6 +102,8 @@ export interface TaxTableInput {
   apartments: Apartment[];
   estimates: TaxEstimate[];
   imuYears: ImuYear[];
+  /** The IMU tolerance of the workspace settings (I9); the default when absent. */
+  imuToleranceBp?: number;
   classes: MovementClass[];
   transactions: BankTransaction[];
   instalments: Instalment[];
@@ -148,6 +150,7 @@ export function taxTable(input: TaxTableInput): TaxpayerTable[] {
     classes: input.classes,
     transactions: input.transactions,
     taxPayments,
+    ...(input.imuToleranceBp === undefined ? {} : { toleranceBp: input.imuToleranceBp }),
   }).filter((r) => r.year === year);
   const taxpayers = [...new Set(apartments.map(taxpayerOf))].sort(compareText);
 

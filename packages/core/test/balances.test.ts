@@ -153,10 +153,13 @@ const example = {
   taxPayments: [] as TaxPayment[],
 };
 type Input = Parameters<typeof accountBalances>[0];
-const withExtra = (extra: Partial<{ [K in keyof Input]: Input[K] }>): Input => ({
+const withExtra = (extra: Partial<{ [K in keyof typeof example]: Input[K] }>): Input => ({
   ...example,
   ...Object.fromEntries(
-    Object.entries(extra).map(([k, v]) => [k, [...example[k as keyof Input], ...v]]),
+    Object.entries(extra).map(([k, v]) => [
+      k,
+      [...example[k as keyof typeof example], ...(v as unknown[])],
+    ]),
   ),
 });
 

@@ -41,6 +41,7 @@ import { loadAll } from './store/load';
 import type { Store } from './store/store';
 import type { TaxExpectedItem } from './taxes';
 import { compareText } from './text';
+import { loadSettings } from './settings-store';
 
 export type PayableState = 'da-pagare' | 'in-scadenza' | 'pagata' | 'in-ritardo';
 export type PayableItemKind = 'imu' | 'condominio' | 'tari' | PayableKind;
@@ -85,6 +86,8 @@ export interface ScadenzarioInput {
   imuYears: ImuYear[];
   /** The other voci of a mixed F24, for the IMU part (plan 17, R307). */
   taxPayments?: TaxPayment[];
+  /** The IMU tolerance of the workspace settings (I9); the default when absent. */
+  imuToleranceBp?: number;
   classes: MovementClass[];
   transactions: BankTransaction[];
   instalments: Instalment[];
@@ -196,6 +199,7 @@ export function scadenzario(input: ScadenzarioInput): {
     classes: input.classes,
     transactions: input.transactions,
     ...(input.taxPayments === undefined ? {} : { taxPayments: input.taxPayments }),
+    ...(input.imuToleranceBp === undefined ? {} : { toleranceBp: input.imuToleranceBp }),
   }).map((r) => {
     const paidOn =
       r.transactionId === undefined ? undefined : transactions.get(r.transactionId)?.date;
@@ -313,6 +317,7 @@ export async function loadScadenzario(
       classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
       transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
       taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
+      imuToleranceBp: (await loadSettings(store)).imuToleranceBp.value,
       instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
       matches: (await loadAll(store, 'match', BillMatchSchema)).records,
       payables: (await loadAll(store, 'payable', PayableSchema)).records,
