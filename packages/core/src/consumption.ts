@@ -246,3 +246,11 @@ export function compareConsumption(
   }
   return comparison;
 }
+
+/** The worst level of a comparison, over both sides and every metric (plan 19, R330). */
+export function worstLevel(comparison: ConsumptionComparison): 'giallo' | 'rosso' | undefined {
+  const levels = [comparison.yearBefore, comparison.recent].flatMap(
+    (side) => side?.differences.map((d) => d.level) ?? [],
+  );
+  return levels.includes('rosso') ? 'rosso' : levels.includes('giallo') ? 'giallo' : undefined;
+}

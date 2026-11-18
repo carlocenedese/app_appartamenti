@@ -456,3 +456,97 @@ describe('billFileMove (plan 17, R315)', () => {
     });
   });
 });
+
+describe('importBill and the consumption alarm (plan 19, R330)', () => {
+  // The bill read: 2025-12-01..2026-01-31, 140.0 kWh; the year before 100 kWh, same amount.
+  async function withHistory() {
+    const ready = await setup();
+    await ready.store.writeJsonAtomic(
+      recordPath('bill', 'prev'),
+      BillSchema.parse({
+        id: 'prev',
+        v: 1,
+        rev: 1,
+        apartmentId: 'apt-1',
+        category: 'elettricita',
+        supplier: 'Fornitore Luce',
+        periodStart: '2024-12-01',
+        periodEnd: '2025-01-31',
+        amount: 9846,
+        consumption: { quantity: '100', unit: 'kWh' },
+        includedInConguaglio: true,
+        sharedWithTenants: true,
+        filePath: 'prev.pdf',
+        fileHash: 'h-prev',
+      }),
+    );
+    const input = { ...ready.input };
+    delete input.thresholds;
+    return { ...ready, input };
+  }
+  const settings = (id: string, extra: Record<string, unknown>) => ({ id, v: 1, rev: 1, ...extra });
+
+  it('without thresholds: no alarm, no error, registered, the comparison without levels', async () => {
+    const { store, input, clock } = await withHistory();
+    const result = await importBill(store, input, 'user1', clock, ids('a'));
+    expect(result).toMatchObject({ status: 'registrata-automaticamente' });
+    if (result.status !== 'registrata-automaticamente') return;
+    expect(result.checks.map((c) => c.code)).not.toContain('consumption-alarm');
+    expect(result.checks.map((c) => c.code)).not.toContain('consumption-anomaly');
+    expect(result.consumption?.thresholds).toBe(false);
+    expect(result.consumption?.yearBefore?.differences).toEqual([
+      { metric: 'consumption', differenceBp: 4000 },
+      { metric: 'amount', differenceBp: 0 },
+      { metric: 'unitPrice', differenceBp: -2857 },
+    ]);
+  });
+
+  it('a level of the settings sends the bill to review; the apartment’s own win', async () => {
+    const { store, input, clock } = await withHistory();
+    await store.writeJsonAtomic(
+      recordPath('consumptionSettings', 'soglie-consumi'),
+      settings('soglie-consumi', { giallo: { consumption: 3000 }, rosso: { consumption: 5000 } }),
+    );
+    const flagged = await importBill(store, input, 'user1', clock, ids('a'));
+    expect(flagged).toMatchObject({ status: 'da-rivedere', codes: ['consumption-alarm'] });
+    if (flagged.status !== 'da-rivedere') return;
+    expect(flagged.consumption?.thresholds).toBe(true);
+    expect(flagged.consumption?.yearBefore?.differences[0]).toEqual({
+      metric: 'consumption',
+      differenceBp: 4000,
+      level: 'giallo',
+    });
+    expect(flagged.checks.find((c) => c.code === 'consumption-alarm')).toEqual({
+      code: 'consumption-alarm',
+      severity: 'warn',
+      message:
+        "Allarme consumi: consumo +40,00 % rispetto allo stesso periodo dell'anno prima " +
+        '(giallo); consumo +40,00 % rispetto alla media dei mesi prima (giallo).',
+    });
+    const confirmed = await importBill(
+      store,
+      { ...input, mode: 'manual' },
+      'user1',
+      clock,
+      ids('m'),
+    );
+    expect(confirmed).toMatchObject({ status: 'confermata', ids: ['m-1'] });
+    await undoBillImport(store, input.result.fileHash, 'user1', clock, ids('u'));
+
+    await store.writeJsonAtomic(
+      recordPath('consumptionSettings', 'soglie-consumi-apt-1'),
+      settings('soglie-consumi-apt-1', { apartmentId: 'apt-1', rosso: { consumption: 6000 } }),
+    );
+    const own = await importBill(store, input, 'user1', clock, ids('b'));
+    expect(own).toMatchObject({ status: 'registrata-automaticamente' });
+    expect(own.status === 'registrata-automaticamente' && own.consumption?.thresholds).toBe(true);
+  });
+
+  it('only a bill proposal has a comparison', async () => {
+    const { store, input, clock } = await withHistory();
+    const unknown = reading(input.result.fileHash, { category: null });
+    const result = await importBill(store, { ...input, result: unknown }, 'user1', clock, ids('a'));
+    expect(result.status).toBe('da-rivedere');
+    expect('consumption' in result).toBe(false);
+  });
+});
