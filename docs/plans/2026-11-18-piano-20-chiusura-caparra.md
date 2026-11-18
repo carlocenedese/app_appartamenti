@@ -56,3 +56,21 @@ facoltativi nuovi in `periodClose`.
 10. **Caparra.** C, D, G, H, I e segni (8) in `closedPeriodLines`; test in `deposit-closed.test.ts`.
 11. **Riga di comando.** `--supplementare`, `toRequestLines` in euro, `marks` in
     `scegli-versione`; test in `scripts/estratti-funzioni.test.mjs`.
+
+## Terza revisione
+
+12. Reperti 1-5 corretti con un test che fallisce prima: `tenant-balance.test.ts` (1, e K e
+    «da verificare» in `closingOf`), `closed-period-guard.test.ts` (2 e 4),
+    `apps/desktop/test/view-util.test.ts` (2), `deposit-closed.test.ts` (3, 5 e una chiusura
+    senza `inputs`).
+
+### Domande aperte per user1 (comportamento prudente mantenuto, R357)
+
+- (a) Un bonifico respinto per intero dopo una riapertura ferma ancora la chiusura: manca
+  l'affitto.
+- (b) Posti e dati dell'appartamento non hanno una data «valido dal»: cambiarli chiede di
+  riaprire ogni periodo chiuso dell'appartamento.
+- (c) Una bolletta che c'era alla chiusura fuori dal periodo e viene ridatata dentro i mesi chiusi
+  è accettata come nuova e va nel supplementare.
+- (d) La quota dei posti vuoti di un conguaglio condominiale dell'anno prima cambiato non è
+  tracciata.

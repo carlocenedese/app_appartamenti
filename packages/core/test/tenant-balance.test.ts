@@ -3,8 +3,10 @@
 // supplementaries marked settled, newest to oldest, down to the first closing whose main
 // settlement was marked, plus that closing's due. Invented amounts.
 import { describe, expect, it } from 'vitest';
-import { tenantBalance } from '../src/index';
-import type { PeriodClose } from '../src/index';
+import { closingOf, tenantBalance } from '../src/index';
+import type { ConguaglioResult, PeriodClose, Tenancy } from '../src/index';
+import { cents } from '../src/money';
+import { isoDate } from '../src/period';
 
 const FORFAIT = 36000;
 const snapshot = (due: number) => ({
@@ -83,5 +85,73 @@ describe('tenantBalance across reopenings (finding 1)', () => {
       { due: 10500, supplementary: 300 },
     ]);
     expect(remaining(c)).toBe(200);
+  });
+});
+
+describe('closingOf, third review (finding 6)', () => {
+  const tenant = (tenantId: string, conguaglioPrec: number, forfaitIncassato: number) => ({
+    tenantId,
+    spese: cents(1000),
+    condominio: { rata: cents(0), conguaglioPrec: cents(conguaglioPrec) },
+    commissione: cents(0),
+    forfaitIncassato: cents(forfaitIncassato),
+    due: cents(1000 + conguaglioPrec - forfaitIncassato),
+    byCategory: {},
+  });
+  const current = (rows: ReturnType<typeof tenant>[], prec: number) =>
+    ({
+      engineVersion: '0.1.0',
+      tenants: rows,
+      unassigned: cents(prec),
+      unassignedByBucket: {
+        spese: cents(0),
+        rata: cents(0),
+        conguaglioPrec: cents(prec),
+        commissione: cents(0),
+      },
+      pending: [],
+      warnings: [],
+    }) as unknown as ConguaglioResult;
+  const closed = (fni = 0): PeriodClose =>
+    ({
+      ...close(0, []),
+      history: [],
+      snapshot: {
+        tenants: ['t-a', 't-b'].map((tenantId) => ({
+          tenantId,
+          spese: 1000,
+          rata: 0,
+          commissione: 0,
+          recupero: 0,
+          forfaitIncassato: 3000,
+          conguaglioPrec: 1000,
+          ...(fni === 0 ? {} : { forfaitNonIncassato: fni }),
+        })),
+        emptyBeds: 0,
+      },
+    }) as unknown as PeriodClose;
+  const tenancies: Tenancy[] = [];
+
+  it("K: last year's condominium settlement changed after closing goes into each tenant's delta", () => {
+    // 6,00 more each for t-a and t-b; the empty beds' share (4,00 here) is not tracked: the
+    // snapshot keeps no empty-bed share of that settlement (open question d).
+    const result = closingOf(
+      closed(),
+      current([tenant('t-a', 1600, 3000), tenant('t-b', 1600, 3000)], 400),
+      { tenancies },
+      isoDate('2027-01-10'),
+    );
+    expect(result.tenants.map((t) => t.delta)).toEqual([600, 600]);
+    expect(result.tenants.reduce((sum, t) => sum + t.delta, 0)).toBe(1200);
+    expect(result).toMatchObject({ changed: true, dataChanged: false, unassignedDelta: 0 });
+  });
+
+  it('«da verificare» when more flat charge is collected than was missing at the closing', () => {
+    const more = current([tenant('t-a', 1000, 4000), tenant('t-b', 1000, 3000)], 0);
+    const without = closingOf(closed(), more, { tenancies }, isoDate('2027-01-10'));
+    expect(without.tenants[0]).toMatchObject({ forfaitDelta: -1000, action: 'da-verificare' });
+    // 30,00 missing at that closing: 10,00 paid since only reduces it.
+    const within = closingOf(closed(3000), more, { tenancies }, isoDate('2027-01-10'));
+    expect(within.tenants[0]).toMatchObject({ forfaitDelta: -1000, action: 'nessuna' });
   });
 });

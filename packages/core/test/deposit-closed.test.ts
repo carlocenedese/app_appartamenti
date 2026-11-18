@@ -150,6 +150,37 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     );
   });
 
+  it('finding 6: a closing written without inputs (an older app) still gives the statement', async () => {
+    const store = await setUp('2027-03', 12000);
+    const close = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records[0];
+    if (close === undefined) throw new Error('close');
+    // Through the journal, so the folder stays consistent.
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('periodClose', close.id),
+            before: close,
+            after: { ...close, inputs: undefined },
+          },
+        ],
+      },
+      later,
+      ids('old'),
+    );
+    expect(
+      (await loadAll(store, 'periodClose', PeriodCloseSchema)).records[0]?.inputs,
+    ).toBeUndefined();
+    expect(await statement(store)).toContainEqual({
+      label: 'Conguaglio 2025-26 non saldato',
+      amount: -12000,
+    });
+  });
+
   it('C: the whole due is withheld until marked settled, payments do not offset it; a credit is added', async () => {
     const store = await setUp('2027-03', 12000);
     await put(
