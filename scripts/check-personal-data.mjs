@@ -20,13 +20,20 @@
 //                      structure alone. Because the structure is an assumption, any 17-character
 //                      token starting with T, with at least 5 digits and 2 letters, also counts
 //                      when "codice identificativo", "registrazione", "RLI" or "TRN" is close.
-//   person name        The real owners' names, as whole words in any case: Carlo, Nicola,
-//                      Cenedese. The repository uses user1 and user2 instead.
+//   person name        The real owners' names, as whole words in any case. They are not written
+//                      here: each word (letters, digits, underscore) is lower-cased, put in NFC
+//                      and compared by its salted SHA-256 (NAME_FINGERPRINTS). The repository
+//                      uses user1 and user2 instead. The fingerprint only keeps the names out of
+//                      plain text: three common first and last names are easy to guess.
+//   private path       A path into a real account: macOS iCloud ("Mobile Documents"), or the
+//                      home folder of a user (/Users/<name>, /home/<name>, C:\Users\<name>) other
+//                      than the placeholders user1, user2, <nome>, x.
 //   address            A house number after an apartment name (Berchet, Lovarini, Pulci):
 //                      "Berchet 3", "Pulci 2a", "Lovarini_5". Years ("Berchet 2024-25") and
 //                      amounts ("Berchet 100,75 €") are not house numbers. The bare names are fine.
 //
-// The two kinds above are not checked in the files that define them (NAME_CHECK_FILES).
+// Addresses and private paths are not checked in the files that define them (NAME_CHECK_FILES):
+// their tests spell examples. Names are checked there too.
 // Fictitious example codes are allowed: list them in backticks in the section
 // "Codici d'esempio fittizi" of fixtures/README.md. Nothing else is ever allowed.
 // The pnpm lockfile (hashes only) and binary files are not scanned.
@@ -35,6 +42,7 @@
 // personal data. Codes are masked ("IT***KL") wherever they appear, paths included.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,12 +50,44 @@ import { fileURLToPath } from 'node:url';
 const ALLOWED_CODES_FILE = 'fixtures/README.md';
 const ALLOWED_CODES_HEADING = /^##\s+Codici d['’]esempio fittizi\b.*$/im;
 const SKIPPED_FILES = new Set(['pnpm-lock.yaml']);
-// This script and its test spell out the names and addresses they look for.
+// This script and its test spell out the addresses and paths they look for.
 const NAME_CHECK_FILES = new Set([
   'scripts/check-personal-data.mjs',
   'scripts/check-personal-data.test.mjs',
 ]);
-const NAME_KINDS = new Set(['person name', 'address']);
+const NAME_KINDS = new Set(['address', 'private path']);
+
+const NAME_SALT = 'bollette-check-personal-data/v1:';
+
+/** The salted SHA-256 of a word, lower-cased and in NFC: how the real names are compared. */
+export function wordFingerprint(word) {
+  return createHash('sha256')
+    .update(NAME_SALT + word.normalize('NFC').toLowerCase())
+    .digest('hex');
+}
+
+/** The three real names of the owners (first names and surname), as fingerprints only. */
+export const NAME_FINGERPRINTS = new Set([
+  '4ea73838ae48a698eed9bbe4400ff9da77bcc54d393c8fe3b14c54dcebc77f58',
+  '43002ef825cd0ca493ed0694dea280f526239f49e0a5cc02c6486ac73e93a46f',
+  '92ad87bd7fd9b27f60b470aa5df1f20b8547051d2c5962318b0372d699ba566b',
+]);
+
+const WORD = /[\p{L}\p{M}\p{N}_]+/gu;
+const fingerprints = new Map(); // word -> fingerprint: the same words come back in every file
+function fingerprintOf(word) {
+  let value = fingerprints.get(word);
+  if (value === undefined) {
+    value = wordFingerprint(word);
+    fingerprints.set(word, value);
+  }
+  return value;
+}
+
+// The account name after the home folder must start with a letter or digit, so `/Users/…`,
+// `/Users/|`, `'/Users/' + x` and `/Users/<nome>` are not paths of an account. Placeholders:
+// user, user1, user2, ... and a single letter, also followed by an extension (`C:/Users/x.json`).
+const PLACEHOLDER_ACCOUNTS = /^(?:user\d*|\p{L})$/iu;
 
 // No word boundary on "pdr": keys such as "pdrCode", "gasPdr" and "pdr_code" must count too. A
 // 14-digit run with this substring within reach is rare enough in ordinary text.
@@ -132,8 +172,15 @@ const DETECTORS = [
       near(text, index, match.length, REGISTRATION_KEYWORD),
   },
   {
-    kind: 'person name',
-    pattern: /\b(?:Carlo|Nicola|Cenedese)\b/gi,
+    kind: 'private path',
+    pattern: /Mobile Documents/gi,
+  },
+  {
+    kind: 'private path',
+    // Not inside a URL: `https://github.com/users/<name>` is a web address, not a folder.
+    pattern:
+      /(?<!:\/\/\S*)(?:\/Users\/|\/home\/|\b[A-Za-z]:[\\/]+Users[\\/]+)([\p{L}\p{N}][\p{L}\p{N}._-]*)/giu,
+    accept: ([, account]) => !PLACEHOLDER_ACCOUNTS.test(account.split('.')[0]),
   },
   {
     kind: 'address',
@@ -150,10 +197,22 @@ function lineOf(text, index) {
 
 /**
  * Looks for personal-data lookalikes in a piece of text. `allowed` holds the normalised
- * fictitious example codes that must be ignored. Returns `{ kind, line, value }` in text order.
+ * fictitious example codes that must be ignored, `names` the fingerprints of the names to flag.
+ * Returns `{ kind, line, value }` in text order.
  */
-export function scanText(text, allowed = new Set()) {
+export function scanText(rawText, allowed = new Set(), names = NAME_FINGERPRINTS) {
+  const text = rawText.normalize('NFC'); // NFC never touches line breaks: lines stay the same
   const found = new Map(); // "kind:index" -> finding, so two detectors never report the same hit twice
+  for (const match of text.matchAll(WORD)) {
+    if (!names.has(fingerprintOf(match[0]))) continue;
+    const index = match.index;
+    found.set(`person name:${index}`, {
+      index,
+      kind: 'person name',
+      line: lineOf(text, index),
+      value: match[0],
+    });
+  }
   for (const { kind, pattern, accept } of DETECTORS) {
     for (const match of text.matchAll(pattern)) {
       const index = match.index;
@@ -187,9 +246,9 @@ function isBinary(buffer) {
 /**
  * Scans the given files (paths relative to `rootDir`, as printed by `git ls-files`) and their
  * names. Returns `{ scannedFiles, findings }`, each finding being `{ file, line, kind, value }`
- * with line 0 for a hit in the file name.
+ * with line 0 for a hit in the file name. `names` as in `scanText`.
  */
-export function scanFiles(rootDir, files) {
+export function scanFiles(rootDir, files, names = NAME_FINGERPRINTS) {
   const allowedCodesPath = join(rootDir, ALLOWED_CODES_FILE);
   const allowed = existsSync(allowedCodesPath)
     ? parseAllowedCodes(readFileSync(allowedCodesPath, 'utf8'))
@@ -197,7 +256,7 @@ export function scanFiles(rootDir, files) {
   const findings = [];
   let scannedFiles = 0;
   for (const file of files) {
-    for (const hit of scanText(file, allowed)) findings.push({ file, ...hit, line: 0 });
+    for (const hit of scanText(file, allowed, names)) findings.push({ file, ...hit, line: 0 });
     if (SKIPPED_FILES.has(file)) continue;
     let content;
     try {
@@ -208,7 +267,7 @@ export function scanFiles(rootDir, files) {
     }
     if (isBinary(content)) continue;
     scannedFiles++;
-    for (const hit of scanText(content.toString('utf8'), allowed)) {
+    for (const hit of scanText(content.toString('utf8'), allowed, names)) {
       if (NAME_CHECK_FILES.has(file) && NAME_KINDS.has(hit.kind)) continue;
       findings.push({ file, ...hit });
     }

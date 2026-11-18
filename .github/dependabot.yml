@@ -16,3 +16,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+
+  # The crates of the desktop app and the Python reader. Versions are pinned (= and hashes), so
+  # these PRs are the only way a fix arrives; they wait two weeks and a human like the others.
+  - package-ecosystem: cargo
+    directory: /apps/desktop/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: pip
+    directory: /python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

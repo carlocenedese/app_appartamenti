@@ -229,13 +229,43 @@ jobs:
           path: release/
           if-no-files-found: error
 
+  # Before the job sign enters the environment `release`: GitHub would create a missing one by
+  # itself, with no reviewer and no filter, so this job (outside any environment) stops the run
+  # unless `release` exists, has a required reviewer and admits only v* tags (release.mjs
+  # environment, GET only). Any failure to read counts as unprotected (fail closed). A consistency
+  # check, not a replacement of the settings: whoever can change this file can drop it.
+  guard:
+    name: guard
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Check that the environment release is protected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release.mjs environment "$GITHUB_REPOSITORY"
+
   # The only job that sees the signing key: a secret of the environment `release`, which waits
   # for user1's approval and admits only v* tags (docs/distribuzione.md). Short on purpose: it
   # signs two files that the builds made, binding each signature to the version
   # (requireSignedVersion), and has no write permission.
   sign:
     name: sign
-    needs: build
+    needs: [build, guard]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -23,7 +23,7 @@ sys.path.insert(0, str(PYTHON_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pdfmaker  # noqa: E402
-from bollette_pdf import __version__, ocr  # noqa: E402
+from bollette_pdf import __version__, ocr, reader  # noqa: E402
 from bollette_pdf.__main__ import main  # noqa: E402
 from bollette_pdf.reader import OCR_UNAVAILABLE_WARNING  # noqa: E402
 from bollette_pdf.schemas import validate  # noqa: E402
@@ -153,6 +153,22 @@ class ExtractTest(CliTestCase):
         self.assertEqual(result["fileHash"], hashlib.sha256(corrupt.read_bytes()).hexdigest())
         self.assertEqual(len(result["warnings"]), 1)
         self.assertNotIn(SECRET, result["warnings"][0])
+
+    def test_a_file_over_the_size_limit_is_illeggibile_and_never_read_whole(self) -> None:
+        big = self.dir / "grande.pdf"
+        big.write_bytes(b"%PDF-1.4\n" + b"0" * 5000)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        args = ["extract", "--pdf", str(big), "--profiles", str(self.profiles), "--at", AT]
+        with (
+            mock.patch.object(reader, "MAX_FILE_BYTES", 1000),
+            mock.patch.object(Path, "read_bytes", side_effect=AssertionError("letto per intero")),
+        ):
+            code = main(args, stdout, stderr)
+        self.assertEqual(code, 0, stderr.getvalue())
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(result["status"], "illeggibile")
+        self.assertEqual(result["fileHash"], hashlib.sha256(big.read_bytes()).hexdigest())
+        self.assertEqual(result["warnings"], [reader.TOO_BIG])
 
     def test_encrypted_pdf_is_illeggibile(self) -> None:
         encrypted = self.dir / "protetto.pdf"

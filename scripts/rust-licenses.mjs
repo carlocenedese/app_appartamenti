@@ -1,10 +1,10 @@
 // Fails (exit code 1) when a Rust crate whose licence is outside the list of CLAUDE.md (the same
 // list as scripts/check-licenses.mjs: no MPL-2.0) is new compared with a base.
 //
-//   node scripts/rust-licenses.mjs <base metadata.json> <new metadata.json>
+//   node scripts/rust-licenses.mjs <base metadata.json[,more...]> <new metadata.json[,more...]>
 //
-// Both files are the output of `cargo metadata --format-version 1 --filter-platform <target>...`
-// with the targets of deny.toml: only crates in `resolve` count, so a crate that is in Cargo.lock
+// Each side is one file per target of deny.toml, comma separated: the output of
+// `cargo metadata --format-version 1 --filter-platform <target>` (one target per call); only crates in `resolve` count, so a crate that is in Cargo.lock
 // for another platform only (webpki-root-certs, CDLA-Permissive-2.0, wasm32 only) is not
 // reported, as cargo-deny does not report it. deny.toml allows MPL-2.0 for
 // every crate because Tauri's own tree carries it (user1, 11 November 2026); this check keeps
@@ -32,6 +32,19 @@ export function disallowedCrates(metadata) {
   return out;
 }
 
+/** One metadata for several targets: the union of their packages and of their resolved nodes. */
+export function mergeMetadata(list) {
+  const packages = new Map();
+  const nodes = new Map();
+  for (const metadata of list) {
+    for (const p of metadata.packages ?? []) packages.set(p.id, p);
+    for (const node of metadata.resolve?.nodes ?? []) nodes.set(node.id, node);
+  }
+  // Without any `resolve` (as `--no-deps` gives) every package counts, as for a single file.
+  const resolve = list.some((m) => m.resolve) ? { nodes: [...nodes.values()] } : undefined;
+  return { packages: [...packages.values()], ...(resolve && { resolve }) };
+}
+
 /** The disallowed crates of `after` that `before` did not have, as «name (licence)». */
 export function newDisallowedCrates(before, after) {
   const known = disallowedCrates(before);
@@ -48,7 +61,8 @@ function main() {
     process.exitCode = 2;
     return;
   }
-  const read = (path) => JSON.parse(readFileSync(path, 'utf8'));
+  const read = (paths) =>
+    mergeMetadata(paths.split(',').map((p) => JSON.parse(readFileSync(p, 'utf8'))));
   const added = newDisallowedCrates(read(beforePath), read(afterPath));
   if (added.length === 0) {
     console.log('Nessun crate nuovo con una licenza fuori elenco.');
