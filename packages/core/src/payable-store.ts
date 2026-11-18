@@ -113,7 +113,7 @@ async function write(
 /**
  * Creates (`id` absent) or updates a live payable in one `payable.save` operation; an update keeps
  * `paid` and `previousId`. Refused without writing: `inconsistent-store`, `unknown-apartment` (not
- * live), `unknown-payable` (`id` not a live payable), `bad-amount` (not a positive integer),
+ * live), `unknown-payable` (`id` of a deleted payable; a new `id` creates it, E3), `bad-amount` (not a positive integer),
  * `bad-year` (`taxYear` not a whole number 1-9999), `bad-voice` (a `taxVoice` on a cedolare or
  * registro payable, which is its own voce: R303). The same content is `unchanged`.
  */
@@ -130,9 +130,17 @@ export async function savePayable(
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
-  const before =
-    input.id === undefined ? undefined : (await livePayables(store)).find((p) => p.id === input.id);
-  if (input.id !== undefined && before === undefined) return refuse('unknown-payable');
+  const live = await livePayables(store);
+  const before = input.id === undefined ? undefined : live.find((p) => p.id === input.id);
+  // E3: a new `id` creates the payable (as `contratto` and `presenza`); one of a deleted payable
+  // stays refused, it is not brought back.
+  const deletedId =
+    input.id !== undefined &&
+    before === undefined &&
+    (await loadAll(store, 'payable', PayableSchema, { includeDeleted: true })).records.some(
+      (p) => p.id === input.id,
+    );
+  if (deletedId) return refuse('unknown-payable');
   if (badAmount(input.expected)) return refuse('bad-amount');
   if (badYear(input.taxYear)) return refuse('bad-year');
   if (input.taxVoice !== undefined && (input.kind === 'cedolare' || input.kind === 'registro')) {
@@ -155,6 +163,16 @@ export async function savePayable(
     JSON.stringify(toRecord(after, before.rev)) === JSON.stringify(before)
   ) {
     return { status: 'unchanged', payableId: before.id };
+  }
+  // E3: without `id`, a live payable with the same content is a rerun: unchanged.
+  if (input.id === undefined) {
+    const same = live.find(
+      (p) =>
+        p.paid === undefined &&
+        p.previousId === undefined &&
+        JSON.stringify(toRecord({ ...after, id: p.id }, p.rev)) === JSON.stringify(p),
+    );
+    if (same !== undefined) return { status: 'unchanged', payableId: same.id };
   }
   return write(
     store,

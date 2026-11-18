@@ -1270,9 +1270,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-arguments');
     }
     if (amount <= 0) throw invalid('bad-arguments');
+    if (values.id !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(values.id)) {
+      throw invalid('bad-arguments');
+    }
     const result = await recordManualTransfer(
       store,
       {
+        ...optional('id', values.id),
         fromAccountId: values.da,
         toAccountId: values.a,
         amount,
@@ -1284,6 +1288,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       newId,
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    if (result.status === 'unchanged') return result;
     return { status: 'recorded', operationId: result.operationId, transferId: result.transferId };
   }
 
@@ -2539,7 +2544,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (
       positionals.length > 0 ||
       !PayableKindSchema.safeParse(values.tipo).success ||
-      ![undefined, 'cedolare', 'registro'].includes(values.voce)
+      ![undefined, 'cedolare', 'registro'].includes(values.voce) ||
+      (values.id !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(values.id))
     ) {
       throw invalid('bad-arguments');
     }

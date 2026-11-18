@@ -162,12 +162,28 @@ describe('savePayable (plan 9, task 3)', () => {
       status: 'refused',
       reason: 'unknown-apartment',
     });
-    expect(await refused({ id: 'scad-x' })).toEqual({
-      status: 'refused',
-      reason: 'unknown-payable',
-    });
     expect(await refused({ expected: 0 })).toEqual({ status: 'refused', reason: 'bad-amount' });
     expect(await refused({ expected: 1.5 })).toEqual({ status: 'refused', reason: 'bad-amount' });
+    expect((await readJournal(store)).operations).toHaveLength(before);
+  });
+
+  it('E3: a new id creates the payable; the same payable again, with or without id, is unchanged', async () => {
+    const { store } = await setup();
+    const save = (changes: object, prefix: string) =>
+      savePayable(store, { ...input, ...changes }, 'user1', clock, ids(prefix));
+    expect(await save({ id: 'scad-x', dueDate: '2027-02-01' }, 'a')).toMatchObject({
+      status: 'saved',
+      payableId: 'scad-x',
+    });
+    expect(await save({ id: 'scad-x', dueDate: '2027-02-01' }, 'b')).toEqual({
+      status: 'unchanged',
+      payableId: 'scad-x',
+    });
+    const before = (await readJournal(store)).operations.length;
+    expect(await save({ dueDate: '2027-02-01' }, 'c')).toEqual({
+      status: 'unchanged',
+      payableId: 'scad-x',
+    });
     expect((await readJournal(store)).operations).toHaveLength(before);
   });
 });
@@ -399,7 +415,14 @@ describe('setPayablePaid', () => {
   it('refuses a movement that is unknown, a credit, unclassified, automatic, IMU or taken', async () => {
     const { store } = await setup();
     await savePayable(store, input, 'user1', clock, ids('n'));
-    await savePayable(store, input, 'user1', clock, ids('m'));
+    // A second payable (an identical one would be unchanged, E3).
+    await savePayable(
+      store,
+      { ...input, dueDate: isoDate('2027-03-01') },
+      'user1',
+      clock,
+      ids('m'),
+    );
     await setPayablePaid(
       store,
       { payableId: 'scad-m-1', transactionId: 't-hand' },

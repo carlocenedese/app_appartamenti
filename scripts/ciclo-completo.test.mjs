@@ -1203,21 +1203,8 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     );
   });
 
-  it('rilancio: scrivono di nuovo solo i comandi dei reperti E2, E3 ed E8', () => {
-    const wrote = steps.filter((s) => s.rerun?.wrote).map((s) => s.label);
-    expect(wrote).toEqual([
-      'profilo',
-      'inquilino',
-      'inquilino',
-      'inquilino',
-      'inquilino',
-      'giroconto-manuale',
-      'scadenza-nuova senza --id',
-    ]);
-  });
-
-  // E2, E3, E8: profilo, inquilino, giroconto-manuale and scadenza-nuova write again on a rerun.
-  it.fails('rilancio di ogni comando = nessuna scrittura (E2, E3, E8)', () => {
+  // E2, E3, E8, E9, E10: a rerun of the same line writes nothing.
+  it('rilancio di ogni comando = nessuna scrittura (E2, E3, E8)', () => {
     expect(steps.filter((s) => s.rerun?.wrote).map((s) => s.label)).toEqual([]);
   });
 
@@ -1363,17 +1350,12 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(shared.calc['apt-b'].unassigned).toBe(4000 + 4248);
   });
 
-  it('saldi tra conti coerenti con il F24, i giroconti e il giroconto a mano (stato attuale)', () => {
+  it('saldi: F24, giroconto, un solo giroconto a mano e lo storno della TARI comune (E1, E2)', () => {
     const [pair] = shared.saldi.json.pairs;
     expect([pair.creditorApartmentId, pair.debtorApartmentId]).toEqual(['apt-a', 'apt-b']);
-    // B's IMU share of the F24 paid by A (400,00 of 1.000,00) + 300,00 sent by A to B + the
-    // 50,00 by hand, counted twice because the rerun of giroconto-manuale wrote a second one (E2),
-    // + B's share of the shared TARI paid by A (84,96, E1).
-    expect(pair.amount).toBe(40000 + 30000 + 5000 + 5000 + 8496);
-  });
-
-  it.fails('saldi con un solo giroconto a mano e lo storno della TARI comune (E2)', () => {
-    expect(shared.saldi.json.pairs[0].amount).toBe(40000 + 30000 + 5000 + 8496);
+    // B's IMU share of the F24 paid by A (400,00 of 1.000,00) + 300,00 sent by A to B + 50,00 by
+    // hand + B's share of the shared TARI paid by A (84,96).
+    expect(pair.amount).toBe(40000 + 30000 + 5000 + 8496);
   });
 
   it('tabella tasse coerente con le stime, le scadenze e il F24', () => {
@@ -1394,7 +1376,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(rows.cedolare.paid).toBe(cedolare.expected);
   });
 
-  it.fails('tasse: il registro atteso è quello di una scadenza, non del suo doppione (E3)', () => {
+  it('tasse: il registro atteso è quello di una scadenza, non del suo doppione (E3)', () => {
     const rows = Object.fromEntries(shared.tasse.json.tables[0].rows.map((r) => [r.voce, r]));
     expect(rows.registro.expected).toBe(6700);
   });
@@ -1488,7 +1470,7 @@ describe('sonde fuori dal ciclo', () => {
     return { probe, cli };
   }
 
-  it('conto senza IBAN rilanciato crea un secondo conto dello stesso appartamento (E9)', async () => {
+  it('conto senza IBAN rilanciato: lo stesso conto, unchanged (E9)', async () => {
     const { probe, cli } = await probeFolder();
     const apt = ['--id', 'x', '--nome', 'X', '--locatore', 'L', '--posti', '2'];
     await cli(
@@ -1503,7 +1485,7 @@ describe('sonde fuori dal ciclo', () => {
     const first = await cli('conto', ...conto);
     const second = await cli('conto', ...conto);
     expect([first.code, second.code]).toEqual([0, 0]);
-    expect(second.json.id).not.toBe(first.json.id);
+    expect([second.json.status, second.json.id]).toEqual(['unchanged', first.json.id]);
     rmSync(probe, { recursive: true, force: true });
   });
 
