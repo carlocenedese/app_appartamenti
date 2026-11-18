@@ -17,6 +17,7 @@ export {
   DEFAULT_CONFLICT_RULES,
   DROPBOX_CONFLICT_RULE,
   ICLOUD_CONFLICT_RULE,
+  UnreadableRecordsError,
   findWorkspace,
   loadAll,
 } from './store/load';

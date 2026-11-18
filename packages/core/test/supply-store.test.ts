@@ -192,11 +192,11 @@ describe('removeSupply and liveSupplies', () => {
     ).toBeTruthy();
   });
 
-  it('ignores a broken file', async () => {
+  it('refuses a broken file instead of leaving a supply out (G6)', async () => {
     const store = new MemoryStore();
     await linkSupply(store, draft(), 'p1', clock, ids('a'));
     store.putRaw('_app/dati/supply/broken.json', '{ not json');
-    expect(await liveSupplies(store)).toHaveLength(1);
+    await expect(liveSupplies(store)).rejects.toMatchObject({ name: 'UnreadableRecordsError' });
   });
 
   it('makes the label unknown again for a proposal and leaves registered instalments alone', async () => {

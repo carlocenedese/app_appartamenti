@@ -253,7 +253,9 @@ describe('conflict name rules', () => {
       'conflicted-copy',
       'conflicted-copy',
     ]);
-    const dropboxOnly = await loadAll(store, 'bill', BillSchema, {}, [DROPBOX_CONFLICT_RULE]);
+    const dropboxOnly = await loadAll(store, 'bill', BillSchema, { tolerant: true }, [
+      DROPBOX_CONFLICT_RULE,
+    ]);
     expect(dropboxOnly.problems.map((p) => p.reason)).toEqual(['conflicted-copy', 'id-mismatch']);
     const withRules = await loadAll(store, 'bill', BillSchema, {}, [
       DROPBOX_CONFLICT_RULE,

@@ -354,7 +354,7 @@ describe('TauriStore with the engine', () => {
     seed('.tmp-0190e5c6-1f2a', '{"partial');
     seed('notes.txt', 'hello');
 
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
 
     expect(records).toEqual([bill]);
     expect(problems).toEqual([

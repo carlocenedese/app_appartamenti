@@ -60,7 +60,48 @@ const TEMP_PREFIX = '.tmp-';
 type LoadOptions = {
   /** Include records marked `deleted: true`, which are left out by default. */
   includeDeleted?: boolean;
+  /**
+   * Return the files that hold no usable record as problems instead of throwing
+   * `UnreadableRecordsError`: for the checks of the folder (`assessWorkspace`), never for a
+   * calculation or a write, which would otherwise go on without that record.
+   */
+  tolerant?: boolean;
 };
+
+/**
+ * The problems that mean a record of the kind is there but not loaded: its file is cut short,
+ * cannot be read now, has another shape or a newer `v`, is not named after its id, or shares its
+ * id with other files of which none is named after it.
+ */
+const MISSING_RECORD: ReadonlySet<Problem['reason']> = new Set([
+  'malformed-json',
+  'schema-mismatch',
+  'future-version',
+  'unreadable',
+  'id-mismatch',
+]);
+
+/**
+ * Thrown by `loadAll` (unless `tolerant`) when some files of the kind hold a record it cannot
+ * use: a calculation or an Excel made without them would be wrong without saying so. `records`
+ * gives, for each, the id (the file name without `.json`), the relative path and the reason; ids
+ * only, no personal data. The message is in Italian, for the screen.
+ */
+export class UnreadableRecordsError extends Error {
+  readonly kind: string;
+  readonly records: { id: string; path: string; reason: Problem['reason'] }[];
+
+  constructor(kind: string, records: UnreadableRecordsError['records']) {
+    super(
+      `Alcuni dati (${kind}: ${records.map(({ id }) => id).join(', ')}) non si possono leggere: ` +
+        "il calcolo non si fa senza di loro. Aspetta che Dropbox finisca, aggiorna l'app se sono " +
+        'di una versione più nuova, o ripara i file.',
+    );
+    this.name = 'UnreadableRecordsError';
+    this.kind = kind;
+    this.records = records;
+  }
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -148,6 +189,13 @@ export function dropsKeys(raw: unknown, parsed: unknown): boolean {
  * Records come back sorted by `id`, problems by path, both by code unit, so the result does not depend on the order the store lists files in. Records are what
  * `schema` returns, so keys it does not know are dropped (see the notes in `model.ts`).
  *
+ * A file that holds a record of the kind that cannot be used (cut short, unreadable now, another
+ * shape, a newer `v`, not named after its id, or an id in several files none named after it) makes
+ * `loadAll` throw `UnreadableRecordsError`, unless `opts.tolerant` is set: every calculation, Excel
+ * and write reads through `loadAll`, and none of them may go on as if the record did not exist
+ * (revisione 2026-11-18, G6). Conflict copies and copies of a record that is loaded do not throw:
+ * the record is there, and `checkConsistency` blocks the writes until the copy is set aside.
+ *
  * A file that exists but cannot be read now (`FileAccessError`, or an error with one of the codes
  * `FILE_ACCESS_CODES`: permissions, held open on Windows, I/O) is reported as `unreadable`, so
  * one such file does not stop the folder from opening. Other failures of the store are not
@@ -163,7 +211,21 @@ export async function loadAll<T extends { id: string }>(
 ): Promise<{ records: T[]; problems: Problem[] }> {
   assertSafeSegment(kind);
   const naming = { stemOf: (record: T) => record.id, strict: true };
-  return loadDir(store, `${DATA_DIR}/${kind}`, schema, naming, opts, conflictRules);
+  const loaded = await loadDir(store, `${DATA_DIR}/${kind}`, schema, naming, opts, conflictRules);
+  const missing = loaded.problems.filter(
+    (problem) => MISSING_RECORD.has(problem.reason) || loaded.orphanDuplicates.has(problem.path),
+  );
+  if (opts.tolerant !== true && missing.length > 0) {
+    throw new UnreadableRecordsError(
+      kind,
+      missing.map(({ path, reason }) => ({
+        id: path.slice(path.lastIndexOf('/') + 1, -JSON_EXTENSION.length),
+        path,
+        reason,
+      })),
+    );
+  }
+  return { records: loaded.records, problems: loaded.problems };
 }
 
 /**
@@ -187,7 +249,7 @@ export async function loadDir<T extends { id: string }>(
   naming: Naming<T>,
   opts: LoadOptions = {},
   conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
-): Promise<{ records: T[]; problems: Problem[] }> {
+): Promise<{ records: T[]; problems: Problem[]; orphanDuplicates: Set<string> }> {
   const names = (await store.list(dir)).map((name) => name.normalize('NFC'));
 
   const loaded: { path: string; stem: string; record: T; deleted: boolean }[] = [];
@@ -244,6 +306,8 @@ export async function loadDir<T extends { id: string }>(
   for (const entry of loaded)
     byId.set(entry.record.id, [...(byId.get(entry.record.id) ?? []), entry]);
   const kept: typeof loaded = [];
+  // Paths of an id in several files of which none is named after it: no record of it is loaded.
+  const orphanDuplicates = new Set<string>();
   for (const entries of byId.values()) {
     const named = entries.filter(
       ({ stem, record }) => stem === naming.stemOf(record).normalize('NFC'),
@@ -259,13 +323,14 @@ export async function loadDir<T extends { id: string }>(
     for (const entry of entries) {
       if (entry === winner) kept.push(entry);
       else problems.push({ path: entry.path, reason: 'duplicate-id' });
+      if (winner === undefined) orphanDuplicates.add(entry.path);
     }
   }
 
   const records = kept.filter(({ deleted }) => opts.includeDeleted === true || !deleted);
   records.sort((a, b) => compareText(a.record.id, b.record.id));
   problems.sort((a, b) => compareText(a.path, b.path));
-  return { records: records.map(({ record }) => record), problems };
+  return { records: records.map(({ record }) => record), problems, orphanDuplicates };
 }
 
 /**

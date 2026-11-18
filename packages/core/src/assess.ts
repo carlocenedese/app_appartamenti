@@ -137,7 +137,8 @@ export async function assessWorkspace(
   const found: Problem[] = [];
   const schemas: [string, ZodType<{ id: string }>][] = Object.entries(recordSchemas);
   for (const [kind, schema] of schemas) {
-    found.push(...(await loadAll(store, kind, schema, {}, conflictRules)).problems);
+    const loaded = await loadAll(store, kind, schema, { tolerant: true }, conflictRules);
+    found.push(...loaded.problems);
   }
   const journal = (await readJournal(store, conflictRules)).problems;
   // checkConsistency also reports the conflict copies of the records, the journal and workspace.json.

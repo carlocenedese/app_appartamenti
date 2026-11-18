@@ -1441,10 +1441,13 @@ describe('notes', () => {
     expect(await notesFor(store, 'bill', 'bill-1')).toEqual([]);
   });
 
-  it('skips a note file that is broken instead of failing', async () => {
+  it('refuses to list the notes when a note file is broken, instead of hiding it (G6)', async () => {
     const { store, commit } = setup();
     await commit(addNote('note-1', 'prof-a'));
     store.putRaw('_app/dati/note/broken.json', '{"id"');
-    expect((await notesFor(store, 'bill', 'bill-1')).map((n) => n.id)).toEqual(['note-1']);
+    await expect(notesFor(store, 'bill', 'bill-1')).rejects.toMatchObject({
+      name: 'UnreadableRecordsError',
+      records: [{ id: 'broken', reason: 'malformed-json' }],
+    });
   });
 });

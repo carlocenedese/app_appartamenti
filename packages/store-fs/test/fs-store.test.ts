@@ -85,7 +85,7 @@ describe('FsStore: JSON files', () => {
   it('writes a Bill and reads it back', async () => {
     await store.writeJsonAtomic('_app/dati/bill/bill-1.json', bill);
     expect(await store.readJson('_app/dati/bill/bill-1.json')).toEqual(bill);
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
     expect(problems).toEqual([]);
     expect(records).toEqual([bill]);
   });
@@ -288,7 +288,7 @@ describe('FsStore: an interrupted write never leaves a partial .json file', () =
 
     expect(await store.list('_app/dati/bill')).toEqual(['bill-1.json']);
     expect(await store.readJson('_app/dati/bill/bill-2.json')).toBeUndefined();
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
     expect(records).toEqual([bill]);
     expect(problems).toEqual([]);
   });
@@ -366,7 +366,7 @@ describe('FsStore with the engine', () => {
     await seed('.tmp-0190e5c6-1f2a', '{"partial');
     await seed('notes.txt', 'hello');
 
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
 
     const dir = '_app/dati/bill';
     expect(records).toEqual([bill]);
@@ -391,7 +391,7 @@ describe('FsStore with the engine', () => {
     await seed('bill-1 - Copia.json', JSON.stringify({ ...bill, supplier: 'Copia' }));
     await seed('renamed.json', JSON.stringify({ ...bill, id: 'bill-9' }));
 
-    const { records, problems } = await loadAll(store, 'bill', BillSchema);
+    const { records, problems } = await loadAll(store, 'bill', BillSchema, { tolerant: true });
 
     const dir = '_app/dati/bill';
     expect(records).toEqual([bill]);
@@ -568,7 +568,13 @@ describe('files held open or without permission (revisione 2026-11-18, G5, G8)',
         name: 'FileAccessError',
         path: '_app/dati/bill/bill-2.json',
       });
-      const { records, problems } = await loadAll(store, 'bill', BillSchema, {}, []);
+      const { records, problems } = await loadAll(
+        store,
+        'bill',
+        BillSchema,
+        { tolerant: true },
+        [],
+      );
       expect(records.map(({ id }) => id)).toEqual(['bill-1']);
       expect(problems).toEqual([{ path: '_app/dati/bill/bill-2.json', reason: 'unreadable' }]);
       const app = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
