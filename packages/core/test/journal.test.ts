@@ -9,6 +9,7 @@ import {
   notesFor,
   readJournal,
   recordPath,
+  damagedJournalFiles,
   forkVersions,
   repairDiverged,
   resolveFork,
@@ -1301,6 +1302,67 @@ describe('forks: two operations leave the same rev (revisione 2026-11-18, G1)', 
       one.putRaw(`${JOURNAL_DIR}/${name}`, two.getRaw(`${JOURNAL_DIR}/${name}`) ?? '');
     }
     expect(await checkConsistency(one)).toEqual([]);
+  });
+});
+
+describe('damaged operation files (revisione 2026-11-18, G4)', () => {
+  const kinds = ['bill'];
+  const opFile = (store: MemoryStore, index: number) =>
+    journalNames(store).then((names) => `${JOURNAL_DIR}/${names[index] ?? ''}`);
+
+  it('can set aside an empty file that left no effect (T4b)', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    store.putRaw(`${JOURNAL_DIR}/20261102T100000000Z-u9-zzz.json`, '');
+    expect(await damagedJournalFiles(store, kinds)).toEqual([
+      {
+        path: `${JOURNAL_DIR}/20261102T100000000Z-u9-zzz.json`,
+        setAsideTo: '_app/journal-danneggiati/20261102T100000000Z-u9-zzz.json',
+        safeToSetAside: true,
+        blockedBy: [],
+      },
+    ]);
+  });
+
+  it('is to resolve when the cut operation changed a record (T4c)', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    await commit(changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 2 })));
+    const last = await opFile(store, 1);
+    store.putRaw(last, (store.getRaw(last) ?? '').slice(0, 40));
+    const [file] = await damagedJournalFiles(store, kinds);
+    expect(file).toMatchObject({
+      path: last,
+      safeToSetAside: false,
+      blockedBy: ['records-differ'],
+    });
+  });
+
+  it('is to resolve when the operation created a record no other operation explains', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    await commit(createBill('bill-2'));
+    store.putRaw(await opFile(store, 1), '');
+    const [file] = await damagedJournalFiles(store, kinds);
+    expect(file).toMatchObject({ safeToSetAside: false, blockedBy: ['unexplained-record'] });
+  });
+
+  it('is to resolve when a later operation starts from what the damaged one left', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    await commit(changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 2 })));
+    await commit(changeBill(await store.readJson(BILL_PATH), bill('bill-1', { amount: 3 })));
+    store.putRaw(await opFile(store, 1), '{"id": "op');
+    const [file] = await damagedJournalFiles(store, kinds);
+    expect(file).toMatchObject({ safeToSetAside: false, blockedBy: ['broken-chain'] });
+  });
+
+  it('lists nothing for a sound journal, nor for a file from a newer app', async () => {
+    const { store, commit } = setup();
+    await commit(createBill());
+    expect(await damagedJournalFiles(store)).toEqual([]);
+    store.putRaw(`${JOURNAL_DIR}/x.json`, JSON.stringify({ id: 'x', v: 2 }));
+    expect(await damagedJournalFiles(store)).toEqual([]);
   });
 });
 

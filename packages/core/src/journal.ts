@@ -789,3 +789,77 @@ export async function resolveFork(
     newId,
   );
 }
+
+// --- Damaged operation files -----------------------------------------------------------------
+
+/** Where a damaged operation file is set aside, relative to the workspace root. */
+export const DAMAGED_JOURNAL_DIR = '_app/journal-danneggiati';
+
+/**
+ * An operation file that cannot be read (empty, cut short, not an operation) and what can be done
+ * with it. `safeToSetAside` is true only when it is shown that the operation left no effect the
+ * rest of the folder does not explain; the platform then moves the file to `setAsideTo` (the core
+ * `Store` cannot move files: `moveFileNoOverwrite` in store-fs, a rename on Tauri), never over an
+ * existing file. Otherwise `blockedBy` says why, and the file must be restored (for instance from
+ * the version history of Dropbox) or the person decides.
+ */
+export type DamagedJournalFile = {
+  path: string;
+  setAsideTo: string;
+  safeToSetAside: boolean;
+  /**
+   * - `records-differ`: a record is not as the readable journal says (diverged or forked): the
+   *   damaged operation may be what changed it;
+   * - `unexplained-record`: a record file that no readable operation wrote;
+   * - `broken-chain`: an operation starts from a `rev` that no readable operation left, or undoes
+   *   an operation that is not in the journal.
+   */
+  blockedBy: ('records-differ' | 'unexplained-record' | 'broken-chain')[];
+};
+
+/**
+ * The operation files of the journal that cannot be read (`malformed-json`, `schema-mismatch`),
+ * each with whether it can be set aside safely (see `DamagedJournalFile`). A file from a newer app
+ * (`future-version`) or a conflict copy is not damaged and is not listed. `recordKinds` are the
+ * folders of `_app/dati` to look in for records no operation explains (default: every kind).
+ */
+export async function damagedJournalFiles(
+  store: Store,
+  recordKinds: readonly string[] = Object.keys(recordSchemas),
+): Promise<DamagedJournalFile[]> {
+  const { operations, problems } = await readJournal(store);
+  const damaged = problems.filter(
+    ({ reason }) => reason === 'malformed-json' || reason === 'schema-mismatch',
+  );
+  if (damaged.length === 0) return [];
+
+  const blockedBy = new Set<DamagedJournalFile['blockedBy'][number]>();
+  if ((await checkConsistency(store)).some(({ reason }) => reason !== 'conflicted-copy')) {
+    blockedBy.add('records-differ');
+  }
+  const touches = touchesByPath(operations);
+  for (const kind of recordKinds) {
+    for (const name of await store.list(`${DATA_DIR}/${kind}`)) {
+      const copy = DEFAULT_CONFLICT_RULES.some((rule) => rule.isConflictName(name));
+      if (name.endsWith('.json') && !copy && !touches.has(`${DATA_DIR}/${kind}/${name}`)) {
+        blockedBy.add('unexplained-record');
+      }
+    }
+  }
+  const ids = new Set(operations.map(({ id }) => id));
+  for (const operation of operations) {
+    if (operation.undoes !== undefined && !ids.has(operation.undoes)) blockedBy.add('broken-chain');
+    for (const { path, before } of operation.changes) {
+      if (!hasRev(before)) continue;
+      const left = touches.get(path) ?? [];
+      if (!left.some(({ after }) => after.rev === before.rev)) blockedBy.add('broken-chain');
+    }
+  }
+  const reasons = [...blockedBy].sort(compareText);
+  return damaged.map(({ path }) => ({
+    path,
+    setAsideTo: `${DAMAGED_JOURNAL_DIR}/${path.slice(JOURNAL_DIR.length + 1)}`,
+    safeToSetAside: reasons.length === 0,
+    blockedBy: reasons,
+  }));
+}

@@ -15,7 +15,12 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BillSchema,
+  CORE_VERSION,
+  DATA_FORMAT,
   MalformedJsonError,
+  assessWorkspace,
+  commitChange,
+  damagedJournalFiles,
   StaleWriteError,
   findWorkspace,
   loadAll,
@@ -477,5 +482,38 @@ describe('moveFileNoOverwrite, the edges (plan 17, R315)', () => {
     await expect(moveFileNoOverwrite(root, 'a.pdf', 'b/a.pdf')).rejects.toThrow('no');
     expect(await namesIn()).toEqual(['a.pdf', 'b']);
     expect(await namesIn('b')).toEqual([]);
+  });
+});
+
+describe('a damaged operation file set aside (revisione 2026-11-18, G4)', () => {
+  it('unblocks the folder only when it left no effect', async () => {
+    await store.writeJsonAtomic('_app/workspace.json', {
+      workspaceId: 'ws-1',
+      name: 'Casa',
+      schemaVersion: DATA_FORMAT,
+      minAppVersion: CORE_VERSION,
+      createdAt: '2026-11-18T09:00:00.000Z',
+    });
+    await commitChange(
+      store,
+      {
+        profileId: 'u1',
+        kind: 'k',
+        summary: 's',
+        changes: [{ path: recordPath('bill', 'bill-1'), after: bill }],
+      },
+      () => '2026-11-18T09:00:00.000Z',
+      () => 'op-1',
+    );
+    await mkdir(join(root, '_app/journal'), { recursive: true });
+    await writeFile(join(root, '_app/journal/20261118T090100000Z-u9-zzz.json'), '');
+    const app = { version: CORE_VERSION, schemaVersion: DATA_FORMAT };
+    expect((await assessWorkspace(store, app)).reasons.map(({ code }) => code)).toEqual([
+      'damaged-journal',
+    ]);
+    const [file] = await damagedJournalFiles(store);
+    expect(file?.safeToSetAside).toBe(true);
+    expect(await moveFileNoOverwrite(root, file?.path ?? '', file?.setAsideTo ?? '')).toBe('moved');
+    expect(await assessWorkspace(store, app)).toMatchObject({ writable: true, reasons: [] });
   });
 });

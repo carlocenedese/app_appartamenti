@@ -58,6 +58,22 @@ async function findByNfcName(dir: string, name: string): Promise<string | undefi
 }
 
 /**
+ * Flushes the folder entry of a rename to disk, so that a power cut does not bring back the old
+ * file. Best effort: Windows cannot open a folder this way, and there NTFS journals the rename.
+ */
+async function syncDir(dir: string): Promise<void> {
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(dir, 'r');
+    await handle.sync();
+  } catch {
+    // not supported on this platform (EISDIR, EPERM on Windows)
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
+
+/**
  * A `Store` on a folder: every path is relative to `root`, with `/` separators.
  *
  * - Every incoming path is NFC-normalised and checked with `assertSafeRelPath` (a `RangeError`
@@ -69,7 +85,7 @@ async function findByNfcName(dir: string, name: string): Promise<string | undefi
  *   and the other way round. Writing to a name that exists in the other spelling replaces that
  *   file instead of creating a twin. Names listed come back in NFC.
  * - Writes go to a `.tmp-<uuid>` file in the same folder, are flushed to disk, and then replace
- *   the target with a rename, so a reader never sees a partly written `.json` file and a process
+ *   the target with a rename (the folder is flushed too where the platform allows), so a reader never sees a partly written `.json` file and a process
  *   that stops half way leaves only a `.tmp-*` file, which `list` hides.
  */
 export class FsStore implements Store {
@@ -113,6 +129,7 @@ export class FsStore implements Store {
       await handle.close();
       handle = undefined;
       await rename(temp, file);
+      await syncDir(dir);
     } catch (error) {
       // A failed write leaves the target as it was and no temporary file behind.
       await handle?.close().catch(() => undefined);
