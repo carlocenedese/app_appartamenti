@@ -139,7 +139,7 @@ const example = {
     match('condo-l', 't-comm', '2027-04-05', 80, { part: 'commission' }),
     match('condo-b', 't-condo-b', '2027-04-05', 30000),
   ],
-  assumed: [] as MatchItemRef[],
+  unverified: [] as MatchItemRef[],
   transactions: [
     tx('t-tari', 'acc-app-a', '2027-03-31', -18600),
     tx('t-condo', 'acc-app-a', '2027-04-05', -30000),
@@ -275,7 +275,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
       bills: [],
       instalments: [],
       matches: [],
-      assumed: [],
+      unverified: [],
       transactions: [
         tx('t-asso', 'acc-app-a', '2027-02-01', -4000),
         tx('t-rimb', 'acc-app-a', '2027-02-10', 1230),
@@ -302,7 +302,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
     expect(inBalance(cls('t-asso', { kind: 'escluso', excludeReason: 'doppione' }))).toBe(false);
   });
 
-  it('lists an assumed instalment paid for another apartment apart, out of the net', () => {
+  it('lists an instalment to verify paid for another apartment apart, out of the net', () => {
     const presunta = instalment('condo-l-2025', {
       apartmentId: 'app-b',
       paidFromApartmentId: 'app-a',
@@ -314,7 +314,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
     const ownAssumed = instalment('condo-b-2025', { apartmentId: 'app-a' });
     const result = accountBalances({
       ...withExtra({ instalments: [presunta, ownAssumed] }),
-      assumed: [
+      unverified: [
         { itemType: 'instalment', itemId: 'condo-l-2025' },
         { itemType: 'instalment', itemId: 'condo-b-2025' },
         { itemType: 'bill', itemId: 'b-1' },
@@ -385,7 +385,7 @@ describe('accountBalances (plan 3c, task 9)', () => {
       bills: [],
       instalments: [],
       matches: [],
-      assumed: [],
+      unverified: [],
       transactions: [tx('t-l', 'acc-app-b', '2027-01-05', -1000)],
       classes: [cls('t-l', { kind: 'altro', apartmentId: 'app-a' })],
       transfers: [back],
@@ -673,10 +673,10 @@ describe('loadAccountBalances (plan 3c, task 9)', () => {
     }
   }
 
-  it('reads the records, lists the assumed items apart and writes nothing', async () => {
+  it('reads the records, lists the items to verify apart and writes nothing', async () => {
     const store = new MemoryStore();
     await put(store, 'account', accounts);
-    // No statement at all: the instalment of Appartamento B paid from Appartamento A is assumed paid.
+    // No statement at all: the instalment of Appartamento B paid from Appartamento A is to verify (B1).
     await put(store, 'instalment', [
       instalment('condo-l', { apartmentId: 'app-b', paidFromApartmentId: 'app-a' }),
     ]);
@@ -735,7 +735,7 @@ describe('extraordinary instalments in the balance (plan 8, task 5, decision 5)'
         instalment('str-l', { apartmentId: 'app-b', straordinaria: true, rateCount: 1 }),
       ],
       matches: [match('str-l', 't-str', '2027-04-05', 30000)],
-      assumed: [],
+      unverified: [],
       transactions: [tx('t-str', 'acc-app-a', '2027-04-05', -30000)],
       classes: [],
       transfers: [],

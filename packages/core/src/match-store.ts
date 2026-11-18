@@ -1,7 +1,7 @@
 /**
  * Writing the matches of bills and instalments (plan 3c, task 3): the automatic run and the
  * confirmation by hand, each one operation of the journal. Only confirmed matches are saved;
- * proposals, ambiguous and assumed items are computed again at every run («Mie scelte» 6).
+ * proposals, ambiguous items and items to verify are computed again at every run («Mie scelte» 6).
  * A new confirmed match on a movement classified by a rule takes its place in the same
  * operation (question 6); a class confirmed by hand stays and the match is a proposal.
  * Nothing is written while `checkConsistency` reports a problem (R113).
@@ -62,7 +62,8 @@ export type MatchRunResult =
       proposals: MatchProposal[];
       pending: MatchItemRef[];
       ambiguous: MatchResult['ambiguous'];
-      assumed: MatchItemRef[];
+      /** «Da verificare» (B1): no statement covers them, no debit found; never taken as paid. */
+      unverified: MatchItemRef[];
       /** The shared notices left out (their instalments stay in `pending`). */
       invalidGroups: MatchResult['invalidGroups'];
       operationId?: string;
@@ -229,8 +230,6 @@ export async function planMatch(store: Store) {
       .map((m) => proposal(m, dependentItems.has(refKey(m)) ? 'has-dependents' : 'classified')),
   ].sort((a, b) => compareText(a.id, b.id));
   const { yielded, changes, where } = changesOf(state, written);
-  // The assumed matches themselves, for the readers that settle with them (R2, plan 5).
-  const assumedMatches = fresh.filter((m) => m.by === 'assumed');
   const run = {
     status: 'matched' as const,
     written: written.length,
@@ -238,10 +237,11 @@ export async function planMatch(store: Store) {
     proposals,
     pending: result.pending,
     ambiguous: result.ambiguous,
-    assumed: assumedMatches.map(ref),
+    // «Da verificare» (B1): no statement covers them and no debit was found; never paid.
+    unverified: result.unverified,
     invalidGroups: result.invalidGroups,
   };
-  return { run, written, changes, where, assumedMatches };
+  return { run, written, changes, where };
 }
 
 export interface ConfirmMatchInput {

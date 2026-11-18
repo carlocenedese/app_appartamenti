@@ -327,7 +327,7 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
           straordinaria: true,
         },
       ],
-      // No statement covers its debit: taken as paid (R2), so it is in.
+      // No statement covers its debit: to verify (B1), never taken as paid, so it is not in.
       ['tenantRecovery', recovery('rec-6', { transactionId: undefined, instalmentId: 'str-1' })],
       // A movement that is no expense of the apartment: never counted.
       ['tenantRecovery', recovery('rec-7', { transactionId: 'tx-nessuno' })],
@@ -346,14 +346,13 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
       ],
     ]);
     const result = await loadDepositReturn(store, returnInput({ conguaglio: cents(0) }));
-    expect(result.status === 'computed' && result.statement.lines.slice(3, 6)).toEqual([
+    expect(result.status === 'computed' && result.statement.lines.slice(3, 5)).toEqual([
       { label: 'Recupero rec-1', amount: -1500 },
       { label: 'Recupero rec-5', amount: 700 },
-      { label: 'Recupero rec-6', amount: -1500 },
     ]);
-    // rec-7: the movement is no expense of the apartment.
-    expect(result.status === 'computed' && result.statement.lines).toHaveLength(7);
-    expect(result.status === 'computed' && result.recoveriesWaiting).toBe(0);
+    // rec-6: its instalment is to verify (B1); rec-7: the movement is no expense of the apartment.
+    expect(result.status === 'computed' && result.statement.lines).toHaveLength(6);
+    expect(result.status === 'computed' && result.recoveriesWaiting).toBe(1); // rec-6 waits for its debit
   });
 
   it('refusals', async () => {

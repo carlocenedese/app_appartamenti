@@ -31,7 +31,7 @@ async function fixtureStore(extra: StoreRecords = {}) {
 }
 
 describe('loadExcelInput', () => {
-  it('loads the apartment and the period, with the assumed matches of planMatch', async () => {
+  it('loads the apartment and the period, with the saved matches only (B1)', async () => {
     const store = await fixtureStore();
     const before = await snapshot(store);
     const loaded = await loadExcelInput(store, QUERY);
@@ -39,13 +39,8 @@ describe('loadExcelInput', () => {
     expect(loaded.input.period).toEqual({ label: '2026-27', from: '2026-10', to: '2027-09' });
     // The apartment's contracts reach the R34 check of calcConguaglio (R180).
     expect(loaded.input.contracts?.map((c) => c.apartmentId)).toEqual([loaded.input.apartment.id]);
-    expect(loaded.input.matches.filter((m) => m.by === 'assumed').map((m) => m.itemId)).toEqual([
-      'bill-gas',
-    ]);
-    const gas = buildConguaglioWorkbook(loaded.input).sheets[0]?.rows.find(
-      (r) => r[0]?.value === 'Gas',
-    );
-    expect(gas?.[6]).toEqual({ kind: 'text', value: 'assunta, non verificata' });
+    expect(loaded.input.matches.filter((m) => m.by === 'assumed')).toEqual([]);
+    expect(loaded.input.matches.some((m) => m.itemId === 'bill-gas')).toBe(false);
     // The same file as the one built from the fixture.
     expect(writeXlsx(buildConguaglioWorkbook(loaded.input))).toEqual(
       writeXlsx(buildConguaglioWorkbook(fixtureInput())),
@@ -82,13 +77,10 @@ describe('loadExcelInput', () => {
     expect(types?.slice(0, types.indexOf('Totale'))).not.toContain('Gas');
   });
 
-  it('keeps planMatch.run as it was', async () => {
+  it('B1: the gas bill with no statement is to verify, never taken as paid', async () => {
     const plan = await planMatch(await fixtureStore());
-    expect(plan.run.assumed).toEqual([{ itemType: 'bill', itemId: 'bill-gas' }]);
-    expect(plan.assumedMatches.map((m) => m.id)).toEqual([
-      'm-bill-bill-gas-amount-assumed-bill-gas',
-    ]);
-    expect('assumedMatches' in plan.run).toBe(false);
+    expect(plan.run.unverified).toEqual([{ itemType: 'bill', itemId: 'bill-gas' }]);
+    expect(plan.written.filter((m) => m.by === 'assumed')).toEqual([]);
   });
 
   it.each([

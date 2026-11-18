@@ -295,7 +295,7 @@ describe('runReconciliation on tre-conti (plan 3c, task 4)', () => {
       missingDocument: [],
     });
     expect(result.match).toMatchObject({ status: 'matched', written: 3, yielded: 0 });
-    expect(result.match.status === 'matched' && result.match.assumed).toEqual([
+    expect(result.match.status === 'matched' && result.match.unverified).toEqual([
       { itemType: 'bill', itemId: 'bill-hera-feb' },
     ]);
     expect(result.income).toMatchObject({ status: 'reconciled', written: 2 });

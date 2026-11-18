@@ -83,7 +83,7 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
   controparte di uscite e rimborsi, mai un conto proprio.
 - `fixtures/reconcile/tre-conti.json`: tre conti inventati (Appartamento A, Appartamento B, Appartamento C, con gli IBAN di
   prova `…0301`, `…0302` e `IT52A…0001` della tabella sopra), gennaio-marzo 2027. Due estratti di
-  Appartamento A con un buco a febbraio (la bolletta di febbraio è presunta), bollette con una nota di
+  Appartamento A con un buco a febbraio (la bolletta di febbraio è da verificare, B1), bollette con una nota di
   credito, una rata condominiale con il suo doppione escluso, due inquilini inventati (gli IBAN
   `…0311` e `…0312`), un giroconto tra Appartamento B e Appartamento A e uscite verso il fornitore inventato
   `…0401`. `records` sono i record per tipo. La leggono `packages/core/test/reconcile.test.ts` e
@@ -102,7 +102,7 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 
 - `fixtures/excel/anno-esempio.json`: l'annualità 2026-27 inventata dell'appartamento Nord (4 posti,
   `apt-nord`) con Sud (`apt-sud`) per la TARI comune: luce a cavallo, internet con commissione, gas
-  presunto, acqua in attesa, condominio con parte della proprietà e conguaglio dell'anno prima, un
+  da verificare (B1), acqua in attesa, condominio con parte della proprietà e conguaglio dell'anno prima, un
   posto vuoto per tre mesi, un cambio di inquilino nello stesso posto, canoni, un conguaglio versato
   e uno restituito, una caparra restituita. Inquilini con nomi inventati («Anna Prova», …), nessun
   IBAN. La leggono `packages/core/test/helpers/excel-fixture.ts` e i test dell'Excel.

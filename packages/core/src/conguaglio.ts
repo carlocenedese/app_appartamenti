@@ -43,7 +43,7 @@ import type {
 } from './model';
 import { cents, splitCents } from './money';
 import type { Cents } from './money';
-import { annualitaRange, isoDate, monthsInPeriod } from './period';
+import { annualitaRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
 import { CORE_VERSION } from './version';
@@ -97,6 +97,11 @@ export interface ConguaglioInput {
    * of the apartment that is not an exclusion (`recoverableMovements`). Absent: none.
    */
   recoverableMovements?: ReadonlySet<string>;
+  /**
+   * The items the matching leaves «da verificare» (B1, `planMatch`): pending with that reason.
+   * An `assumed` match stored before B1 is never paid either and gives the same reason.
+   */
+  unverified?: readonly { itemType: BillMatch['itemType']; itemId: string }[];
 }
 
 type Span = { from: YearMonth; to: YearMonth };
@@ -168,6 +173,9 @@ export interface ConguaglioResult {
 
 /** The reason of a pending extraordinary expense with a recovery not yet debited (R197). */
 export const RECOVERY_WAITING = 'recupero in attesa del pagamento';
+
+/** The reason of an item no statement covers, with no debit seen (B1). */
+export const UNVERIFIED = 'da verificare';
 
 export const CATEGORY_ORDER: readonly CostCategory[] = [
   'elettricita',
@@ -273,11 +281,29 @@ export function checkTenantOverlaps(
   }
 }
 
-/** A bill's amount (or `amount`) split equally over the months of its period. */
+/**
+ * A bill's amount (or `amount`) split over the months of its period in proportion to the days of
+ * the period in each month (B2, decided by user1 on 18 Nov 2026). Each month gets the floor of its
+ * share and the cents left over go one each to the first months (R1), on the absolute value, so
+ * that a credit note is the mirror image. So a shorter month may get one cent more than a longer
+ * one: the owner's example (1,48 / 45,74 / 42,78 €) requires it.
+ */
 export function allocateBillToMonths(bill: Bill, amount: Cents = bill.amount): MonthShare[] {
-  const months = monthsInPeriod(bill.periodStart, bill.periodEnd);
-  const parts = equalSplit(amount, months.length);
-  return months.map((month, index) => ({ month, amount: parts[index] as Cents }));
+  const { periodStart: start, periodEnd: end } = bill;
+  const months = monthsInPeriod(start, end);
+  const days = months.map((month) => {
+    const first = isoDate(`${month}-01`);
+    const last = lastDayOfMonth(month);
+    return daysBetween(last < end ? last : end, first > start ? first : start) + 1;
+  });
+  const totalDays = days.reduce((sum, d) => sum + d, 0);
+  const magnitude = Math.abs(amount);
+  const parts = days.map((d) => Math.floor((magnitude * d) / totalDays));
+  // Fewer cents are left than there are months.
+  let left = magnitude - parts.reduce((sum, p) => sum + p, 0);
+  for (let i = 0; left > 0; i += 1, left -= 1) parts[i] = (parts[i] as number) + 1;
+  const sign = amount < 0 ? -1 : 1;
+  return months.map((month, index) => ({ month, amount: cents(sign * (parts[index] as number)) }));
 }
 
 /** The monthly shares of the bills that fall inside `range` (a lease year), in input order. */
@@ -595,31 +621,33 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     });
   };
 
-  // Confirmed matches by item and part.
-  const matched = new Map<
-    string,
-    { amount: number; commission: number; hasAmount: boolean; debited: boolean }
-  >();
+  // Confirmed matches by item and part; an `assumed` one stored before B1 is no debit seen.
+  const toVerify = new Set(
+    (input.unverified ?? []).map((item) => `${item.itemType}\u0000${item.itemId}`),
+  );
+  const matched = new Map<string, { amount: number; commission: number; hasAmount: boolean }>();
   for (const match of live(input.matches)) {
     if (!match.confirmed) continue;
     const key = `${match.itemType}\u0000${match.itemId}`;
-    const entry = matched.get(key) ?? {
-      amount: 0,
-      commission: 0,
-      hasAmount: false,
-      debited: false,
-    };
+    if (match.by === 'assumed') {
+      toVerify.add(key);
+      continue;
+    }
+    const entry = matched.get(key) ?? { amount: 0, commission: 0, hasAmount: false };
     if (match.part === 'amount') {
       entry.amount += match.amount;
       entry.hasAmount = true;
-      // A real debit in the statement, not an item assumed paid (lotto 10, I10).
-      if (match.by !== 'assumed') entry.debited = true;
     } else {
       entry.commission += match.amount;
     }
     matched.set(key, entry);
   }
   const pending: PendingItem[] = [];
+  /** An item without a debit: «da verificare» when no statement covers it (B1). */
+  const waitingFor = (itemType: PendingItem['itemType'], itemId: string): PendingItem =>
+    toVerify.has(`${itemType}\u0000${itemId}`)
+      ? { itemType, itemId, reason: UNVERIFIED }
+      : { itemType, itemId };
 
   // Plan 8, R197: the recoveries user1 put in this period, on a live extraordinary expense. Plan
   // 17, R300: without a period, the period of the day of the expense; an expense paid to a
@@ -665,7 +693,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     if (!touchesPeriod(monthsInPeriod(bill.periodStart, bill.periodEnd))) continue;
     const paid = matched.get(`bill\u0000${bill.id}`);
     if (paid === undefined || !paid.hasAmount) {
-      pending.push({ itemType: 'bill', itemId: bill.id });
+      pending.push(waitingFor('bill', bill.id));
       continue;
     }
     for (const { month, amount } of allocateBillToMonths(bill, cents(paid.amount))) {
@@ -702,7 +730,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     }
     const paid = matched.get(`instalment\u0000${instalment.id}`);
     if (paid === undefined || !paid.hasAmount) {
-      pending.push({ itemType: 'instalment', itemId: instalment.id });
+      pending.push(waitingFor('instalment', instalment.id));
       continue;
     }
     if (instalment.kind === 'condominio' && paid.amount !== expectedDebit(instalment)) {
@@ -738,7 +766,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     const { instalmentId } = recovery;
     if (
       instalmentId !== undefined &&
-      matched.get(`instalment\u0000${instalmentId}`)?.debited !== true
+      matched.get(`instalment\u0000${instalmentId}`)?.hasAmount !== true
     ) {
       waiting.add(instalmentId);
       continue;

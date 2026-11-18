@@ -270,7 +270,7 @@ export const MESSAGES = {
   'instalment-esercizio-format':
     'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 (il conguaglio divide solo questa forma).',
   'tari-december-missing':
-    'Rifiutato: l’appartamento è nell’avviso TARI comune e il periodo si chiude solo dopo l’addebito dell’avviso TARI di dicembre («month», R3): registrarlo e abbinarlo, poi chiudere.',
+    'Rifiutato: l’appartamento è nell’avviso TARI comune e il periodo si chiude solo dopo l’addebito dell’avviso TARI del dicembre che sta dentro il periodo («month», R3): registrarlo e abbinarlo, poi chiudere.',
   'closed-period-changed':
     'Attenzione: questa scrittura cambia un periodo di conguaglio già chiuso («closedPeriods»): serve un conguaglio supplementare (conguaglio-supplementare).',
   'closing-unknown':
@@ -1241,7 +1241,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         yielded: match.yielded,
         proposals: match.proposals.map((p) => ({ id: p.id, reason: p.reason })),
         pending: match.pending.length,
-        assumed: match.assumed.length,
+        unverified: match.unverified.length,
         invalidGroups: match.invalidGroups.length,
         // E1: a shared notice registered before the fix has no paying account on its rates.
         ...(match.invalidGroups.length > 0 ? { message: MESSAGES['invalid-shared-notice'] } : {}),

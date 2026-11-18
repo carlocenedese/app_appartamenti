@@ -32,12 +32,15 @@ export function documentQuotaConduttore(doc: CondoDocument): Cents | undefined {
   return cents(lines.reduce((sum, l) => sum + (l.quotaConduttore ?? 0), 0));
 }
 
-/** The states of section 12 (R194), plus `in-programma`, `assunta` and, with no date, `in-attesa`. */
+/**
+ * The states of section 12 (R194), plus `in-programma`, `da-verificare` and, with no date,
+ * `in-attesa`.
+ */
 export type CondoStatus =
   | 'duplicato'
   | 'pagata'
   | 'importo-diverso'
-  | 'assunta'
+  | 'da-verificare'
   | 'senza-addebito'
   | 'in-programma'
   | 'in-attesa';
@@ -86,15 +89,16 @@ export function freeDebits(state: {
  * real debits adding up to `rata + conguaglioPrec` are `pagata`, or `duplicato` when a free
  * outgoing movement of the paying apartment (`paidFromApartmentId`, else `apartmentId`) has that
  * same amount within `MATCH_WINDOW` of the due date (R198: the parts of a split payment are
- * matched, so never free); real debits of another sum `importo-diverso`; assumed only `assunta`
- * (R2); none: `senza-addebito` from the day after the due date (no tolerance), `in-programma` up
- * to it, `in-attesa` without a date.
+ * matched, so never free); real debits of another sum `importo-diverso`; only `assumed` matches
+ * stored before B1 `da-verificare`, never paid; none: `senza-addebito` from the day after the due
+ * date (no tolerance), `in-programma` up to it, `in-attesa` without a date.
  */
 export function instalmentStatus(
   instalment: Instalment,
   matches: readonly BillMatch[],
   asOf?: ISODate,
   free: readonly FreeDebit[] = [],
+  unverified: ReadonlySet<string> = new Set(),
 ): CondoStatus {
   const amounts = ownDebits(instalment, matches);
   const real = amounts.filter((m) => m.by !== 'assumed');
@@ -110,7 +114,7 @@ export function instalmentStatus(
     );
     return twice ? 'duplicato' : 'pagata';
   }
-  if (amounts.length > 0) return 'assunta';
+  if (amounts.length > 0 || unverified.has(instalment.id)) return 'da-verificare';
   if (asOf === undefined) return 'in-attesa';
   return asOf > instalment.dueDate ? 'senza-addebito' : 'in-programma';
 }
@@ -151,6 +155,8 @@ export function condoCheck(input: {
   matches: readonly BillMatch[];
   asOf: ISODate;
   free?: readonly FreeDebit[];
+  /** The ids of the instalments the matching leaves «da verificare» (B1). */
+  unverified?: ReadonlySet<string>;
 }): CondoCheckRow[] {
   return input.instalments
     .filter((i) => i.deleted !== true && i.kind === 'condominio')
@@ -178,6 +184,7 @@ export function condoCheck(input: {
           input.matches,
           input.asOf,
           input.free,
+          input.unverified,
         ) as CondoCheckRow['status'],
       };
     });

@@ -62,11 +62,25 @@ function row(result: CalcResult, tenantId: string): CalcResult['tenants'][number
 const FOUR_FULL_YEAR = ['a', 'b', 'c', 'd'].map((id) => tenancy(id, '2026-10', undefined));
 
 describe('Step 1: values of the specification', () => {
-  it('splits a bill equally over its months', () => {
+  it('splits a bill over its months in proportion to the days (B2)', () => {
+    // 31 + 30 days: 21460 × 31/61 = 10905,9 and × 30/61 = 10554,1, the odd cent to August.
     const luce = bill('luce', '2026-08-01', '2026-09-30', 21460);
     expect(allocateBillToMonths(luce)).toEqual([
-      { month: '2026-08', amount: 10730 },
-      { month: '2026-09', amount: 10730 },
+      { month: '2026-08', amount: 10906 },
+      { month: '2026-09', amount: 10554 },
+    ]);
+  });
+
+  it('B2: 30 September – 29 November, 90,00 € → 1,48, 45,74 and 42,78 €', () => {
+    // 1, 31 and 29 days of 61; the cents left over go to the first months (R1).
+    const luce = bill('luce', '2026-09-30', '2026-11-29', 9000);
+    expect(allocateBillToMonths(luce)).toEqual([
+      { month: '2026-09', amount: 148 },
+      { month: '2026-10', amount: 4574 },
+      { month: '2026-11', amount: 4278 },
+    ]);
+    expect(allocateBillToMonths(luce, cents(-9000)).map((s) => s.amount)).toEqual([
+      -148, -4574, -4278,
     ]);
   });
 
@@ -79,7 +93,7 @@ describe('Step 1: values of the specification', () => {
     ]);
   });
 
-  it('gives 98,46 € each when 393,84 € go to 4 tenants present all the time', () => {
+  it('splits 393,84 € among 4 tenants present all the time, the odd cents to the first beds', () => {
     const luce = bill('luce', '2026-10-01', '2026-11-30', 39384);
     const result = calc({
       bills: [luce],
@@ -87,14 +101,14 @@ describe('Step 1: values of the specification', () => {
       tenancies: FOUR_FULL_YEAR,
     });
     expect(result.tenants.map((t) => [t.tenantId, t.spese, t.due])).toEqual([
-      ['a', 9846, 9846],
+      ['a', 9847, 9847],
       ['b', 9846, 9846],
       ['c', 9846, 9846],
-      ['d', 9846, 9846],
+      ['d', 9845, 9845],
     ]);
     expect(result.unassigned).toBe(0);
     expect(result.engineVersion).toBe(CORE_VERSION);
-    expect(row(result, 'a').byCategory).toEqual({ elettricita: 9846 });
+    expect(row(result, 'a').byCategory).toEqual({ elettricita: 9847 });
   });
 
   it('due plus unassigned plus the flat charge collected equals the costs that entered (200 random cases)', () => {
@@ -238,8 +252,9 @@ describe('Step 2: review focus', () => {
   it('puts September in 2025-26 and October in 2026-27 (Review Focus 1)', () => {
     const before = billsForAnnualita([settembreOttobre], annualitaRange('2025-26', APT_A_START));
     const after = billsForAnnualita([settembreOttobre], annualitaRange('2026-27', APT_A_START));
-    expect(before).toEqual([{ month: '2026-09', amount: 10000, bill: settembreOttobre }]);
-    expect(after).toEqual([{ month: '2026-10', amount: 10000, bill: settembreOttobre }]);
+    // 30 and 31 days of 61 (B2).
+    expect(before).toEqual([{ month: '2026-09', amount: 9837, bill: settembreOttobre }]);
+    expect(after).toEqual([{ month: '2026-10', amount: 10163, bill: settembreOttobre }]);
   });
 
   it('sends a month without tenants to unassigned, without NaN (Review Focus 2)', () => {
@@ -249,9 +264,10 @@ describe('Step 2: review focus', () => {
       matches: [match(luce, 20000)],
       tenancies: [tenancy('a', '2026-11', undefined)],
     });
-    // October: nobody, 100,00 € to the owner; November: 25,00 € to A, 75,00 € to empty beds.
-    expect(row(result, 'a').spese).toBe(2500);
-    expect(result.unassigned).toBe(17500);
+    // By days (B2): October 101,64 € to the owner; November 98,36 €, 24,59 € to A, the rest to
+    // the empty beds.
+    expect(row(result, 'a').spese).toBe(2459);
+    expect(result.unassigned).toBe(17541);
     expect(Number.isNaN(result.unassigned)).toBe(false);
   });
 
@@ -260,6 +276,23 @@ describe('Step 2: review focus', () => {
     const result = calc({ bills: [luce], matches: [match(luce, 20000)] });
     expect(result.tenants).toEqual([]);
     expect(result.unassigned).toBe(20000);
+  });
+
+  it('B1: an assumed match stored before B1 is never paid, the bill is «da verificare»', () => {
+    const luce = bill('luce', '2026-10-01', '2026-11-30', 20000);
+    const gas = bill('gas', '2026-10-01', '2026-11-30', 6000, { category: 'gas' });
+    const result = calc({
+      bills: [luce, gas],
+      matches: [match(luce, 20000, { by: 'assumed', transactionId: 'assumed-luce' })],
+      unverified: [{ itemType: 'bill', itemId: 'gas' }],
+      tenancies: FOUR_FULL_YEAR,
+    });
+    expect(result.tenants.map((t) => t.spese)).toEqual([0, 0, 0, 0]);
+    expect(result.unassigned).toBe(0);
+    expect(result.pending).toEqual([
+      { itemType: 'bill', itemId: 'gas', reason: 'da verificare' },
+      { itemType: 'bill', itemId: 'luce', reason: 'da verificare' },
+    ]);
   });
 
   it('lowers the amount due with a credit note', () => {
@@ -800,7 +833,7 @@ describe('Step 3c: flat charge (R4)', () => {
       tenancy('y2', '2025-10', '2029-03', { room: 'R3' }),
       tenancy('z', '2024-04', '2029-03', { room: 'R4' }),
     ];
-    // 4.000,00 € a month over 60 months, and last year's condominium settlement of 2025-26.
+    // 2.400,00 € over 60 months, by days (B2), and last year's condominium settlement of 2025-26.
     const acqua = bill('acqua', '2024-04-01', '2029-03-31', 240000, { category: 'acqua' });
     const conguaglio = instalment('cond-2025-26-1', {
       esercizio: '2025-26',
@@ -824,12 +857,12 @@ describe('Step 3c: flat charge (R4)', () => {
       t.condominio.conguaglioPrec,
     ]);
     expect(view).toEqual([
-      ['w1', 24000, 1100],
-      ['w2', 36000, 100],
-      ['x', 60000, 1200],
-      ['y1', 18000, 500],
-      ['y2', 42000, 700],
-      ['z', 60000, 1200],
+      ['w1', 23995, 1100],
+      ['w2', 36024, 100],
+      ['x', 60018, 1200],
+      ['y1', 18012, 500],
+      ['y2', 41982, 700],
+      ['z', 59969, 1200],
     ]);
   });
 });
@@ -870,12 +903,13 @@ describe('Step 3d: supplementary settlement (R5)', () => {
   it('splits a late bill among those present in its months, departed tenants included', () => {
     const result = late(9000);
     expect(result.tenants.map((t) => [t.tenantId, t.delta, t.departed, t.action])).toEqual([
-      ['a', 1800, false, 'da-pagare'],
-      ['b', 1800, false, 'da-pagare'],
-      ['c', 1800, false, 'da-pagare'],
-      ['d', 1200, true, 'da-trattenere-o-richiedere'],
-      ['e', 1800, false, 'da-pagare'],
-      ['f', 600, false, 'da-pagare'],
+      // By days (B2): July 30,33 €, August 30,33 €, September 29,34 €.
+      ['a', 1801, false, 'da-pagare'],
+      ['b', 1801, false, 'da-pagare'],
+      ['c', 1801, false, 'da-pagare'],
+      ['d', 1212, true, 'da-trattenere-o-richiedere'],
+      ['e', 1799, false, 'da-pagare'],
+      ['f', 586, false, 'da-pagare'],
     ]);
     expect(sum(result.tenants.map((t) => t.delta))).toBe(9000);
     expect(result.unassignedDelta).toBe(0);
@@ -885,12 +919,12 @@ describe('Step 3d: supplementary settlement (R5)', () => {
   it('refunds a late credit note to the same tenants', () => {
     const result = late(-9000);
     expect(result.tenants.map((t) => [t.tenantId, t.delta, t.action])).toEqual([
-      ['a', -1800, 'da-rimborsare'],
-      ['b', -1800, 'da-rimborsare'],
-      ['c', -1800, 'da-rimborsare'],
-      ['d', -1200, 'da-rimborsare'],
-      ['e', -1800, 'da-rimborsare'],
-      ['f', -600, 'da-rimborsare'],
+      ['a', -1801, 'da-rimborsare'],
+      ['b', -1801, 'da-rimborsare'],
+      ['c', -1801, 'da-rimborsare'],
+      ['d', -1212, 'da-rimborsare'],
+      ['e', -1799, 'da-rimborsare'],
+      ['f', -586, 'da-rimborsare'],
     ]);
   });
 
@@ -949,7 +983,7 @@ describe('Step 3d: supplementary settlement (R5)', () => {
     });
     expect(result.tenants.find((t) => t.tenantId === 'd')).toEqual({
       tenantId: 'd',
-      delta: 1200,
+      delta: 1212,
       departed: true,
       action: 'da-trattenere-o-richiedere',
     });

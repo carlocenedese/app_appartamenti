@@ -16,8 +16,8 @@
  * - `giroconto`: a live «saldo» transfer from an account of F to one of T, for `-amount` owed by F
  *   to T, dated on the record (the first leg), never computed again from the legs.
  *
- * Items taken as paid with no statement (`assumed`) are listed in `unverified`, never in the net
- * (question 11); the income of the tenants never counts. Nothing depends on the input order.
+ * Items with no statement and no debit («da verificare», B1) are listed in `unverified`, never
+ * in the net (question 11); the income of the tenants never counts. Nothing depends on the input order.
  */
 import { imuRateKey, imuRates, imuShares } from './imu';
 import type { ImuRate } from './imu';
@@ -78,7 +78,8 @@ export interface BalanceInput {
   bills: Bill[];
   instalments: Instalment[];
   matches: BillMatch[];
-  assumed: MatchItemRef[];
+  /** The items to verify of the matching (B1). */
+  unverified: MatchItemRef[];
   transactions: BankTransaction[];
   classes: MovementClass[];
   transfers: Transfer[];
@@ -286,7 +287,7 @@ export function accountBalances(input: BalanceInput): AccountBalances {
         compareText(a.debtorApartmentId, b.debtorApartmentId),
     );
 
-  const unverified = input.assumed
+  const unverified = input.unverified
     .flatMap(({ itemType, itemId }) => {
       const item = itemType === 'instalment' ? instalments.get(itemId) : undefined;
       const payer = item?.paidFromApartmentId;
@@ -306,7 +307,7 @@ export type LoadAccountBalancesResult =
   ({ status: 'computed' } & AccountBalances) | { status: 'refused'; reason: 'inconsistent-store' };
 
 /**
- * The balance on the records of the store, with the items assumed paid by the matching computed
+ * The balance on the records of the store, with the items to verify of the matching computed
  * as `runMatch` with `dryRun` would (`planMatch`, the same calculation). Writes nothing. Refused
  * while `checkConsistency` reports a problem: a write left half done could count a movement twice.
  */
@@ -320,7 +321,7 @@ export async function loadAccountBalances(store: Store): Promise<LoadAccountBala
     bills: (await loadAll(store, 'bill', BillSchema, all)).records,
     instalments: (await loadAll(store, 'instalment', InstalmentSchema, all)).records,
     matches: (await loadAll(store, 'match', BillMatchSchema, all)).records,
-    assumed: (await planMatch(store)).run.assumed,
+    unverified: (await planMatch(store)).run.unverified,
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     classes: (await loadAll(store, 'movementClass', MovementClassSchema, all)).records,
     transfers: (await loadAll(store, 'transfer', TransferSchema, all)).records,

@@ -73,8 +73,8 @@ export type DashboardResult =
   | { status: 'computed'; apartments: ApartmentDashboard[]; settlements: SettlementStatusRow[] }
   | { status: 'refused'; reason: 'inconsistent-store' | 'bad-year' };
 
-// States that mean nothing is left to do, so they are not counted. `assunta` is counted: whether
-// an instalment without a statement is paid is open (R204, question 7).
+// States that mean nothing is left to do, so they are not counted. `da-verificare` is counted: an
+// instalment without a statement is never taken as paid (B1).
 const DONE = new Set(['pagata', 'versata', 'in-linea', 'confermata']);
 
 /** The settlement period in course of each live apartment, by apartment and label (R316). */

@@ -32,7 +32,6 @@ describe('excelItems on the fixture', () => {
       'bill-internet',
       'inst-tari-nord',
       'inst-cond-1',
-      'bill-gas',
     ]);
   });
 
@@ -47,7 +46,6 @@ describe('excelItems on the fixture', () => {
       to: '2026-11-30',
       dueDate: '2026-12-10',
       debitDates: ['2026-12-10'],
-      assumed: false,
       amount: 6000,
       commission: 80,
       inPeriod: 6080,
@@ -58,17 +56,30 @@ describe('excelItems on the fixture', () => {
   it('notes the months of a bill outside the period', () => {
     const luce = byId(items, 'bill-luce');
     expect(luce?.amount).toBe(12000);
-    expect(luce?.inPeriod).toBe(6000);
+    expect(luce?.inPeriod).toBe(5999);
     expect(luce?.note).toBe(
-      'Bolletta a cavallo: € 60,00 nei mesi agosto–settembre 2026, fuori da questo periodo.',
+      'Bolletta a cavallo: € 60,01 nei mesi agosto–settembre 2026, fuori da questo periodo.',
     );
   });
 
-  it('marks an assumed bill and leaves out a bill without its debit', () => {
-    const gas = byId(items, 'bill-gas');
-    expect(gas?.assumed).toBe(true);
-    expect(gas?.debitDates).toEqual([]);
+  it('leaves out a bill to verify (B1) and a bill without its debit', () => {
+    expect(byId(items, 'bill-gas')).toBeUndefined();
     expect(byId(items, 'bill-acqua')).toBeUndefined();
+  });
+
+  it('leaves out a bill with an assumed match stored before B1: never paid (B1)', () => {
+    const input = fixtureInput();
+    input.matches.push({
+      ...amountMatch('bill', 'bill-gas', 9000),
+      transactionId: 'assumed-bill-gas',
+      by: 'assumed',
+    });
+    expect(byId(itemsOf(input), 'bill-gas')).toBeUndefined();
+    expect(calcConguaglio(input).pending).toContainEqual({
+      itemType: 'bill',
+      itemId: 'bill-gas',
+      reason: 'da verificare',
+    });
   });
 
   it("gives the condominium the tenants' part and the TARI this apartment's share", () => {
@@ -81,7 +92,6 @@ describe('excelItems on the fixture', () => {
       to: '2027-01-31',
       dueDate: '2026-10-05',
       debitDates: ['2026-10-06'],
-      assumed: false,
       amount: 32000,
       commission: 0,
       inPeriod: 32000,
@@ -133,7 +143,7 @@ describe('excelItems variants', () => {
     );
     input.matches.push(amountMatch('bill', 'bill-lunga', 14000));
     expect(byId(itemsOf(input), 'bill-lunga')?.note).toBe(
-      'Bolletta a cavallo: € 20,00 nei mesi settembre 2026 e ottobre 2027, fuori da questo periodo.',
+      'Bolletta a cavallo: € 20,04 nei mesi settembre 2026 e ottobre 2027, fuori da questo periodo.',
     );
   });
 

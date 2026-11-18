@@ -57,6 +57,17 @@ async function liveClose(store: Store, query: Query): Promise<PeriodClose | unde
 }
 
 /**
+ * The Decembers whose TARI debit a closing waits for (R3, F4): the Decembers inside the period,
+ * sorted. A period of several years waits for every one of them; a period without a December
+ * waits for none (answers of user1, 18 Nov 2026, R339).
+ */
+export function tariDecembers(from: string, to: string): string[] {
+  return monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`)).filter((m) =>
+    m.endsWith('-12'),
+  );
+}
+
+/**
  * Closes the period with the snapshot of its calculation (R5) when every rent and flat charge of
  * its months is collected and no item of the period is waiting for its debit (`canClosePeriod`,
  * `cannot-close` with what is missing). Refused too: the refusals of `loadExcelInput`, an input
@@ -93,24 +104,27 @@ export async function closePeriod(
   });
   if (!check.ok) return { status: 'refused', reason: 'cannot-close', missing: check.missing };
   // R3: an apartment with a supply of the shared TARI notice closes only after the December
-  // notice of the year the period ends in is debited (a real match, not assumed), so that the
-  // September share of that notice does not open the period again. Which apartments and which
-  // month when the year is another one: question to the owner (review document).
+  // notice inside the period is debited (a real match, not assumed), so that the September share
+  // of that notice does not open the period again (F4, decided by user1 on 18 Nov 2026).
   const shared = (await loadAll(store, 'supply', SupplySchema)).records.some((supply) =>
     supply.apartments.some((a) => a.apartmentId === query.apartmentId),
   );
   if (shared) {
-    const december = `${input.period.to.slice(0, 4)}-12`;
     const debited = new Set(
       input.matches
         .filter((m) => m.itemType === 'instalment' && m.part === 'amount' && m.by !== 'assumed')
         .map((m) => m.itemId),
     );
-    const paid = input.instalments.some(
-      (i) =>
-        i.deleted !== true && i.kind === 'tari' && i.coversTo === december && debited.has(i.id),
+    const missing = tariDecembers(input.period.from, input.period.to).find(
+      (december) =>
+        !input.instalments.some(
+          (i) =>
+            i.deleted !== true && i.kind === 'tari' && i.coversTo === december && debited.has(i.id),
+        ),
     );
-    if (!paid) return { status: 'refused', reason: 'tari-december-missing', month: december };
+    if (missing !== undefined) {
+      return { status: 'refused', reason: 'tari-december-missing', month: missing };
+    }
   }
   const id = periodCloseId(query.apartmentId, query.periodLabel);
   const before = (

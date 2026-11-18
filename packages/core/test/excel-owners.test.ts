@@ -145,7 +145,7 @@ describe('buildOwnersWorkbook', () => {
       'pagata',
     ]);
     expect(wait?.slice(8, 14)).toEqual([4000, 30000, null, 0, null, 'in attesa di pagamento']);
-    expect(ass?.slice(10, 14)).toEqual([null, 0, null, 'assunta, non verificata']);
+    expect(ass?.slice(10, 14)).toEqual([null, 0, null, 'da verificare']);
     expect(rows.at(-1)?.slice(6)).toEqual([140000, 4000, 62000, 144000, 86000, 80]);
   });
 
