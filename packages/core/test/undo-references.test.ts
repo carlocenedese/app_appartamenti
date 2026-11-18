@@ -248,11 +248,18 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
     });
   });
 
-  it('refuses another tenant for a stay a contract lists, and accepts it for a bare stay', async () => {
+  it('accepts a correction of the tenant under a contract, refuses another apartment', async () => {
     const store = await stayWithUses();
-    expect(await saveTenancy(store, other, 'p1', clock, ids('o'))).toMatchObject({
-      status: 'saved',
-    });
+    await put(store, 'apartment', [
+      {
+        ...base,
+        id: 'lovarini',
+        name: 'lovarini',
+        locatore: 'Locatore fittizio',
+        posti: 2,
+        annualitaStart: { month: 1, day: 1 },
+      },
+    ]);
     await put(store, 'contract', [
       {
         ...base,
@@ -265,14 +272,93 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
         tenancyIds: ['ten1'],
       },
     ]);
+    expect(await saveTenancy(store, other, 'p1', clock, ids('o'))).toMatchObject({
+      status: 'saved',
+    });
     expect(
       await saveTenancy(
         store,
-        { ...(other as object), tenantId: 't1' } as never,
+        { ...(other as object), apartmentId: 'lovarini' } as never,
         'p1',
         clock,
         ids('p'),
       ),
     ).toEqual({ status: 'refused', reason: 'tenancy-in-use', recordIds: ['c1'] });
+  });
+
+  it('accepts a correction of the months while payments of the stay live', async () => {
+    const store = await stayWithUses();
+    await put(store, 'payment', [
+      {
+        ...base,
+        id: 'pay1',
+        apartmentId: 'berchet',
+        tenantId: 't1',
+        date: '2027-09-05',
+        amount: 55000,
+        confirmed: true,
+        kind: 'canone',
+        forMonth: '2027-09',
+        source: 'manual',
+      },
+    ]);
+    expect(
+      await saveTenancy(
+        store,
+        { ...(other as object), tenantId: 't1', from: '2027-02' } as never,
+        'p1',
+        clock,
+        ids('d'),
+      ),
+    ).toMatchObject({ status: 'saved' });
+  });
+});
+
+describe('notes never block (review of 18 Nov 2026, U11)', () => {
+  it('a note on a created stay does not stop its undo', async () => {
+    const store = await (async () => {
+      const s = new MemoryStore();
+      await put(s, 'apartment', [
+        {
+          ...base,
+          id: 'berchet',
+          name: 'berchet',
+          locatore: 'Locatore fittizio',
+          posti: 2,
+          annualitaStart: { month: 1, day: 1 },
+        },
+      ]);
+      await put(s, 'tenant', [{ ...base, id: 't1', name: 'Inquilino Uno' }]);
+      return s;
+    })();
+    const op = operationOf(
+      await saveTenancy(
+        store,
+        {
+          id: 'ten1',
+          apartmentId: 'berchet',
+          tenantId: 't1',
+          from: '2027-01',
+          monthlyRent: 50000,
+          monthlyForfait: 5000,
+        } as never,
+        'p1',
+        clock,
+        ids('t'),
+      ),
+    );
+    await put(store, 'note', [
+      {
+        ...base,
+        id: 'n1',
+        targetType: 'tenancy',
+        targetId: 'ten1',
+        text: 'x',
+        profileId: 'p1',
+        at: '2026-11-14T09:00:00.000Z',
+      },
+    ]);
+    expect(await undoBlockedBy(store, op)).toEqual([]);
+    expect(await undoDependents(store, op)).toEqual([]);
   });
 });

@@ -249,8 +249,8 @@ const linked = (c: Contract, tenancyId: string): Contract =>
  * expected deposit that is not positive); `unknown-apartment`; `unknown-tenant`; `unknown-contract`
  * (absent, deleted or of another apartment); `beds-conflict` (what `calcConguaglio` would throw);
  * for a live stay given another tenant or apartment, `tenancy-in-use` with the payments and
- * recoveries its undo would leave without a stay and the contracts that list it (make a new
- * stay instead: review of 18 Nov 2026, U4); for a live stay whose months change,
+ * recoveries its undo would leave without a stay, and for another apartment also the contracts
+ * that list it (make a new stay instead: review of 18 Nov 2026, U4); for a live stay whose months change,
  * `has-recoveries` as `endTenancy`.
  */
 export async function saveTenancy(
@@ -287,9 +287,10 @@ export async function saveTenancy(
       ...(await tenancyUndoBlockers(store, [
         { path: recordPath('tenancy', before.id), after: before },
       ])),
-      ...(await recordDependents(store, [{ type: 'tenancy', id: before.id }]))
-        .filter((r) => r.type !== 'note')
-        .map((r) => r.id),
+      // A contract lists the stay of its apartment: a correction of the tenant keeps it right.
+      ...(before.apartmentId === record.apartmentId
+        ? []
+        : (await recordDependents(store, [{ type: 'tenancy', id: before.id }])).map((r) => r.id)),
     ];
     if (recordIds.length > 0) {
       return {
