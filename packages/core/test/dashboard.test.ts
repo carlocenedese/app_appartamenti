@@ -216,6 +216,35 @@ describe('loadDashboard', () => {
       [true, ['consumi:rosso']],
       [true, []],
     ]);
+    const counts = async () => {
+      const r = await loadDashboard(s, { today: isoDate('2026-11-17') });
+      return r.status === 'computed' ? r.apartments[0]?.counts['consumi:rosso'] : -1;
+    };
+    // A long history, every year double the one before: still only the last bill counts.
+    const gas = (id: string, year: string, amount: number, extra: Record<string, unknown> = {}) =>
+      s.writeJsonAtomic(recordPath('bill', id), {
+        ...base,
+        id,
+        apartmentId: 'apt-1',
+        category: 'gas',
+        supplier: 'Fornitore Gas',
+        periodStart: `${year}-01-01`,
+        periodEnd: `${year}-02-28`,
+        amount,
+        includedInConguaglio: true,
+        sharedWithTenants: true,
+        fileHash: `H-${id}`,
+        filePath: `Bollette/Gas/${year}/x.pdf`,
+        ...extra,
+      });
+    await gas('gas-2023', '2023', 625);
+    await gas('gas-2024', '2024', 1250);
+    expect(await counts()).toBe(1);
+    // The next bill is normal: nothing to count; deleted, the one before counts again.
+    await gas('gas-2027', '2027', 5000);
+    expect(await counts()).toBeUndefined();
+    await gas('gas-2027', '2027', 5000, { rev: 2, deleted: true });
+    expect(await counts()).toBe(1);
   });
 
   it('refuses an inconsistent store', async () => {

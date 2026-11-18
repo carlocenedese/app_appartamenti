@@ -8,7 +8,9 @@ import {
   SupplierProfileSchema,
   hashBytes,
   importBill,
+  isoDate,
   loadAll,
+  loadDashboard,
   pendingDocuments,
   readJournal,
   recordPath,
@@ -523,6 +525,11 @@ describe('importBill and the consumption alarm (plan 19, R330)', () => {
         "Allarme consumi: consumo +40,00 % rispetto allo stesso periodo dell'anno prima " +
         '(giallo); consumo +40,00 % rispetto alla media dei mesi prima (giallo).',
     });
+    // The same file again: the document waiting is found, nothing written, the alarm still there.
+    const again = await importBill(store, input, 'user1', clock, ids('w'));
+    expect(again).toMatchObject({ status: 'da-rivedere', pendingId: flagged.pendingId });
+    expect(again.status === 'da-rivedere' && again.operationId).toBeUndefined();
+    expect(again.status === 'da-rivedere' && again.consumption?.thresholds).toBe(true);
     const confirmed = await importBill(
       store,
       { ...input, mode: 'manual' },
@@ -531,7 +538,13 @@ describe('importBill and the consumption alarm (plan 19, R330)', () => {
       ids('m'),
     );
     expect(confirmed).toMatchObject({ status: 'confermata', ids: ['m-1'] });
+    const alarms = async () => {
+      const r = await loadDashboard(store, { today: isoDate('2026-11-17') });
+      return r.status === 'computed' ? r.apartments[0]?.counts : undefined;
+    };
+    expect(await alarms()).toMatchObject({ 'consumi:giallo': 1 });
     await undoBillImport(store, input.result.fileHash, 'user1', clock, ids('u'));
+    expect(Object.keys((await alarms()) ?? {}).filter((c) => c.startsWith('consumi:'))).toEqual([]);
 
     await store.writeJsonAtomic(
       recordPath('consumptionSettings', 'soglie-consumi-apt-1'),
@@ -540,6 +553,64 @@ describe('importBill and the consumption alarm (plan 19, R330)', () => {
     const own = await importBill(store, input, 'user1', clock, ids('b'));
     expect(own).toMatchObject({ status: 'registrata-automaticamente' });
     expect(own.status === 'registrata-automaticamente' && own.consumption?.thresholds).toBe(true);
+  });
+
+  it('with thresholds, the percentage of the caller adds no second warning', async () => {
+    const { store, input, clock } = await withHistory();
+    await store.writeJsonAtomic(
+      recordPath('consumptionSettings', 'soglie-consumi'),
+      settings('soglie-consumi', { giallo: { consumption: 3000 } }),
+    );
+    const result = await importBill(
+      store,
+      { ...input, thresholds: { consumptionAnomalyPercent: 30 } },
+      'user1',
+      clock,
+      ids('a'),
+    );
+    expect(result).toMatchObject({ status: 'da-rivedere', codes: ['consumption-alarm'] });
+    expect(result.status === 'da-rivedere' && result.checks.map((c) => c.code)).not.toContain(
+      'consumption-anomaly',
+    );
+  });
+
+  it('a credit note and a first year without history are registered, with no level', async () => {
+    const { store, input, clock } = await withHistory();
+    await store.writeJsonAtomic(
+      recordPath('consumptionSettings', 'soglie-consumi'),
+      settings('soglie-consumi', {
+        giallo: { consumption: 1, amount: 1, unitPrice: 1 },
+        rosso: { consumption: 1, amount: 1, unitPrice: 1 },
+      }),
+    );
+    const credit = reading(input.result.fileHash, {
+      fields: {
+        ...input.result.fields,
+        amount: field(-9846),
+        consumption: field({ quantity: '0', unit: 'kWh' }),
+      },
+    });
+    const note = await importBill(store, { ...input, result: credit }, 'user1', clock, ids('a'));
+    expect(note).toMatchObject({ status: 'registrata-automaticamente' });
+    expect(
+      note.status === 'registrata-automaticamente' && note.consumption?.yearBefore?.differences,
+    ).toEqual([]);
+
+    const fresh = await setup();
+    await fresh.store.writeJsonAtomic(
+      recordPath('consumptionSettings', 'soglie-consumi'),
+      settings('soglie-consumi', { rosso: { consumption: 1 } }),
+    );
+    const input2 = { ...fresh.input };
+    delete input2.thresholds;
+    const first = await importBill(fresh.store, input2, 'user1', fresh.clock, ids('f'));
+    expect(first).toMatchObject({ status: 'registrata-automaticamente' });
+    if (first.status !== 'registrata-automaticamente') return;
+    expect([first.consumption?.thresholds, first.consumption?.yearBefore]).toEqual([
+      true,
+      undefined,
+    ]);
+    expect(first.consumption?.recent).toBeUndefined();
   });
 
   it('only a bill proposal has a comparison', async () => {

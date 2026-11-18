@@ -105,7 +105,6 @@ export interface ImportBillInput {
   mode: 'auto' | 'manual';
 }
 
-/** How two page ranges of one file compare (`samePages` of `dedupe.ts`; absent = whole file). */
 const METRIC_LABELS: Record<ConsumptionMetric, string> = {
   consumption: 'consumo',
   amount: 'importo',
@@ -136,6 +135,7 @@ function alarmMessage(comparison: ConsumptionComparison): string {
   return `Allarme consumi: ${parts.join('; ')}.`;
 }
 
+/** How two page ranges of one file compare (`samePages` of `dedupe.ts`; absent = whole file). */
 const pagesCompare = (a?: [number, number], b?: [number, number]) =>
   samePages(
     a === undefined ? undefined : { pages: a, documentKind: 'unknown' },
@@ -191,6 +191,12 @@ export async function importBill(
   }
 
   const bills = (await loadAll(store, 'bill', BillSchema)).records;
+  const thresholds = consumptionThresholdsFor(
+    (await loadAll(store, 'consumptionSettings', ConsumptionSettingsSchema)).records,
+    apartmentId,
+  );
+  // With thresholds set, one warning only: the alarm, not the old check of the caller (R330).
+  const legacy = thresholds === undefined ? input.thresholds : undefined;
   const proposal = proposalFromExtraction(
     result,
     {
@@ -199,17 +205,13 @@ export async function importBill(
       instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
       tenancies: (await loadAll(store, 'tenancy', TenancySchema)).records,
       supplies: (await loadAll(store, 'supply', SupplySchema)).records,
-      ...(input.thresholds === undefined ? {} : { thresholds: input.thresholds }),
+      ...(legacy === undefined ? {} : { thresholds: legacy }),
     },
     newId,
   );
   // Plan 19, R330: a level of the thresholds typed by user1 sends the bill to a person.
   let consumption: ConsumptionAlarm | undefined;
   if (proposal.kind === 'bill') {
-    const thresholds = consumptionThresholdsFor(
-      (await loadAll(store, 'consumptionSettings', ConsumptionSettingsSchema)).records,
-      apartmentId,
-    );
     const comparison = compareConsumption(
       proposal.bill,
       bills,

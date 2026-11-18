@@ -24,7 +24,8 @@ se le soglie li definiscono; nessun valore nel codice.
 - Cruscotto: per ogni appartamento vivo `consumptionThresholds` (`true` | `false`, «soglie non
   impostate» esplicito, non un conteggio perché i conteggi sono cose da fare) e, per ogni bolletta
   viva con un livello, `consumi:rosso` o `consumi:giallo` (il livello peggiore della bolletta).
-  Nessuna finestra di tempo inventata: contano tutte le bollette vive.
+  Revisione: conta solo l'ultima bolletta viva per appartamento e tipo (stato attuale, nessuna
+  finestra di mesi). Note di credito (importo ≤ 0) e consumi a zero non si confrontano (R333).
 - `bolletta` mostra `consumption` come `consumi`: `thresholds`, differenze in punti base e livelli;
   i lati (importi, quantità) solo con `--dettagli`.
 
@@ -50,11 +51,13 @@ Un test della riga di comando: stato delle soglie, periodo di conguaglio in cors
 
 ## Domande per Carlo (non decise nel codice)
 
-1. Un livello **giallo** deve fermare la registrazione automatica (oggi: sì, come il rosso)?
+1. Un livello **giallo** deve fermare la registrazione automatica (oggi: sì, come il rosso)? Vale
+   anche per i cali.
 2. «Va bene così» sugli avvisi dei consumi: record nuovo (per bolletta, metrica, lato?) e da quando
    l'avviso non conta più. Senza, i conteggi del cruscotto non si azzerano mai.
-3. Cruscotto: contare tutte le bollette vive con un livello (oggi) o solo le più recenti (quanto)?
+3. Cruscotto: basta l'ultima bolletta per appartamento e tipo (oggi)?
 4. Il vecchio controllo `consumption-anomaly` con `--soglia-consumi` va tolto del tutto?
 5. PDF delle rate TARI: dove vanno (`Rifiuti/`?), copia nell'altro appartamento per l'avviso comune
    e cosa fa l'annullamento della copia.
 6. Come ripartire tra appartamenti la parte non IMU di un F24 misto (R307, oggi fuori dal saldo).
+7. Come trattare note di credito e consumi a zero (oggi non confrontati, R333).

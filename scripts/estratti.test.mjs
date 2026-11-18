@@ -4883,6 +4883,59 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
     expect(board.json.apartments[0].counts['consumi:rosso']).toBe(1);
     expect(board.json.settlements.map((r) => r.periodLabel)).toEqual(['2026-27']);
     expect(board.out).not.toMatch(/4321/);
+    // `bolletta` with a level: codes and differences; the amounts only with --dettagli.
+    const pdf = join(dir, 'gas-2027.pdf');
+    writeFileSync(pdf, '%PDF-1.7 bolletta inventata 2027');
+    const f = (value) => ({
+      value,
+      confidence: 'high',
+      source: { page: 1, box: [0, 0, 1, 1], text: 'x' },
+    });
+    const lettura = join(dir, 'lettura-2027.json');
+    writeFileSync(
+      lettura,
+      JSON.stringify({
+        v: 1,
+        engineVersion: '0.1.0',
+        fileHash: await hashBytes(readFileSync(pdf)),
+        fileName: 'gas-2027.pdf',
+        pages: 1,
+        pageRange: [1, 1],
+        status: 'riconosciuta',
+        profileId: 'prof-inventato',
+        profileRev: 1,
+        kind: 'bill',
+        documentKind: 'bill',
+        category: 'gas',
+        fields: {
+          supplier: f('Fornitore-Inventato-Gas'),
+          issueDate: f('2027-02-05'),
+          periodStart: f('2027-01-01'),
+          periodEnd: f('2027-01-31'),
+          amount: f(9876),
+          consumption: f({ quantity: '320', unit: 'Smc' }),
+        },
+        parts: [],
+        identifiers: [],
+        checks: [],
+        warnings: [],
+        textSource: 'pdf',
+        ocrPages: [],
+      }),
+    );
+    const billArgs = [...common, '--appartamento', 'pulci', '--lettura', lettura, pdf];
+    const alarmed = await run(['bolletta', ...billArgs]);
+    expect(alarmed.code).toBe(0);
+    expect(alarmed.json.codes).toContain('consumption-alarm');
+    expect(alarmed.json.consumption.thresholds).toBe(true);
+    expect(alarmed.json.consumption.yearBefore.differences[0]).toMatchObject({
+      metric: 'consumption',
+      level: 'rosso',
+    });
+    expect(alarmed.out).not.toMatch(/9876|4321|98,76|43,21/);
+    const detailed = await run(['bolletta', ...billArgs, '--dettagli']);
+    expect(detailed.json.consumption.current.amount).toBe(9876);
+    expect(detailed.json.consumption.yearBefore.reference.amount).toBe(4321);
     for (const bad of [
       ['soglie-consumi', ...common],
       ['soglie-consumi', ...common, '--giallo', 'acqua:30'],
