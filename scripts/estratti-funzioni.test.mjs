@@ -563,6 +563,14 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     const counts = (await cli('cruscotto', '--periodo-conguaglio', 'apt-x:2025-26')).json
       .apartments[0].counts;
     expect(counts['conguaglio:supplementare']).toBe(1);
+    // The supplementary is due: undoing the closing would lose it.
+    const refused = await cli('annulla-riconciliazione', '--operazione', closed.json.operationId);
+    expect(refused.json.reason).toBe('closing-changed');
+  });
+
+  it('senza cambiamenti l’annullo della chiusura riapre il periodo', async () => {
+    await closable();
+    const closed = await cli('chiudi-periodo', ...args);
     const u = await cli('annulla-riconciliazione', '--operazione', closed.json.operationId);
     expect(u.code, u.out).toBe(0);
     expect((await cli('conguaglio-supplementare', ...args)).json).toEqual({ status: 'open' });

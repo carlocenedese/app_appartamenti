@@ -27,7 +27,7 @@ Nessuna regola di calcolo nuova. Dove serviva una scelta del proprietario, il co
   - Usa `loadExcelInput`, `calcConguaglio` e `canClosePeriod`. Chiude solo se sono incassati tutti gli affitti e i forfait e non c'è nessuna voce in attesa.
   - Altrimenti rifiuta con `cannot-close` e l'elenco di ciò che manca: inquilino, mese, tipo, oppure voce. Gli importi solo con `--dettagli`.
   - Scrive il record `periodClose` con l'istantanea: per inquilino spese, rata del condominio e commissione, più la quota dei posti vuoti.
-  - Per riaprire si annulla la chiusura con `annulla-riconciliazione`.
+  - Per riaprire si annulla la chiusura con `annulla-riconciliazione`. **Rifiuto prudente:** se dopo la chiusura i costi sono cambiati, l'annullo è rifiutato (`closing-changed`). Altrimenti una seconda chiusura prenderebbe la bolletta tardiva nell'istantanea nuova, e il supplementare non si vedrebbe più.
 - **`conguaglio-supplementare --appartamento --periodo [--dettagli]`.**
   - Usa `calcConguaglioSupplementare` sul calcolo di oggi contro l'istantanea.
   - Per ogni inquilino dà se è partito e l'azione: `da-pagare`, `da-rimborsare` o `da-trattenere-o-richiedere`. La differenza solo con `--dettagli`.
@@ -54,6 +54,8 @@ Il conguaglio, l'Excel e il file dei proprietari restano al centesimo.
 
 La sonda E1 «TARI registrata prima della correzione» usa ancora `linkSupply` del core, perché imita dati vecchi.
 
+Il ciclo prova `chiudi-periodo` solo come rifiuto e `impostazioni` solo come lettura. Non prova `--posti-nomi` né l'aiuto. Le strade riuscite e i loro annulli sono in `scripts/estratti-funzioni.test.mjs`.
+
 ## Schemi cambiati
 
 Per la costante di formato dei dati:
@@ -75,7 +77,7 @@ Operazioni nuove del registro, tutte annullabili con `annulla-riconciliazione`: 
 
 1. **Conguaglio «inviato» (R5).** L'app non sa quando hai mandato il conguaglio agli inquilini. Oggi lanciare `chiudi-periodo` vuol dire «l'ho inviato». Va bene così?
 2. **Excel dopo la chiusura.** A chiusura ad A toccavano 120,00 € di spese. Poi arriva una bolletta della luce da 90,00 € per luglio–settembre. L'Excel deve mostrare 210,00 € (il calcolo di oggi, con l'avviso del supplementare, come fa ora) oppure 120,00 € come all'invio, con i 90,00 € a parte?
-3. **Riapertura con storico (sezione 6).** Oggi l'unico modo di riaprire è annullare la chiusura, e l'istantanea si perde. Vuoi un comando `riapri-periodo` che tenga l'istantanea e registri data e motivo? E se poi chiudi di nuovo, l'istantanea nuova sostituisce la prima?
+3. **Riapertura con storico (sezione 6).** Oggi l'unico modo di riaprire è annullare la chiusura, e l'istantanea si perde. Per questo l'annullo è rifiutato quando c'è un supplementare. Vuoi un comando `riapri-periodo` che tenga l'istantanea e registri data e motivo? E se poi chiudi di nuovo, l'istantanea nuova sostituisce la prima?
 4. **Berchet dopo la TARI di dicembre (R3).** Se l'avviso TARI di dicembre non è ancora registrato, l'app non sa che manca e lascia chiudere l'annualità 2025-26. Vuoi che un'annualità ottobre–settembre si chiuda solo dopo un avviso TARI di dicembre dello stesso anno solare (per 2025-26: dicembre 2026)?
 5. **Debito di un inquilino partito (R5).** Il supplementare dice «da trattenere o richiedere», ma non lo toglie da solo dal prospetto della caparra. Esempio: D è partito ad agosto, gli tocca un supplementare di 12,00 € e la caparra è ancora in mano. Lo tolgo da solo dalla caparra, o lo segno e decidi tu?
 6. **Codici POD e PDR (lotto 6).** Hai detto «nell'utenza dell'appartamento». Oggi sono nell'appartamento (`appartamento --codici`). Il comando nuovo `utenza` serve alle utenze dell'avviso TARI comune, e i codici non li ho spostati. Vuoi i codici di luce e gas su un'utenza per fornitura (per esempio «POD IT001E…» → Appartamento A) o vanno bene nell'appartamento?
@@ -102,4 +104,7 @@ Operazioni nuove del registro, tutte annullabili con `annulla-riconciliazione`: 
 - **E13, E16, E17, E18.** Domande 8-11: sono scelte del proprietario.
 - **E14, E15.** Erano già corretti su main.
 - **App desktop.** Nessuna schermata per i comandi nuovi: rata, utenza da CLI, impostazioni e chiusura.
+- **Esercizio della rata.** `rata-condominio` accetta solo la forma `AAAA-AA`, perché il conguaglio sa dividere solo quella (`annualitaRange`). Un appartamento i cui documenti usano la forma `2026` non può avere rate: il rifiuto è `esercizio-format`.
+- **Elenco dei comandi spostato.** In `estratti.mjs` l'elenco dei comandi accettati è uscito da `main` ed è diventato `COMMAND_NAMES`, esportato. Un comando nuovo dell'altro ramo (per esempio `scegli-versione`) darà un conflitto lì. Si risolve aggiungendo il comando a `COMMAND_NAMES` e una riga in `COMMAND_HELP` (`scripts/estratti-aiuto.mjs`). Se manca, il test dell'aiuto fallisce.
+- **Unione con main.** `origin/main` non aveva commit nuovi, quindi il test sulla costante di formato dei dati non è ancora arrivato. I due schemi nuovi sono elencati sopra.
 - **Firma dei commit.** Ho usato la riga `Co-Authored-By` del compito.

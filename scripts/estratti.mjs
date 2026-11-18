@@ -244,10 +244,12 @@ export const MESSAGES = {
   'owner-share-differs':
     'Attenzione: le rate dell’esercizio non hanno la stessa quota della proprietà o lo stesso numero di rate («instalmentIds»): il conguaglio le rifiuta finché non si corregge.',
   'invalid-workspace-settings': 'Rifiutato: impostazione non valida.',
+  'closing-changed':
+    'Rifiutato: dopo la chiusura i costi del periodo sono cambiati: annullare la chiusura perderebbe il conguaglio supplementare (vedere conguaglio-supplementare).',
+  'already-closed':
+    'Rifiutato: il periodo è già chiuso: per riaprirlo annullare la chiusura (annulla-riconciliazione), finché non c’è un conguaglio supplementare.',
   'cannot-close':
     'Rifiutato: il periodo non si chiude: mancano affitti o forfait, o ci sono voci in attesa («missing»; importi solo con --dettagli).',
-  'already-closed':
-    'Rifiutato: il periodo è già chiuso: per riaprirlo annullare la chiusura (annulla-riconciliazione).',
   'period-settlement-error':
     'Rifiutato: il conguaglio del periodo non si può calcolare («code»): correggere i dati, poi riprovare.',
   'unknown-period': 'Rifiutato: periodo di conguaglio sconosciuto per l’appartamento.',
@@ -2840,6 +2842,19 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
     // A cancellation whose movement has had another use since: undoing it would give a second one;
     // an imu.expected under an assigned F24 would change its rate (plan 3d).
+    // R5: undoing a closing after a late item would take the difference into a new snapshot
+    // and lose the supplementary settlement: refused while it is due (question 3).
+    const closed = target.kind === 'period.close' ? target.changes[0]?.after : undefined;
+    if (closed?.deleted !== true && closed?.apartmentId !== undefined) {
+      const closing = await loadPeriodClosing(
+        store,
+        { apartmentId: closed.apartmentId, periodLabel: closed.periodLabel },
+        day(clock().slice(0, 10)),
+      );
+      if (closing.status === 'closed' && closing.changed) {
+        throw new Stop('rejected', 'closing-changed');
+      }
+    }
     const recordIds = await undoBlockedBy(store, target.id);
     // U8: records pointing at what the operation created, with the counts by kind (no names).
     const created = recordIds.length > 0 ? await undoDependents(store, target.id) : [];
