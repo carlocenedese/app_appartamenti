@@ -1431,7 +1431,11 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
   });
 
   it('dopo gli annulli restano solo i record che nessun comando annulla (E11, E4, E5)', () => {
-    const failed = shared.undo.filter((u) => u.code !== 0).map((u) => u.kind);
+    // After the U1 fix of the undo review, the creation of an apartment is not undone while its
+    // accounts and supplies (never undone, E11) are alive: both outcomes are accepted here.
+    const failed = shared.undo
+      .filter((u) => u.code !== 0 && u.kind !== 'apartment.save')
+      .map((u) => u.kind);
     expect([...new Set(failed)].sort()).toEqual([
       'account.save',
       'bank-profile.save',
@@ -1441,7 +1445,9 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
       'test.seed',
     ]);
     expect(shared.initial).toEqual([]);
-    expect(shared.afterUndo.map((r) => r.split('/')[0])).toEqual([
+    expect(
+      shared.afterUndo.map((r) => r.split('/')[0]).filter((kind) => kind !== 'apartment'),
+    ).toEqual([
       'account',
       'account',
       'bankProfile',
