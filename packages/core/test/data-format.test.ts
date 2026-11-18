@@ -35,6 +35,8 @@ const FINGERPRINTS: Record<number, string> = {
   1: 'b3a6c89ee02f30219d3ab56ea958c3f8b8ca0d7c3ea3dcbfa345baee3423fea4',
   // Review of 18 Nov 2026 (missing functions): workspaceSettings and periodClose.
   2: '90d55b9eef75a2090c533eb1c80b206e9ef00232d0cb0fb61e18d577cf6ab918',
+  // Redesign of the forks: the optional `supersedes` of an operation.
+  3: '9dbc470c875f141eff3756792d79971ec84ae222f5361b5578852321032e3ebb',
 };
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));
