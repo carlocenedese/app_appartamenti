@@ -4,7 +4,7 @@
 
 import { lstatSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
-import { assertSafeRelPath } from '../packages/core/src/index.ts';
+import { DATA_FORMAT, WORKSPACE_PATH, assertSafeRelPath } from '../packages/core/src/index.ts';
 
 /** Whether something is at `path`, a dangling link included (`existsSync` follows links). */
 export function pathExists(path) {
@@ -27,6 +27,21 @@ export class Stop extends Error {
 }
 export const invalid = (reason) => new Stop('invalid', reason);
 export const rejected = (reason, extra) => new Stop('rejected', reason, extra);
+
+export const NEWER_DATA_MESSAGE =
+  'Rifiutato: dati scritti da una versione più nuova dell’app: aggiornare l’app.';
+
+/**
+ * Refuses a folder written by a newer app (review of 18 Nov 2026): a document built without the
+ * record kinds this app does not know would be wrong with no notice. The raw file is read, since
+ * a newer workspace file may not fit this app's schema.
+ */
+export async function refuseNewerData(store) {
+  const workspace = await store.readJson(WORKSPACE_PATH);
+  if (Number.isInteger(workspace?.schemaVersion) && workspace.schemaVersion > DATA_FORMAT) {
+    throw rejected('newer-data');
+  }
+}
 
 /** Checks the output path (a name ending in `extension`); returns it with the name in NFC. */
 export function outputPath(raw, extension) {

@@ -38,8 +38,10 @@ import {
 import {
   Stop,
   checkDefaultFolders,
+  NEWER_DATA_MESSAGE,
   invalid,
   outputPath,
+  refuseNewerData,
   rejected,
   writeNew,
 } from './output-file.mjs';
@@ -51,6 +53,7 @@ const MESSAGES = {
   'bad-output':
     'Il file di uscita non è valido: serve un nome .xlsx ammesso, in una cartella che esiste.',
   'file-exists': 'Rifiutato: il file di uscita esiste già e non si sovrascrive.',
+  'newer-data': NEWER_DATA_MESSAGE,
   'bad-default-folder':
     'Rifiutato: nel percorso predefinito c’è un collegamento o un file al posto di una cartella: usare --uscita.',
   'link-unsupported':
@@ -131,6 +134,7 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     } catch {
       throw invalid('bad-folder');
     }
+    await refuseNewerData(new FsStore(values.cartella));
     let target = values.uscita === undefined ? undefined : outputPath(values.uscita, '.xlsx');
     if (target !== undefined && existsSync(target.file)) throw rejected('file-exists');
 
