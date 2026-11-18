@@ -41,3 +41,18 @@ facoltativi nuovi in `periodClose`.
    cruscotto e F2: l'Excel dopo la chiusura mostra il calcolo di oggi).
 7. **Registro e specifica.** Sezione 42 (R5), una riga «Ruling» per decisione in
    `docs/progress.md`.
+
+## Seconda revisione (risposte di user1 del 18 novembre 2026, A-K, e reperti 1-11)
+
+8. **Controllo esatto.** `periodClose.inputs` (`periodInputs` in `closed-period-guard.ts`) scritto da
+   `closePeriod`; senza, confronto per orario corretto (reperti 4 e 5). Chiusura biforcata: blocca
+   solo il suo appartamento e i suoi mesi, `closeMarks` per `scegli-versione` (6). Appartamento,
+   utenze (B), movimenti e classi (J), `settlementPeriodOf` per pagamenti e recuperi (10).
+   Test in `closed-period-guard.test.ts` («second review») e `statement-import.test.ts` (11).
+9. **Chiusura.** `forfaitNonIncassato` (H), `tenantBalance` e `differenceTenants` (G),
+   `markTenantSettled({ supplementary })` (D), `refuseClosingUndo` chiamato da `undoOperation`
+   (9), conguaglio dell'anno prima nel `delta` (K). Test in `closed-period-guard.test.ts` e
+   `deposit-closed.test.ts`.
+10. **Caparra.** C, D, G, H, I e segni (8) in `closedPeriodLines`; test in `deposit-closed.test.ts`.
+11. **Riga di comando.** `--supplementare`, `toRequestLines` in euro, `marks` in
+    `scegli-versione`; test in `scripts/estratti-funzioni.test.mjs`.
