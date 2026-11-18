@@ -14,7 +14,8 @@
 // supplementaries already declared; a supplementary mark declares T − S at that moment; a new
 // closing folds the supplementary declared so far into the main. remaining = T − declared. A flat
 // charge collected after the last mark that would turn that into a credit is «da verificare»
-// (`toCheck`), never a credit (answer F); a credit from costs (a credit note) is a credit.
+// (`toCheck`), never a credit (answer F); a credit from costs (a credit note) is a credit. A new
+// mark while there is extra flat charge is not decided: the app refuses it (`flat-to-check`).
 //
 // Invariants after every action (numbers as in the task of the fifth round):
 // 1. reopen then close with no data change between: t-b's withheld amount and toCheck unchanged;
@@ -308,7 +309,10 @@ class Run {
         lines: { label: string; amount: number }[];
         total: number;
         sum: number;
-        closing: { action: string; toCheck: number } | undefined;
+        closing:
+          { action: string; toCheck: number; remaining: number; mainRemaining: number } | undefined;
+        /** t-a's closing row (no deposit: compared with the ledger directly). */
+        other: { remaining: number; toCheck: number } | undefined;
       }
     | undefined
   > {
@@ -325,15 +329,27 @@ class Run {
       (l) => l.label !== 'Caparra' && l.label !== 'Interessi legali',
     );
     const closing = await loadPeriodClosing(this.store, QUERY, isoDate('2026-12-31'));
-    const row =
-      closing.status === 'closed' ? closing.tenants.find((x) => x.tenantId === 't-b') : undefined;
+    const rowOf = (id: Tenant) =>
+      closing.status === 'closed' ? closing.tenants.find((x) => x.tenantId === id) : undefined;
+    const row = rowOf('t-b');
+    const other = rowOf('t-a');
     return {
       withheld: -lines.reduce((s, l) => s + l.amount, 0),
       toCheck: r.toCheck.reduce((s, l) => s + l.amount, 0),
       lines,
       total: r.statement.total,
       sum: r.statement.lines.reduce((s, l) => s + l.amount, 0),
-      closing: row === undefined ? undefined : { action: row.action, toCheck: row.toCheck },
+      closing:
+        row === undefined
+          ? undefined
+          : {
+              action: row.action,
+              toCheck: row.toCheck,
+              remaining: row.remaining,
+              mainRemaining: row.mainRemaining,
+            },
+      other:
+        other === undefined ? undefined : { remaining: other.remaining, toCheck: other.toCheck },
     };
   }
 
@@ -399,10 +415,7 @@ class Run {
         // Not decided by the owner: a new mark once extra flat charge was collected after a
         // main mark (how the extra meets the new mark). Excluded, never invented.
         const own = this.ledgers.get(a.tenant) as Ledger;
-        if (this.extra(own, (await this.ledgerNow(a.tenant)).flat) > 0) {
-          stats.excluded += 1;
-          return false;
-        }
+        const blocked = this.extra(own, (await this.ledgerNow(a.tenant)).flat) > 0;
         const before = this.cloneLedgers();
         const result = await markTenantSettled(
           this.store,
@@ -417,8 +430,17 @@ class Run {
           this.newId,
         );
         if (result.status === 'refused') {
+          if (blocked && this.closed) {
+            // The app refuses it too, with its reason (prudent, fifth round).
+            if (result.reason !== 'flat-to-check') {
+              throw new Error(`a mark with extra flat charge refused with ${result.reason}`);
+            }
+            stats.excluded += 1;
+            return false;
+          }
           return refused(result.reason, ['not-closed', 'no-supplementary']);
         }
+        if (blocked) throw new Error('a mark with extra flat charge was accepted');
         if (result.status === 'unchanged') return false;
         const l = this.ledgers.get(a.tenant) as Ledger;
         const now = await this.ledgerNow(a.tenant);
@@ -530,10 +552,35 @@ async function check(sequence: readonly Action[]): Promise<Failure | undefined> 
           detail: `closing toCheck ${String(app.closing.toCheck)}, deposit ${String(app.toCheck)}`,
         };
       }
-      if ((app.closing.action === 'da-verificare') !== app.toCheck > 0) {
+      if (app.closing.remaining !== app.withheld) {
         return {
           invariant: 2,
-          detail: `action ${app.closing.action} with toCheck ${String(app.toCheck)}`,
+          detail: `closing remaining ${String(app.closing.remaining)}, deposit ${String(app.withheld)}`,
+        };
+      }
+      // C2: the action follows the sign of what is withheld beyond the main; «da verificare» only
+      // when nothing is and some flat charge is to check.
+      const left = app.withheld - app.closing.mainRemaining;
+      const want =
+        left === 0
+          ? [app.toCheck > 0 ? 'da-verificare' : 'nessuna']
+          : left < 0
+            ? ['da-rimborsare']
+            : ['da-pagare', 'da-trattenere-o-richiedere'];
+      if (!want.includes(app.closing.action)) {
+        return {
+          invariant: 2,
+          detail: `action ${app.closing.action} with ${String(left)} left of the supplementary and toCheck ${String(app.toCheck)}`,
+        };
+      }
+    }
+    // 5, t-a's side: its closing row against the ledger.
+    if (app.other !== undefined) {
+      const mine = await run.expected('t-a');
+      if (app.other.remaining !== mine.remaining || app.other.toCheck !== mine.toCheck) {
+        return {
+          invariant: 5,
+          detail: `t-a closing ${String(app.other.remaining)} / ${String(app.other.toCheck)}; ledger ${String(mine.remaining)} / ${String(mine.toCheck)}`,
         };
       }
     }
@@ -558,22 +605,11 @@ async function check(sequence: readonly Action[]): Promise<Failure | undefined> 
   return undefined;
 }
 
-/** The final result of a sequence, for invariant 4. */
-async function finalOf(sequence: readonly Action[]) {
-  const run = new Run();
-  await run.setUp();
-  for (const a of sequence) {
-    try {
-      await run.apply(a);
-    } catch {
-      return undefined;
-    }
-  }
-  const app = await run.app();
-  return app === undefined ? undefined : { withheld: app.withheld, toCheck: app.toCheck };
-}
-
-/** Invariant 4: a payment swapped with an adjacent mark gives the same final result. */
+/**
+ * Invariant 4: a payment swapped with the mark next to it changes the result only as the ledger
+ * says (paid before a main mark it reduces the main; after it, it is extra): the swapped sequence
+ * must satisfy every invariant too.
+ */
 async function checkOrder(sequence: readonly Action[]): Promise<Failure | undefined> {
   const i = sequence.findIndex(
     (a, k) =>
@@ -582,15 +618,10 @@ async function checkOrder(sequence: readonly Action[]): Promise<Failure | undefi
   if (i < 0) return undefined;
   const swapped = [...sequence];
   [swapped[i], swapped[i + 1]] = [swapped[i + 1] as Action, swapped[i] as Action];
-  const [one, two] = [await finalOf(sequence), await finalOf(swapped)];
-  if (one === undefined || two === undefined) return undefined;
-  if (one.withheld !== two.withheld || one.toCheck !== two.toCheck) {
-    return {
-      invariant: 4,
-      detail: `pay then mark ${String(one.withheld)}/${String(one.toCheck)}, mark then pay ${String(two.withheld)}/${String(two.toCheck)}`,
-    };
-  }
-  return undefined;
+  const failure = await check(swapped);
+  return failure === undefined
+    ? undefined
+    : { invariant: 4, detail: `swapped (${swapped.map(show).join(' → ')}): ${failure.detail}` };
 }
 
 async function failureOf(sequence: readonly Action[]): Promise<Failure | undefined> {
@@ -610,7 +641,7 @@ async function shrink(sequence: Action[], invariant: number): Promise<Action[]> 
 const SEEDS = Number(process.env.CLOSING_MODEL_SEEDS ?? '60');
 const FIRST = Number(process.env.CLOSING_MODEL_FIRST ?? '1');
 
-describe('the closing against a ledger of the owner (fifth round, step 1)', () => {
+describe('the closing against a ledger of the owner (fifth round, the gate of R359)', () => {
   it("the fourth review's C1 sequence, replayed against the ledger", async () => {
     const c1: Action[] = [
       { kind: 'reopen' },

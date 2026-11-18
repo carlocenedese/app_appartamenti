@@ -7,7 +7,7 @@
 import { caparraReturn } from './caparra';
 import type { CaparraReturn } from './caparra';
 import { SettlementInputError, calcConguaglio, isPresent, settlementPeriodOf } from './conguaglio';
-import { closingOf, tenantBalance } from './closing';
+import { tenantBalance } from './closing';
 import { recoverableMovements } from './condominio';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
@@ -423,7 +423,8 @@ type Line = { label: string; amount: Cents };
  * B4, F10 and the answers C, D, G, H of user1 (18 Nov 2026): what the closed periods of the
  * apartment add to the deposit statement of `tenantId`, one labelled line each (positive is a
  * debt of the tenant, as `extraCharges`).
- * - What is left of the closing (`tenantBalance`: the whole due, or only the difference after a
+ * - Every amount comes from `tenantBalance` (fifth round, R359), so the lines add up to what is
+ *   left. What is left of the closing (the whole due, or only the difference after a
  *   closing settled before, G; nothing once marked settled): «Conguaglio <periodo> non saldato»
  *   for a period other than the exit one, never offset by payments (C); for the exit period it is
  *   the «Conguaglio bollette» line (`exit.due`, with what is already paid on it apart, R302).
@@ -465,56 +466,49 @@ async function closedPeriodLines(
       periodLabel: close.periodLabel,
     });
     if (loaded.status !== 'ok') return 'settlement-error';
-    let row;
+    let today;
     try {
-      row = closingOf(
-        close,
-        calcConguaglio(loaded.input),
-        loaded.input,
-        isoDate(close.closedAt.slice(0, 10)),
-      ).tenants.find((t) => t.tenantId === input.tenantId);
+      today = calcConguaglio(loaded.input).tenants.find((t) => t.tenantId === input.tenantId);
     } catch (error) {
       if (error instanceof SettlementInputError) return 'settlement-error';
       throw error;
     }
     const label = close.periodLabel;
-    const balance = tenantBalance(close, input.tenantId);
-    // The amounts of the closing row, computed once there (fourth round, B): `total` is the
-    // supplementary, `forfaitPaid` reduces the flat charge missing at the closing, `toCheck` is
-    // more flat charge than was due («da verificare», never a credit: answer F).
-    const delta = row?.delta ?? 0;
-    const total = row?.total ?? 0;
-    const lost = total - delta;
-    const supplementary = (close.supplementarySettled ?? []).find(
-      (s) => s.tenantId === input.tenantId,
-    );
-    const forfait =
-      balance.fni - (row?.forfaitPaid ?? 0) + (supplementary === undefined ? lost : 0);
-    if ((row?.toCheck ?? 0) > 0) {
+    // The one computation of the settlement (fifth round, `tenantBalance`): the lines are its
+    // parts, so they add up to `remaining`; `toCheck` is apart and never a credit (answer F).
+    const balance = tenantBalance(close, input.tenantId, {
+      due: today?.due ?? 0,
+      forfaitIncassato: today?.forfaitIncassato ?? 0,
+    });
+    if (balance.toCheck > 0) {
       toCheck.push({
         label: `Forfait incassato in più ${label} (da verificare)`,
-        amount: cents(row?.toCheck ?? 0),
+        amount: balance.toCheck,
       });
     }
+    const marked =
+      balance.supplementarySettled !== 0 ||
+      (close.supplementarySettled ?? []).some((s) => s.tenantId === input.tenantId);
+    const supLeft = balance.supplementary - balance.supplementarySettled;
+    const lost = marked ? 0 : Math.min(balance.lostFlat, Math.max(0, supLeft));
+    const forfait = balance.fniLeft + lost;
     const later: Line[] = [
       ...(forfait > 0 ? [{ label: `Forfait non incassato ${label}`, amount: cents(forfait) }] : []),
-      ...(supplementary === undefined
-        ? delta !== 0
-          ? [{ label: `Conguaglio supplementare ${label}`, amount: cents(delta) }]
-          : []
-        : total !== supplementary.amount
-          ? [
-              {
-                label: `Conguaglio supplementare ${label} da saldare`,
-                amount: cents(total - supplementary.amount),
-              },
-            ]
-          : []),
+      ...(supLeft - lost !== 0
+        ? [
+            {
+              label: marked
+                ? `Conguaglio supplementare ${label} da saldare`
+                : `Conguaglio supplementare ${label}`,
+              amount: cents(supLeft - lost),
+            },
+          ]
+        : []),
     ];
-    const left = cents(balance.remaining - balance.fni);
+    const left = cents(balance.mainRemaining - balance.fniLeft);
     if (label === input.exitLabel) {
       const paid =
-        balance.status !== 'da-saldare'
+        balance.status !== 'da-saldare' || marked
           ? 0
           : loaded.input.payments
               .filter(

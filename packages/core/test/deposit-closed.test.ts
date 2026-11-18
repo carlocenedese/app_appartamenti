@@ -316,7 +316,7 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     expect((await closePeriod(store, QUERY, 'p1', later, ids('c2'))).status).toBe('closed');
     const close = (await loadAll(store, 'periodClose', PeriodCloseSchema))
       .records[0] as PeriodClose;
-    expect(tenantBalance(close, 't-a')).toMatchObject({
+    expect(tenantBalance(close, 't-a', { due: 13000, forfaitIncassato: 30000 })).toMatchObject({
       status: 'differenza',
       due: 13000,
       remaining: 1000,
@@ -551,5 +551,81 @@ describe('deposit statement and closed periods (B4, F10)', () => {
       ),
     ).toEqual({ status: 'refused', reason: 'no-supplementary' });
     expect((await statement(store)).filter((l) => l.label.includes('Forfait'))).toEqual([]);
+  });
+
+  it("fifth round: the reviewer's mixed scenario S0–S6 (one computation, no automatic credit)", async () => {
+    const store = await reclosed();
+    const step = async () => {
+      const closing = await loadPeriodClosing(store, QUERY, isoDate('2026-12-10'));
+      const row = closing.status === 'closed' ? closing.tenants[0] : undefined;
+      const r = await loadDepositReturn(store, {
+        apartmentId: 'apt',
+        tenantId: 't-a',
+        extraCharges: [],
+      });
+      if (r.status !== 'computed') throw new Error(r.reason);
+      const lines = r.statement.lines.filter(
+        (l) => l.label !== 'Caparra' && l.label !== 'Interessi legali' && l.amount !== 0,
+      );
+      return {
+        action: row?.action,
+        remaining: row?.remaining,
+        toCheck: r.toCheck.reduce((sum, l) => sum + l.amount, 0),
+        lines,
+      };
+    };
+    const seen = [];
+    seen.push(await step()); // S0: closing 2 with 30,00 of the May flat charge missing
+    const late = (id: string, amount: number, month: string) => [
+      bill(id, `${month}-01`, `${month}-28`, amount, { dueDate: isoDate('2026-11-10') }),
+    ];
+    for (const b of late('b-12', 1200, '2026-07')) {
+      await put(store, 'bill', b, later);
+      await put(store, 'match', match(b, 1200, { transactionId: 'tx-12' }), later);
+    }
+    seen.push(await step()); // S1: late bill 12,00
+    await paysLate(store);
+    seen.push(await step()); // S2: the tenant pays the missing 30,00
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-01' },
+      'p1',
+      later,
+      ids('m'),
+    );
+    seen.push(await step()); // S3: main marked settled
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-02', supplementary: true },
+      'p1',
+      later,
+      ids('s'),
+    );
+    seen.push(await step()); // S4: supplementary marked settled (12,00)
+    for (const b of late('b-5', 500, '2026-06')) {
+      await put(store, 'bill', b, later);
+      await put(store, 'match', match(b, 500, { transactionId: 'tx-5' }), later);
+    }
+    seen.push(await step()); // S5: late bill 5,00
+    await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-12-20', reason: 'Prova' },
+      'p1',
+      later,
+      ids('r-s6'),
+    );
+    expect((await closePeriod(store, QUERY, 'p1', later, ids('c3'))).status).toBe('closed');
+    seen.push(await step()); // S6: reopened and closed again, nothing changed
+    console.log(seen.map((x, i) => `S${String(i)} ${JSON.stringify(x)}`).join('\n'));
+    expect(seen.map((x) => [x.remaining, x.toCheck])).toEqual([
+      [3000, 0],
+      [4200, 0],
+      [1200, 0],
+      [1200, 0],
+      [0, 0],
+      [500, 0],
+      [500, 0],
+    ]);
+    expect(seen[6]?.lines).toEqual([{ label: 'Conguaglio bollette', amount: -500 }]);
   });
 });

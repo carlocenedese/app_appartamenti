@@ -4,7 +4,7 @@
  * with it (`calcConguaglioSupplementare`). One `period.close` operation, undone with the
  * reconciliation undo. No amount or name in a summary.
  */
-import { closingOf, isLiveClose, periodCloseId, snapshotOf } from './closing';
+import { closingOf, isLiveClose, periodCloseId, snapshotOf, tenantBalance } from './closing';
 import { ClosingUndoError, periodInputs } from './closed-period-guard';
 import type { PeriodClosed } from './closing';
 import { SettlementInputError, calcConguaglio, canClosePeriod } from './conguaglio';
@@ -16,6 +16,7 @@ import { BankTransactionSchema, PeriodCloseSchema, SupplySchema } from './model'
 import type { PeriodClose } from './model';
 import { isoDate, monthsInPeriod } from './period';
 import type { ISODate } from './period';
+import { cents } from './money';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -251,6 +252,7 @@ export type MarkCloseResult =
         | 'unknown-movement'
         | 'missing-reason'
         | 'no-supplementary'
+        | 'flat-to-check'
         | 'invalid-input';
     };
 
@@ -362,15 +364,23 @@ export function markTenantSettled(
         on: input.on,
         ...(input.transactionId === undefined ? {} : { transactionId: input.transactionId }),
       };
+      // Fifth round: the mark stores what it declares settled (`amount`) and, for the main, the
+      // flat charge collected now (`flatCollected`), from the one computation (`tenantBalance`).
+      const calc = await computed(store, input);
+      if (calc.status === 'refused') return { status: 'refused', reason: 'invalid-input' } as const;
+      const today = calc.result.tenants.find((t) => t.tenantId === input.tenantId);
+      const now = { due: today?.due ?? 0, forfaitIncassato: today?.forfaitIncassato ?? 0 };
+      const others = (close.settled ?? []).filter((s) => s.tenantId !== input.tenantId);
+      // Not decided by user1: how a new mark meets flat charge collected beyond what was due.
+      // Prudent: refused until it is verified (it would otherwise vanish into the new mark).
+      if (tenantBalance(close, input.tenantId, now).toCheck > 0) {
+        return { status: 'refused', reason: 'flat-to-check' } as const;
+      }
+      // A main mark declares what is due without the mark it replaces.
+      const ledger = tenantBalance({ ...close, settled: others }, input.tenantId, now);
       if (input.supplementary === true) {
-        // The amount settled is the supplementary of today: a later difference is still due.
-        const closing = await loadPeriodClosing(store, input, isoDate(input.on));
-        const row =
-          closing.status === 'closed'
-            ? closing.tenants.find((t) => t.tenantId === input.tenantId)
-            : undefined;
-        // The supplementary as the closing computes it (`total`, fourth round B).
-        const amount = row === undefined ? 0 : row.total;
+        // The supplementary of today: a later difference is still due.
+        const amount = ledger.supplementary;
         if (amount === 0) return { status: 'refused', reason: 'no-supplementary' } as const;
         const rest = (close.supplementarySettled ?? []).filter(
           (s) => s.tenantId !== input.tenantId,
@@ -383,10 +393,12 @@ export function markTenantSettled(
           },
         };
       }
-      const others = (close.settled ?? []).filter((s) => s.tenantId !== input.tenantId);
       return {
         fields: {
-          settled: [...others, entry].sort((a, b) => (a.tenantId < b.tenantId ? -1 : 1)),
+          settled: [
+            ...others,
+            { ...entry, amount: ledger.mainRemaining, flatCollected: cents(now.forfaitIncassato) },
+          ].sort((a, b) => (a.tenantId < b.tenantId ? -1 : 1)),
         },
       };
     },

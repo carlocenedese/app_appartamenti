@@ -8,7 +8,7 @@ import { pendingDocuments } from './bill-import';
 import { loadCondo } from './condo-store';
 import { compareConsumption, worstLevel } from './consumption';
 import { consumptionThresholdsFor } from './consumption-store';
-import { closeState, closingOf, differenceTenants, unsettledTenants } from './closing';
+import { closingOf } from './closing';
 import { calcConguaglio, SettlementInputError } from './conguaglio';
 import { loadContractChecks, loadContractStatus } from './contract-store';
 import { loadExcelInput } from './excel-store';
@@ -228,41 +228,42 @@ export async function loadDashboard(
     try {
       const result = calcConguaglio(loaded.input);
       const { closing } = loaded.input;
+      // One computation of the settlement for every count (fifth round, `closingOf`).
+      const since =
+        closing === undefined ? undefined : closingOf(closing, result, loaded.input, today);
       settlements.push({
         apartmentId,
         periodLabel,
         pending: result.pending.length,
         unassigned: result.unassigned,
-        ...(closing === undefined
+        ...(since === undefined
           ? {}
-          : {
-              closed: true as const,
-              step: closeState(closing) as 'chiuso' | 'inviato' | 'saldato',
-            }),
+          : { closed: true as const, step: since.state as 'chiuso' | 'inviato' | 'saldato' }),
       });
-      // F1: a closed period still to send, then the tenants still to settle.
-      if (closing !== undefined && closing.sentOn === undefined) {
-        add(apartmentId, 'conguaglio:da-inviare');
-      } else if (closing !== undefined) {
-        // A tenant with only a difference left (G) is counted below, not here (finding 5).
+      if (since !== undefined && closing !== undefined) {
+        // F1: a closed period still to send, then the tenants still to settle; a tenant with only
+        // a difference left (G) is counted apart (finding 5).
+        if (closing.sentOn === undefined) add(apartmentId, 'conguaglio:da-inviare');
+        else
+          add(
+            apartmentId,
+            'conguaglio:da-saldare',
+            since.unsettled.length - since.differences.length,
+          );
+        add(apartmentId, 'conguaglio:differenza-da-saldare', since.differences.length);
+        // C3: flat charge collected beyond what was due, «da verificare».
         add(
           apartmentId,
-          'conguaglio:da-saldare',
-          unsettledTenants(closing).length - differenceTenants(closing).length,
+          'conguaglio:forfait-da-verificare',
+          since.tenants.filter((t) => t.toCheck > 0).length,
         );
-      }
-      // G: tenants settled on an earlier closing of the period, with a difference left.
-      if (closing !== undefined) {
-        add(apartmentId, 'conguaglio:differenza-da-saldare', differenceTenants(closing).length);
       }
       add(apartmentId, 'conguaglio:voci-in-attesa', result.pending.length);
       if (result.unassigned !== 0) add(apartmentId, 'conguaglio:posti-vuoti');
       // R5: a closed period whose costs changed since the snapshot (a late bill): a supplementary
       // settlement to make, «Da rivedere».
-      const since =
-        closing === undefined ? undefined : closingOf(closing, result, loaded.input, today);
       if (since?.changed === true) add(apartmentId, 'conguaglio:supplementare');
-      // Data of the snapshot that is not a cost (the flat charge collected...) changed: to check.
+      // The tenants of the period changed since the snapshot: to check.
       if (since?.dataChanged === true) add(apartmentId, 'conguaglio:dati-cambiati');
     } catch (error) {
       if (!(error instanceof SettlementInputError)) throw error;

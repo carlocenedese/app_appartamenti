@@ -50,15 +50,25 @@ function close(due: number, earlier: Earlier[]): PeriodClose {
     })),
   } as PeriodClose;
 }
-const remaining = (c: PeriodClose) => tenantBalance(c, 't-a').remaining;
+/** Today as the snapshot of the current closing (no change since it). */
+const today = (c: PeriodClose) => ({
+  due: (c.snapshot.tenants[0]?.spese ?? 0) - FORFAIT,
+  forfaitIncassato: FORFAIT,
+});
+const remaining = (c: PeriodClose) => tenantBalance(c, 't-a', today(c)).remaining;
 
-describe('tenantBalance across reopenings (finding 1)', () => {
+// Fifth round: these marks have no `amount` (written by earlier commits of this branch), so they
+// are read as the snapshot's due as a level: the fallback of `tenantBalance` gives the same numbers.
+describe('tenantBalance across reopenings (finding 1), marks without amount (fallback)', () => {
   it('settled on 1, supplementary settled on 2, closing 3: only the rest (120 + 5 settled)', () => {
     const c = close(13500, [
       { due: 12000, settled: true },
       { due: 13000, supplementary: 500 },
     ]);
-    expect(tenantBalance(c, 't-a')).toMatchObject({ status: 'differenza', remaining: 1000 });
+    expect(tenantBalance(c, 't-a', today(c))).toMatchObject({
+      status: 'differenza',
+      remaining: 1000,
+    });
   });
 
   it('settled on 1, nothing on 2, closing 3', () => {
@@ -153,5 +163,29 @@ describe('closingOf, third review (finding 6)', () => {
     // 30,00 missing at that closing: 10,00 paid since only reduces it.
     const within = closingOf(closed(3000), more, { tenancies }, isoDate('2027-01-10'));
     expect(within.tenants[0]).toMatchObject({ forfaitDelta: -1000, action: 'nessuna' });
+  });
+});
+
+describe('tenantBalance with the amounts stored on the marks (fifth round)', () => {
+  it('remaining = due + extra − the amounts; extra after the last main mark is «da verificare»', () => {
+    const base = close(13000, [{ due: 12000 }]);
+    const c = {
+      ...base,
+      history: (base.history ?? []).map((h) => ({
+        ...h,
+        settled: [{ tenantId: 't-a', on: '2026-12-01', amount: 11000, flatCollected: 33000 }],
+      })),
+    } as unknown as PeriodClose;
+    // 110,00 declared on closing 1 (30,00 of flat charge were missing then), due 130,00 today.
+    expect(tenantBalance(c, 't-a', { due: 13000, forfaitIncassato: 33000 })).toMatchObject({
+      status: 'differenza',
+      remaining: 2000,
+      toCheck: 0,
+    });
+    // The 30,00 paid after that mark: already settled, so extra, never a credit.
+    expect(tenantBalance(c, 't-a', { due: 10000, forfaitIncassato: 36000 })).toMatchObject({
+      remaining: 2000,
+      toCheck: 3000,
+    });
   });
 });

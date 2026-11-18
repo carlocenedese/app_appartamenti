@@ -81,3 +81,10 @@ facoltativi nuovi in `periodClose`.
     caparra, saldo del supplementare, Excel e riga di comando; tabella in `deposit-closed.test.ts`
     («A, B: …»). C: `reopen-changed` quando il record sul disco è riaperto
     (`closed-period-guard.test.ts`, «C: depth 3»).
+
+## Quinto giro
+
+14. Passo 1: `closing-model.property.test.ts` (libro del proprietario, sei invarianti, seme fisso,
+    riduzione). Passo 2: `settled[].amount` e `flatCollected`, un solo calcolo `tenantBalance`
+    letto da chiusura, file, cruscotto e caparra; C2, C3; rifiuto `flat-to-check`. Il test di
+    modello è il cancello (5000 semi in tre fusi orari).

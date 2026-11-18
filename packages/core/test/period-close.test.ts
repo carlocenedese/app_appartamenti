@@ -7,12 +7,10 @@ import {
   loadDashboard,
   loadExcelInput,
   closePeriod,
-  closeState,
   commitChange,
   markPeriodSent,
   markTenantSettled,
   reopenPeriod,
-  unsettledTenants,
   loadAll,
   loadPeriodClosing,
   readJournal,
@@ -20,7 +18,7 @@ import {
   tariDecembers,
   undoOperation,
 } from '../src/index';
-import type { PeriodClose, RecordKind } from '../src/index';
+import type { RecordKind } from '../src/index';
 import { isoDate, yearMonth } from '../src/period';
 import {
   apartment,
@@ -295,7 +293,15 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     });
     await closePeriod(store, QUERY, 'p1', clock, ids('c'));
     const record = async () => (await loadAll(store, 'periodClose', PeriodCloseSchema)).records[0];
-    expect(closeState((await record()) as PeriodClose)).toBe('chiuso');
+    // The step and the tenants left, from the one computation (`loadPeriodClosing`, fifth round).
+    const closing = async () => {
+      const c = await loadPeriodClosing(store, QUERY, isoDate('2026-12-02'));
+      if (c.status !== 'closed') throw new Error(c.status);
+      return c;
+    };
+    const state = async () => (await closing()).state;
+    const unsettled = async () => (await closing()).unsettled;
+    expect(await state()).toBe('chiuso');
     expect(await markPeriodSent(store, sent, 'p1', clock, ids('s'))).toMatchObject({
       status: 'saved',
     });
@@ -303,8 +309,8 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
       status: 'unchanged',
     });
     // 90,00 of the bill against 360,00 of flat charge: a credit of 270,00 to settle.
-    expect(closeState((await record()) as PeriodClose)).toBe('inviato');
-    expect(unsettledTenants((await record()) as PeriodClose)).toEqual(['t-a']);
+    expect(await state()).toBe('inviato');
+    expect(await unsettled()).toEqual(['t-a']);
     const sentBoard = await loadDashboard(store, {
       today: isoDate('2026-11-21'),
       settlements: [QUERY],
@@ -336,7 +342,7 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
       sentOn: '2026-11-20',
       settled: [{ tenantId: 't-a', on: '2026-12-01', transactionId: 'tx-1' }],
     });
-    expect(closeState((await record()) as PeriodClose)).toBe('saldato');
+    expect(await state()).toBe('saldato');
     // The first row of the files and the dashboard show the steps.
     const loaded = await loadExcelInput(store, QUERY);
     if (loaded.status !== 'ok') throw new Error(loaded.reason);

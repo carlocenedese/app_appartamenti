@@ -38,8 +38,9 @@ const FINGERPRINTS: Record<number, string> = {
   // Redesign of the forks: the optional `supersedes` of an operation.
   3: '9dbc470c875f141eff3756792d79971ec84ae222f5361b5578852321032e3ebb',
   // Plan 20: sentOn, settled, supplementarySettled, reopened, history, inputs of a periodClose
-  // and forfaitNonIncassato of its snapshot (decided by user1, 18 Nov; recomputed in round 2).
-  4: '88f3a820d8731704bc87603b070125941d0897f03841715912da92854a27ff9e',
+  // and forfaitNonIncassato of its snapshot, amount and flatCollected of a settled mark
+  // (decided by user1, 18 Nov; recomputed in rounds 2 and 5).
+  4: '83a0e7cf47dc02bad1581ab0795479dd8e12f8e7309e1c5c5d5edc053d7c2e55',
 };
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));

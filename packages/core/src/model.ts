@@ -1455,12 +1455,19 @@ const PeriodSnapshotSchema = z.object({
   emptyBeds: CentsSchema,
 });
 
-/** Settlement of one tenant marked by user1 (F1): the date, and the movement that paid it if any. */
+/**
+ * Settlement of one tenant marked by user1 (F1): the date, and the movement that paid it if any.
+ * Fifth round: `amount`, what was due and declared settled then, and `flatCollected`, the flat
+ * charge collected at that moment (what comes after it is extra, «da verificare»). A mark written
+ * without them by an earlier commit of this branch is read as the snapshot's due and flat charge.
+ */
 const PeriodSettledSchema = z.array(
   z.object({
     tenantId: NonEmptyString,
     on: ISODateSchema,
     transactionId: NonEmptyString.optional(),
+    amount: CentsSchema.optional(),
+    flatCollected: CentsSchema.optional(),
   }),
 );
 
