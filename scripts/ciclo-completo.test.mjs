@@ -531,7 +531,6 @@ describe.sequential('ciclo completo con la CLI vera', () => {
       }
 
       // The supplies of the shared TARI (E5: the `utenza` command).
-      const store = new FsStore(dir);
       for (const [label, apt] of [
         ['UTENZA-A', 'apt-a'],
         ['UTENZA-B', 'apt-b'],
@@ -583,37 +582,31 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         undoHow.set(t.json.operationId, { how: 'bolletta', file: shared.tariFile });
       }
 
-      // The condominium instalment: no command writes one (finding); seeded with its own operation
-      // as the R3 example: rata 150,00 with 18,00 a year of owner share (6,00 a rata of 3), plus a
-      // previous settlement of 48,00: debit 198,00.
-      const instalment = recordSchemas.instalment.parse({
-        id: 'inst-condo-a-1',
-        v: 1,
-        rev: 1,
-        apartmentId: 'apt-a',
-        kind: 'condominio',
-        esercizio: '2025-26',
-        rateIndex: 1,
-        rateCount: 3,
-        dueDate: '2025-10-10',
-        rata: 15000,
-        quotaProprieta: 1800,
-        conguaglioPrec: 4800,
+      // The condominium instalment (I3, E4: the `rata-condominio` command), as the R3 example:
+      // rata 150,00 with 18,00 a year of owner share (6,00 a rata of 3), plus a previous
+      // settlement of 48,00: debit 198,00.
+      await run('rata-condominio', [
+        '--id',
+        'inst-condo-a-1',
+        '--appartamento',
+        'apt-a',
+        '--esercizio',
+        '2025-26',
+        '--rata',
+        '1/3',
+        '--scadenza',
+        '2025-10-10',
+        '--importo',
+        '150,00',
+        '--quota-proprieta',
+        '18,00',
+        '--conguaglio-prec',
+        '48,00',
+      ]);
+      expect(records('instalment').find((i) => i.id === 'inst-condo-a-1')).toMatchObject({
         coversFrom: '2025-10',
         coversTo: '2026-01',
       });
-      await commitChange(
-        store,
-        {
-          profileId: 'cli',
-          kind: 'test.seed',
-          summary: 'Rata del condominio inventata',
-          changes: [{ path: recordPath('instalment', instalment.id), after: instalment }],
-        },
-        () => clock,
-        newId,
-      );
-      notes.push('instalment condominio: commitChange di prova, nessun comando CLI');
       await run('condominio-documento', [
         '--appartamento',
         'apt-a',
@@ -1433,18 +1426,11 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(text).toContain('XXXINVENTATO');
   });
 
-  it('dopo gli annulli restano solo i record che nessun comando annulla (E11, E4, E5)', () => {
-    // After the U1 fix of the undo review, the creation of an apartment is not undone while its
-    // accounts and supplies (never undone, E11) are alive: both outcomes are accepted here.
-    const failed = shared.undo
-      .filter((u) => u.code !== 0 && u.kind !== 'apartment.save')
-      .map((u) => u.kind);
+  it('dopo gli annulli ogni operazione è annullata, apartment.save compreso (E11, E4, E5)', () => {
+    const failed = shared.undo.filter((u) => u.code !== 0).map((u) => u.kind);
     // statement.resolve (decidi) goes with its statement (`annulla --estratto`).
-    expect([...new Set(failed)].sort()).toEqual(['statement.resolve', 'test.seed']);
+    expect([...new Set(failed)].sort()).toEqual(['statement.resolve']);
     expect(shared.initial).toEqual([]);
-    expect(
-      shared.afterUndo.map((r) => r.split('/')[0]).filter((kind) => kind !== 'apartment'),
-    ).toEqual(['instalment']);
     // The PDFs are back in Da_smistare, under the name the registration gave them (E13).
     const inbox = (folder) => readdirSync(join(dir, folder, 'Da_smistare')).sort();
     expect(inbox('Appartamento-A')).toEqual([
@@ -1456,7 +1442,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(inbox('Appartamento-B')).toEqual(['2025-12-28_Gas_Gas-Inventato_20251201-20260131.pdf']);
   });
 
-  it.fails('stato finale dopo gli annulli = stato iniziale (E11)', () => {
+  it('stato finale dopo gli annulli = stato iniziale (E11)', () => {
     expect(shared.afterUndo).toEqual(shared.initial);
   });
 });

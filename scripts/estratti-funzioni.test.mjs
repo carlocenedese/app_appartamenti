@@ -264,3 +264,112 @@ describe('utenza (E5)', () => {
     expect(records).toEqual([]);
   });
 });
+
+describe('rata-condominio (I3, E4)', () => {
+  const rata = (...extra) =>
+    cli(
+      'rata-condominio',
+      '--id',
+      'rata-x-1',
+      '--appartamento',
+      'apt-x',
+      '--esercizio',
+      '2025-26',
+      '--rata',
+      '1/3',
+      '--scadenza',
+      '2025-10-10',
+      '--importo',
+      '150,00',
+      '--quota-proprieta',
+      '18,00',
+      '--conguaglio-prec',
+      '-48,00',
+      ...extra,
+    );
+  it('scrive la rata con i suoi mesi, rilanciata non scrive, si annulla', async () => {
+    await apartment();
+    const r = await rata();
+    expect(r.code, r.out).toBe(0);
+    expect(r.json).toMatchObject({ status: 'saved', instalmentId: 'rata-x-1' });
+    expect(r.out).not.toMatch(/15000|1800|4800/);
+    const [saved] = (await loadAll(new FsStore(dir), 'instalment', recordSchemas.instalment))
+      .records;
+    expect(saved).toMatchObject({
+      kind: 'condominio',
+      rata: 15000,
+      quotaProprieta: 1800,
+      conguaglioPrec: -4800,
+      coversFrom: '2025-10',
+      coversTo: '2026-01',
+    });
+    expect((await rata()).json).toEqual({ status: 'unchanged', instalmentId: 'rata-x-1' });
+    const second = await cli(
+      'rata-condominio',
+      '--id',
+      'rata-x-2',
+      '--appartamento',
+      'apt-x',
+      '--esercizio',
+      '2025-26',
+      '--rata',
+      '2/3',
+      '--scadenza',
+      '2026-01-10',
+      '--importo',
+      '150,00',
+      '--quota-proprieta',
+      '24,00',
+    );
+    expect(second.json.warnings).toEqual([
+      {
+        code: 'owner-share-differs',
+        instalmentIds: ['rata-x-1', 'rata-x-2'],
+        message: expect.stringMatching(/^Attenzione: /),
+      },
+    ]);
+    for (const op of [second.json.operationId, r.json.operationId]) {
+      expect((await cli('annulla-riconciliazione', '--operazione', op)).code).toBe(0);
+    }
+    expect(
+      (await loadAll(new FsStore(dir), 'instalment', recordSchemas.instalment)).records,
+    ).toEqual([]);
+  });
+  it('rifiuti: senza esercizio del condominio, rata non valida, argomenti', async () => {
+    await cli(
+      'appartamento',
+      '--id',
+      'apt-x',
+      '--nome',
+      'X',
+      '--locatore',
+      'L',
+      '--posti',
+      '2',
+      '--annualita',
+      '10-01',
+      '--differenza-condominio',
+      'inquilini',
+    );
+    expect((await rata()).json.reason).toBe('missing-condominio-start');
+    await apartment();
+    expect((await rata('--rata', '2/3')).code).toBe(2);
+    const bad = await cli(
+      'rata-condominio',
+      '--id',
+      'rata-x-1',
+      '--appartamento',
+      'apt-x',
+      '--esercizio',
+      '2025',
+      '--rata',
+      '1/5',
+      '--scadenza',
+      '2025-10-10',
+      '--importo',
+      '150,00',
+    );
+    expect(bad.json.reason).toBe('invalid-instalment');
+    expect((await cli('rata-condominio', '--id', 'r')).code).toBe(2);
+  });
+});

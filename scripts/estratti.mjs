@@ -108,6 +108,7 @@ import {
   saveContact,
   saveTenantRecovery,
   saveSupply,
+  saveCondoInstalment,
   equalShares,
   saveContract,
   setContractRent,
@@ -225,6 +226,16 @@ export const MESSAGES = {
   'no-references': 'Nessun riferimento pendente.',
   'label-in-use':
     'Rifiutato: un’utenza con questa etichetta esiste già con altri appartamenti o quote («supplyId»).',
+  'missing-condominio-start':
+    'Rifiutato: l’appartamento non ha l’inizio dell’esercizio del condominio dal giorno 1 (appartamento --esercizio-condominio MM-01).',
+  'invalid-instalment':
+    'Rifiutato: rata non valida: esercizio AAAA-AA, rata n/N con N divisore di 12, importi e scadenza.',
+  'instalment-in-use':
+    'Rifiutato: la rata ha abbinamenti o recuperi («recordIds»): annullarli prima di cambiarla.',
+  'instalment-id-collision':
+    'Rifiutato: l’identificativo è di una rata TARI o di un altro appartamento.',
+  'owner-share-differs':
+    'Attenzione: le rate dell’esercizio non hanno la stessa quota della proprietà o lo stesso numero di rate («instalmentIds»): il conguaglio le rifiuta finché non si corregge.',
   'invalid-supply':
     'Rifiutato: utenza non valida: etichetta vuota, o le quote degli appartamenti non fanno 100%.',
   'class-has-dependents':
@@ -533,6 +544,9 @@ const OPTIONS = {
   pagine: { type: 'string' },
   'posti-nomi': { type: 'string' },
   ripartizione: { type: 'string' },
+  'quota-proprieta': { type: 'string' },
+  'conguaglio-prec': { type: 'string' },
+  straordinaria: { type: 'boolean' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -581,6 +595,8 @@ const RECONCILE_KINDS = [
   'supply.link',
   'tenant.save',
   'bank-profile.save',
+  // I3, E4: a condominium instalment typed by user1.
+  'condo.instalment',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -2834,6 +2850,59 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
   }
 
+  // I3, E4 (review of 18 Nov 2026): a condominium instalment of the plan of a fiscal year, as the
+  // administrator's documents give it (R3): --rata n/N, --importo (the rata), --quota-proprieta
+  // (the owner's yearly share, 0 if absent), --conguaglio-prec (last year's settlement on this
+  // rata, negative for a credit), --straordinaria. Ids and codes only in the output.
+  if (name === 'rata-condominio') {
+    need(values, 'id', 'appartamento', 'esercizio', 'scadenza', 'importo');
+    const found = /^([0-9]{1,2})\/([0-9]{1,2})$/.exec(
+      values.rata?.length === 1 ? values.rata[0] : '',
+    );
+    if (positionals.length > 0 || found === null) throw invalid('bad-arguments');
+    const amountOr0 = (text) => (text === undefined ? euro('0,00') : euro(text));
+    const result = await saveCondoInstalment(
+      store,
+      {
+        id: values.id,
+        apartmentId: values.appartamento,
+        esercizio: values.esercizio,
+        rateIndex: Number(found[1]),
+        rateCount: Number(found[2]),
+        dueDate: day(values.scadenza),
+        rata: euro(values.importo),
+        quotaProprieta: amountOr0(values['quota-proprieta']),
+        conguaglioPrec: amountOr0(values['conguaglio-prec']),
+        ...(values.straordinaria === true ? { straordinaria: true } : {}),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') {
+      throw new Stop(
+        'rejected',
+        result.reason,
+        result.reason === 'esercizio-format'
+          ? { documentIds: result.documentIds }
+          : result.reason === 'instalment-in-use'
+            ? { recordIds: result.recordIds }
+            : result.reason === 'id-collision'
+              ? { message: MESSAGES['instalment-id-collision'] }
+              : {},
+      );
+    }
+    return {
+      status: result.status,
+      instalmentId: result.instalmentId,
+      ...optional('operationId', result.operationId),
+      ...optional(
+        'warnings',
+        result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
+      ),
+    };
+  }
+
   // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
   // and the apartments it belongs to, `--appartamento` alone at 100% or `--ripartizione
   // apt-a:60;apt-b:40` (percentages); undone with annulla-riconciliazione. Ids only in the output.
@@ -3027,6 +3096,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'cruscotto',
         'riferimenti',
         'utenza',
+        'rata-condominio',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -3112,6 +3182,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'bolletta',
         'contatti',
         'utenza',
+        'rata-condominio',
       ],
       voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
       inquilini: ['recupero'],
@@ -3127,7 +3198,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
           ['contatto'],
         ]),
       ),
-      esercizio: ['condominio-documento', 'condominio', 'condominio-stima'],
+      esercizio: ['condominio-documento', 'condominio', 'condominio-stima', 'rata-condominio'],
       'quota-conduttore': ['condominio-documento'],
       anno: [
         'tasso-legale',
@@ -3143,7 +3214,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       ],
       gruppo: ['imu-atteso', 'imu-f24'],
       totale: ['imu-atteso', 'affitti-anno', 'condominio-documento'],
-      rata: ['imu-atteso', 'imu-f24'],
+      rata: ['imu-atteso', 'imu-f24', 'rata-condominio'],
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino', 'contratto', 'scadenze', 'scadenza-nuova', 'condominio-documento'],
@@ -3159,6 +3230,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'scadenza-ripeti',
         'recupero',
         'tasse-stima',
+        'rata-condominio',
       ],
       data: ['giroconto-manuale', 'scadenza-pagata', 'recupero'],
       entro: ['scadenze', 'cruscotto'],
@@ -3169,8 +3241,11 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       conferma: ['bolletta'],
       'periodo-conguaglio': ['cruscotto'],
       ripartizione: ['utenza'],
+      'quota-proprieta': ['rata-condominio'],
+      'conguaglio-prec': ['rata-condominio'],
+      straordinaria: ['rata-condominio'],
       pagine: ['annulla-bolletta'],
-      scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
+      scadenza: ['scadenza-nuova', 'scadenza-ripeti', 'rata-condominio'],
       'ogni-anno': ['scadenza-nuova'],
       'anno-riferimento': ['scadenza-nuova', 'scadenza-ripeti'],
       dal: ['importa', 'contratto-canone', 'presenza'],
