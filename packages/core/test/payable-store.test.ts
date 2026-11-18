@@ -109,6 +109,7 @@ describe('savePayable (plan 9, task 3)', () => {
       status: 'saved',
       operationId: expect.any(String),
       payableId: 'scad-n-1',
+      action: 'created',
     });
     const journal = await readJournal(store);
     expect(journal.operations.find((o) => o.id === op(created))).toMatchObject({
@@ -130,7 +131,7 @@ describe('savePayable (plan 9, task 3)', () => {
       clock,
       ids('u'),
     );
-    expect(updated.status).toBe('saved');
+    expect(updated).toMatchObject({ status: 'saved', action: 'updated' });
     expect(await payables(store)).toEqual([
       {
         ...base,

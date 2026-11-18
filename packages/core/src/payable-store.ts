@@ -37,7 +37,8 @@ type Refused<R extends string> = { status: 'refused'; reason: R };
 type Saved = { status: 'saved'; operationId: string; payableId: string };
 
 export type SavePayableResult =
-  | Saved
+  /** `action`: a new payable or a change of a live one (E3: a typo in `id` is visible). */
+  | (Saved & { action: 'created' | 'updated' })
   | { status: 'unchanged'; payableId: string }
   | Refused<
       | 'inconsistent-store'
@@ -180,7 +181,7 @@ export async function savePayable(
     const same = live.find((p) => p.previousId === undefined && created(p) === created(after));
     if (same !== undefined) return { status: 'unchanged', payableId: same.id };
   }
-  return write(
+  const saved = await write(
     store,
     'payable.save',
     'Salvata una scadenza.',
@@ -190,6 +191,7 @@ export async function savePayable(
     clock,
     newId,
   );
+  return { ...saved, action: before === undefined ? 'created' : 'updated' };
 }
 
 /**
