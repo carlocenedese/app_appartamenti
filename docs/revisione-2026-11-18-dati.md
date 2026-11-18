@@ -66,7 +66,7 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
 ## Limiti noti
 
 - **S2: un ramo più corto dell'altro.** A salva due volte senza rete, C una volta, partendo dallo stesso dato. Quando i registri si incontrano, la modifica di C sta sotto il rev più alto di A e non si vede come biforcazione: C vede `diverged` con «Ripara» rifiutato, e quando arriva il file del record di A la modifica di C sparisce senza avviso. Lo stesso succede se C, invece di modificare, annulla. Come su main.
-- **B2: tre computer, la scelta fatta troppo presto.** A, C e D modificano lo stesso dato. A vede la biforcazione con C e sceglie. Poi arriva il registro di D: la scelta l'ha già superata, e la modifica di D si perde senza avviso. Come su main.
+- **B2: tre computer, la scelta fatta troppo presto.** A, C e D modificano lo stesso dato. A vede la biforcazione con C e sceglie. Poi arriva il registro di D: la scelta l'ha già superata, e la modifica di D si perde senza avviso. Su main si perde anche lei: lì non c'è una scelta, vince l'orologio più recente e le altre modifiche spariscono senza avviso.
 - Fino al ridisegno: chi lavora senza rete su più computer controlla a mano, dopo la sincronizzazione, i dati modificati in più posti.
 
 ## Ridisegno previsto
