@@ -278,6 +278,23 @@ describe('Step 2: review focus', () => {
     expect(result.unassigned).toBe(20000);
   });
 
+  it('B1: an assumed match stored before B1 is never paid, the bill is «da verificare»', () => {
+    const luce = bill('luce', '2026-10-01', '2026-11-30', 20000);
+    const gas = bill('gas', '2026-10-01', '2026-11-30', 6000, { category: 'gas' });
+    const result = calc({
+      bills: [luce, gas],
+      matches: [match(luce, 20000, { by: 'assumed', transactionId: 'assumed-luce' })],
+      unverified: [{ itemType: 'bill', itemId: 'gas' }],
+      tenancies: FOUR_FULL_YEAR,
+    });
+    expect(result.tenants.map((t) => t.spese)).toEqual([0, 0, 0, 0]);
+    expect(result.unassigned).toBe(0);
+    expect(result.pending).toEqual([
+      { itemType: 'bill', itemId: 'gas', reason: 'da verificare' },
+      { itemType: 'bill', itemId: 'luce', reason: 'da verificare' },
+    ]);
+  });
+
   it('lowers the amount due with a credit note', () => {
     const luce = bill('luce', '2026-10-01', '2026-10-31', 20000);
     const nota = bill('nota', '2026-10-01', '2026-10-31', -4000);

@@ -46,7 +46,6 @@ describe('excelItems on the fixture', () => {
       to: '2026-11-30',
       dueDate: '2026-12-10',
       debitDates: ['2026-12-10'],
-      assumed: false,
       amount: 6000,
       commission: 80,
       inPeriod: 6080,
@@ -68,16 +67,19 @@ describe('excelItems on the fixture', () => {
     expect(byId(items, 'bill-acqua')).toBeUndefined();
   });
 
-  it('marks a bill with an assumed match stored before B1, without a debit date', () => {
+  it('leaves out a bill with an assumed match stored before B1: never paid (B1)', () => {
     const input = fixtureInput();
     input.matches.push({
       ...amountMatch('bill', 'bill-gas', 9000),
       transactionId: 'assumed-bill-gas',
       by: 'assumed',
     });
-    const gas = byId(itemsOf(input), 'bill-gas');
-    expect(gas?.assumed).toBe(true);
-    expect(gas?.debitDates).toEqual([]);
+    expect(byId(itemsOf(input), 'bill-gas')).toBeUndefined();
+    expect(calcConguaglio(input).pending).toContainEqual({
+      itemType: 'bill',
+      itemId: 'bill-gas',
+      reason: 'da verificare',
+    });
   });
 
   it("gives the condominium the tenants' part and the TARI this apartment's share", () => {
@@ -90,7 +92,6 @@ describe('excelItems on the fixture', () => {
       to: '2027-01-31',
       dueDate: '2026-10-05',
       debitDates: ['2026-10-06'],
-      assumed: false,
       amount: 32000,
       commission: 0,
       inPeriod: 32000,

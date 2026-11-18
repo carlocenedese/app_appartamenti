@@ -16,6 +16,7 @@ import type { CondoCheckRow, CondoDifference, CondoEstimate, FreeDebit } from '.
 import type { ZodType } from 'zod';
 import { commitChange, writesBlocked } from './journal';
 import { expectedDebit } from './match';
+import { planMatch } from './match-store';
 import {
   AccountSchema,
   ApartmentSchema,
@@ -366,6 +367,7 @@ export async function loadCondo(
       matches,
       asOf: query.asOf,
       free: await loadFreeDebits(store, matches),
+      unverified: new Set((await planMatch(store)).run.unverified.map((r) => r.itemId)),
     }),
     differences: condoDifferences(apartments, documents),
     recoveries,
@@ -394,7 +396,7 @@ export async function loadCondoEstimate(
   return { status: 'computed', ...(estimate === undefined ? {} : { estimate }) };
 }
 
-/** `freeDebits` on the live records of the store, with `matches` (saved and assumed). */
+/** `freeDebits` on the live records of the store, with the saved `matches`. */
 export async function loadFreeDebits(store: Store, matches: BillMatch[]): Promise<FreeDebit[]> {
   const records = async <T extends { id: string }>(kind: string, schema: ZodType<T>) =>
     (await loadAll(store, kind, schema)).records;

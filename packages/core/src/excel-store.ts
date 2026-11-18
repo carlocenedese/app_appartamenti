@@ -1,13 +1,15 @@
 /**
  * The data of the Excel of one apartment and one period, read from the store (plan 5, R155).
  * The period comes from the apartment's contracts (`settlementPeriods`); the matches are the
- * saved ones: an item with no statement is never taken as paid (B1). Writes nothing.
+ * saved ones: an item with no statement is never taken as paid, the items `planMatch` leaves to
+ * verify are pending «da verificare» (B1). Writes nothing.
  */
 import type { ZodType } from 'zod';
 import type { ExcelInput } from './excel';
 import { loadFreeDebits } from './condo-store';
 import { recoverableMovements } from './condominio';
 import { writesBlocked } from './journal';
+import { planMatch } from './match-store';
 import {
   ApartmentSchema,
   BankTransactionSchema,
@@ -96,6 +98,7 @@ export async function loadExcelInput(
         classes: await records('movementClass', MovementClassSchema),
       }),
       matches,
+      unverified: (await planMatch(store)).run.unverified,
       freeDebits: await loadFreeDebits(store, matches),
       ...(closing === undefined ? {} : { closing }),
     },

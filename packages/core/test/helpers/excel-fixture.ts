@@ -55,6 +55,8 @@ export function fixtureInput(fixture: ExcelFixture = FIXTURE): ExcelInput {
     tenancies: copy.tenancies,
     payments: copy.payments,
     tenants: copy.tenants,
+    // No statement covers the gas bill: `planMatch` leaves it «da verificare» (B1).
+    unverified: [{ itemType: 'bill', itemId: 'bill-gas' }],
     // The contract goes on for one more lease year (what `loadExcelInput` finds).
     periods: [
       { from: yearMonth('2026-10'), to: yearMonth('2027-09') },

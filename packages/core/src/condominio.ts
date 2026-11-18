@@ -98,6 +98,7 @@ export function instalmentStatus(
   matches: readonly BillMatch[],
   asOf?: ISODate,
   free: readonly FreeDebit[] = [],
+  unverified: ReadonlySet<string> = new Set(),
 ): CondoStatus {
   const amounts = ownDebits(instalment, matches);
   const real = amounts.filter((m) => m.by !== 'assumed');
@@ -113,7 +114,7 @@ export function instalmentStatus(
     );
     return twice ? 'duplicato' : 'pagata';
   }
-  if (amounts.length > 0) return 'da-verificare';
+  if (amounts.length > 0 || unverified.has(instalment.id)) return 'da-verificare';
   if (asOf === undefined) return 'in-attesa';
   return asOf > instalment.dueDate ? 'senza-addebito' : 'in-programma';
 }
@@ -154,6 +155,8 @@ export function condoCheck(input: {
   matches: readonly BillMatch[];
   asOf: ISODate;
   free?: readonly FreeDebit[];
+  /** The ids of the instalments the matching leaves «da verificare» (B1). */
+  unverified?: ReadonlySet<string>;
 }): CondoCheckRow[] {
   return input.instalments
     .filter((i) => i.deleted !== true && i.kind === 'condominio')
@@ -181,6 +184,7 @@ export function condoCheck(input: {
           input.matches,
           input.asOf,
           input.free,
+          input.unverified,
         ) as CondoCheckRow['status'],
       };
     });

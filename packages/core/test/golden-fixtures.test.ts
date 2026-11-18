@@ -3,14 +3,7 @@
 // reproduce them; this file only checks that every fixture is well formed, free of personal data
 // and consistent with itself. The rules behind the values are in docs/rules/conguaglio-rules.md.
 import { describe, expect, it } from 'vitest';
-import {
-  allocateBillToMonths,
-  cents,
-  isoDate,
-  matchToTransactions,
-  monthsInPeriod,
-  splitCents,
-} from '../src/index';
+import { cents, isoDate, matchToTransactions, monthsInPeriod, splitCents } from '../src/index';
 import { goldenFiles, readGolden } from './helpers/golden';
 
 /** Matching window decided by user1 (R30): 5 days before to 10 days after the due date. */
@@ -80,15 +73,18 @@ describe('golden fixtures', () => {
       const transactions = new Set(fixture.transactions.map((transaction) => transaction.id));
       for (const match of fixture.matches) {
         expect(items.has(`${match.itemType}:${match.itemId}`)).toBe(true);
-        if (match.by !== 'assumed') expect(transactions.has(match.transactionId)).toBe(true);
+        // `excel-<item>`: confirmed by hand from the owner's Excel, no movement (ruling R341).
+        if (!match.transactionId.startsWith('excel-')) {
+          expect(transactions.has(match.transactionId)).toBe(true);
+        }
       }
     });
 
-    // Without statements the matching step no longer takes any item as paid (B1, 18 Nov 2026):
-    // every item is to verify. The fixture keeps the `assumed` matches the step produced before
-    // B1, as stored records: they are still read, and the golden values rest on them.
+    // Without statements the matching step never takes an item as paid (B1, 18 Nov 2026): every
+    // item is to verify. The fixture confirms them by hand (`manual`), as the owner's own Excel
+    // counted them as paid (ruling R341), so that the golden values stay comparable.
     it.skipIf(fixture.transactions.length > 0)(
-      'records, as matches stored before B1, the items the matching step now leaves to verify',
+      'confirms by hand the items the matching step leaves to verify',
       () => {
         const result = matchToTransactions({
           bills: fixture.bills,
@@ -99,7 +95,7 @@ describe('golden fixtures', () => {
           existing: [],
         });
         expect(result.matches).toEqual([]);
-        expect(fixture.matches.every((m) => m.by === 'assumed')).toBe(true);
+        expect(fixture.matches.every((m) => m.by === 'manual' && m.confirmed)).toBe(true);
         expect(result.unverified.map((ref) => ref.itemId).sort()).toEqual(
           [...new Set(fixture.matches.map((m) => m.itemId))].sort(),
         );
@@ -119,6 +115,28 @@ describe('golden fixtures', () => {
       // A bill is split over its months by days (B2), a TARI notice equally over its months,
       // remainders to the first months; only the months of the period count. byCategory leaves
       // out categories with nothing in them.
+      // Independent of `allocateBillToMonths`: days of the bill in each month, floor of each
+      // share, the cents left over one each to the first months (B2, R1).
+      const byDaysInPeriod = (amount: number, start: string, end: string): number => {
+        const day = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+        const months: { month: string; days: number }[] = [];
+        for (let t = day(start); t <= day(end); t += 86_400_000) {
+          const month = new Date(t).toISOString().slice(0, 7);
+          const last = months.at(-1);
+          if (last?.month === month) last.days += 1;
+          else months.push({ month, days: 1 });
+        }
+        const total = sum(months.map((m) => m.days));
+        const parts = months.map((m) => Math.floor((Math.abs(amount) * m.days) / total));
+        const left = Math.abs(amount) - sum(parts);
+        for (let i = 0; i < left; i += 1) parts[i] = (parts[i] ?? 0) + 1;
+        return sum(
+          parts
+            .map((p, i) => ({ p: Math.sign(amount) * p, month: months[i]?.month ?? '' }))
+            .filter(({ month }) => fixture.period.from <= month && month <= fixture.period.to)
+            .map(({ p }) => p),
+        );
+      };
       const inPeriod = (amount: number, from: string, to: string): number => {
         const months = monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`));
         const parts = splitCents(
@@ -129,13 +147,7 @@ describe('golden fixtures', () => {
         return sum(parts.filter((_, i) => inside[i] === true));
       };
       const costs =
-        sum(
-          fixture.bills.flatMap((b) =>
-            allocateBillToMonths(b)
-              .filter((s) => fixture.period.from <= s.month && s.month <= fixture.period.to)
-              .map((s) => s.amount),
-          ),
-        ) +
+        sum(fixture.bills.map((b) => byDaysInPeriod(b.amount, b.periodStart, b.periodEnd))) +
         sum(
           fixture.instalments
             .filter((i) => i.kind === 'tari')
@@ -177,9 +189,10 @@ describe('golden fixtures', () => {
       }
     });
 
-    // Only fixtures whose bills are all assumed paid: no commission can apply (R7), and the
-    // condominium is excluded from expected (Task 7), so the costs are exactly byCategory.
-    it.skipIf(fixture.matches.some((match) => match.by !== 'assumed'))(
+    // Only fixtures without statements, whose bills are confirmed from the owner's Excel (R341): no
+    // commission can apply (R7), and the condominium is excluded from expected (Task 7), so the
+    // costs are exactly byCategory.
+    it.skipIf(fixture.matches.some((match) => !match.transactionId.startsWith('excel-')))(
       'has a due amount equal to the costs minus the flat charge collected',
       () => {
         for (const row of fixture.expected) {

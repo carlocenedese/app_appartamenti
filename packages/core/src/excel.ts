@@ -47,10 +47,8 @@ export interface ExcelItem {
   from: ISODate;
   to: ISODate;
   dueDate?: ISODate;
-  /** The dates of the debits matched to the amount, distinct and sorted; assumed ones excluded. */
+  /** The dates of the debits matched to the amount, distinct and sorted. */
   debitDates: ISODate[];
-  /** Every amount match is an `assumed` one stored before B1: shown «da verificare». */
-  assumed: boolean;
   /** The amount debited; for a condominium instalment, the tenants' part (R8). */
   amount: Cents;
   commission: Cents;
@@ -89,7 +87,8 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
   const pending = new Set(result.pending.map((p) => `${p.itemType}\u0000${p.itemId}`));
   const matches = new Map<string, BillMatch[]>();
   for (const match of live(input.matches)) {
-    if (!match.confirmed) continue;
+    // An `assumed` match stored before B1 is no debit: the item is pending, «da verificare».
+    if (!match.confirmed || match.by === 'assumed') continue;
     const key = `${match.itemType}\u0000${match.itemId}`;
     matches.set(key, [...(matches.get(key) ?? []), match]);
   }
@@ -102,15 +101,12 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
     return {
       amount: total(amounts.map((m) => m.amount)),
       commission: total(all.filter((m) => m.part === 'commission').map((m) => m.amount)),
-      debitDates: [
-        ...new Set(amounts.filter((m) => m.by !== 'assumed').map((m) => m.transactionDate)),
-      ].sort(compareText),
-      assumed: amounts.length > 0 && amounts.every((m) => m.by === 'assumed'),
+      debitDates: [...new Set(amounts.map((m) => m.transactionDate))].sort(compareText),
     };
   };
 
   const billItem = (bill: Bill): ExcelItem => {
-    const { amount, commission, debitDates, assumed } = debits('bill', bill.id);
+    const { amount, commission, debitDates } = debits('bill', bill.id);
     const amounts = allocateBillToMonths(bill, amount);
     const commissions = allocateBillToMonths(bill, commission);
     const shares = amounts.map((share, i) => ({
@@ -130,7 +126,6 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
       to: bill.periodEnd,
       ...(bill.dueDate === undefined ? {} : { dueDate: bill.dueDate }),
       debitDates,
-      assumed,
       amount,
       commission,
       inPeriod: inside,
@@ -149,7 +144,7 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
   };
 
   const instalmentItem = (instalment: Instalment): ExcelItem => {
-    const { amount: paid, commission, debitDates, assumed } = debits('instalment', instalment.id);
+    const { amount: paid, commission, debitDates } = debits('instalment', instalment.id);
     const covered = monthRange(instalment.coversFrom, instalment.coversTo);
     const parts = allocateInstalment(
       instalment,
@@ -173,7 +168,6 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
       to: lastDayOfMonth(instalment.coversTo),
       dueDate: instalment.dueDate,
       debitDates,
-      assumed,
       amount: total(parts.map((p) => p.rata + p.conguaglioPrec)),
       commission,
       inPeriod: cents(inside),
@@ -364,6 +358,7 @@ const CATEGORY_LABELS: Record<CostCategory, string> = {
 const PENDING_REASONS: Record<string, string> = {
   '': 'in attesa di pagamento',
   'importo diverso': 'importo diverso',
+  'da verificare': 'da verificare',
   'parte della proprietà maggiore della rata': 'quota maggiore della rata',
 };
 
@@ -461,7 +456,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     date(item.from),
     date(item.to),
     date(item.dueDate),
-    text(item.assumed ? 'da verificare' : item.debitDates.map(dayMonthYear).join(', ')),
+    text(item.debitDates.map(dayMonthYear).join(', ')),
     euro(item.amount),
     euro(item.commission),
     euro(item.inPeriod),

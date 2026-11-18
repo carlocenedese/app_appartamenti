@@ -1196,290 +1196,290 @@
   "transactions": [],
   "matches": [
     {
-      "id": "m-bill-bill-internet-2024-10-amount-assumed-bill-internet-2024-10",
+      "id": "m-bill-bill-internet-2024-10-amount-excel-bill-internet-2024-10",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2024-10",
-      "transactionId": "assumed-bill-internet-2024-10",
+      "transactionId": "excel-bill-internet-2024-10",
       "transactionDate": "2024-11-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2024-11-amount-assumed-bill-internet-2024-11",
+      "id": "m-bill-bill-internet-2024-11-amount-excel-bill-internet-2024-11",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2024-11",
-      "transactionId": "assumed-bill-internet-2024-11",
+      "transactionId": "excel-bill-internet-2024-11",
       "transactionDate": "2024-12-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2024-12-amount-assumed-bill-internet-2024-12",
+      "id": "m-bill-bill-internet-2024-12-amount-excel-bill-internet-2024-12",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2024-12",
-      "transactionId": "assumed-bill-internet-2024-12",
+      "transactionId": "excel-bill-internet-2024-12",
       "transactionDate": "2025-01-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-01-amount-assumed-bill-internet-2025-01",
+      "id": "m-bill-bill-internet-2025-01-amount-excel-bill-internet-2025-01",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-01",
-      "transactionId": "assumed-bill-internet-2025-01",
+      "transactionId": "excel-bill-internet-2025-01",
       "transactionDate": "2025-02-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-02-amount-assumed-bill-internet-2025-02",
+      "id": "m-bill-bill-internet-2025-02-amount-excel-bill-internet-2025-02",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-02",
-      "transactionId": "assumed-bill-internet-2025-02",
+      "transactionId": "excel-bill-internet-2025-02",
       "transactionDate": "2025-03-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-03-amount-assumed-bill-internet-2025-03",
+      "id": "m-bill-bill-internet-2025-03-amount-excel-bill-internet-2025-03",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-03",
-      "transactionId": "assumed-bill-internet-2025-03",
+      "transactionId": "excel-bill-internet-2025-03",
       "transactionDate": "2025-04-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-04-amount-assumed-bill-internet-2025-04",
+      "id": "m-bill-bill-internet-2025-04-amount-excel-bill-internet-2025-04",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-04",
-      "transactionId": "assumed-bill-internet-2025-04",
+      "transactionId": "excel-bill-internet-2025-04",
       "transactionDate": "2025-05-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-05-amount-assumed-bill-internet-2025-05",
+      "id": "m-bill-bill-internet-2025-05-amount-excel-bill-internet-2025-05",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-05",
-      "transactionId": "assumed-bill-internet-2025-05",
+      "transactionId": "excel-bill-internet-2025-05",
       "transactionDate": "2025-06-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-06-amount-assumed-bill-internet-2025-06",
+      "id": "m-bill-bill-internet-2025-06-amount-excel-bill-internet-2025-06",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-06",
-      "transactionId": "assumed-bill-internet-2025-06",
+      "transactionId": "excel-bill-internet-2025-06",
       "transactionDate": "2025-07-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-07-amount-assumed-bill-internet-2025-07",
+      "id": "m-bill-bill-internet-2025-07-amount-excel-bill-internet-2025-07",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-07",
-      "transactionId": "assumed-bill-internet-2025-07",
+      "transactionId": "excel-bill-internet-2025-07",
       "transactionDate": "2025-07-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-08-amount-assumed-bill-internet-2025-08",
+      "id": "m-bill-bill-internet-2025-08-amount-excel-bill-internet-2025-08",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-08",
-      "transactionId": "assumed-bill-internet-2025-08",
+      "transactionId": "excel-bill-internet-2025-08",
       "transactionDate": "2025-08-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-internet-2025-09-amount-assumed-bill-internet-2025-09",
+      "id": "m-bill-bill-internet-2025-09-amount-excel-bill-internet-2025-09",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-internet-2025-09",
-      "transactionId": "assumed-bill-internet-2025-09",
+      "transactionId": "excel-bill-internet-2025-09",
       "transactionDate": "2025-09-25",
       "amount": 2995,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-luce-2024-09-amount-assumed-bill-luce-2024-09",
+      "id": "m-bill-bill-luce-2024-09-amount-excel-bill-luce-2024-09",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-luce-2024-09",
-      "transactionId": "assumed-bill-luce-2024-09",
+      "transactionId": "excel-bill-luce-2024-09",
       "transactionDate": "2024-11-10",
       "amount": 11304,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-luce-2024-11-amount-assumed-bill-luce-2024-11",
+      "id": "m-bill-bill-luce-2024-11-amount-excel-bill-luce-2024-11",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-luce-2024-11",
-      "transactionId": "assumed-bill-luce-2024-11",
+      "transactionId": "excel-bill-luce-2024-11",
       "transactionDate": "2025-01-27",
       "amount": 10373,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-luce-2025-01-amount-assumed-bill-luce-2025-01",
+      "id": "m-bill-bill-luce-2025-01-amount-excel-bill-luce-2025-01",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-luce-2025-01",
-      "transactionId": "assumed-bill-luce-2025-01",
+      "transactionId": "excel-bill-luce-2025-01",
       "transactionDate": "2025-03-24",
       "amount": 9884,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-luce-2025-03-amount-assumed-bill-luce-2025-03",
+      "id": "m-bill-bill-luce-2025-03-amount-excel-bill-luce-2025-03",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-luce-2025-03",
-      "transactionId": "assumed-bill-luce-2025-03",
+      "transactionId": "excel-bill-luce-2025-03",
       "transactionDate": "2025-05-27",
       "amount": 10949,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-luce-2025-05-amount-assumed-bill-luce-2025-05",
+      "id": "m-bill-bill-luce-2025-05-amount-excel-bill-luce-2025-05",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-luce-2025-05",
-      "transactionId": "assumed-bill-luce-2025-05",
+      "transactionId": "excel-bill-luce-2025-05",
       "transactionDate": "2025-08-04",
       "amount": 10186,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-bill-bill-luce-2025-07-amount-assumed-bill-luce-2025-07",
+      "id": "m-bill-bill-luce-2025-07-amount-excel-bill-luce-2025-07",
       "v": 1,
       "rev": 1,
       "itemType": "bill",
       "itemId": "bill-luce-2025-07",
-      "transactionId": "assumed-bill-luce-2025-07",
+      "transactionId": "excel-bill-luce-2025-07",
       "transactionDate": "2025-09-23",
       "amount": 9824,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-instalment-tari-2024-3-amount-assumed-tari-2024-3",
+      "id": "m-instalment-tari-2024-3-amount-excel-tari-2024-3",
       "v": 1,
       "rev": 1,
       "itemType": "instalment",
       "itemId": "tari-2024-3",
-      "transactionId": "assumed-tari-2024-3",
+      "transactionId": "excel-tari-2024-3",
       "transactionDate": "2024-12-01",
       "amount": 10183,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-instalment-tari-2025-1-amount-assumed-tari-2025-1",
+      "id": "m-instalment-tari-2025-1-amount-excel-tari-2025-1",
       "v": 1,
       "rev": 1,
       "itemType": "instalment",
       "itemId": "tari-2025-1",
-      "transactionId": "assumed-tari-2025-1",
+      "transactionId": "excel-tari-2025-1",
       "transactionDate": "2025-03-15",
       "amount": 9548,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-instalment-tari-2025-2-amount-assumed-tari-2025-2",
+      "id": "m-instalment-tari-2025-2-amount-excel-tari-2025-2",
       "v": 1,
       "rev": 1,
       "itemType": "instalment",
       "itemId": "tari-2025-2",
-      "transactionId": "assumed-tari-2025-2",
+      "transactionId": "excel-tari-2025-2",
       "transactionDate": "2025-07-15",
       "amount": 9793,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     },
     {
-      "id": "m-instalment-tari-2025-3-amount-assumed-tari-2025-3",
+      "id": "m-instalment-tari-2025-3-amount-excel-tari-2025-3",
       "v": 1,
       "rev": 1,
       "itemType": "instalment",
       "itemId": "tari-2025-3",
-      "transactionId": "assumed-tari-2025-3",
+      "transactionId": "excel-tari-2025-3",
       "transactionDate": "2025-12-10",
       "amount": 12186,
       "part": "amount",
       "confirmed": true,
-      "by": "assumed"
+      "by": "manual"
     }
   ],
   "tenancies": [
@@ -1890,7 +1890,7 @@
     },
     {
       "what": "Scadenza della bolletta luce settembre-ottobre 2024",
-      "why": "RegistroBollette H6 (10/11/2024) è prima dell'emissione I6 (25/11/2024): riportate come nell'Excel; la bolletta è assunta pagata e la data non cambia il conguaglio."
+      "why": "RegistroBollette H6 (10/11/2024) è prima dell'emissione I6 (25/11/2024): riportate come nell'Excel; senza estratto la bolletta non si considera mai pagata (B1): è confermata a mano come pagata, come nell'Excel di user1, e la data non cambia il conguaglio."
     },
     {
       "what": "Scadenza della bolletta luce novembre-dicembre 2024",

@@ -142,6 +142,14 @@ describe('condoCheck (plan 8, task 5, section 12)', () => {
       { ...debit(r, 15000, 'tx-4'), itemId: 'altro' },
     ];
     expect(statusOf(r, ignored, '2026-06-01')).toBe('senza-addebito');
+    // B1: an instalment the matching leaves to verify (no statement covers it).
+    const check = condoCheck({
+      instalments: [r],
+      matches: [],
+      asOf: isoDate('2026-06-01'),
+      unverified: new Set(['r1']),
+    });
+    expect(check[0]?.status).toBe('da-verificare');
   });
 
   it('lists ordinary and extraordinary condominium instalments, not the TARI, sorted', () => {
@@ -257,7 +265,7 @@ describe('loadCondo (plan 8, task 5)', () => {
     expect(one).toMatchObject({
       status: 'computed',
       // No statement covers the period: the instalment is never taken as paid (B1).
-      rates: [{ instalmentId: 'r1', status: 'senza-addebito' }],
+      rates: [{ instalmentId: 'r1', status: 'da-verificare' }],
       differences: [{ apartmentId: 'apt', difference: 6000 }],
       recoveries: [],
       warnings: [],

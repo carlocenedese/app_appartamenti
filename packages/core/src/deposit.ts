@@ -325,7 +325,10 @@ export async function loadDepositReturn(
     }),
     paidInstalments: new Set(
       matches
-        .filter((m) => m.deleted !== true && m.confirmed && m.part === 'amount')
+        // An `assumed` match stored before B1 is no debit seen.
+        .filter(
+          (m) => m.deleted !== true && m.confirmed && m.by !== 'assumed' && m.part === 'amount',
+        )
         .map((m) => m.itemId),
     ),
   });

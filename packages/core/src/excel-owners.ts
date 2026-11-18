@@ -123,6 +123,10 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
   const matches = input.matches.filter(
     (m) => m.deleted !== true && m.confirmed && m.itemType === 'instalment',
   );
+  // The instalments the matching leaves «da verificare» (B1).
+  const unverifiedIds = new Set(
+    (input.unverified ?? []).filter((r) => r.itemType === 'instalment').map((r) => r.itemId),
+  );
   const esercizioMonths = (instalment: Instalment): YearMonth[] => {
     if (instalment.conguaglioPrec === 0 || apartment.condominioStart === undefined) return [];
     const range = annualitaRange(instalment.esercizio, apartment.condominioStart);
@@ -165,7 +169,13 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
         commission: total(own.filter((m) => m.part === 'commission').map((m) => m.amount)),
         debitDates: [...new Set(real.map((m) => m.transactionDate))].sort(compareText),
         // 5b D1 (R184) and plan 8 (R195): the check of section 12, without a date.
-        status: instalmentStatus(i, own, undefined, input.freeDebits) as OwnersStatus,
+        status: instalmentStatus(
+          i,
+          own,
+          undefined,
+          input.freeDebits,
+          unverifiedIds,
+        ) as OwnersStatus,
       };
     });
 }

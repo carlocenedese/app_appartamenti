@@ -259,7 +259,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
         null,
         { kind: 'date', value: '2027-01-01' },
         { kind: 'date', value: '2027-02-28' },
-        t('in attesa di pagamento'),
+        t('da verificare'),
       ],
       [
         t('Acqua'),
@@ -337,7 +337,7 @@ describe('buildConguaglioWorkbook variants', () => {
     expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 3']);
     expect(rows.slice(-3)).toEqual([
       ['Condominio', null, null, '2026-10-01', '2027-01-31', 'in attesa di pagamento'],
-      ['Gas', 'Gas Esempio', null, '2027-01-01', '2027-02-28', 'in attesa di pagamento'],
+      ['Gas', 'Gas Esempio', null, '2027-01-01', '2027-02-28', 'da verificare'],
       ['Acqua', 'Acqua Esempio', null, '2027-04-01', '2027-06-30', 'in attesa di pagamento'],
     ]);
   });
@@ -644,7 +644,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '12e0d0d6d3788f00aa09e29b615726a002a04143c773cf63eb0508b7dd298fc8',
+      '1407c032c15a936d9a7fae89df38852dccd4cfbe8505f8b4e4de1b313ec2815d',
     );
   });
 });
