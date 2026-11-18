@@ -325,6 +325,16 @@ const validRecords: Record<RecordKind, Record<string, unknown>> = {
       ],
       emptyBeds: 0,
     },
+    sentOn: '2026-11-20',
+    settled: [{ tenantId: 'ten-1', on: '2026-12-01', transactionId: 'tx-1' }],
+    history: [
+      {
+        closedAt: '2026-10-18T09:00:00.000Z',
+        engineVersion: '0.1.0',
+        snapshot: { tenants: [], emptyBeds: 0 },
+        reopened: { on: '2026-11-01', reason: 'Bolletta corretta' },
+      },
+    ],
   },
   taxConfirmation: {
     ...base,

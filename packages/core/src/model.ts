@@ -1429,11 +1429,46 @@ export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
 
 // --- Closing of a settlement period (review of 18 Nov 2026, I2, R5) ----------------------------
 
+/** The costs of each tenant and of the empty beds at a closing (R5). */
+const PeriodSnapshotSchema = z.object({
+  /** Bills and TARI, condominium rata and commission of each tenant (`spese`, `rata`, ...). */
+  tenants: z.array(
+    z.object({
+      tenantId: NonEmptyString,
+      spese: CentsSchema,
+      rata: CentsSchema,
+      commissione: CentsSchema,
+      /** What the tenant owes for an intervention (R197), 0 if none: part of the costs. */
+      recupero: CentsSchema,
+      /** Not a cost: asked in the supplementary settlement when it falls (F11). */
+      forfaitIncassato: CentsSchema,
+      /** Last year's condominium settlement (R3): not a cost of R5, a warning when it changes. */
+      conguaglioPrec: CentsSchema,
+    }),
+  ),
+  /** The shares of the empty beds, last year's condominium settlement excluded. */
+  emptyBeds: CentsSchema,
+});
+
+/** Settlement of one tenant marked by user1 (F1): the date, and the movement that paid it if any. */
+const PeriodSettledSchema = z.array(
+  z.object({
+    tenantId: NonEmptyString,
+    on: ISODateSchema,
+    transactionId: NonEmptyString.optional(),
+  }),
+);
+
+/** A reopening (F3): the date and the reason, both given by user1. */
+const PeriodReopenedSchema = z.object({ on: ISODateSchema, reason: NonEmptyString });
+
 /**
  * The closing of one settlement period of an apartment (R5), `chiusura-<apartmentId>-<periodLabel>`,
  * with the snapshot of the costs of each tenant and of the empty beds that the supplementary
  * settlement compares with (`calcConguaglioSupplementare`). Written only when every rent and flat
- * charge is collected and no item is waiting; undone with the reconciliation undo.
+ * charge is collected and no item is waiting. F1: `sentOn` (sent to the tenants) and `settled` (per
+ * tenant) are marked by user1; F3: `reopened` opens the period again, keeping this snapshot, and a
+ * later closing moves it into `history` (never deleted).
  */
 export const PeriodCloseSchema = RecordBaseSchema.extend({
   apartmentId: NonEmptyString,
@@ -1443,25 +1478,26 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
   closedAt: TimestampSchema,
   /** `CORE_VERSION` of the calculation of the snapshot. */
   engineVersion: NonEmptyString,
-  snapshot: z.object({
-    /** Bills and TARI, condominium rata and commission of each tenant (`spese`, `rata`, ...). */
-    tenants: z.array(
+  snapshot: PeriodSnapshotSchema,
+  /** The day the settlement was sent to the tenants (F1). */
+  sentOn: ISODateSchema.optional(),
+  /** The tenants whose settlement user1 marked as settled (F1), once each. */
+  settled: PeriodSettledSchema.optional(),
+  /** Present when the period was reopened after this closing (F3): it is no longer closed. */
+  reopened: PeriodReopenedSchema.optional(),
+  /** The earlier closings of the period, each reopened, oldest first (F3). */
+  history: z
+    .array(
       z.object({
-        tenantId: NonEmptyString,
-        spese: CentsSchema,
-        rata: CentsSchema,
-        commissione: CentsSchema,
-        /** What the tenant owes for an intervention (R197), 0 if none: part of the costs. */
-        recupero: CentsSchema,
-        /** Not a cost: when it changes after the closing, the data changed (a warning). */
-        forfaitIncassato: CentsSchema,
-        /** Last year's condominium settlement (R3): not a cost of R5, a warning when it changes. */
-        conguaglioPrec: CentsSchema,
+        closedAt: TimestampSchema,
+        engineVersion: NonEmptyString,
+        snapshot: PeriodSnapshotSchema,
+        sentOn: ISODateSchema.optional(),
+        settled: PeriodSettledSchema.optional(),
+        reopened: PeriodReopenedSchema,
       }),
-    ),
-    /** The shares of the empty beds, last year's condominium settlement excluded. */
-    emptyBeds: CentsSchema,
-  }),
+    )
+    .optional(),
 })
   .refine((c) => c.id === `chiusura-${c.apartmentId}-${c.periodLabel}`, {
     message: 'The id must be chiusura-<apartmentId>-<periodLabel>',

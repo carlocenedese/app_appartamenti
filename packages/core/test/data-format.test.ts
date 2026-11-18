@@ -37,6 +37,8 @@ const FINGERPRINTS: Record<number, string> = {
   2: '90d55b9eef75a2090c533eb1c80b206e9ef00232d0cb0fb61e18d577cf6ab918',
   // Redesign of the forks: the optional `supersedes` of an operation.
   3: '9dbc470c875f141eff3756792d79971ec84ae222f5361b5578852321032e3ebb',
+  // Plan 20: sentOn, settled, reopened and history of a periodClose (decided by user1, 18 Nov).
+  4: '51f5c137a6980d9f2b2fac84ee94a2684c48782ebdfdb033494bb7f338a22e7b',
 };
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));
