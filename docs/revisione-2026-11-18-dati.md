@@ -91,7 +91,7 @@ Il rilevamento per `rev` massimo e le sue eccezioni sono sostituiti da un invari
   - un salto di `rev` (`after.rev` > `before.rev` + 1) sostituisce le operazioni dello stesso profilo, con lo stesso `rev` di partenza e un `rev` in mezzo.
   - Test in `review-regressions.test.ts`, «operations written before `supersedes`».
 - **App più vecchie.** Un'app più vecchia legge un'operazione con `supersedes` e la segnala come `unknown-fields`. Il desktop va quindi in sola lettura (`newer-data`, «aggiorna l'app») appena qualcuno fa una scelta o una ripresa con l'app nuova. La CLI vecchia non guarda quel motivo: continua a usare il suo rilevamento per `rev` massimo, che vede la scelta nuova come pulita (il suo `rev` è sopra tutte le teste).
-- **`docs/schemas/operation.json`** ha il campo nuovo. L'impronta degli schemi include le operazioni, quindi `DATA_FORMAT` va alzato; in questo ramo non è alzato (vedi «Ruling»).
+- **`docs/schemas/operation.json`** ha il campo nuovo. L'impronta degli schemi include le operazioni, quindi `DATA_FORMAT` è passato da 2 a 3, con l'impronta nuova in `data-format.test.ts` (deciso da user1 il 18 novembre 2026).
 
 ### Cancello: property test modello
 
@@ -148,7 +148,7 @@ Il rilevamento per `rev` massimo e le sue eccezioni sono sostituiti da un invari
 
 - Un record con lo stesso `rev` del registro ma un contenuto diverso non si ripara più in automatico. Un crash tra registro e record lascia sempre il record a un `rev` più basso, mancante o troncato.
 - (Quinto giro) Una biforcazione è un record con più teste, qualunque sia il `rev`: sostituisce la regola del `rev` massimo.
-- (Quinto giro) `supersedes` cambia `docs/schemas/operation.json`, che fa parte dell'impronta degli schemi. Questo ramo non alza `DATA_FORMAT`, perché lo alza un altro ramo: finché non lo si alza con l'impronta nuova, il test dell'impronta in `data-format.test.ts` fallisce. Chi unisce i due rami ricalcola un'unica impronta per il numero nuovo.
+- (Quinto giro) `supersedes` cambia `docs/schemas/operation.json`, che fa parte dell'impronta degli schemi. `DATA_FORMAT` è quindi 3 (sì di user1 del 18 novembre 2026): un'app di formato 2 apre in sola lettura una cartella già alzata.
 - `raiseDataFormat` scrive `workspace.json` fuori dal registro, come fa `createWorkspace`. Due computer che lo alzano insieme scrivono lo stesso contenuto. Se Dropbox crea comunque una copia di conflitto, quella blocca la cartella (G2) finché non la si toglie.
 - Anche le letture (Excel, cruscotto) rifiutano con una copia di conflitto, perché fanno già il controllo `checkConsistency`.
 - Il ciclo end-to-end ha un fallimento in più rispetto al rapporto del revisore: l'annullo di `apartment.save` è rifiutato con `has-dependents`. Viene dalla #69 (riferimenti), non da questo ramo. Gli altri 6 fallimenti erano già su main.
