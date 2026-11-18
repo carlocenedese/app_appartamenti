@@ -10,7 +10,7 @@ import {
   writeRecord,
 } from '@bollette/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { TauriStore, pickFolder } from '../src/tauri-store';
+import { TauriStore, isTooBroadFolder, pickFolder } from '../src/tauri-store';
 import { MemoryFs } from './helpers/memory-fs';
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
@@ -354,6 +354,40 @@ describe('TauriStore with the engine', () => {
     };
     await store.writeJsonAtomic('_app/workspace.json', workspace);
     expect(await findWorkspace(store)).toEqual(workspace);
+  });
+});
+
+describe('isTooBroadFolder', () => {
+  it('refuses a root, a home folder and the folders that hold the homes', () => {
+    for (const folder of [
+      '/',
+      '~',
+      'C:\\',
+      'C:',
+      'd:/',
+      '/Users',
+      '/Users/user2',
+      '/Users/user2/',
+      '/home/user2',
+      '/root',
+      '/var/root',
+      'C:\\Users',
+      'C:\\Users\\user2\\',
+    ]) {
+      expect(isTooBroadFolder(folder), folder).toBe(true);
+    }
+  });
+
+  it('accepts a folder inside a home', () => {
+    for (const folder of [
+      '/Users/user2/Dropbox/Appartamenti',
+      '/home/user2/Dropbox',
+      'C:\\Users\\user2\\Dropbox\\Appartamenti',
+      'D:\\Bollette',
+      '/Volumes/Dati/Bollette',
+    ]) {
+      expect(isTooBroadFolder(folder), folder).toBe(false);
+    }
   });
 });
 

@@ -52,6 +52,25 @@ export async function pickFolder(): Promise<string | null> {
   return open({ directory: true, recursive: true, multiple: false });
 }
 
+/**
+ * True for a folder too broad to be the folder of a group: a root (`/`, `C:\`, `~`), a home
+ * folder (`/Users/<name>`, `/home/<name>`, `C:\Users\<name>`, `/root`) or a folder that holds the
+ * homes. The dialog has already added it to the file scope by then (persisted-scope keeps it):
+ * refusing it stops the app from using it; taking it out of the scope needs a Rust command.
+ * shortcut: the usual places only, by name; a home elsewhere (a renamed or network one) passes.
+ */
+export function isTooBroadFolder(folder: string): boolean {
+  const parts = folder.split(/[\\/]+/).filter((part) => part !== '');
+  if (parts.length === 0 || folder.trim() === '~') return true;
+  const drive = /^[A-Za-z]:$/.test(parts[0] ?? '');
+  const rest = drive ? parts.slice(1) : parts;
+  if (rest.length === 0) return true;
+  const top = (rest[0] ?? '').toLowerCase();
+  if (rest.length <= 2 && (top === 'users' || (!drive && top === 'home'))) return true;
+  const path = rest.join('/').toLowerCase();
+  return !drive && (path === 'root' || path === 'var/root');
+}
+
 const TEMP_PREFIX = '.tmp-';
 const BYTE_ORDER_MARK = '﻿';
 
