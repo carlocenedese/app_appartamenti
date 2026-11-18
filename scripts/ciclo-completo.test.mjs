@@ -1447,29 +1447,12 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     const failed = shared.undo
       .filter((u) => u.code !== 0 && u.kind !== 'apartment.save')
       .map((u) => u.kind);
-    expect([...new Set(failed)].sort()).toEqual([
-      'account.save',
-      'bank-profile.save',
-      'statement.resolve',
-      'supply.link',
-      'tenant.save',
-      'test.seed',
-    ]);
+    // statement.resolve (decidi) goes with its statement (`annulla --estratto`).
+    expect([...new Set(failed)].sort()).toEqual(['statement.resolve', 'test.seed']);
     expect(shared.initial).toEqual([]);
     expect(
       shared.afterUndo.map((r) => r.split('/')[0]).filter((kind) => kind !== 'apartment'),
-    ).toEqual([
-      'account',
-      'account',
-      'bankProfile',
-      'instalment',
-      'supply',
-      'supply',
-      'tenant',
-      'tenant',
-      'tenant',
-      'tenant',
-    ]);
+    ).toEqual(['instalment']);
     // The PDFs are back in Da_smistare, under the name the registration gave them (E13).
     const inbox = (folder) => readdirSync(join(dir, folder, 'Da_smistare')).sort();
     expect(inbox('Appartamento-A')).toEqual([

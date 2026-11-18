@@ -136,6 +136,9 @@ import {
   savePayable,
   setPayablePaid,
   undoBlockedBy,
+  undoDependents,
+  countByType,
+  referenceProblems,
   undoImport,
   undoOperation,
   ExtractionResultSchema,
@@ -148,7 +151,7 @@ import {
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = 60_000;
 
-const MESSAGES = {
+export const MESSAGES = {
   'bad-arguments': 'Argomenti non validi: vedere l’uso di «pnpm estratti».',
   'annualita-not-first-day':
     'Argomenti non validi: l’annualità comincia il giorno 1 di un mese (per esempio --annualita 10-01), perché i periodi di conguaglio sono a mesi interi.',
@@ -207,6 +210,18 @@ const MESSAGES = {
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
   'already-undone': 'Rifiutato: l’operazione è già stata annullata.',
   'has-dependents': 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
+  // Review of 18 Nov 2026 (annullo, U8): the creation of an apartment, a rule, a stay, an account...
+  'record-has-dependents':
+    'Rifiutato: dei record dipendono da ciò che questa operazione ha creato (conteggi per tipo in «counts»): annullarli prima.',
+  'rooms-in-use':
+    'Rifiutato: i posti («rooms») sono usati da presenze («tenancyIds»), anche passate: aggiungere il posto nuovo, spostare le presenze, poi togliere il vecchio.',
+  'apartment-unknown-room':
+    'Rifiutato: una presenza («tenancyIds») non indica un posto dell’appartamento: indicarlo prima di cambiare i posti.',
+  'apartment-beds-conflict':
+    'Rifiutato: con questi posti le presenze non entrano più («code», dal mese «month»).',
+  'tenancy-in-use':
+    'Rifiutato: la presenza ha pagamenti, recuperi o un contratto collegati («recordIds»): per un altro inquilino o appartamento creare una presenza nuova.',
+  'no-references': 'Nessun riferimento pendente.',
   'class-has-dependents':
     'Rifiutato: la classificazione automatica del movimento ha un recupero, un pagamento di tasse o una scadenza pagata: decidere prima se vale la bolletta o il recupero.',
   'movement-has-dependents':
@@ -511,6 +526,7 @@ const OPTIONS = {
   conferma: { type: 'boolean' },
   'periodo-conguaglio': { type: 'string', multiple: true },
   pagine: { type: 'string' },
+  'posti-nomi': { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -553,6 +569,12 @@ const RECONCILE_KINDS = [
   'tax.confirm',
   'tenant.card',
   'consumption.settings',
+  // Review of 18 Nov 2026 (annullo, point 1): an apartment created by mistake can be taken away,
+  // its account and supply first; `undoBlockedBy` refuses while records point at them.
+  'account.save',
+  'supply.link',
+  'tenant.save',
+  'bank-profile.save',
 ];
 
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
@@ -1465,12 +1487,34 @@ async function command(name, values, positionals, store, who, clock, newId) {
           'supplyCodes',
           v.codici === undefined ? undefined : v.codici.split(',').filter((c) => c !== ''),
         ),
+        // E19: the names of the beds, in their fixed order (one per bed, unique: the schema checks).
+        ...optional(
+          'rooms',
+          v['posti-nomi']?.split(',').map((r) => r.trim()),
+        ),
       },
       who,
       clock,
       newId,
       { confirmed: v.modifica === true },
     );
+    if (result.status === 'refused' && result.reason === 'rooms-in-use') {
+      throw new Stop('rejected', result.reason, {
+        rooms: result.rooms,
+        tenancyIds: result.tenancyIds,
+      });
+    }
+    if (result.status === 'refused' && result.reason === 'beds-conflict') {
+      throw new Stop('rejected', result.reason, {
+        message:
+          MESSAGES[
+            result.code === 'unknown-room' ? 'apartment-unknown-room' : 'apartment-beds-conflict'
+          ],
+        code: result.code,
+        ...optional('month', result.month),
+        tenancyIds: result.tenancyIds,
+      });
+    }
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
     return {
       status: result.status,
@@ -2130,6 +2174,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw new Stop('rejected', result.reason, {
         ...optional('code', result.code),
         ...optional('month', result.month),
+        // Review of 18 Nov 2026 (U4): the payments, recoveries and contracts on the stay (ids).
+        ...optional('recordIds', result.recordIds),
       });
     }
     return {
@@ -2748,6 +2794,15 @@ async function command(name, values, positionals, store, who, clock, newId) {
     // A cancellation whose movement has had another use since: undoing it would give a second one;
     // an imu.expected under an assigned F24 would change its rate (plan 3d).
     const recordIds = await undoBlockedBy(store, target.id);
+    // U8: records pointing at what the operation created, with the counts by kind (no names).
+    const created = recordIds.length > 0 ? await undoDependents(store, target.id) : [];
+    if (created.length > 0 && target.kind !== 'imu.expected') {
+      throw new Stop('rejected', 'has-dependents', {
+        message: MESSAGES['record-has-dependents'],
+        counts: countByType(created),
+        recordIds,
+      });
+    }
     if (recordIds.length > 0) {
       throw new Stop('rejected', 'has-dependents', {
         message:
@@ -2771,6 +2826,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
       throw error;
     }
+  }
+
+  // Review of 18 Nov 2026 (annullo, point 2): the live records pointing at a missing or deleted
+  // one; kinds, ids and the field only, never a value.
+  if (name === 'riferimenti') {
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    const problems = (await referenceProblems(store)).map(({ from, field, to }) => ({
+      from,
+      field,
+      to,
+      message: `${from.type} ${from.id}: ${field} punta a ${to.type} ${to.id}, che non c’è o è cancellato.`,
+    }));
+    return {
+      status: 'ok',
+      problems,
+      ...(problems.length === 0 ? { message: MESSAGES['no-references'] } : {}),
+    };
   }
 
   if (name === 'annulla-pagamento') {
@@ -2911,6 +2983,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'bolletta',
         'annulla-bolletta',
         'cruscotto',
+        'riferimenti',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -3094,6 +3167,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
           'esercizio-condominio',
           'differenza-condominio',
           'modifica',
+          'posti-nomi',
         ].map((option) => [option, ['appartamento']]),
       ),
       conguaglio: ['contratto', 'caparra-restituzione'],
