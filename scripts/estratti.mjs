@@ -107,6 +107,7 @@ import {
   saveCondoDocument,
   saveContact,
   saveTenantRecovery,
+  saveSupply,
   equalShares,
   saveContract,
   setContractRent,
@@ -222,6 +223,10 @@ export const MESSAGES = {
   'tenancy-in-use':
     'Rifiutato: la presenza ha pagamenti, recuperi o un contratto collegati («recordIds»): per un altro inquilino o appartamento creare una presenza nuova.',
   'no-references': 'Nessun riferimento pendente.',
+  'label-in-use':
+    'Rifiutato: un’utenza con questa etichetta esiste già con altri appartamenti o quote («supplyId»).',
+  'invalid-supply':
+    'Rifiutato: utenza non valida: etichetta vuota, o le quote degli appartamenti non fanno 100%.',
   'class-has-dependents':
     'Rifiutato: la classificazione automatica del movimento ha un recupero, un pagamento di tasse o una scadenza pagata: decidere prima se vale la bolletta o il recupero.',
   'movement-has-dependents':
@@ -527,6 +532,7 @@ const OPTIONS = {
   'periodo-conguaglio': { type: 'string', multiple: true },
   pagine: { type: 'string' },
   'posti-nomi': { type: 'string' },
+  ripartizione: { type: 'string' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -2828,6 +2834,42 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
   }
 
+  // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
+  // and the apartments it belongs to, `--appartamento` alone at 100% or `--ripartizione
+  // apt-a:60;apt-b:40` (percentages); undone with annulla-riconciliazione. Ids only in the output.
+  if (name === 'utenza') {
+    need(values, 'etichetta');
+    if (
+      positionals.length > 0 ||
+      (values.appartamento === undefined) === (values.ripartizione === undefined)
+    ) {
+      throw invalid('bad-arguments');
+    }
+    const rows =
+      values.ripartizione === undefined
+        ? [{ apartmentId: values.appartamento, basisPoints: 10000 }]
+        : values.ripartizione.split(';').map((part) => {
+            const found = /^([A-Za-z0-9_-]{1,64}):(.+)$/.exec(part);
+            if (found === null) throw invalid('bad-arguments');
+            return { apartmentId: found[1], basisPoints: basisPoints(found[2]) };
+          });
+    const result = await saveSupply(
+      store,
+      { label: values.etichetta.trim(), rows, note: '' },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') {
+      throw new Stop('rejected', result.reason, optional('supplyId', result.supplyId));
+    }
+    return {
+      status: result.status,
+      supplyId: result.supplyId,
+      ...optional('operationId', result.operationId),
+    };
+  }
+
   // Review of 18 Nov 2026 (annullo, point 2): the live records pointing at a missing or deleted
   // one; kinds, ids and the field only, never a value.
   if (name === 'riferimenti') {
@@ -2984,6 +3026,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'annulla-bolletta',
         'cruscotto',
         'riferimenti',
+        'utenza',
       ].includes(name ?? '')
     ) {
       throw invalid('bad-arguments');
@@ -3068,6 +3111,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'soglie-consumi',
         'bolletta',
         'contatti',
+        'utenza',
       ],
       voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
       inquilini: ['recupero'],
@@ -3124,6 +3168,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       codici: ['bolletta', 'appartamento'],
       conferma: ['bolletta'],
       'periodo-conguaglio': ['cruscotto'],
+      ripartizione: ['utenza'],
       pagine: ['annulla-bolletta'],
       scadenza: ['scadenza-nuova', 'scadenza-ripeti'],
       'ogni-anno': ['scadenza-nuova'],

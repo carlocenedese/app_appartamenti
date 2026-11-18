@@ -530,22 +530,14 @@ describe.sequential('ciclo completo con la CLI vera', () => {
         });
       }
 
-      // The supplies of the shared TARI: no command of the CLI writes them (finding), so the
-      // core function the desktop app uses, `linkSupply`.
+      // The supplies of the shared TARI (E5: the `utenza` command).
       const store = new FsStore(dir);
       for (const [label, apt] of [
         ['UTENZA-A', 'apt-a'],
         ['UTENZA-B', 'apt-b'],
       ]) {
-        await linkSupply(
-          store,
-          { label, rows: [{ apartmentId: apt, basisPoints: 10000 }], note: '' },
-          'cli',
-          () => clock,
-          newId,
-        );
+        await run('utenza', ['--etichetta', label, '--appartamento', apt]);
       }
-      notes.push('supply: linkSupply del core, nessun comando CLI');
       // The TARI notice of January–April 2026 shared by A and B (spec R3 example: 186,00 split
       // as 101,04 / 84,96 by the supplies 100,75 / 84,71).
       const tari = await pdfWithReading('Appartamento-A', 'tari-2026-1.pdf', {

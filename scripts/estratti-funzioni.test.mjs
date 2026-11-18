@@ -232,3 +232,35 @@ describe('messaggi dei codici nuovi', () => {
     }
   });
 });
+
+describe('utenza (E5)', () => {
+  it('collega, rilanciata non scrive, si annulla; quote che non fanno 100% rifiutate', async () => {
+    await apartment('apt-x');
+    await apartment('apt-y');
+    const r = await cli('utenza', '--etichetta', 'UTENZA-X', '--ripartizione', 'apt-x:60;apt-y:40');
+    expect(r.code, r.out).toBe(0);
+    expect(r.json).toMatchObject({ status: 'saved', supplyId: expect.any(String) });
+    const again = await cli(
+      'utenza',
+      '--etichetta',
+      'UTENZA-X',
+      '--ripartizione',
+      'apt-x:60;apt-y:40',
+    );
+    expect(again.json).toEqual({ status: 'unchanged', supplyId: r.json.supplyId });
+    const other = await cli('utenza', '--etichetta', 'utenza-x', '--appartamento', 'apt-x');
+    expect(other.json).toMatchObject({ reason: 'label-in-use', supplyId: r.json.supplyId });
+    expect(
+      (await cli('utenza', '--etichetta', 'U2', '--ripartizione', 'apt-x:60')).json.reason,
+    ).toBe('invalid-supply');
+    expect((await cli('utenza', '--etichetta', 'U2', '--appartamento', 'apt-z')).json.reason).toBe(
+      'unknown-apartment',
+    );
+    expect((await cli('utenza', '--etichetta', 'U2')).code).toBe(2);
+    expect(r.out).not.toMatch(/UTENZA/);
+    const u = await cli('annulla-riconciliazione', '--operazione', r.json.operationId);
+    expect(u.code, u.out).toBe(0);
+    const { records } = await loadAll(new FsStore(dir), 'supply', recordSchemas.supply);
+    expect(records).toEqual([]);
+  });
+});

@@ -15,6 +15,7 @@ import {
   readJournal,
   recordPath,
   removeSupply,
+  saveSupply,
   updateSupply,
 } from '../src/index';
 import type { SupplyDraft } from '../src/index';
@@ -292,5 +293,68 @@ describe('removeSupply and liveSupplies', () => {
     expect(after.checks.find((c) => c.code === 'unknown-part')?.severity).toBe('fail');
     expect(store.getRaw(recordPath('instalment', record.id))).toBe(stored);
     expect((await loadAll(store, 'instalment', InstalmentSchema)).records).toHaveLength(1);
+  });
+});
+
+describe('saveSupply (CLI, review of 18 Nov 2026, E5)', () => {
+  const apt = (id: string) => ({
+    id,
+    v: 1,
+    rev: 1,
+    name: `Appartamento ${id}`,
+    locatore: 'L',
+    posti: 2,
+    annualitaStart: { month: 10, day: 1 },
+  });
+  async function withApartments() {
+    const store = new MemoryStore();
+    for (const id of ['apt-b', 'apt-l']) {
+      await store.writeJsonAtomic(recordPath('apartment', id), apt(id));
+    }
+    return store;
+  }
+  it('links once; the same request again is unchanged; the same label otherwise is refused', async () => {
+    const store = await withApartments();
+    const first = await saveSupply(store, draft(), 'p1', clock, ids());
+    expect(first).toMatchObject({ status: 'saved', supplyId: 'id-1' });
+    expect(await saveSupply(store, draft(), 'p1', clock, ids('x'))).toEqual({
+      status: 'unchanged',
+      supplyId: 'id-1',
+    });
+    expect(
+      await saveSupply(
+        store,
+        draft({ label: 'berchet', rows: [{ apartmentId: 'apt-b', basisPoints: 10000 }] }),
+        'p1',
+        clock,
+        ids('y'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'label-in-use', supplyId: 'id-1' });
+    expect((await readJournal(store)).operations).toHaveLength(1);
+  });
+  it('refuses an unknown apartment and a draft that does not add up', async () => {
+    const store = await withApartments();
+    expect(
+      await saveSupply(
+        store,
+        draft({ rows: [{ apartmentId: 'apt-z', basisPoints: 10000 }] }),
+        'p1',
+        clock,
+        ids(),
+      ),
+    ).toEqual({ status: 'refused', reason: 'unknown-apartment' });
+    expect(
+      await saveSupply(
+        store,
+        draft({ rows: [{ apartmentId: 'apt-b', basisPoints: 9000 }] }),
+        'p1',
+        clock,
+        ids(),
+      ),
+    ).toEqual({ status: 'refused', reason: 'invalid-supply' });
+    expect(await saveSupply(store, draft({ label: ' ' }), 'p1', clock, ids())).toEqual({
+      status: 'refused',
+      reason: 'invalid-supply',
+    });
   });
 });
