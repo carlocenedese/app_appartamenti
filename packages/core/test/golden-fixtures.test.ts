@@ -23,7 +23,7 @@ const sum = (values: number[]): number => values.reduce((total, value) => total 
 describe('golden fixtures', () => {
   it('there is at least one, named <apartment>-<lease year>.json', () => {
     expect(files.length).toBeGreaterThan(0);
-    for (const name of files) expect(name).toMatch(/^[a-z]+-\d{4}-\d{2}\.json$/);
+    for (const name of files) expect(name).toMatch(/^[a-z]+(?:-[a-z]+)*-\d{4}-\d{2}\.json$/);
   });
 
   describe.each(files)('%s', (name) => {

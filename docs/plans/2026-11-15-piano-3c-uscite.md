@@ -24,7 +24,7 @@
 - Record con `id`, `v: 1`, `rev`, mai cancellati dal disco (`deleted`); campi nuovi dei record esistenti solo opzionali; nessuna migrazione. Le cartelle seguono le chiavi di `recordSchemas` (come `supplierProfile`): `_app/dati/movementClass/`, `movementRule/`, `transfer/`.
 - Ogni scrittura: `checkConsistency(store)` vuoto, altrimenti `inconsistent-store` e nulla scritto (R113); rieseguire una corsa sullo stesso stato non scrive nulla.
 - Nessun dato personale (nomi, IBAN, causali, importi) in messaggi d'errore, `summary`, proposte o uscita predefinita della riga di comando (R107); importi e date solo con `--dettagli`. Proposte con soli `id`, motivi costanti e categorie.
-- Fixture sintetiche, nomi inventati; nei file e nei commit solo `user1`/`user2`, nessun civico dopo il nome di un appartamento. IBAN solo dalla tabella di `fixtures/README.md`: conti propri Berchet `IT85X0542811101000000000301`, Lovarini `IT58X0542811101000000000302`, Pulci `IT52A9999999999000000000001`; fornitore inventato `IT04X0542811101000000000401` (aggiunto alla tabella con questo piano).
+- Fixture sintetiche, nomi inventati; nei file e nei commit solo `user1`/`user2`, nessun civico dopo il nome di un appartamento. IBAN solo dalla tabella di `fixtures/README.md`: conti propri Appartamento A `IT85X0542811101000000000301`, Appartamento B `IT58X0542811101000000000302`, Appartamento C `IT52A9999999999000000000001`; fornitore inventato `IT04X0542811101000000000401` (aggiunto alla tabella con questo piano).
 - Valori esatti dal disegno e dalle risposte:
   - finestra di abbinamento `{ daysBefore: 5, daysAfter: 10 }` (R30); gambe di un giroconto: stesso importo, segni opposti, `|daysBetween| <= 5`;
   - chiave della controparte = `payerKeyOf(tx.counterparty)` (`iban:` se l'IBAN è valido, altrimenti `name:`); regola valida = viva, stesso `accountId`, stessa `direction` (segno), stessa chiave, `validTo` assente o `>= date`; **l'importo non conta**; senza chiave nessuna regola (domanda 1);
@@ -34,7 +34,7 @@
 
 ## Da confermare con user1 prima del Task 9
 
-**Quali classificazioni entrano nel saldo.** Il disegno dice «le `movementClass` confermate». Raccomandazione: tutte le classificazioni vive non escluse con `apartmentId` diverso dall'appartamento del conto, **anche quelle automatiche** (nascono da una regola che user1 ha confermato), con quota `-tx.amount`: un'entrata classificata (rimborso) per un altro appartamento riduce quindi il suo debito. Esempio (inventato): regola «Associazione Esempio, conto di Berchet → altro, Lovarini»; l'addebito automatico di −40,00 € fa «Lovarini deve a Berchet 40,00 €»; un rimborso di +12,30 € classificato «utenze, Lovarini» sul conto di Berchet lo porta a 27,70 €. Il Task 9 riceve la regola come un filtro in un punto solo (`inBalance(cls)`): se user1 decide «solo le confermate a mano», cambia solo quel filtro (automatica = `ruleId` presente).
+**Quali classificazioni entrano nel saldo.** Il disegno dice «le `movementClass` confermate». Raccomandazione: tutte le classificazioni vive non escluse con `apartmentId` diverso dall'appartamento del conto, **anche quelle automatiche** (nascono da una regola che user1 ha confermato), con quota `-tx.amount`: un'entrata classificata (rimborso) per un altro appartamento riduce quindi il suo debito. Esempio (inventato): regola «Associazione Esempio, conto di Appartamento A → altro, Appartamento B»; l'addebito automatico di −40,00 € fa «Appartamento B deve a Appartamento A 40,00 €»; un rimborso di +12,30 € classificato «utenze, Appartamento B» sul conto di Appartamento A lo porta a 27,70 €. Il Task 9 riceve la regola come un filtro in un punto solo (`inBalance(cls)`): se user1 decide «solo le confermate a mano», cambia solo quel filtro (automatica = `ruleId` presente).
 
 ## Revisione mirata (Review Focus)
 
@@ -125,7 +125,7 @@
 
 ## Task 4: riconciliazione in fasi, una sola categoria, `undoImport`
 
-**Files:** Create `packages/core/src/reconcile.ts`, `fixtures/reconcile/tre-conti.json` (tre conti Berchet, Lovarini, Pulci con gli IBAN di prova, due estratti con un buco, bollette, rate, inquilini, un doppione, un giroconto, uscite verso il fornitore inventato); Modify `packages/core/src/income-store.ts`, `packages/core/src/statement-import.ts`, `packages/core/src/index.ts`, `scripts/estratti.mjs`, `fixtures/README.md` (la fixture), `docs/progress.md`; Test `packages/core/test/reconcile.test.ts`, `packages/core/test/statement-import.test.ts`, `scripts/estratti.test.mjs`.
+**Files:** Create `packages/core/src/reconcile.ts`, `fixtures/reconcile/tre-conti.json` (tre conti Appartamento A, Appartamento B, Appartamento C con gli IBAN di prova, due estratti con un buco, bollette, rate, inquilini, un doppione, un giroconto, uscite verso il fornitore inventato); Modify `packages/core/src/income-store.ts`, `packages/core/src/statement-import.ts`, `packages/core/src/index.ts`, `scripts/estratti.mjs`, `fixtures/README.md` (la fixture), `docs/progress.md`; Test `packages/core/test/reconcile.test.ts`, `packages/core/test/statement-import.test.ts`, `scripts/estratti.test.mjs`.
 
 **Interfaces:**
 
@@ -166,8 +166,8 @@
   - Estensioni: `movementUses` riceve `transfers` (`giroconto` per le due gambe); `excludeMovement` `has-dependents` include i `transfer` vivi; `runMatch` salta le gambe; `undoImport` `dependent-records` include i `transfer`; `runReconciliation` aggiunge la fase `transfers` dopo gli incassi.
 
 - [ ] **Step 1: test che falliscono** (Review Focus 3 e 4):
-  - −200,00 € dal conto di Lovarini il `2027-04-02` con l'IBAN di Berchet scritto `it85 x054 2811 1010 0000 0000 301`, +200,00 € su Berchet il `2027-04-07` → proposta `p-giro-<uscita>` con `legIds` = [entrata]; entrata il `2027-04-08` → `legIds: []`; due entrate candidate → `several-legs`; +200,00 € con lo stesso segno dell'uscita non è gamba; `2027-12-30` → `2028-01-03` è gamba;
-  - conferma `saldo` → un `transfer` con le due gambe; il mese dopo −150,00 € Lovarini → Berchet → automatico `saldo`; Berchet → Lovarini resta `new-pair`; con `rememberPair: false` il successivo non è automatico; due conferme con scopi diversi → `purpose-conflict`;
+  - −200,00 € dal conto di Appartamento B il `2027-04-02` con l'IBAN di Appartamento A scritto `it85 x054 2811 1010 0000 0000 301`, +200,00 € su Appartamento A il `2027-04-07` → proposta `p-giro-<uscita>` con `legIds` = [entrata]; entrata il `2027-04-08` → `legIds: []`; due entrate candidate → `several-legs`; +200,00 € con lo stesso segno dell'uscita non è gamba; `2027-12-30` → `2028-01-03` è gamba;
+  - conferma `saldo` → un `transfer` con le due gambe; il mese dopo −150,00 € Appartamento B → Appartamento A → automatico `saldo`; Appartamento A → Appartamento B resta `new-pair`; con `rememberPair: false` il successivo non è automatico; due conferme con scopi diversi → `purpose-conflict`;
   - un bonifico al fornitore (`IT04X0542811101000000000401`) o con IBAN dal controllo sbagliato non è mai giroconto; una sola gamba senza estratto dell'altro conto basta;
   - stato cambiato (gamba esclusa o legata a un altro `transfer` dopo la proposta) → `unknown-proposal`, nulla scritto (Review Focus 2);
   - `excludeMovement` su una gamba → `has-dependents` con `tr-<id>`; `recordManualTransfer` con lo stesso conto → `same-account`, con 0 → `invalid-amount`;
@@ -195,11 +195,11 @@
   - `runReconciliation` aggiunge la fase `outgoing` dopo i giroconti e toglie da `income.proposals` quelle dei movimenti classificati nella stessa corsa.
 
 - [ ] **Step 1: test che falliscono** (gli esempi delle domande 1, 2, 7, 8):
-  - conferma «controparte con l'IBAN del fornitore, conto di Berchet → `altro`, Berchet» per −40,00 € → `mc-` e `rule-`; l'anno dopo −42,00 € sullo stesso conto → automatico con `ruleId`; lo stesso addebito sul conto di Pulci → `new-counterparty`;
+  - conferma «controparte con l'IBAN del fornitore, conto di Appartamento A → `altro`, Appartamento A» per −40,00 € → `mc-` e `rule-`; l'anno dopo −42,00 € sullo stesso conto → automatico con `ruleId`; lo stesso addebito sul conto di Appartamento C → `new-counterparty`;
   - `rememberRule: false` → nessuna regola; senza controparte → `no-counterparty` e nessuna regola anche con `rememberRule`; nome di soli spazi → `no-counterparty` (Review Focus 4);
   - due regole valide con categorie diverse → `rule-conflict`, nessun automatico;
   - `cancelAutomaticClass` → alla corsa dopo `undone`, mai automatico; annullata l'intera `outgoing.reconcile` → automatico di nuovo; annullato il `cancel-auto` → la classificazione torna viva (Review Focus 5); annullata una conferma → anche la regola cancellata;
-  - rimborso +12,30 € con l'IBAN del fornitore e nessun `payer`: `p-chi-` degli incassi; `confirmOutgoing` con quella proposta, `utenze`, Pulci → regola `in`; il rimborso dopo +8,10 € → automatico e senza `p-chi-` nell'uscita di `runReconciliation`; un'entrata da un IBAN con `payer` non è mai classificata; una regola `in` con chiave `name:` è rifiutata dallo schema;
+  - rimborso +12,30 € con l'IBAN del fornitore e nessun `payer`: `p-chi-` degli incassi; `confirmOutgoing` con quella proposta, `utenze`, Appartamento C → regola `in`; il rimborso dopo +8,10 € → automatico e senza `p-chi-` nell'uscita di `runReconciliation`; un'entrata da un IBAN con `payer` non è mai classificata; una regola `in` con chiave `name:` è rifiutata dallo schema;
   - «ADDEBITO DIRETTO ENEL» con una bolletta Enel registrata altrove → `suggestedKind: 'utenze'`; «BONIFICO A ROSSI IDRAULICO» → nessun suggerimento;
   - classificato `utenze` senza bolletta → in `missingDocument`; nessun record del conguaglio cambia;
   - stato cambiato tra proposta e conferma → `unknown-proposal` (Review Focus 2); `apartmentId` inesistente → `unknown-apartment`;
@@ -225,7 +225,7 @@
 - [ ] **Step 1: test che falliscono.**
   - `BankProfileSchema` rifiuta un `f24Pattern` non sicuro (per esempio `(a+)+`) e accetta `^PAGAMENTO F24\b`;
   - «PAGAMENTO F24 DELEGA 0001» −67,00 € → `p-f24-` con `suggestedKind: 'tasse'`; con una regola valida per la sua controparte → ancora `p-f24-` e nessun automatico; senza `f24Pattern` → `p-uscita-`;
-  - conferma con `f24: true`, `tasse`, Lovarini sul conto di Berchet → `mc-` con `f24: true` e `apartmentId` Lovarini, nessuna regola; con `f24: true` e `altro` → `f24-not-tasse`, nulla scritto;
+  - conferma con `f24: true`, `tasse`, Appartamento B sul conto di Appartamento A → `mc-` con `f24: true` e `apartmentId` Appartamento B, nessuna regola; con `f24: true` e `altro` → `f24-not-tasse`, nulla scritto;
   - una `p-uscita-` confermata a mano con `f24: true` vale come F24.
 - [ ] **Step 2:** `pnpm test -- statement-bank-profile outgoing` fallisce.
 - [ ] **Step 3: implementare**; `pnpm schemas:export`; scrivere la prossima R libera (F24 sempre proposta, domanda 5, testo vero della causale non verificato).
@@ -264,10 +264,10 @@ Parte solo dopo la risposta di user1 su «Da confermare con user1 prima del Task
   - `loadAccountBalances(store): Promise<LoadAccountBalancesResult>` (`{ status: 'computed', ...saldo }` oppure `{ status: 'refused', reason: 'inconsistent-store' }`): legge i record e gli `assumed` di `planMatch` (lo stesso calcolo di `runMatch` con `dryRun`); non scrive.
 
 - [ ] **Step 1: test che falliscono** (l'esempio del disegno):
-  - dal conto di Berchet: quota di Lovarini della TARI comune 8496, rata condominiale di Lovarini di 30000 con commissione 80, uscita al fornitore di −5000 classificata `altro` per Berchet; da Lovarini a Berchet un `transfer` `saldo` di 20000 → una coppia `{ creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', amount: 18576 }` con quattro voci (8496, 30000, 80, −20000); l'uscita al fornitore non c'è;
-  - un `transfer` `saldo` da Berchet a Lovarini di 5000 porta il netto a 23576; uno `mutuo` non conta; uno tra due conti dello stesso appartamento non conta;
-  - F24 di 6700 di Lovarini pagato da Berchet → +6700; F24 di Berchet sul suo conto → in `toSplit`, netto invariato;
-  - rata di Lovarini presunta (nessun estratto di Berchet per quel mese) → in `unverified`, netto invariato;
+  - dal conto di Appartamento A: quota di Appartamento B della TARI comune 8496, rata condominiale di Appartamento B di 30000 con commissione 80, uscita al fornitore di −5000 classificata `altro` per Appartamento A; da Appartamento B a Appartamento A un `transfer` `saldo` di 20000 → una coppia `{ creditorApartmentId: 'app-a', debtorApartmentId: 'app-b', amount: 18576 }` con quattro voci (8496, 30000, 80, −20000); l'uscita al fornitore non c'è;
+  - un `transfer` `saldo` da Appartamento A a Appartamento B di 5000 porta il netto a 23576; uno `mutuo` non conta; uno tra due conti dello stesso appartamento non conta;
+  - F24 di 6700 di Appartamento B pagato da Appartamento A → +6700; F24 di Appartamento A sul suo conto → in `toSplit`, netto invariato;
+  - rata di Appartamento B presunta (nessun estratto di Appartamento A per quel mese) → in `unverified`, netto invariato;
   - classificazione `escluso` o cancellata, `BillMatch` non confermato, `Payment` di un inquilino: nessuna voce;
   - ingresso mescolato → stesso risultato (`toEqual`).
 - [ ] **Step 2:** `pnpm test -- balances` fallisce.

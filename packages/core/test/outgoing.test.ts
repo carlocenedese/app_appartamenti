@@ -18,8 +18,8 @@ import {
 import type { MovementRule } from '../src/index';
 
 // Synthetic records only: the own accounts and the invented supplier of fixtures/README.md.
-const BERCHET = 'IT85X0542811101000000000301';
-const PULCI = 'IT52A9999999999000000000001';
+const APT_A = 'IT85X0542811101000000000301';
+const APT_C = 'IT52A9999999999000000000001';
 const SUPPLIER = 'IT04X0542811101000000000401';
 /** The IBAN of the supplier with a check digit changed: not valid, so the name is the key. */
 const WRONG_CHECK = SUPPLIER.replace('IT04', 'IT05');
@@ -28,19 +28,19 @@ const base = { v: 1, rev: 1 };
 const accounts = [
   AccountSchema.parse({
     ...base,
-    id: 'acc-berchet',
-    apartmentId: 'berchet',
+    id: 'acc-app-a',
+    apartmentId: 'app-a',
     label: 'Conto',
     bankProfileId: 'bp',
-    iban: BERCHET,
+    iban: APT_A,
   }),
   AccountSchema.parse({
     ...base,
-    id: 'acc-pulci',
-    apartmentId: 'pulci',
+    id: 'acc-app-c',
+    apartmentId: 'app-c',
     label: 'Conto',
     bankProfileId: 'bp',
-    iban: PULCI,
+    iban: APT_C,
   }),
 ];
 const tx = (
@@ -52,8 +52,8 @@ const tx = (
   BankTransactionSchema.parse({
     ...base,
     id,
-    apartmentId: 'berchet',
-    accountId: 'acc-berchet',
+    apartmentId: 'app-a',
+    accountId: 'acc-app-a',
     date: '2028-02-10',
     amount,
     description: 'BONIFICO',
@@ -67,10 +67,10 @@ const rule = (id: string, extra: Partial<Record<keyof MovementRule, unknown>> = 
     ...base,
     id,
     direction: 'out',
-    accountId: 'acc-berchet',
+    accountId: 'acc-app-a',
     key: `iban:${SUPPLIER}`,
     kind: 'altro',
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     ...extra,
   });
 
@@ -110,13 +110,13 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
     const result = run({
       transactions: [
         tx('b', -4200, supplier),
-        tx('p', -4200, supplier, { accountId: 'acc-pulci', apartmentId: 'pulci' }),
+        tx('p', -4200, supplier, { accountId: 'acc-app-c', apartmentId: 'app-c' }),
       ],
       rules: [rule('rule-a')],
     });
     expect(result).toEqual({
       classes: [
-        { id: 'mc-b', transactionId: 'b', kind: 'altro', apartmentId: 'berchet', ruleId: 'rule-a' },
+        { id: 'mc-b', transactionId: 'b', kind: 'altro', apartmentId: 'app-a', ruleId: 'rule-a' },
       ],
       proposals: [
         { id: 'p-uscita-p', transactionId: 'p', step: 'uscita', reason: 'new-counterparty' },
@@ -164,14 +164,14 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
         id: 'mc-spaced',
         transactionId: 'spaced',
         kind: 'altro',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         ruleId: 'rule-iban',
       },
       {
         id: 'mc-wrong',
         transactionId: 'wrong',
         kind: 'utenze',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         ruleId: 'rule-name',
       },
     ]);
@@ -191,10 +191,10 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
       missingDocument: [],
     });
     expect(
-      run({ transactions: t, rules: [rule('r1', { apartmentId: 'pulci' }), rule('r2')] }).proposals,
+      run({ transactions: t, rules: [rule('r1', { apartmentId: 'app-c' }), rule('r2')] }).proposals,
     ).toEqual([{ id: 'p-uscita-b', transactionId: 'b', step: 'uscita', reason: 'rule-conflict' }]);
     expect(run({ transactions: t, rules: [rule('r2'), rule('r1')] }).classes).toEqual([
-      { id: 'mc-b', transactionId: 'b', kind: 'altro', apartmentId: 'berchet', ruleId: 'r1' },
+      { id: 'mc-b', transactionId: 'b', kind: 'altro', apartmentId: 'app-a', ruleId: 'r1' },
     ]);
   });
 
@@ -205,7 +205,7 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
         tx('gone', -4000, supplier, { deleted: true }),
         tx('zero', 0, supplier),
         tx('noacc', -4000, supplier, { accountId: undefined }),
-        tx('other', -4000, supplier, { accountId: 'acc-lovarini' }),
+        tx('other', -4000, supplier, { accountId: 'acc-app-b' }),
       ],
       used: new Set(['used']),
     });
@@ -221,10 +221,10 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
       validFrom: '2028-01-01',
       source: 'confirmed',
     });
-    const inRule = rule('rule-in', { direction: 'in', kind: 'utenze', apartmentId: 'pulci' });
+    const inRule = rule('rule-in', { direction: 'in', kind: 'utenze', apartmentId: 'app-c' });
     const refund = [tx('r', 810, supplier)];
     expect(run({ transactions: refund, rules: [inRule] }).classes).toEqual([
-      { id: 'mc-r', transactionId: 'r', kind: 'utenze', apartmentId: 'pulci', ruleId: 'rule-in' },
+      { id: 'mc-r', transactionId: 'r', kind: 'utenze', apartmentId: 'app-c', ruleId: 'rule-in' },
     ]);
     // A payer with that key: the movement is the income's, never classified.
     expect(run({ transactions: refund, rules: [inRule], payers: [payer] })).toEqual({
@@ -263,7 +263,7 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
     const bill = BillSchema.parse({
       ...base,
       id: 'bill-enel',
-      apartmentId: 'lovarini',
+      apartmentId: 'app-b',
       category: 'elettricita',
       supplier: 'Enel',
       periodStart: '2027-11-01',
@@ -313,7 +313,7 @@ describe('reconcileOutgoing (plan 3c, task 6)', () => {
         id: `mc-${id}`,
         transactionId: id,
         kind,
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         ...extra,
       });
     const match = (transactionId: string, extra = {}) =>
@@ -468,17 +468,17 @@ describe('F24 (plan 3c, task 7, decision 5)', () => {
       ImuRuleSchema.parse({
         ...base,
         id: 'imur-x',
-        accountId: 'acc-berchet',
+        accountId: 'acc-app-a',
         key: `iban:${SUPPLIER}`,
-        f24Group: 'berchet-lovarini',
+        f24Group: 'app-a-app-b',
         ...extra,
       });
     const year = ImuYearSchema.parse({
       ...base,
-      id: 'imu-berchet-2028',
-      apartmentId: 'berchet',
+      id: 'imu-app-a-2028',
+      apartmentId: 'app-a',
       year: '2028',
-      f24Group: 'berchet-lovarini',
+      f24Group: 'app-a-app-b',
       rates: [{ index: 1 }, { index: 2 }],
     });
     const paid = MovementClassSchema.parse({
@@ -486,27 +486,27 @@ describe('F24 (plan 3c, task 7, decision 5)', () => {
       id: 'mc-old',
       transactionId: 'old',
       kind: 'tasse',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       f24: true,
-      imu: { f24Group: 'berchet-lovarini', year: '2028', rateIndex: 1 },
+      imu: { f24Group: 'app-a-app-b', year: '2028', rateIndex: 1 },
     });
     const old = tx('old', -6700, undefined, { description: 'PAGAMENTO F24 X', date: '2028-01-10' });
     const suggestion = (over: Partial<Parameters<typeof reconcileOutgoing>[0]>) =>
       run({ transactions: [f24], bankProfiles: [profile], ...over }).proposals[0]?.imuSuggestion;
     expect(suggestion({ imuRules: [imuRule()], imuYears: [year] })).toEqual({
-      f24Group: 'berchet-lovarini',
+      f24Group: 'app-a-app-b',
       year: '2028',
       rateIndex: 1,
     });
     // Rate 1 paid: rate 2. Every rate paid or no year: the group only.
     const more = { transactions: [f24, old], classes: [paid], imuRules: [imuRule()] };
     expect(suggestion({ ...more, imuYears: [year] })).toMatchObject({ rateIndex: 2 });
-    expect(suggestion({ imuRules: [imuRule()] })).toEqual({ f24Group: 'berchet-lovarini' });
+    expect(suggestion({ imuRules: [imuRule()] })).toEqual({ f24Group: 'app-a-app-b' });
     // Another key, another account, out of its dates, deleted, or two groups: none.
     for (const rules of [
       [imuRule({ key: 'name:altro' })],
       [imuRule({ key: undefined })],
-      [imuRule({ accountId: 'acc-pulci' })],
+      [imuRule({ accountId: 'acc-app-c' })],
       [imuRule({ validTo: '2028-02-09' })],
       [imuRule({ validFrom: '2028-02-11' })],
       [imuRule({ deleted: true })],
@@ -522,7 +522,7 @@ describe('F24 (plan 3c, task 7, decision 5)', () => {
         bankProfiles: [profile],
         imuRules: [imuRule({ key: undefined })],
       }).proposals[0]?.imuSuggestion,
-    ).toEqual({ f24Group: 'berchet-lovarini' });
+    ).toEqual({ f24Group: 'app-a-app-b' });
     // Never a class.
     expect(
       run({ transactions: [f24], bankProfiles: [profile], imuRules: [imuRule()] }).classes,

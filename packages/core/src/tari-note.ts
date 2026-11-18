@@ -1,6 +1,6 @@
 /**
  * The note written next to every TARI notice (section 42, R3): it explains which months the notice
- * is assigned to, which debit paid it and, for the common notice of Berchet and Lovarini, how the
+ * is assigned to, which debit paid it and, for the common notice of Appartamento A and Appartamento B, how the
  * debit is split between the supplies and what one account owes the other. The text is Italian.
  */
 import type { BankTransaction } from './model';

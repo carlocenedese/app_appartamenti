@@ -51,7 +51,7 @@ termini del dominio: va aggiornata quando ne compare uno nuovo, prima di usarlo 
 | rata                               | instalment                                                       | rata del condominio o del conguaglio                                                 |
 | preventivo                         | budget                                                           | preventivo del condominio                                                            |
 | consuntivo, bilancio               | final accounts                                                   | bilancio del condominio                                                              |
-| esercizio condominiale             | condominium fiscal year                                          | Berchet e Pulci da ottobre, Lovarini da maggio                                       |
+| esercizio condominiale             | condominium fiscal year                                          | Appartamento A e Appartamento C da ottobre, Appartamento B da maggio                 |
 | TARI                               | waste tax (TARI)                                                 | anno solare                                                                          |
 | quota di proprietà                 | owner's share                                                    | parte delle spese condominiali a carico del proprietario                             |
 | straordinaria                      | extraordinary                                                    | spesa condominiale straordinaria                                                     |

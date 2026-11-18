@@ -30,7 +30,7 @@ saldo tra conti.
    quell'inquilino e importo esattamente affitto + forfait del mese); tutto il resto «da rivedere»
    con il più probabile in cima e **senza punteggio**. La conferma si chiede **una sola volta per
    associazione** (apprendimento supervisionato, sezione 15).
-4. **IMU di Berchet e Lovarini:** user1 risponde il 15 novembre su come ripartirla. Domanda aperta,
+4. **IMU di Appartamento A e Appartamento B:** user1 risponde il 15 novembre su come ripartirla. Domanda aperta,
    parte isolata nel sotto-piano 3d, l'ultimo.
 
 ### Risposte alle domande del disegno (14 novembre 2026)
@@ -129,7 +129,7 @@ I numeri sono quelli delle domande della bozza.
 - `matchToTransactions` (`match.ts`): abbinamento esatto uno a uno per componenti connesse (R15),
   fornitore nella causale o proposta (R27), avvisi comuni (R28), proposte d'importo diverso,
   presunti (R17, R21), commissioni (`commission.ts`, R7, R20). **`statementPeriods` non dice di
-  quale conto è un periodo**: un estratto di Berchet fa considerare «coperte» anche le voci di Pulci,
+  quale conto è un periodo**: un estratto di Appartamento A fa considerare «coperte» anche le voci di Appartamento C,
   che restano in attesa invece di essere presunte. Va corretto in 3a.
 - `Payment` con `kind` (`canone`, `conguaglio`, `caparra`, `altro`), `confirmed`, `source`,
   `transactionId`, `forMonth`; `collectedForfait` (`conguaglio.ts`) imputa prima all'affitto, poi al
@@ -330,9 +330,9 @@ l'estratto. Rieseguirla su uno stato già riconciliato non scrive nulla.
   destinazione diversa dal conto; meno i `transfer` con scopo `saldo`, ciascuno col suo segno: un
   giroconto nel verso opposto aumenta il debito (risposta 9). Un `transfer` lega solo movimenti
   tra conti propri; la proposta dei due movimenti (stesso importo, segni opposti, entro 5 giorni) si
-  conferma, con lo scopo, la prima volta. Risultato netto per coppia («Lovarini deve a Berchet X»),
+  conferma, con lo scopo, la prima volta. Risultato netto per coppia («Appartamento B deve a Appartamento A X»),
   mai una percentuale fissa.
-- **IMU di Berchet e Lovarini:** fino al sotto-piano 3d un F24 IMU con una riga sola resta tutto sul
+- **IMU di Appartamento A e Appartamento B:** fino al sotto-piano 3d un F24 IMU con una riga sola resta tutto sul
   conto che l'ha pagato e porta l'avviso «da ripartire»; il saldo tra conti lo elenca a parte, senza
   importo, così nessun saldo appare giusto quando non lo è.
 
@@ -352,8 +352,8 @@ e profilo utente passati come opzioni (come il core).
 | --- | --- | --- |
 | **3a. Conti ed estratti** | `account`, `bankProfile` seed (dall'uscita dello strumento di struttura, risposta 15), `statement`; tabella da CSV (core) e XLSX (Python, sola libreria standard); `accountId` e nuova identità; periodo dal file o da user1; importazione con doppioni, sovrapposizioni e non contabilizzati in revisione; `statementPeriods` per conto; comando `importa` | lo stesso file sintetico importato due volte lascia l'archivio identico byte per byte e la seconda volta non scrive nulla; due file sovrapposti danno l'unione senza doppioni; un estratto senza periodo dichiarato e senza `--dal`/`--al` non scrive nulla; un non contabilizzato non si esclude senza conferma; un estratto di un conto non cambia le voci presunte di un altro conto |
 | **3b. Inquilini, paganti e incassi** | `tenant`, `payer`; fasi «chi» e «che cosa» delle entrate; R4 stretto con `rentLateDays`; proposte ordinate; `Payment` da movimento; comandi `riconcilia` e `conferma` | su una fixture di un anno: gli automatici sono esattamente quelli attesi; dopo **una** conferma del pagante i mesi successivi con importo esatto sono automatici e nessuna domanda «chi è» si ripete; un ritardo di 10 giorni è automatico, uno di 11 va in revisione (e con la soglia cambiata cambia il confine); un pagante di due inquilini non è mai automatico; `collectedForfait` sui pagamenti creati dà i valori attesi; ordine dell'ingresso mescolato, stesso risultato |
-| **3c. Uscite, F24 e saldo tra conti** | `movementClass`, `movementRule`, `f24`, `transfer`; uscite e entrate rimaste; `accountBalances`; comando `saldi` | fixture con TARI comune, rata di Lovarini pagata da Berchet, F24 a due righe, un giroconto e un bonifico a un fornitore: saldo netto della coppia uguale al valore atteso, con l'elenco delle voci; il bonifico al fornitore non entra nel saldo; ogni movimento è in una sola categoria (abbinato, pagamento, classificato, da rivedere) |
-| **3d. IMU di Berchet e Lovarini** | solo la ripartizione dell'F24 IMU tra i due appartamenti, secondo la risposta di user1 del 15 novembre; correzione di R3 nella sezione 42 | l'esempio di user1 (inventato) ripartito come lui indica, resti con la regola già in uso (R3 dei Ruling); nessun avviso «da ripartire» rimasto |
+| **3c. Uscite, F24 e saldo tra conti** | `movementClass`, `movementRule`, `f24`, `transfer`; uscite e entrate rimaste; `accountBalances`; comando `saldi` | fixture con TARI comune, rata di Appartamento B pagata da Appartamento A, F24 a due righe, un giroconto e un bonifico a un fornitore: saldo netto della coppia uguale al valore atteso, con l'elenco delle voci; il bonifico al fornitore non entra nel saldo; ogni movimento è in una sola categoria (abbinato, pagamento, classificato, da rivedere) |
+| **3d. IMU di Appartamento A e Appartamento B** | solo la ripartizione dell'F24 IMU tra i due appartamenti, secondo la risposta di user1 del 15 novembre; correzione di R3 nella sezione 42 | l'esempio di user1 (inventato) ripartito come lui indica, resti con la regola già in uso (R3 dei Ruling); nessun avviso «da ripartire» rimasto |
 
 Ordine: 3a, 3b, 3c, 3d. **3a si può eseguire subito**: non dipende dalla domanda IMU. Il profilo
 seed della banca aspetta solo l'uscita dello strumento di struttura, che user1 lancia; fino ad
@@ -472,7 +472,7 @@ seed della banca (cartella dei seed esistente o una nuova); ordine dei campi nei
 
 ## Aperto con user1
 
-1. **IMU di Berchet e Lovarini** (risposta attesa il 15 novembre; regola di calcolo, decide user1;
+1. **IMU di Appartamento A e Appartamento B** (risposta attesa il 15 novembre; regola di calcolo, decide user1;
    sotto-piano 3d, l'ultimo, l'unico che ne dipende). La mia raccomandazione: si ripartisce dalle
    righe dell'F24 per immobile quando sono separate. Se l'F24 ha una riga sola per i due immobili,
    si usano le quote del prospetto di calcolo del commercialista, inserite una volta in punti base

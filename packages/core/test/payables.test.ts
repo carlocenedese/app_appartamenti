@@ -26,9 +26,9 @@ const apartment = (id: string, locatore: string) =>
     annualitaStart: { month: 10, day: 1 },
   });
 const apartments = [
-  apartment('berchet', 'Locatore Uno'),
-  apartment('lovarini', 'Locatore Uno'),
-  apartment('pulci', 'Locatore Due'),
+  apartment('app-a', 'Locatore Uno'),
+  apartment('app-b', 'Locatore Uno'),
+  apartment('app-c', 'Locatore Due'),
 ];
 const imuYear = (apartmentId: string, rates: unknown[]) =>
   recordSchemas.imuYear.parse({
@@ -36,14 +36,14 @@ const imuYear = (apartmentId: string, rates: unknown[]) =>
     id: `imu-${apartmentId}-2026`,
     apartmentId,
     year: '2026',
-    f24Group: apartmentId === 'pulci' ? 'pulci' : 'bl',
+    f24Group: apartmentId === 'app-c' ? 'app-c' : 'bl',
     rates,
   });
 const tx = (id: string, amount: number, date = '2026-06-15') =>
   recordSchemas.transaction.parse({
     ...base,
     id,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     date,
     amount,
     description: 'x',
@@ -55,7 +55,7 @@ const f24Class = (transactionId: string, rateIndex: number, extra: object = {}) 
     id: `mc-${transactionId}`,
     transactionId,
     kind: 'tasse',
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     f24: true,
     imu: { f24Group: 'bl', year: '2026', rateIndex },
     ...extra,
@@ -64,7 +64,7 @@ const instalment = (id: string, extra: object = {}) =>
   recordSchemas.instalment.parse({
     ...base,
     id,
-    apartmentId: 'lovarini',
+    apartmentId: 'app-b',
     kind: 'condominio',
     esercizio: '2026',
     rateIndex: 1,
@@ -95,7 +95,7 @@ const payable = (id: string, extra: object = {}) =>
   recordSchemas.payable.parse({
     ...base,
     id,
-    apartmentId: 'pulci',
+    apartmentId: 'app-c',
     kind: 'registro',
     dueDate: '2026-11-16',
     ...extra,
@@ -104,7 +104,7 @@ const contract = (id: string, end: string) =>
   recordSchemas.contract.parse({
     ...base,
     id,
-    apartmentId: 'pulci',
+    apartmentId: 'app-c',
     type: '3+2',
     start: '2022-10',
     end,
@@ -156,23 +156,23 @@ describe('scadenzario (plan 9, task 2)', () => {
     const { items } = scadenzario({
       ...empty,
       imuYears: [
-        imuYear('berchet', [
+        imuYear('app-a', [
           { index: 1, expected: 40000, dueDate: '2026-06-16' },
           { index: 2, expected: 40000, dueDate: '2026-12-16' },
         ]),
-        imuYear('lovarini', [
+        imuYear('app-b', [
           { index: 1, expected: 60000, dueDate: '2026-06-16' },
           { index: 2, expected: 60000, dueDate: '2026-12-16' },
         ]),
-        imuYear('pulci', [{ index: 1 }]),
+        imuYear('app-c', [{ index: 1 }]),
       ],
       transactions: [tx('t1', -100000), tx('t2', -150000), tx('t3', -5000)],
       classes: [
         f24Class('t1', 1),
         f24Class('t2', 2),
         f24Class('t3', 1, {
-          apartmentId: 'pulci',
-          imu: { f24Group: 'pulci', year: '2026', rateIndex: 1 },
+          apartmentId: 'app-c',
+          imu: { f24Group: 'app-c', year: '2026', rateIndex: 1 },
         }),
       ],
     });
@@ -181,7 +181,7 @@ describe('scadenzario (plan 9, task 2)', () => {
         source: 'imu',
         id: 'bl/2026/1',
         kind: 'imu',
-        apartmentIds: ['berchet', 'lovarini'],
+        apartmentIds: ['app-a', 'app-b'],
         taxpayers: ['Locatore Uno'],
         dueDate: '2026-06-16',
         expected: 100000,
@@ -193,7 +193,7 @@ describe('scadenzario (plan 9, task 2)', () => {
         source: 'imu',
         id: 'bl/2026/2',
         kind: 'imu',
-        apartmentIds: ['berchet', 'lovarini'],
+        apartmentIds: ['app-a', 'app-b'],
         taxpayers: ['Locatore Uno'],
         dueDate: '2026-12-16',
         expected: 100000,
@@ -203,9 +203,9 @@ describe('scadenzario (plan 9, task 2)', () => {
       },
       {
         source: 'imu',
-        id: 'pulci/2026/1',
+        id: 'app-c/2026/1',
         kind: 'imu',
-        apartmentIds: ['pulci'],
+        apartmentIds: ['app-c'],
         taxpayers: ['Locatore Due'],
         state: 'da-pagare',
         check: 'importo-mancante',
@@ -244,10 +244,10 @@ describe('scadenzario (plan 9, task 2)', () => {
       instalments: [
         instalment('i-in', { dueDate: '2026-03-31' }),
         instalment('i-out', { dueDate: '2026-06-30' }),
-        instalment('i-other', { dueDate: '2026-03-31', paidFromApartmentId: 'berchet' }),
+        instalment('i-other', { dueDate: '2026-03-31', paidFromApartmentId: 'app-a' }),
       ],
       statementPeriods: [
-        { apartmentId: 'lovarini', from: isoDate('2026-01-01'), to: isoDate('2026-03-31') },
+        { apartmentId: 'app-b', from: isoDate('2026-01-01'), to: isoDate('2026-03-31') },
       ],
     });
     expect(items.map((i) => [i.id, i.state, i.check])).toEqual([
@@ -281,7 +281,7 @@ describe('scadenzario (plan 9, task 2)', () => {
           id: 'mc-t1',
           transactionId: 't1',
           kind: 'tasse',
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
         }),
         recordSchemas.movementClass.parse({
           ...base,
@@ -296,7 +296,7 @@ describe('scadenzario (plan 9, task 2)', () => {
           id: 'mc-t-missing',
           transactionId: 't-missing',
           kind: 'tasse',
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
         }),
       ],
       payables: [
@@ -338,16 +338,16 @@ describe('scadenzario (plan 9, task 2)', () => {
   it('sorts by due date (none last), then source and id', () => {
     const { items } = scadenzario({
       ...empty,
-      imuYears: [imuYear('pulci', [{ index: 1 }, { index: 2, dueDate: '2026-11-16' }])],
+      imuYears: [imuYear('app-c', [{ index: 1 }, { index: 2, dueDate: '2026-11-16' }])],
       instalments: [instalment('i1', { dueDate: '2026-11-16' })],
       payables: [payable('scad-z', { dueDate: '2026-01-01' }), payable('scad-a')],
     });
     expect(items.map((i) => i.id)).toEqual([
       'scad-z',
-      'pulci/2026/2',
+      'app-c/2026/2',
       'i1',
       'scad-a',
-      'pulci/2026/1',
+      'app-c/2026/1',
     ]);
   });
 
@@ -362,8 +362,8 @@ describe('scadenzario (plan 9, task 2)', () => {
       ],
     });
     expect(contractEnds).toEqual([
-      { contractId: 'c-now', apartmentId: 'pulci', end: '2026-11' },
-      { contractId: 'c-later', apartmentId: 'pulci', end: '2027-09' },
+      { contractId: 'c-now', apartmentId: 'app-c', end: '2026-11' },
+      { contractId: 'c-later', apartmentId: 'app-c', end: '2027-09' },
     ]);
   });
 });
@@ -380,8 +380,8 @@ describe('plan 17: voce of a bollo or F24 (R303), «in scadenza» in 15 days (R3
       ],
     });
     expect(items).toEqual([
-      { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 1600 },
-      { apartmentId: 'pulci', voce: 'cedolare', year: '2026', amount: 900 },
+      { apartmentId: 'app-c', voce: 'registro', year: '2026', amount: 1600 },
+      { apartmentId: 'app-c', voce: 'cedolare', year: '2026', amount: 900 },
     ]);
     expect(() => payable('scad-r', { kind: 'registro', taxVoice: 'cedolare' })).toThrow();
   });
@@ -424,11 +424,11 @@ describe('payableExpectedItems (plan 13, answer 4 of user1)', () => {
       ],
     });
     expect(items).toEqual([
-      { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 6700 },
-      { apartmentId: 'pulci', voce: 'cedolare', year: '2025' },
-      { apartmentId: 'pulci', voce: 'cedolare', amount: 100 },
-      { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 1, paid: {} },
-      { apartmentId: 'pulci', voce: 'registro', year: '2026', amount: 1600 },
+      { apartmentId: 'app-c', voce: 'registro', year: '2026', amount: 6700 },
+      { apartmentId: 'app-c', voce: 'cedolare', year: '2025' },
+      { apartmentId: 'app-c', voce: 'cedolare', amount: 100 },
+      { apartmentId: 'app-c', voce: 'registro', year: '2026', amount: 1, paid: {} },
+      { apartmentId: 'app-c', voce: 'registro', year: '2026', amount: 1600 },
     ]);
     expect(
       payableExpectedItems({
@@ -439,7 +439,7 @@ describe('payableExpectedItems (plan 13, answer 4 of user1)', () => {
             id: 'mc-t1',
             transactionId: 't1',
             kind: 'tasse',
-            apartmentId: 'pulci',
+            apartmentId: 'app-c',
           }),
         ],
         payables: [
@@ -447,7 +447,7 @@ describe('payableExpectedItems (plan 13, answer 4 of user1)', () => {
         ],
       }),
     ).toEqual([
-      { apartmentId: 'pulci', voce: 'registro', year: '2026', paid: { transactionId: 't1' } },
+      { apartmentId: 'app-c', voce: 'registro', year: '2026', paid: { transactionId: 't1' } },
     ]);
     expect(
       payableExpectedItems({
@@ -455,7 +455,7 @@ describe('payableExpectedItems (plan 13, answer 4 of user1)', () => {
         classes: [],
         payables: [payable('scad-y', { taxYear: 7 })],
       }),
-    ).toEqual([{ apartmentId: 'pulci', voce: 'registro', year: '0007' }]);
+    ).toEqual([{ apartmentId: 'app-c', voce: 'registro', year: '0007' }]);
   });
 });
 

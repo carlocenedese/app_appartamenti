@@ -25,9 +25,9 @@ attesi del conguaglio per inquilino: `due`, `forfaitIncassato` e le spese per ti
 - `packages/core/test/golden-fixtures.test.ts` controlla schemi, assenza di dati personali e
   coerenza interna; il calcolo del conguaglio (Task 9) deve riprodurre i valori attesi.
 
-| File                   | Annualità | Note                                                     |
-| ---------------------- | --------- | -------------------------------------------------------- |
-| `berchet-2024-25.json` | 2024-25   | 5 posti, 12 inquilini, nessun estratto: bollette assunte |
+| File                 | Annualità | Note                                                     |
+| -------------------- | --------- | -------------------------------------------------------- |
+| `app-a-2024-25.json` | 2024-25   | 5 posti, 12 inquilini, nessun estratto: bollette assunte |
 
 ## Codici d'esempio fittizi
 
@@ -81,11 +81,11 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 
 - `IT04X0542811101000000000401` è l'IBAN di un fornitore inventato: nei test del piano 3c è la
   controparte di uscite e rimborsi, mai un conto proprio.
-- `fixtures/reconcile/tre-conti.json`: tre conti inventati (Berchet, Lovarini, Pulci, con gli IBAN di
+- `fixtures/reconcile/tre-conti.json`: tre conti inventati (Appartamento A, Appartamento B, Appartamento C, con gli IBAN di
   prova `…0301`, `…0302` e `IT52A…0001` della tabella sopra), gennaio-marzo 2027. Due estratti di
-  Berchet con un buco a febbraio (la bolletta di febbraio è presunta), bollette con una nota di
+  Appartamento A con un buco a febbraio (la bolletta di febbraio è presunta), bollette con una nota di
   credito, una rata condominiale con il suo doppione escluso, due inquilini inventati (gli IBAN
-  `…0311` e `…0312`), un giroconto tra Lovarini e Berchet e uscite verso il fornitore inventato
+  `…0311` e `…0312`), un giroconto tra Appartamento B e Appartamento A e uscite verso il fornitore inventato
   `…0401`. `records` sono i record per tipo. La leggono `packages/core/test/reconcile.test.ts` e
   `scripts/estratti.test.mjs`.
 
@@ -109,8 +109,8 @@ serve nei file tracciati lo si dichiara nella tabella sopra.
 
 ## Contratti (piano 7)
 
-- `fixtures/contracts/due-appartamenti.json`: Berchet e Lovarini inventati, sei inquilini con nomi
-  inventati, cinque presenze a Berchet (quella di Elena Fittizia da 2025-09, prima del contratto) e
+- `fixtures/contracts/due-appartamenti.json`: Appartamento A e Appartamento B inventati, sei inquilini con nomi
+  inventati, cinque presenze a Appartamento A (quella di Elena Fittizia da 2025-09, prima del contratto) e
   la caparra di Franco Immaginario, che non ha presenze; nessun contratto: li scrivono i comandi
   `contratto` e `contratto-canone` nel test della riga di comando. I codici di registrazione
   `CODICE-PROVA-0001` e `CODICE-PROVA-0002` sono inventati; importi e aliquota sono inventati.

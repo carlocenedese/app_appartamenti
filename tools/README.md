@@ -57,7 +57,7 @@ piano 1). Si usa su file che stanno fuori dal repository e scrive il risultato d
 solito in `fixtures/golden/`.
 
 ```sh
-python3 -I tools/anonymise.py --map /fuori/dal/repository/map.json /fuori/dal/repository/raw.json fixtures/golden/berchet-2024-25.json
+python3 -I tools/anonymise.py --map /fuori/dal/repository/map.json /fuori/dal/repository/raw.json fixtures/golden/app-a-2024-25.json
 ```
 
 Il file `map.json` (fuori dal repository) dice cosa sostituire e cosa non deve sopravvivere:

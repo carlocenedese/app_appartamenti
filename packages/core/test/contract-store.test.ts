@@ -34,7 +34,7 @@ const apartment = (id: string) => ({
 const tenancy = (id: string, extra: Record<string, unknown> = {}) => ({
   ...base,
   id,
-  apartmentId: 'berchet',
+  apartmentId: 'app-a',
   tenantId: 'ten-anna',
   from: '2025-10',
   to: '2026-09',
@@ -45,7 +45,7 @@ const tenancy = (id: string, extra: Record<string, unknown> = {}) => ({
 const payment = (id: string, extra: Record<string, unknown> = {}) => ({
   ...base,
   id,
-  apartmentId: 'berchet',
+  apartmentId: 'app-a',
   tenantId: 'ten-anna',
   date: '2025-09-25',
   amount: 50000,
@@ -80,7 +80,7 @@ async function seed(
 
 async function fixtureStore() {
   const store = new MemoryStore();
-  await seed(store, 'apartment', [apartment('berchet'), apartment('lovarini')], 's1');
+  await seed(store, 'apartment', [apartment('app-a'), apartment('app-b')], 's1');
   await seed(
     store,
     'tenancy',
@@ -89,7 +89,7 @@ async function fixtureStore() {
       tenancy('tcy-b', { tenantId: 'ten-bruno' }),
       tenancy('tcy-early', { from: '2025-09' }),
       tenancy('tcy-del', { deleted: true }),
-      tenancy('tcy-lov', { apartmentId: 'lovarini' }),
+      tenancy('tcy-lov', { apartmentId: 'app-b' }),
     ],
     's2',
   );
@@ -100,7 +100,7 @@ async function fixtureStore() {
       payment('pay-c1'),
       payment('pay-rent', { kind: 'canone' }),
       payment('pay-del', { deleted: true }),
-      payment('pay-lov', { apartmentId: 'lovarini' }),
+      payment('pay-lov', { apartmentId: 'app-b' }),
     ],
     's3',
   );
@@ -109,8 +109,8 @@ async function fixtureStore() {
 
 const contract = (extra: Partial<ContractInput> = {}): ContractInput =>
   ({
-    id: 'ctr-berchet',
-    apartmentId: 'berchet',
+    id: 'ctr-app-a',
+    apartmentId: 'app-a',
     type: '1+1',
     start: '2025-10',
     end: '2027-09',
@@ -138,7 +138,7 @@ const rent = (
   setContractRent(
     store,
     {
-      contractId: 'ctr-berchet',
+      contractId: 'ctr-app-a',
       from: yearMonth(from),
       monthlyRent: cents(monthlyRent),
       monthlyAdvance: cents(monthlyAdvance),
@@ -157,12 +157,12 @@ describe('saveContract (plan 7, task 2)', () => {
     expect(await save(store, contract())).toEqual({
       status: 'saved',
       operationId: 'c-1',
-      contractId: 'ctr-berchet',
+      contractId: 'ctr-app-a',
     });
     const op = (await readJournal(store)).operations.find((o) => o.id === 'c-1');
     expect(op).toMatchObject({
       kind: 'contract.save',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       summary: 'Contratto salvato.',
     });
     expect(op?.summary).not.toMatch(/CODICE|[0-9]/);
@@ -170,7 +170,7 @@ describe('saveContract (plan 7, task 2)', () => {
     const before = await snapshot(store);
     expect(await save(store, contract(), 'd')).toEqual({
       status: 'unchanged',
-      contractId: 'ctr-berchet',
+      contractId: 'ctr-app-a',
     });
     expect(await snapshot(store)).toEqual(before);
   });
@@ -278,19 +278,19 @@ describe('setContractRent (plan 7, task 2)', () => {
     expect(await rent(store, '2026-10', 'r', 165000)).toEqual({
       status: 'saved',
       operationId: 'r-1',
-      contractId: 'ctr-berchet',
+      contractId: 'ctr-app-a',
     });
     const op = (await readJournal(store)).operations.find((o) => o.id === 'r-1');
     expect(op).toMatchObject({
       kind: 'contract.rent',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       summary: 'Aggiornato il canone di un contratto.',
     });
     expect(await rent(store, '2025-10', 's')).toMatchObject({ status: 'saved' });
     const before = await snapshot(store);
     expect(await rent(store, '2025-10', 't')).toEqual({
       status: 'unchanged',
-      contractId: 'ctr-berchet',
+      contractId: 'ctr-app-a',
     });
     expect(await snapshot(store)).toEqual(before);
     expect(await rent(store, '2025-10', 'u', 158000)).toMatchObject({ status: 'saved' });
@@ -349,7 +349,7 @@ describe('undoing the contract operations (plan 7, task 2)', () => {
     const store = await fixtureStore();
     await save(store, contract());
     await undoOperation(store, 'c-1', 'p1', clock, ids('u'));
-    expect(await contracts(store)).toMatchObject([{ id: 'ctr-berchet', deleted: true }]);
+    expect(await contracts(store)).toMatchObject([{ id: 'ctr-app-a', deleted: true }]);
     expect(await save(store, contract(), 'd')).toMatchObject({ status: 'saved' });
     const [back] = await contracts(store);
     expect(back).toMatchObject({ rev: 3 });
@@ -380,7 +380,7 @@ describe('loadContractChecks (plan 7, task 3)', () => {
         {
           ...contract({
             id: 'ctr-lov',
-            apartmentId: 'lovarini',
+            apartmentId: 'app-b',
             tenancyIds: [],
             depositPaymentIds: [],
           }),
@@ -395,14 +395,14 @@ describe('loadContractChecks (plan 7, task 3)', () => {
     expect(await snapshot(store)).toEqual(before);
     expect(result.status).toBe('computed');
     if (result.status !== 'computed') return;
-    expect(result.contracts.map((c) => c.id)).toEqual(['ctr-berchet', 'ctr-lov']);
+    expect(result.contracts.map((c) => c.id)).toEqual(['ctr-app-a', 'ctr-lov']);
     expect(result.checks).toEqual([
-      { code: 'tenancy-outside-contract', contractId: 'ctr-berchet', tenancyId: 'tcy-early' },
-      { code: 'unlinked-tenancy', contractId: 'ctr-berchet', tenancyId: 'tcy-b' },
+      { code: 'tenancy-outside-contract', contractId: 'ctr-app-a', tenancyId: 'tcy-early' },
+      { code: 'unlinked-tenancy', contractId: 'ctr-app-a', tenancyId: 'tcy-b' },
       { code: 'unlinked-tenancy', contractId: 'ctr-lov', tenancyId: 'tcy-lov' },
     ]);
-    const lovarini = await loadContractChecks(store, { asOf, apartmentId: 'lovarini' });
-    expect(lovarini).toEqual({
+    const aptB = await loadContractChecks(store, { asOf, apartmentId: 'app-b' });
+    expect(aptB).toEqual({
       status: 'computed',
       contracts: [expect.objectContaining({ id: 'ctr-lov' })],
       checks: [{ code: 'unlinked-tenancy', contractId: 'ctr-lov', tenancyId: 'tcy-lov' }],
@@ -420,7 +420,7 @@ describe('loadContractChecks (plan 7, task 3)', () => {
 });
 
 describe('setRentYear and loadRentYears (user1, question 1 of plan 7, R182)', () => {
-  const write = (store: MemoryStore, totalRent: number, prefix = 'y', apartmentId = 'berchet') =>
+  const write = (store: MemoryStore, totalRent: number, prefix = 'y', apartmentId = 'app-a') =>
     setRentYear(
       store,
       { apartmentId, year: '2026', totalRent: cents(totalRent) },
@@ -434,15 +434,15 @@ describe('setRentYear and loadRentYears (user1, question 1 of plan 7, R182)', ()
     expect(await write(store, 1935000)).toEqual({
       status: 'saved',
       operationId: 'y-1',
-      rentYearId: 'rent-berchet-2026',
+      rentYearId: 'rent-app-a-2026',
     });
     const op = (await readJournal(store)).operations.find((o) => o.id === 'y-1');
-    expect(op).toMatchObject({ kind: 'rent.year', apartmentId: 'berchet' });
+    expect(op).toMatchObject({ kind: 'rent.year', apartmentId: 'app-a' });
     expect(op?.summary).toBe('Aggiornati gli affitti di un anno.'); // no amount in a summary
     const before = await snapshot(store);
     expect(await write(store, 1935000, 'z')).toEqual({
       status: 'unchanged',
-      rentYearId: 'rent-berchet-2026',
+      rentYearId: 'rent-app-a-2026',
     });
     expect(await snapshot(store)).toEqual(before);
     expect(await write(store, 1950000, 'w')).toMatchObject({ status: 'saved' });
@@ -460,7 +460,7 @@ describe('setRentYear and loadRentYears (user1, question 1 of plan 7, R182)', ()
     const years = await loadRentYears(store, {});
     expect(years).toEqual({
       status: 'computed',
-      rentYears: [{ apartmentId: 'berchet', year: '2026', totalRent: 1935000 }],
+      rentYears: [{ apartmentId: 'app-a', year: '2026', totalRent: 1935000 }],
     });
   });
 
@@ -473,7 +473,7 @@ describe('setRentYear and loadRentYears (user1, question 1 of plan 7, R182)', ()
     expect(
       await setRentYear(
         store,
-        { apartmentId: 'berchet', year: '26', totalRent: cents(1000) },
+        { apartmentId: 'app-a', year: '26', totalRent: cents(1000) },
         'p1',
         clock,
         ids('y'),
@@ -490,12 +490,12 @@ describe('setRentYear and loadRentYears (user1, question 1 of plan 7, R182)', ()
     const store = await fixtureStore();
     await save(store, contract());
     await write(store, 1935000);
-    await write(store, 1000000, 'l', 'lovarini');
-    expect(await loadRentYears(store, { apartmentId: 'berchet' })).toEqual({
+    await write(store, 1000000, 'l', 'app-b');
+    expect(await loadRentYears(store, { apartmentId: 'app-a' })).toEqual({
       status: 'computed',
       rentYears: [
         {
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
           year: '2026',
           totalRent: 1935000,
           cedolareRateBp: 1000,
@@ -503,10 +503,10 @@ describe('setRentYear and loadRentYears (user1, question 1 of plan 7, R182)', ()
         },
       ],
     });
-    // No cedolare contract for Lovarini: the total only.
-    expect(await loadRentYears(store, { apartmentId: 'lovarini' })).toEqual({
+    // No cedolare contract for Appartamento B: the total only.
+    expect(await loadRentYears(store, { apartmentId: 'app-b' })).toEqual({
       status: 'computed',
-      rentYears: [{ apartmentId: 'lovarini', year: '2026', totalRent: 1000000 }],
+      rentYears: [{ apartmentId: 'app-b', year: '2026', totalRent: 1000000 }],
     });
   });
 });

@@ -111,7 +111,7 @@ contratto vivo); `invalid-tenancy` anche se il subentrante comincerebbe dopo la 
 `tenancy-exists` (`incoming.id` è già una presenza viva diversa da quella che scriverebbe il
 subentro); `beds-conflict`; `has-recoveries` (come l'uscita). La stessa richiesta già registrata: `unchanged`.
 
-**Esempio (nomi e importi inventati):** contratto `ctr-pulci` 2025-10 – 2026-09, posto «A» di Anna
+**Esempio (nomi e importi inventati):** contratto `ctr-app-c` 2025-10 – 2026-09, posto «A» di Anna
 Prova (350,00 + 30,00 €) fino a 2026-09. Subentro con ultimo mese 2026-02: Anna Prova esce a 2026-02,
 Bruno Esempio entra a 2026-03 nel posto «A» fino a 2026-09 con 360,00 + 30,00 € e caparra attesa
 500,00 €; il contratto ha `takeovers: [{ month: '2026-03', outTenancyId, inTenancyId }]`. Lo storico del

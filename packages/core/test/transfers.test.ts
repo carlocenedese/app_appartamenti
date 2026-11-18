@@ -11,8 +11,8 @@ import type { Account, BankTransaction, Transfer } from '../src/index';
 
 // Synthetic records only: the test IBANs of fixtures/README.md (own accounts …0301, …0302, a
 // supplier …0401).
-const BERCHET = 'IT85X0542811101000000000301';
-const LOVARINI = 'IT58X0542811101000000000302';
+const APT_A = 'IT85X0542811101000000000301';
+const APT_B = 'IT58X0542811101000000000302';
 const SUPPLIER = 'IT04X0542811101000000000401';
 const base = { v: 1 as const, rev: 1 };
 
@@ -26,7 +26,7 @@ const account = (id: string, iban: string | undefined, extra = {}): Account =>
     ...(iban === undefined ? {} : { iban }),
     ...extra,
   });
-const accounts = [account('acc-berchet', BERCHET), account('acc-lovarini', LOVARINI)];
+const accounts = [account('acc-app-a', APT_A), account('acc-app-b', APT_B)];
 
 /** A movement of `accountId`; `iban` is the counterparty's, as the statement writes it. */
 const tx = (
@@ -54,8 +54,8 @@ const transfer = (id: string, extra: Record<string, unknown> = {}): Transfer =>
   TransferSchema.parse({
     ...base,
     id,
-    fromAccountId: 'acc-lovarini',
-    toAccountId: 'acc-berchet',
+    fromAccountId: 'acc-app-b',
+    toAccountId: 'acc-app-a',
     amount: 20000,
     date: '2027-03-01',
     outTransactionId: id.replace('tr-', ''),
@@ -67,10 +67,10 @@ const transfer = (id: string, extra: Record<string, unknown> = {}): Transfer =>
 const run = (transactions: BankTransaction[], transfers: Transfer[] = [], used: string[] = []) =>
   reconcileTransfers({ accounts, transactions, transfers, used: new Set(used) });
 
-// −200,00 € from the account of Lovarini, the IBAN of Berchet written with spaces and small letters.
+// −200,00 € from the account of Appartamento B, the IBAN of Appartamento A written with spaces and small letters.
 const out = (date = '2027-04-02', id = 'o') =>
-  tx(id, 'acc-lovarini', date, -20000, 'it85 x054 2811 1010 0000 0000 301');
-const inn = (date: string, id = 'i') => tx(id, 'acc-berchet', date, 20000);
+  tx(id, 'acc-app-b', date, -20000, 'it85 x054 2811 1010 0000 0000 301');
+const inn = (date: string, id = 'i') => tx(id, 'acc-app-a', date, 20000);
 
 describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
   it('pairs the outgoing with the incoming of the other account within 5 days', () => {
@@ -82,8 +82,8 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
         {
           id: 'p-giro-o',
           transactionId: 'o',
-          fromAccountId: 'acc-lovarini',
-          toAccountId: 'acc-berchet',
+          fromAccountId: 'acc-app-b',
+          toAccountId: 'acc-app-a',
           legIds: ['i'],
           reason: 'new-pair',
         },
@@ -121,20 +121,20 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
   it('the same amount with the same sign, another amount or the same account is no leg', () => {
     const result = run([
       out(),
-      tx('same-sign', 'acc-berchet', '2027-04-03', -20000),
-      tx('other-amount', 'acc-berchet', '2027-04-03', 20001),
-      tx('same-account', 'acc-lovarini', '2027-04-03', 20000),
+      tx('same-sign', 'acc-app-a', '2027-04-03', -20000),
+      tx('other-amount', 'acc-app-a', '2027-04-03', 20001),
+      tx('same-account', 'acc-app-b', '2027-04-03', 20000),
     ]);
     expect(result.proposals).toMatchObject([{ id: 'p-giro-o', legIds: [] }]);
   });
 
   it('an incoming with the IBAN of the other account: from the other account, one leg is enough', () => {
-    expect(run([tx('i', 'acc-berchet', '2027-04-07', 20000, LOVARINI)]).proposals).toEqual([
+    expect(run([tx('i', 'acc-app-a', '2027-04-07', 20000, APT_B)]).proposals).toEqual([
       {
         id: 'p-giro-i',
         transactionId: 'i',
-        fromAccountId: 'acc-lovarini',
-        toAccountId: 'acc-berchet',
+        fromAccountId: 'acc-app-b',
+        toAccountId: 'acc-app-a',
         legIds: [],
         reason: 'new-pair',
       },
@@ -143,7 +143,7 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
 
   it('outgoings first: a movement taken as a leg is no candidate any more', () => {
     // Both legs name the other account; the incoming comes first by date, the outgoing first by sign.
-    const result = run([tx('i', 'acc-berchet', '2027-04-01', 20000, LOVARINI), out()]);
+    const result = run([tx('i', 'acc-app-a', '2027-04-01', 20000, APT_B), out()]);
     expect(result.proposals.map((p) => [p.id, p.legIds])).toEqual([['p-giro-o', ['i']]]);
   });
 
@@ -157,16 +157,16 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
 
   it('never a transfer: a supplier, a wrong check digit, a name alone, its own account', () => {
     const result = run([
-      tx('supplier', 'acc-lovarini', '2027-04-02', -20000, SUPPLIER),
-      // The IBAN of Berchet with a check digit changed: not valid, so never an own account.
-      tx('wrong-check', 'acc-lovarini', '2027-04-02', -20000, BERCHET.replace('IT85', 'IT86')),
-      tx('name-only', 'acc-lovarini', '2027-04-02', -20000, undefined, {
-        counterparty: { name: 'Conto Berchet' },
+      tx('supplier', 'acc-app-b', '2027-04-02', -20000, SUPPLIER),
+      // The IBAN of Appartamento A with a check digit changed: not valid, so never an own account.
+      tx('wrong-check', 'acc-app-b', '2027-04-02', -20000, APT_A.replace('IT85', 'IT86')),
+      tx('name-only', 'acc-app-b', '2027-04-02', -20000, undefined, {
+        counterparty: { name: 'Conto Appartamento A' },
       }),
       // The spaced form of the brief has one 0 too many (28 characters): not the same IBAN.
-      tx('extra-zero', 'acc-lovarini', '2027-04-02', -20000, 'it85 x054 2811 1010 0000 0000 0301'),
-      tx('own', 'acc-lovarini', '2027-04-02', -20000, LOVARINI),
-      tx('zero', 'acc-lovarini', '2027-04-02', 0, BERCHET),
+      tx('extra-zero', 'acc-app-b', '2027-04-02', -20000, 'it85 x054 2811 1010 0000 0000 0301'),
+      tx('own', 'acc-app-b', '2027-04-02', -20000, APT_B),
+      tx('zero', 'acc-app-b', '2027-04-02', 0, APT_A),
       inn('2027-04-03'),
     ]);
     expect(result).toEqual({ transfers: [], completed: [], proposals: [] });
@@ -188,7 +188,7 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
     expect(
       reconcileTransfers({
         accounts: closed,
-        transactions: [out(), tx('to-closed', 'acc-berchet', '2027-04-02', -100, LOVARINI)],
+        transactions: [out(), tx('to-closed', 'acc-app-a', '2027-04-02', -100, APT_B)],
         transfers: [],
         used: new Set(),
       }).proposals,
@@ -197,7 +197,7 @@ describe('reconcileTransfers: the legs (plan 3c, task 5)', () => {
 });
 
 describe('reconcileTransfers: completing a transfer with one leg (fix round 1)', () => {
-  // Confirmed with the incoming of Berchet only; the statement of Lovarini comes in later.
+  // Confirmed with the incoming of Appartamento A only; the statement of Appartamento B comes in later.
   const half = (extra: Record<string, unknown> = {}) =>
     transfer('tr-i', {
       outTransactionId: undefined,
@@ -216,8 +216,8 @@ describe('reconcileTransfers: completing a transfer with one leg (fix round 1)',
           id: 'tr-i',
           v: 1,
           rev: 1,
-          fromAccountId: 'acc-lovarini',
-          toAccountId: 'acc-berchet',
+          fromAccountId: 'acc-app-b',
+          toAccountId: 'acc-app-a',
           amount: 20000,
           date: '2027-04-07',
           outTransactionId: 'o',
@@ -232,11 +232,7 @@ describe('reconcileTransfers: completing a transfer with one leg (fix round 1)',
 
   it('a missing incoming completes a transfer with the outgoing only, one-off too', () => {
     const outOnly = transfer('tr-o', { oneOff: true, date: '2027-04-02' });
-    const result = run(
-      [out(), tx('i', 'acc-berchet', '2027-04-07', 20000, LOVARINI)],
-      [outOnly],
-      ['o'],
-    );
+    const result = run([out(), tx('i', 'acc-app-a', '2027-04-07', 20000, APT_B)], [outOnly], ['o']);
     expect(result.completed).toEqual([
       expect.objectContaining({ id: 'tr-o', outTransactionId: 'o', inTransactionId: 'i' }),
     ]);
@@ -250,7 +246,7 @@ describe('reconcileTransfers: completing a transfer with one leg (fix round 1)',
     [
       'the other direction',
       [out('2027-04-02')],
-      [half({ fromAccountId: 'acc-berchet', toAccountId: 'acc-lovarini' })],
+      [half({ fromAccountId: 'acc-app-a', toAccountId: 'acc-app-b' })],
     ],
     ['a transfer with both legs', [out('2027-04-02')], [half({ outTransactionId: 'x' })]],
     ['a deleted transfer', [out('2027-04-02')], [half({ deleted: true })]],
@@ -282,8 +278,8 @@ describe('reconcileTransfers: automatic after the first confirmation (question 4
       transfers: [
         {
           id: 'tr-o2',
-          fromAccountId: 'acc-lovarini',
-          toAccountId: 'acc-berchet',
+          fromAccountId: 'acc-app-b',
+          toAccountId: 'acc-app-a',
           amount: 15000,
           date: '2027-05-03',
           outTransactionId: 'o2',
@@ -298,12 +294,12 @@ describe('reconcileTransfers: automatic after the first confirmation (question 4
   });
 
   it('an automatic transfer with one leg only, from the incoming: dated on it', () => {
-    const only = tx('i3', 'acc-berchet', '2027-06-01', 9000, LOVARINI);
+    const only = tx('i3', 'acc-app-a', '2027-06-01', 9000, APT_B);
     expect(run([only], [transfer('tr-o', { purpose: 'mutuo' })]).transfers).toEqual([
       {
         id: 'tr-i3',
-        fromAccountId: 'acc-lovarini',
-        toAccountId: 'acc-berchet',
+        fromAccountId: 'acc-app-b',
+        toAccountId: 'acc-app-a',
         amount: 9000,
         date: '2027-06-01',
         inTransactionId: 'i3',
@@ -314,7 +310,7 @@ describe('reconcileTransfers: automatic after the first confirmation (question 4
   });
 
   it('the other direction, a one-off, an automatic or deleted transfer: still new-pair', () => {
-    const back = [tx('b', 'acc-berchet', '2027-05-03', -15000, LOVARINI)];
+    const back = [tx('b', 'acc-app-a', '2027-05-03', -15000, APT_B)];
     expect(run(back, [transfer('tr-o')]).proposals).toMatchObject([{ reason: 'new-pair' }]);
     for (const extra of [
       { oneOff: true as const },
@@ -338,7 +334,7 @@ describe('reconcileTransfers: automatic after the first confirmation (question 4
   });
 
   it('several legs on a known pair: several-legs with the purpose of the pair', () => {
-    const extra = tx('i2b', 'acc-berchet', '2027-05-06', 15000);
+    const extra = tx('i2b', 'acc-app-a', '2027-05-06', 15000);
     expect(run([...may, extra], [transfer('tr-o')])).toEqual({
       transfers: [],
       completed: [],
@@ -349,7 +345,7 @@ describe('reconcileTransfers: automatic after the first confirmation (question 4
   it('an automatic transfer takes its leg: no second candidate on it', () => {
     const both = [
       { ...(may[0] as BankTransaction) },
-      tx('i2', 'acc-berchet', '2027-05-05', 15000, LOVARINI),
+      tx('i2', 'acc-app-a', '2027-05-05', 15000, APT_B),
     ];
     const result = run(both, [transfer('tr-o')]);
     expect(result.transfers.map((t) => t.id)).toEqual(['tr-o2']);
@@ -361,8 +357,8 @@ describe('TransferSchema (plan 3c, task 5)', () => {
   const valid = {
     ...base,
     id: 'tr-o',
-    fromAccountId: 'acc-lovarini',
-    toAccountId: 'acc-berchet',
+    fromAccountId: 'acc-app-b',
+    toAccountId: 'acc-app-a',
     amount: 20000,
     date: '2027-04-02',
     outTransactionId: 'o',
@@ -378,7 +374,7 @@ describe('TransferSchema (plan 3c, task 5)', () => {
     expect(TransferSchema.safeParse(manual).success).toBe(true);
   });
   it.each([
-    ['the same account', { toAccountId: 'acc-lovarini' }],
+    ['the same account', { toAccountId: 'acc-app-b' }],
     ['an amount of zero', { amount: 0 }],
     ['a negative amount', { amount: -1 }],
     ['manual with a movement', { source: 'manual' }],

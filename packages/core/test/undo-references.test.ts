@@ -118,8 +118,8 @@ describe('undo of a creation with live records pointing at it', () => {
     const tx = (id: string, date: string, amount: number) => ({
       ...base,
       id,
-      apartmentId: 'berchet',
-      accountId: 'acc-berchet',
+      apartmentId: 'app-a',
+      accountId: 'acc-app-a',
       date,
       amount,
       description: 'ADDEBITO FORNITORE INVENTATO',
@@ -129,8 +129,8 @@ describe('undo of a creation with live records pointing at it', () => {
     await put(store, 'apartment', [
       {
         ...base,
-        id: 'berchet',
-        name: 'berchet',
+        id: 'app-a',
+        name: 'app-a',
         locatore: 'Locatore fittizio',
         posti: 2,
         annualitaStart: { month: 1, day: 1 },
@@ -139,8 +139,8 @@ describe('undo of a creation with live records pointing at it', () => {
     await put(store, 'account', [
       {
         ...base,
-        id: 'acc-berchet',
-        apartmentId: 'berchet',
+        id: 'acc-app-a',
+        apartmentId: 'app-a',
         label: 'Conto',
         bankProfileId: 'bp',
         iban: 'IT85X0542811101000000000301',
@@ -151,7 +151,7 @@ describe('undo of a creation with live records pointing at it', () => {
     const op = operationOf(
       await confirmOutgoing(
         store,
-        { proposalId: 'p-uscita-x', kind: 'altro', apartmentId: 'berchet', rememberRule: true },
+        { proposalId: 'p-uscita-x', kind: 'altro', apartmentId: 'app-a', rememberRule: true },
         'p1',
         clock,
         ids('c'),
@@ -181,8 +181,8 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
     await put(store, 'apartment', [
       {
         ...base,
-        id: 'berchet',
-        name: 'berchet',
+        id: 'app-a',
+        name: 'app-a',
         locatore: 'Locatore fittizio',
         posti: 2,
         annualitaStart: { month: 1, day: 1 },
@@ -196,7 +196,7 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
       {
         ...base,
         id: 'ten1',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         tenantId: 't1',
         from: '2027-01',
         monthlyRent: 50000,
@@ -207,7 +207,7 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
   }
   const other = {
     id: 'ten1',
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     tenantId: 't2',
     from: '2027-01',
     monthlyRent: 50000,
@@ -220,7 +220,7 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
       {
         ...base,
         id: 'rec1',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         amount: -2000,
         shares: [{ tenantId: 't1', amount: -2000 }],
         status: 'da-recuperare',
@@ -231,7 +231,7 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
       {
         ...base,
         id: 'pay1',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         tenantId: 't1',
         date: '2027-09-05',
         amount: 55000,
@@ -253,8 +253,8 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
     await put(store, 'apartment', [
       {
         ...base,
-        id: 'lovarini',
-        name: 'lovarini',
+        id: 'app-b',
+        name: 'app-b',
         locatore: 'Locatore fittizio',
         posti: 2,
         annualitaStart: { month: 1, day: 1 },
@@ -264,7 +264,7 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
       {
         ...base,
         id: 'c1',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         type: '4+4',
         start: '2027-01',
         end: '2030-12',
@@ -278,7 +278,7 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
     expect(
       await saveTenancy(
         store,
-        { ...(other as object), apartmentId: 'lovarini' } as never,
+        { ...(other as object), apartmentId: 'app-b' } as never,
         'p1',
         clock,
         ids('p'),
@@ -292,7 +292,7 @@ describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
       {
         ...base,
         id: 'pay1',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         tenantId: 't1',
         date: '2027-09-05',
         amount: 55000,
@@ -321,8 +321,8 @@ describe('notes never block (review of 18 Nov 2026, U11)', () => {
       await put(s, 'apartment', [
         {
           ...base,
-          id: 'berchet',
-          name: 'berchet',
+          id: 'app-a',
+          name: 'app-a',
           locatore: 'Locatore fittizio',
           posti: 2,
           annualitaStart: { month: 1, day: 1 },
@@ -336,7 +336,7 @@ describe('notes never block (review of 18 Nov 2026, U11)', () => {
         store,
         {
           id: 'ten1',
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
           tenantId: 't1',
           from: '2027-01',
           monthlyRent: 50000,

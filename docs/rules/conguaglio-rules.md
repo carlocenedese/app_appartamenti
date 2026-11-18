@@ -1,19 +1,19 @@
 # Regole di conguaglio ricavate dagli Excel (Task 7)
 
 Approvato da user1 l'11 novembre 2026, insieme ai valori `expected` della fixture
-`fixtures/golden/berchet-2024-25.json`. Le regole di calcolo in vigore sono quelle della
+`fixtures/golden/app-a-2024-25.json`. Le regole di calcolo in vigore sono quelle della
 sezione 42 della specifica (R1-R8); questo documento risponde alle domande (a)-(k) del Task 7 con
 quello che fanno oggi gli Excel e con la regola che userà l'app. Gli inquilini sono indicati con
-lettere (A-L per Berchet 2024-25), mai con il nome. I riferimenti di cella sono ai file:
+lettere (A-L per Appartamento A 2024-25), mai con il nome. I riferimenti di cella sono ai file:
 
-- Berchet 2024-25: `Lista bollette e conguagli_2025.xlsx`, fogli `RegistroBollette24.25` (R),
+- Appartamento A 2024-25: `Lista bollette e conguagli_2025.xlsx`, fogli `RegistroBollette24.25` (R),
   `Conguagli` (C), `Affitti Versati` (AV). È l'annualità conclusa, il banco di prova.
-- Lovarini 2024-27: `Lista bollette e conguagli_2024_2027.xlsx` (stessi fogli, registro
+- Appartamento B 2024-27: `Lista bollette e conguagli_2024_2027.xlsx` (stessi fogli, registro
   `RegistroBollette_dal_04.2024`).
-- Pulci 2025-26: `Lista bollette e conguagli_Set26.xlsx`.
+- Appartamento C 2025-26: `Lista bollette e conguagli_Set26.xlsx`.
 - Estratti conto di ottobre 2026 dei tre conti (`Lista_Operazioni_*.xlsx`).
 
-Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
+Inquilini di Appartamento A 2024-25 (5 posti, tutti occupati tutto l'anno):
 
 | Posto          | Inquilini e mesi                        |
 | -------------- | --------------------------------------- |
@@ -33,12 +33,12 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
   La somma delle quote più i posti vuoti è sempre uguale all'importo.
 - **Deciso (user1):** resti ai primi mesi, poi ai primi posti nell'ordine dei posti dell'Excel.
   L'ordine sta nell'appartamento, nel campo `rooms` (un nome per posto, `Tenancy.room` usa questi
-  nomi); per Berchet: Singola, Doppia marmo 1, Doppia marmo 2, Doppia 1, Doppia 2.
+  nomi); per Appartamento A: Singola, Doppia marmo 1, Doppia marmo 2, Doppia 1, Doppia 2.
 
 ## (b) Divisore
 
-- **Excel:** il divisore è il numero di posti, non quello degli inquilini presenti: Berchet `/5`
-  (C!J6 `=D6/5+E6/5-H6-I6`), Lovarini `/4` (C!J6 `=D6/4+…`), Pulci `/4` (R!N24 `=N13/4-…`).
+- **Excel:** il divisore è il numero di posti, non quello degli inquilini presenti: Appartamento A `/5`
+  (C!J6 `=D6/5+E6/5-H6-I6`), Appartamento B `/4` (C!J6 `=D6/4+…`), Appartamento C `/4` (R!N24 `=N13/4-…`).
 - **Regola dell'app:** divisore = posti dell'appartamento (sezione 15). Un posto vuoto in un mese
   resta alla proprietà (`unassigned`).
 
@@ -49,8 +49,8 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
 - **Regola dell'app:** mesi interi (sezione 6). Il mese di ingresso conta per chi entra e il mese
   di uscita per chi esce; se due inquilini dello stesso posto si sovrappongono nello stesso mese,
   l'app avvisa e chiede a quale dei due assegnarlo.
-- **Errori dell'Excel da non replicare:** Lovarini C!G6 `=9+12+1` = 22 mesi per «Mar 24 - Gen 26»,
-  che sono 23; in Berchet C!E17 e C!E21 il condominio di I e L è calcolato su R!G17 (una bolletta
+- **Errori dell'Excel da non replicare:** Appartamento B C!G6 `=9+12+1` = 22 mesi per «Mar 24 - Gen 26»,
+  che sono 23; in Appartamento A C!E17 e C!E21 il condominio di I e L è calcolato su R!G17 (una bolletta
   della luce) invece che su R!G16.
 
 ## (d) Affitti versati, canone e forfait
@@ -74,14 +74,14 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
 
 - **Excel:** 0,80 € su ogni voce tranne il condominio (R!F3 `=IF(C3="Condominiali", 0, 0.8)`),
   aggiunta all'importo fino ad aprile 2025 (R!G3 `=D3*E3+F3`); da maggio 2025 la colonna F c'è
-  ancora ma G non la somma più (R!G17 `=D17*E17`). Lovarini fa lo stesso da giugno 2025 (registro,
-  G48 `=D48*F48`). Pulci la somma sempre (R!F2 `=(C2*D2)+E2`).
+  ancora ma G non la somma più (R!G17 `=D17*E17`). Appartamento B fa lo stesso da giugno 2025 (registro,
+  G48 `=D48*F48`). Appartamento C la somma sempre (R!F2 `=(C2*D2)+E2`).
 - **Estratti di ottobre 2026:** la commissione è una riga «Commissioni E Spese Adue» di −0,80 € con
-  lo stesso «Cod Disp.» e la stessa data dell'addebito (Lovarini, Hera −92,81 € e −0,80 € il
-  27/10/2026; Pulci, Enel e Fastweb il 26/10/2026). Sul conto di Berchet l'addebito Fastweb del
+  lo stesso «Cod Disp.» e la stessa data dell'addebito (Appartamento B, Hera −92,81 € e −0,80 € il
+  27/10/2026; Appartamento C, Enel e Fastweb il 26/10/2026). Sul conto di Appartamento A l'addebito Fastweb del
   26/10/2026 non ha commissione.
 - **Regola dell'app:** la commissione è solo quella che compare nel CSV (R7), legata dal codice
-  disposizione (R20). Per Berchet 2024-25 non c'è estratto: le bollette sono «assunte» e la
+  disposizione (R20). Per Appartamento A 2024-25 non c'è estratto: le bollette sono «assunte» e la
   commissione è 0. Differenza per costruzione rispetto all'Excel: in `knownDeviations`.
 
 ## (f) Condominio: parte della proprietà e rate
@@ -107,7 +107,7 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
 
 - **Excel:** la colonna «Data scad» (R!H) c'è, l'addebito no.
 - **Estratti di ottobre 2026:** Fastweb scade il 25 del mese (R!H4 25/11/2024, R!H5 25/12/2024)
-  e l'addebito arriva il 26 (Berchet, Lovarini e Pulci, 26/10/2026): +1 giorno. Per Hera, Enel e
+  e l'addebito arriva il 26 (Appartamento A, Appartamento B e Appartamento C, 26/10/2026): +1 giorno. Per Hera, Enel e
   la TARI gli estratti di un solo mese non bastano.
 - **Deciso (user1):** finestra predefinita da 5 giorni prima a 10 giorni dopo la scadenza, uguale
   per tutti i fornitori finché non ci sono più estratti; si stringe per fornitore quando l'app ne ha
@@ -115,8 +115,8 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
 
 ## (i) Righe del CSV da non ripartire
 
-- Negli estratti: «Imposta Di Bollo E/c E Rendiconto» (−8,60 €, Lovarini, 30/09/2026, senza codice
-  disposizione); «Commissione Bonifico disposto a favore di BENEFICIARI DIVERSI» (Berchet,
+- Negli estratti: «Imposta Di Bollo E/c E Rendiconto» (−8,60 €, Appartamento B, 30/09/2026, senza codice
+  disposizione); «Commissione Bonifico disposto a favore di BENEFICIARI DIVERSI» (Appartamento A,
   12/10/2026, legata a un bonifico della proprietà, non a una bolletta); «Pagamento Delega F24»
   (−67,00 €); bonifici al condominio per spese straordinarie; restituzioni di caparre; rate di
   mutuo (giroconti).
@@ -137,17 +137,17 @@ Inquilini di Berchet 2024-25 (5 posti, tutti occupati tutto l'anno):
   secondo maggio-agosto (tutti e due per intero), il terzo del 2025 settembre-dicembre (1/4,
   30,47 €). Differenza per costruzione: in `knownDeviations`.
 
-## (k) TARI comune di Berchet e Lovarini
+## (k) TARI comune di Appartamento A e Appartamento B
 
 - **Excel:** ognuno dei due file usa l'importo della propria utenza indicato nell'avviso, non
-  l'addebito: per l'avviso gennaio-aprile 2025 Berchet: 95,48 € (Berchet R!D10) e Lovarini: 80,03 €
-  (Lovarini, registro D44); per il terzo avviso del 2024 Berchet: 101,83 € e Lovarini: 85,13 €
-  (Lovarini D45). La somma per utenza può differire dall'addebito arrotondato all'euro.
+  l'addebito: per l'avviso gennaio-aprile 2025 Appartamento A: 95,48 € (Appartamento A R!D10) e Appartamento B: 80,03 €
+  (Appartamento B, registro D44); per il terzo avviso del 2024 Appartamento A: 101,83 € e Appartamento B: 85,13 €
+  (Appartamento B D45). La somma per utenza può differire dall'addebito arrotondato all'euro.
 - **Regola dell'app (R3, decisa):** l'addebito unico si divide in proporzione ai totali per utenza
-  (`splitSharedDebit`). Per Berchet 2024-25 non c'è estratto: si usa l'importo dell'utenza
+  (`splitSharedDebit`). Per Appartamento A 2024-25 non c'è estratto: si usa l'importo dell'utenza
   (abbinamento assunto), che coincide con l'Excel.
 
-## Confronto per Berchet 2024-25 (senza condominio)
+## Confronto per Appartamento A 2024-25 (senza condominio)
 
 Spese di ogni inquilino (bollette e TARI, per posto) calcolate con le regole qui sopra, confrontate
 con `C!D/5` dell'Excel. Il forfait incassato è 30 € per ogni mese con un versamento in AV.
@@ -174,8 +174,8 @@ supplementare (R5).
 ## Decisioni di user1 (11 novembre 2026)
 
 1. Resti di centesimo: primi mesi, poi primi posti nell'ordine dell'Excel (a).
-2. Inquilino I di Berchet (ago-set 2025): ha pagato affitto e forfait (d).
-3. Condominio Berchet 2024-25: i 2.103,34 € sono la quota annua degli inquilini (f).
+2. Inquilino I di Appartamento A (ago-set 2025): ha pagato affitto e forfait (d).
+3. Condominio Appartamento A 2024-25: i 2.103,34 € sono la quota annua degli inquilini (f).
 4. Conguaglio condominiale 2023-24 di 1.302,68 €: solo proprietà, fuori dal conguaglio (g).
 5. Finestra di abbinamento da 5 giorni prima a 10 dopo la scadenza (h).
 6. Tutte le differenze della tabella sono accettate come `knownDeviations`.

@@ -1,6 +1,6 @@
-# Differenze tra Excel e app: berchet-2024-25
+# Differenze tra Excel e app: app-a-2024-25
 
-Generato da `pnpm golden:report` da `fixtures/golden/berchet-2024-25.json`: non modificarlo a mano.
+Generato da `pnpm golden:report` da `fixtures/golden/app-a-2024-25.json`: non modificarlo a mano.
 
 Periodo 2024-25 (2024-10 – 2025-09), 5 posti. Valori dell'app approvati da: user1, 11 novembre 2026.
 Condominio escluso (sezione 42, R3). Differenza = app − Excel.

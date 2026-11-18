@@ -35,7 +35,7 @@ aggiunge: domanda.
 ## 2. PDF delle rate TARI (R315)
 
 Limite reale, non una piccola estensione: `Instalment` non ha un percorso (servirebbe un campo e lo
-schema), e per l'avviso comune di Berchet e Lovarini la spec (§20) dice che il PDF si **copia**
+schema), e per l'avviso comune di Appartamento A e Appartamento B la spec (§20) dice che il PDF si **copia**
 nell'altra cartella, mentre `moveFileNoOverwrite` sposta soltanto; l'annullamento dovrebbe togliere
 anche la copia. Nessun codice: domanda.
 
