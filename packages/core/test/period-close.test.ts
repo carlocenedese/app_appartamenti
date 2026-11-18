@@ -312,7 +312,8 @@ describe('tariDecembers (F4)', () => {
     expect(tariDecembers('2024-04', '2026-03')).toEqual(['2024-12', '2025-12']);
   });
 
-  it('without a December inside, the December of the year the period ends in (as before)', () => {
-    expect(tariDecembers('2026-02', '2026-07')).toEqual(['2026-12']);
+  it('without a December inside, no TARI debit is required (answer of user1, 18 Nov 2026)', () => {
+    expect(tariDecembers('2026-01', '2026-06')).toEqual([]);
+    expect(tariDecembers('2026-02', '2026-07')).toEqual([]);
   });
 });

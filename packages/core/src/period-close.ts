@@ -58,15 +58,13 @@ async function liveClose(store: Store, query: Query): Promise<PeriodClose | unde
 
 /**
  * The Decembers whose TARI debit a closing waits for (R3, F4): the Decembers inside the period,
- * sorted. A period of several years waits for every one of them, and a period without a December
- * for the December of the year it ends in, as before F4: neither case is decided by the owner,
- * so both are the prudent choice (question in docs/progress.md).
+ * sorted. A period of several years waits for every one of them; a period without a December
+ * waits for none (answers of user1, 18 Nov 2026, R339).
  */
 export function tariDecembers(from: string, to: string): string[] {
-  const inside = monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`)).filter((m) =>
+  return monthsInPeriod(isoDate(`${from}-01`), isoDate(`${to}-01`)).filter((m) =>
     m.endsWith('-12'),
   );
-  return inside.length > 0 ? inside : [`${to.slice(0, 4)}-12`];
 }
 
 /**
