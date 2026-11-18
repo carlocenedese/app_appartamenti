@@ -1181,7 +1181,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     );
   });
 
-  it('rilancio: scrivono di nuovo solo i comandi dei reperti E5 ed E6', () => {
+  it('rilancio: scrivono di nuovo solo i comandi dei reperti E2, E3 ed E8', () => {
     const wrote = steps.filter((s) => s.rerun?.wrote).map((s) => s.label);
     expect(wrote).toEqual([
       'profilo',
@@ -1194,8 +1194,8 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     ]);
   });
 
-  // E5, E6: profilo, inquilino, giroconto-manuale and scadenza-nuova write again on a rerun.
-  it.fails('rilancio di ogni comando = nessuna scrittura (E5, E6)', () => {
+  // E2, E3, E8: profilo, inquilino, giroconto-manuale and scadenza-nuova write again on a rerun.
+  it.fails('rilancio di ogni comando = nessuna scrittura (E2, E3, E8)', () => {
     expect(steps.filter((s) => s.rerun?.wrote).map((s) => s.label)).toEqual([]);
   });
 
@@ -1310,11 +1310,11 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     const [pair] = shared.saldi.json.pairs;
     expect([pair.creditorApartmentId, pair.debtorApartmentId]).toEqual(['apt-a', 'apt-b']);
     // B's IMU share of the F24 paid by A (400,00 of 1.000,00) + 300,00 sent by A to B + the
-    // 50,00 by hand, counted twice because the rerun of giroconto-manuale wrote a second one (E6).
+    // 50,00 by hand, counted twice because the rerun of giroconto-manuale wrote a second one (E2).
     expect(pair.amount).toBe(40000 + 30000 + 5000 + 5000);
   });
 
-  it.fails('saldi con un solo giroconto a mano e lo storno della TARI comune (E1, E6)', () => {
+  it.fails('saldi con un solo giroconto a mano e lo storno della TARI comune (E1, E2)', () => {
     expect(shared.saldi.json.pairs[0].amount).toBe(40000 + 30000 + 5000 + 8496);
   });
 
@@ -1336,7 +1336,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(rows.cedolare.paid).toBe(cedolare.expected);
   });
 
-  it.fails('tasse: il registro atteso è quello di una scadenza, non del suo doppione (E6)', () => {
+  it.fails('tasse: il registro atteso è quello di una scadenza, non del suo doppione (E3)', () => {
     const rows = Object.fromEntries(shared.tasse.json.tables[0].rows.map((r) => [r.voce, r]));
     expect(rows.registro.expected).toBe(6700);
   });
@@ -1376,7 +1376,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(text).toContain('XXXINVENTATO');
   });
 
-  it('dopo gli annulli restano solo i record che nessun comando annulla (E7, E3, E4)', () => {
+  it('dopo gli annulli restano solo i record che nessun comando annulla (E11, E4, E5)', () => {
     const failed = shared.undo.filter((u) => u.code !== 0).map((u) => u.kind);
     expect([...new Set(failed)].sort()).toEqual([
       'account.save',
@@ -1410,7 +1410,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(inbox('Appartamento-B')).toEqual(['2025-12-28_Gas_Gas-Inventato_20251201-20260131.pdf']);
   });
 
-  it.fails('stato finale dopo gli annulli = stato iniziale (E7)', () => {
+  it.fails('stato finale dopo gli annulli = stato iniziale (E11)', () => {
     expect(shared.afterUndo).toEqual(shared.initial);
   });
 });
@@ -1430,7 +1430,7 @@ describe('sonde fuori dal ciclo', () => {
     return { probe, cli };
   }
 
-  it('conto senza IBAN rilanciato crea un secondo conto dello stesso appartamento (E5)', async () => {
+  it('conto senza IBAN rilanciato crea un secondo conto dello stesso appartamento (E9)', async () => {
     const { probe, cli } = await probeFolder();
     const apt = ['--id', 'x', '--nome', 'X', '--locatore', 'L', '--posti', '2'];
     await cli(
@@ -1449,8 +1449,8 @@ describe('sonde fuori dal ciclo', () => {
     rmSync(probe, { recursive: true, force: true });
   });
 
-  // E8: an annualità that does not start on day 1 is accepted, then the Excel fails with code 3.
-  it.fails('annualità dal 15 ottobre: rifiutata subito, o Excel senza crash (E8)', async () => {
+  // E6: an annualità that does not start on day 1 is accepted, then the Excel fails with code 3.
+  it.fails('annualità dal 15 ottobre: rifiutata subito, o Excel senza crash (E6)', async () => {
     const { probe, cli } = await probeFolder();
     const saved = await cli(
       'appartamento',
