@@ -14,6 +14,7 @@ import {
   loadDepositReturn,
   loadExcelInput,
   loadPeriodClosing,
+  markPeriodSent,
   markTenantSettled,
   recordPath,
   reopenPeriod,
@@ -270,6 +271,22 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     expect(board.status === 'computed' && board.apartments[0]?.counts).toMatchObject({
       'conguaglio:differenza-da-saldare': 1,
     });
+    // Finding 5: sent, the tenant with only a difference is counted once, not also «da saldare».
+    await markPeriodSent(store, { ...QUERY, on: '2027-01-05' }, 'p1', later, ids('sent'));
+    const sentInput = await loadExcelInput(store, QUERY);
+    if (sentInput.status !== 'ok') throw new Error(sentInput.reason);
+    expect(buildOwnersWorkbook(sentInput.input).sheets[0]?.rows[0]?.[0]).toMatchObject({
+      value: expect.stringMatching(
+        /, inviato il 05\/01\/2027, saldato fino alla chiusura precedente, differenza da saldare 1$/,
+      ) as unknown,
+    });
+    const sentBoard = await loadDashboard(store, {
+      today: isoDate('2027-05-02'),
+      settlements: [QUERY],
+    });
+    const counts = sentBoard.status === 'computed' ? sentBoard.apartments[0]?.counts : undefined;
+    expect(counts?.['conguaglio:differenza-da-saldare']).toBe(1);
+    expect(counts?.['conguaglio:da-saldare']).toBeUndefined();
     // Marking it settled again settles the difference.
     await markTenantSettled(
       store,

@@ -244,7 +244,12 @@ export async function loadDashboard(
       if (closing !== undefined && closing.sentOn === undefined) {
         add(apartmentId, 'conguaglio:da-inviare');
       } else if (closing !== undefined) {
-        add(apartmentId, 'conguaglio:da-saldare', unsettledTenants(closing).length);
+        // A tenant with only a difference left (G) is counted below, not here (finding 5).
+        add(
+          apartmentId,
+          'conguaglio:da-saldare',
+          unsettledTenants(closing).length - differenceTenants(closing).length,
+        );
       }
       // G: tenants settled on an earlier closing of the period, with a difference left.
       if (closing !== undefined) {

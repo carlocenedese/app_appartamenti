@@ -236,19 +236,19 @@ export function settlementStateText(
     const [y, m, d] = iso.slice(0, 10).split('-');
     return `${d ?? ''}/${m ?? ''}/${y ?? ''}`;
   };
-  // F1: the steps after the closing, when user1 marked them.
+  // F1: the steps after the closing, when user1 marked them. A tenant with only a difference left
+  // (G) is counted there, not also in «da saldare» (finding 5 of the third review).
+  const differences = differenceTenants(closing).length;
+  const whole = unsettledTenants(closing).length - differences;
   const steps = [
     ...(closing.sentOn === undefined ? [] : [`inviato il ${date(closing.sentOn)}`]),
     ...(closeState(closing) === 'saldato'
       ? ['saldato']
-      : closing.sentOn === undefined
+      : closing.sentOn === undefined || whole === 0
         ? []
-        : [`da saldare ${String(unsettledTenants(closing).length)}`]),
-    // G: settled on an earlier closing of the period, only the difference is left.
-    ...(differenceTenants(closing).length > 0
-      ? [
-          `saldato fino alla chiusura precedente, differenza da saldare ${String(differenceTenants(closing).length)}`,
-        ]
+        : [`da saldare ${String(whole)}`]),
+    ...(differences > 0
+      ? [`saldato fino alla chiusura precedente, differenza da saldare ${String(differences)}`]
       : []),
   ];
   const notes = [
