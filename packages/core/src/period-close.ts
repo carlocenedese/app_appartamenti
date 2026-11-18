@@ -252,7 +252,6 @@ export type MarkCloseResult =
         | 'unknown-movement'
         | 'missing-reason'
         | 'no-supplementary'
-        | 'flat-to-check'
         | 'invalid-input';
     };
 
@@ -371,13 +370,10 @@ export function markTenantSettled(
       const today = calc.result.tenants.find((t) => t.tenantId === input.tenantId);
       const now = { due: today?.due ?? 0, forfaitIncassato: today?.forfaitIncassato ?? 0 };
       const others = (close.settled ?? []).filter((s) => s.tenantId !== input.tenantId);
-      // Not decided by user1: how a new mark meets flat charge collected beyond what was due.
-      // Prudent: refused until it is verified (it would otherwise vanish into the new mark).
-      if (tenantBalance(close, input.tenantId, now).toCheck > 0) {
-        return { status: 'refused', reason: 'flat-to-check' } as const;
-      }
-      // A main mark declares what is due without the mark it replaces.
-      const ledger = tenantBalance({ ...close, settled: others }, input.tenantId, now);
+      // Flat charge «da verificare» never blocks a mark (final review) and no mark changes it: the
+      // supplementary already leaves the extra out, and a main mark keeps the flat charge of the
+      // last main mark, so the extra stays to check, never credited nor folded in.
+      const ledger = tenantBalance(close, input.tenantId, now);
       if (input.supplementary === true) {
         // The supplementary of today: a later difference is still due.
         const amount = ledger.supplementary;
@@ -393,12 +389,21 @@ export function markTenantSettled(
           },
         };
       }
+      // Marked again on this closing: the date and movement change, never what it declared.
+      const again = (close.settled ?? []).find((s) => s.tenantId === input.tenantId);
+      const declared =
+        again?.amount !== undefined && again.flatCollected !== undefined
+          ? { amount: again.amount, flatCollected: again.flatCollected }
+          : {
+              amount: tenantBalance({ ...close, settled: others }, input.tenantId, now)
+                .mainRemaining,
+              flatCollected: cents(now.forfaitIncassato - ledger.toCheck),
+            };
       return {
         fields: {
-          settled: [
-            ...others,
-            { ...entry, amount: ledger.mainRemaining, flatCollected: cents(now.forfaitIncassato) },
-          ].sort((a, b) => (a.tenantId < b.tenantId ? -1 : 1)),
+          settled: [...others, { ...entry, ...declared }].sort((a, b) =>
+            a.tenantId < b.tenantId ? -1 : 1,
+          ),
         },
       };
     },

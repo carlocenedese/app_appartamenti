@@ -628,4 +628,56 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     ]);
     expect(seen[6]?.lines).toEqual([{ label: 'Conguaglio bollette', amount: -500 }]);
   });
+
+  it('final review: with flat charge to check, the owner can still mark the supplementary and the main settled', async () => {
+    const store = await reclosed();
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-01' },
+      'p1',
+      later,
+      ids('m'),
+    );
+    await paysLate(store); // the missing 30,00 again: «da verificare»
+    const b = bill('b-10', '2026-07-01', '2026-07-28', 1000, { dueDate: isoDate('2026-11-10') });
+    await put(store, 'bill', b, later);
+    await put(store, 'match', match(b, 1000, { transactionId: 'tx-10' }), later);
+    const row = async () => {
+      const c = await loadPeriodClosing(store, QUERY, isoDate('2026-12-10'));
+      return c.status === 'closed' ? c.tenants[0] : undefined;
+    };
+    expect(await row()).toMatchObject({ remaining: 1000, toCheck: 3000 });
+    // The tenant pays the 10,00; the owner marks the supplementary settled.
+    expect(
+      await markTenantSettled(
+        store,
+        { ...QUERY, tenantId: 't-a', on: '2026-12-12', supplementary: true },
+        'p1',
+        later,
+        ids('s'),
+      ),
+    ).toMatchObject({ status: 'saved' });
+    expect(await row()).toMatchObject({ remaining: 0, toCheck: 3000 });
+    // A main mark again is allowed too, and the extra stays to check (never folded in).
+    expect(
+      await markTenantSettled(
+        store,
+        { ...QUERY, tenantId: 't-a', on: '2026-12-13' },
+        'p1',
+        later,
+        ids('m2'),
+      ),
+    ).toMatchObject({ status: 'saved' });
+    expect(await row()).toMatchObject({ remaining: 0, toCheck: 3000 });
+    const r = await loadDepositReturn(store, {
+      apartmentId: 'apt',
+      tenantId: 't-a',
+      extraCharges: [],
+    });
+    if (r.status !== 'computed') throw new Error(r.reason);
+    expect(r.statement.lines.filter((l) => l.label.includes('2025-26') && l.amount !== 0)).toEqual(
+      [],
+    );
+    expect(r.toCheck.reduce((sum, l) => sum + l.amount, 0)).toBe(3000);
+  });
 });

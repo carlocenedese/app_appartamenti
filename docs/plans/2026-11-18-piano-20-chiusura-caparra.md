@@ -88,3 +88,10 @@ facoltativi nuovi in `periodClose`.
     riduzione). Passo 2: `settled[].amount` e `flatCollected`, un solo calcolo `tenantBalance`
     letto da chiusura, file, cruscotto e caparra; C2, C3; rifiuto `flat-to-check`. Il test di
     modello è il cancello (5000 semi in tre fusi orari).
+
+## Revisione finale
+
+15. Tolto il rifiuto `flat-to-check`: i saldi con forfait «da verificare» si segnano e lo lasciano
+    da verificare (R361). Test in `deposit-closed.test.ts` («final review») e invarianti 7 e 8 nel
+    test di modello. Domanda aperta per user1: come si chiude un «da verificare» (oggi correggendo
+    il pagamento).

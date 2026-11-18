@@ -14,8 +14,10 @@
 // supplementaries already declared; a supplementary mark declares T − S at that moment; a new
 // closing folds the supplementary declared so far into the main. remaining = T − declared. A flat
 // charge collected after the last mark that would turn that into a credit is «da verificare»
-// (`toCheck`), never a credit (answer F); a credit from costs (a credit note) is a credit. A new
-// mark while there is extra flat charge is not decided: the app refuses it (`flat-to-check`).
+// (`toCheck`), never a credit (answer F); a credit from costs (a credit note) is a credit. A mark
+// while there is extra flat charge is allowed and leaves it to check (final review).
+// 7. a mark never changes toCheck; 8. toCheck never decreases unless a flat-charge payment was
+//    cancelled, or the mark that made it extra undone, since the last state checked.
 //
 // Invariants after every action (numbers as in the task of the fifth round):
 // 1. reopen then close with no data change between: t-b's withheld amount and toCheck unchanged;
@@ -110,8 +112,16 @@ function actions(seed: number): Action[] {
   };
   const out: Action[] = [];
   while (out.length < 12) {
-    const roll = r.int(9);
-    if (roll === 0) {
+    const roll = r.int(10);
+    if (roll === 9) {
+      // A mark, then the flat charge it settled paid again (extra), then more marks (final review).
+      const m = month();
+      out.push(
+        { kind: 'main', tenant: 't-b' },
+        { kind: 'pay', tenant: 't-b', month: m, amount: r.pick([1500, 3000]) },
+        { kind: r.pick(['main', 'sup'] as const), tenant: 't-b' },
+      );
+    } else if (roll === 0) {
       out.push({ kind: 'reopen' }, ...Array.from({ length: 1 + r.int(3) }, data), {
         kind: 'close',
       });
@@ -412,10 +422,10 @@ class Run {
       }
       case 'main':
       case 'sup': {
-        // Not decided by the owner: a new mark once extra flat charge was collected after a
-        // main mark (how the extra meets the new mark). Excluded, never invented.
+        // A mark while some flat charge is to check is allowed and leaves it to check (final
+        // review): counted, to show the generator reaches it.
         const own = this.ledgers.get(a.tenant) as Ledger;
-        const blocked = this.extra(own, (await this.ledgerNow(a.tenant)).flat) > 0;
+        if (this.extra(own, (await this.ledgerNow(a.tenant)).flat) > 0) stats.withExtra += 1;
         const before = this.cloneLedgers();
         const result = await markTenantSettled(
           this.store,
@@ -430,29 +440,29 @@ class Run {
           this.newId,
         );
         if (result.status === 'refused') {
-          if (blocked && this.closed) {
-            // The app refuses it too, with its reason (prudent, fifth round).
-            if (result.reason !== 'flat-to-check') {
-              throw new Error(`a mark with extra flat charge refused with ${result.reason}`);
-            }
-            stats.excluded += 1;
-            return false;
-          }
           return refused(result.reason, ['not-closed', 'no-supplementary']);
         }
-        if (blocked) throw new Error('a mark with extra flat charge was accepted');
         if (result.status === 'unchanged') return false;
         const l = this.ledgers.get(a.tenant) as Ledger;
         const now = await this.ledgerNow(a.tenant);
         const paid = this.paid(l, now.flat);
+        const extra = this.extra(l, now.flat);
+        // The extra the snapshot already counts as collected (paid after an earlier main mark).
+        const inSnapshot =
+          l.flatAtMain === undefined ? 0 : Math.max(0, l.flatAtClose - l.flatAtMain);
+        const mainLevel =
+          l.paidAtMain !== undefined ? l.mainDeclared : l.snapshot + inSnapshot - paid;
         // What was then due: the main is the snapshot less the missing flat charge paid since;
-        // the supplementary is everything beyond it.
+        // the supplementary is everything beyond it. A main mark again on the same closing
+        // declares nothing new; the extra stays to check after any mark.
         if (a.kind === 'main') {
-          l.mainDeclared = l.snapshot - paid;
-          l.paidAtMain = paid;
-          l.flatAtMain = now.flat;
+          if (l.paidAtMain === undefined) {
+            l.mainDeclared = mainLevel;
+            l.paidAtMain = paid;
+            l.flatAtMain = now.flat - extra;
+          }
         } else {
-          l.supDeclared = now.due - (l.snapshot - paid);
+          l.supDeclared = now.due + extra - mainLevel;
         }
         this.marks.push({ opId: result.operationId, before });
         return true;
@@ -507,13 +517,16 @@ class Run {
 }
 
 /** What the runs exercised, printed at the end (a model test that checks nothing is no test). */
-const stats = { applied: {} as Record<string, number>, checked: 0, excluded: 0 };
+const stats = { applied: {} as Record<string, number>, checked: 0, withExtra: 0 };
 
 /** Runs a sequence; returns the first failure, with its invariant. */
 async function check(sequence: readonly Action[]): Promise<Failure | undefined> {
   const run = new Run();
   await run.setUp();
   let beforeReopen: { withheld: number; toCheck: number } | undefined;
+  /** toCheck at the last state checked, and whether a flat charge was cancelled since. */
+  let lastToCheck: number | undefined;
+  let cancelledSince = false;
   let dataSinceReopen = false;
   const done: string[] = [];
   for (const a of sequence) {
@@ -527,6 +540,8 @@ async function check(sequence: readonly Action[]): Promise<Failure | undefined> 
     if (!applied) continue;
     stats.applied[a.kind] = (stats.applied[a.kind] ?? 0) + 1;
     if (DATA.has(a.kind)) dataSinceReopen = true;
+    // Undoing a mark takes back the mark that made the payment extra: it may lower toCheck too.
+    if (a.kind === 'cancel' || a.kind === 'undo-mark') cancelledSince = true;
     const app = await run.app();
     if (a.kind === 'reopen') {
       dataSinceReopen = false;
@@ -599,6 +614,23 @@ async function check(sequence: readonly Action[]): Promise<Failure | undefined> 
         detail: `withheld ${String(app.withheld)} toCheck ${String(app.toCheck)}; ledger ${String(want.remaining)} / ${String(want.toCheck)}; lines ${JSON.stringify(app.lines)}`,
       };
     }
+    // 7, 8
+    if (lastToCheck !== undefined) {
+      if ((a.kind === 'main' || a.kind === 'sup') && app.toCheck !== lastToCheck) {
+        return {
+          invariant: 7,
+          detail: `${show(a)} changed toCheck ${String(lastToCheck)} → ${String(app.toCheck)}`,
+        };
+      }
+      if (app.toCheck < lastToCheck && !cancelledSince) {
+        return {
+          invariant: 8,
+          detail: `${show(a)} lowered toCheck ${String(lastToCheck)} → ${String(app.toCheck)}`,
+        };
+      }
+    }
+    lastToCheck = app.toCheck;
+    cancelledSince = false;
     stats.checked += 1;
     beforeReopen = { withheld: app.withheld, toCheck: app.toCheck };
   }
@@ -689,7 +721,7 @@ describe('the closing against a ledger of the owner (fifth round, the gate of R3
         `invariant ${key} — ${String(f.count)} seed(s), e.g. seed ${String(f.seed)}:\n  ${f.shortest.join(' → ')}\n  ${f.detail}`,
     );
     console.log(
-      `applied ${JSON.stringify(stats.applied)}, states checked ${String(stats.checked)}, marks excluded ${String(stats.excluded)}`,
+      `applied ${JSON.stringify(stats.applied)}, states checked ${String(stats.checked)}, marks with flat charge to check ${String(stats.withExtra)}`,
     );
     if (report.length > 0) console.log(report.join('\n\n'));
     expect(stats.checked).toBeGreaterThan(SEEDS);

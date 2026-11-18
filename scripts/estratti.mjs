@@ -283,8 +283,6 @@ export const MESSAGES = {
   'unknown-movement-in-close': 'Rifiutato: il movimento non esiste.',
   'missing-reason': 'Rifiutato: per riaprire il periodo serve il motivo (--motivo).',
   'no-supplementary': 'Rifiutato: l’inquilino non ha un conguaglio supplementare da saldare.',
-  'flat-to-check':
-    'Rifiutato: c’è forfait incassato in più del dovuto («da verificare»): verificarlo prima di segnare un saldo.',
   'forfait-to-check':
     'Da verificare: è stato incassato più forfait del dovuto in un periodo chiuso; non è un credito automatico.',
   'invalid-close-input': 'Rifiutato: data non valida.',
@@ -3180,7 +3178,6 @@ async function command(name, values, positionals, store, who, clock, newId) {
         'unknown-tenant': 'unknown-tenant-in-close',
         'unknown-movement': 'unknown-movement-in-close',
         'no-supplementary': 'no-supplementary',
-        'flat-to-check': 'flat-to-check',
         'invalid-input': 'invalid-close-input',
       }[result.reason];
       throw new Stop(
