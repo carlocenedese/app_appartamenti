@@ -72,7 +72,8 @@ Il rilevamento per `rev` massimo e le sue eccezioni sono sostituiti da un invari
   - Pulito: una testa, e il disco uguale a lei.
   - `forked`: più teste. `forkVersions` le offre tutte, una operazione per testa.
   - `diverged`: una testa e il disco diverso. «Ripara» scrive solo se il disco è un antenato della testa (oppure manca o è troncato).
-  - Da completare: più teste mentre manca un file del registro, cioè un `before` o un `supersedes` che nessuna operazione presente spiega. Vale `diverged`, perché la sincronizzazione non è finita, e non `forked`. «Ripara» e la scelta rifiutano.
+  - Da completare: più teste mentre manca un file del registro. Succede quando le modifiche partono da più di un punto (il nulla di una creazione, o una versione che nessuna operazione presente ha lasciato) o un `supersedes` cita un'operazione assente. Vale `diverged`, perché la sincronizzazione non è finita, e non `forked`. «Ripara» e la scelta rifiutano.
+  - Un record più vecchio del registro ha un solo punto di partenza: una biforcazione sopra di lui è `forked` (test in `review-regressions.test.ts`).
 - **`supersedes`.** È un campo facoltativo di ogni modifica, con gli id delle operazioni il cui `after` la modifica sostituisce oltre al `before`.
   - `fork.resolve` vi elenca tutte le teste che ha fuso. Un ramo arrivato dopo la scelta (B2) resta una testa, quindi è di nuovo una biforcazione.
   - La ripresa di una scrittura fallita dallo stesso Store vi mette l'operazione fallita. Nient'altro scrive «sopra».
@@ -115,6 +116,7 @@ Il rilevamento per `rev` massimo e le sue eccezioni sono sostituiti da un invari
 - **Operazioni vecchie.** Una `fork.resolve` scritta prima di `supersedes` ha fuso tutte le versioni al suo `rev - 1`, anche quelle arrivate dopo la scelta (B2 nei dati vecchi resta invisibile). Una vecchia ripresa sostituisce anche un'altra modifica dello stesso profilo che partiva dallo stesso `rev` ed è arrivata dopo.
 - **Un file del registro perso per sempre** lascia il record «da completare» (`diverged`) se ha più teste: non si sceglie finché il file non torna, per esempio dalla cronologia di Dropbox.
 - **Stesso contenuto, stesso `rev`.** Due computer che fanno la stessa identica modifica dallo stesso dato non sono una biforcazione, per scelta: è la stessa versione. Se lo stesso contenuto ha `rev` diversi (per esempio la stessa creazione, una volta con ripresa), è una biforcazione.
+- **Cartelle esistenti.** Una biforcazione sepolta sotto un `rev` più alto da un'app più vecchia (S2 o B2 già successi) diventa `forked` alla prima apertura con l'app nuova. È l'invariante che funziona, ma non si può misurare senza dati reali: sulle fixture, sull'intera suite e sul ciclo completo non compare nessun `forked` inatteso (strumentazione temporanea).
 - **Il modello** non simula le copie di conflitto di Dropbox (G2 le blocca a parte), i file troncati né gli errori di lettura.
 
 ## Da agganciare (passo successivo)
