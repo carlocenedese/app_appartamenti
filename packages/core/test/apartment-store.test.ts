@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ApartmentSchema, loadAll, readJournal, recordPath, saveApartment } from '../src/index';
+import {
+  ApartmentSchema,
+  TenancySchema,
+  loadAll,
+  readJournal,
+  recordPath,
+  saveApartment,
+  undoBlockedBy,
+} from '../src/index';
 import type { SaveApartmentInput } from '../src/index';
 import { clock, ids } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
@@ -146,5 +154,116 @@ describe('saveApartment (plan 8, task 2)', () => {
       status: 'refused',
       reason: 'invalid-apartment',
     });
+  });
+});
+
+describe('saveApartment under live stays (review of 18 Nov 2026, U13)', () => {
+  const stay = (id: string, room: string, from = '2027-01') =>
+    TenancySchema.parse({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt-a',
+      tenantId: `t-${id}`,
+      room,
+      from,
+      monthlyRent: 50000,
+      monthlyForfait: 5000,
+    });
+  async function withStays() {
+    const store = new MemoryStore();
+    const first = await save(store, { ...create, posti: 2, rooms: ['A', 'B'] });
+    if (first.status !== 'created') throw new Error('not created');
+    await store.writeJsonAtomic(recordPath('tenancy', 'ten1'), stay('ten1', 'A'));
+    await store.writeJsonAtomic(recordPath('tenancy', 'ten2'), stay('ten2', 'B'));
+    return { store, created: first.operationId };
+  }
+
+  it('refuses to rename or drop the rooms of live stays, naming them', async () => {
+    const { store } = await withStays();
+    expect(await save(store, { id: 'apt-a', rooms: ['C', 'B'] })).toEqual({
+      status: 'refused',
+      reason: 'rooms-in-use',
+      rooms: ['A'],
+      tenancyIds: ['ten1'],
+    });
+    expect(
+      await saveApartment(store, { id: 'apt-a', posti: 1, rooms: ['A'] }, 'p1', clock, ids('x'), {
+        confirmed: true,
+      }),
+    ).toEqual({ status: 'refused', reason: 'rooms-in-use', rooms: ['B'], tenancyIds: ['ten2'] });
+    expect((await records(store))[0]?.rooms).toEqual(['A', 'B']);
+    // A free room may be renamed.
+    await store.writeJsonAtomic(recordPath('tenancy', 'ten2'), {
+      ...stay('ten2', 'B'),
+      rev: 2,
+      deleted: true,
+    });
+    expect(await save(store, { id: 'apt-a', rooms: ['A', 'C'] }, 'y')).toMatchObject({
+      status: 'updated',
+    });
+  });
+
+  it('accepts a new room next to those in use', async () => {
+    const { store } = await withStays();
+    expect(
+      await saveApartment(
+        store,
+        { id: 'apt-a', posti: 3, rooms: ['A', 'B', 'C'] },
+        'p1',
+        clock,
+        ids('n'),
+        {
+          confirmed: true,
+        },
+      ),
+    ).toMatchObject({ status: 'updated' });
+  });
+
+  it('refuses rooms given to an apartment whose stays name none', async () => {
+    const store = new MemoryStore();
+    await save(store, { ...create, posti: 2 });
+    await store.writeJsonAtomic(recordPath('tenancy', 'ten1'), {
+      ...stay('ten1', 'A'),
+      room: undefined,
+    });
+    expect(await save(store, { id: 'apt-a', rooms: ['A', 'B'] }, 'n')).toMatchObject({
+      status: 'refused',
+      reason: 'beds-conflict',
+      code: 'unknown-room',
+      tenancyIds: ['ten1'],
+    });
+  });
+
+  it('refuses fewer beds than the stays need, without rooms', async () => {
+    const store = new MemoryStore();
+    await save(store, { ...create, posti: 2 });
+    await store.writeJsonAtomic(recordPath('tenancy', 'ten1'), {
+      ...stay('ten1', 'A'),
+      room: undefined,
+    });
+    await store.writeJsonAtomic(recordPath('tenancy', 'ten2'), {
+      ...stay('ten2', 'B'),
+      room: undefined,
+    });
+    expect(
+      await saveApartment(store, { id: 'apt-a', posti: 1 }, 'p1', clock, ids('x'), {
+        confirmed: true,
+      }),
+    ).toMatchObject({
+      status: 'refused',
+      reason: 'beds-conflict',
+      code: 'too-many-tenants',
+      month: '2027-01',
+    });
+  });
+
+  it('blocks the undo of a change of rooms the live stays now use', async () => {
+    const store = new MemoryStore();
+    await save(store, { ...create, posti: 2, rooms: ['A', 'B'] });
+    const renamed = await save(store, { id: 'apt-a', rooms: ['C', 'D'] }, 'r');
+    if (renamed.status !== 'updated') throw new Error('not updated');
+    await store.writeJsonAtomic(recordPath('tenancy', 'ten1'), stay('ten1', 'C'));
+    expect(await undoBlockedBy(store, renamed.operationId)).toEqual(['ten1']);
   });
 });
