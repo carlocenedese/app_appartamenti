@@ -174,7 +174,7 @@ describe('scanText', () => {
     ]);
     expect(
       kinds(
-        "/Users/user2/Dropbox, /Users/<nome>/x, C:\\Users\\user1, C:/Users/x.json, /Users/…, '/Users/' + x, (?:/Users/|/home/)",
+        "/Users/user2/Dropbox, /Users/<nome>/x, C:\\Users\\user1, C:/Users/x.json, /Users/…, '/Users/' + x, (?:/Users/|/home/), https://github.com/users/pinco, https://example.com/home/pinco",
       ),
     ).toEqual([]);
   });

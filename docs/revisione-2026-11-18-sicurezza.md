@@ -4,7 +4,7 @@ Ramo `fix/revisione-sicurezza`. Gli ID (S1-S14) sono quelli del rapporto della r
 
 ## Corretto nel codice
 
-- **S2, S8:** `node scripts/release.mjs environment <proprietario/nome>` legge con `gh api` (solo GET) l'environment `release` e lo rifiuta se non esiste, se non ha almeno un revisore obbligatorio o se non ammette solo le etichette `v*`. Ogni errore di lettura conta come rifiuto. Lo chiamano `setup-updater.mjs`, prima di leggere la chiave, e il job `guard` di `build.yml`, che gira fuori da ogni environment prima di `sign`. Così GitHub non crea da solo un `release` senza regole. Il controllo verifica le impostazioni, non le sostituisce: chi può cambiare il workflow può anche toglierlo.
+- **S2, S8:** `node scripts/release.mjs environment <proprietario/nome>` legge con `gh api` (solo GET) l'environment `release` e lo rifiuta se non esiste, se non ha almeno un revisore obbligatorio, se lascia saltare le regole agli amministratori (`can_admins_bypass`) o se non ammette solo le etichette `v*`. Ogni errore di lettura conta come rifiuto. Lo chiamano `setup-updater.mjs`, prima di leggere la chiave, e il job `guard` di `build.yml`, che gira fuori da ogni environment prima di `sign`. Così GitHub non crea da solo un `release` senza regole. Il controllo verifica le impostazioni, non le sostituisce: chi può cambiare il workflow può anche toglierlo.
 - **S1 (parte di codice):** `check-personal-data.mjs` conosce i nomi reali solo come impronte SHA-256 salate (ogni parola in minuscolo e in NFC). I test usano nomi inventati e i file dello script vengono controllati anch'essi per i nomi. Nuovo tipo «private path»: la cartella di iCloud Drive del Mac e le cartelle home di un account reale (`/Users/<nome>`, `/home/<nome>`, `C:\Users\<nome>`), segnaposto esclusi. Il percorso iCloud della chiave è stato tolto da `docs/distribuzione.md` (ora `<cartella della chiave>`). L'impronta tiene i nomi fuori dal testo in chiaro, ma tre nomi comuni si indovinano facilmente: non è un segreto.
 - **S14:** riga 3 di `README.md` riscritta in modo neutro.
 - **S5:** job `audit` in `ci.yml`, bloccante:
@@ -14,11 +14,11 @@ Ramo `fix/revisione-sicurezza`. Gli ID (S1-S14) sono quelli del rapporto della r
 
   Job `rust`, su Windows, solo sulle PR: `cargo check --locked` e `cargo deny check licenses` quando la PR tocca l'app Rust, i file Cargo o `deny.toml`; altrimenti è verde subito e può essere un controllo obbligatorio. Dependabot anche per `cargo` e `pip`. Per silenziare un falso positivo vedi il commento del job `audit`: sempre nel repository, con un motivo scritto, mai togliendo il passo.
 
-- **Qualità CI (richiesta del coordinatore):** nel job `check`, `pnpm --filter desktop build` (vite build) e `pnpm tools:test` (non su Windows, dove `python3` non c'è).
+- **Qualità CI (richiesta del coordinatore):** nel job `check`, `pnpm --filter desktop build` (vite build) e `pnpm tools:test` (non su Windows, dove `python3` non c'è). In CI i test di `tools/excel_dump.py` si saltano, perché `openpyxl` non è tra i requisiti con hash; in locale, con `openpyxl` installato, girano.
 - **S9:** l'app rifiuta, alla creazione e all'apertura (anche della cartella salvata), una radice (`/`, `C:\`, `~`), una cartella home e la cartella che contiene le home (`isTooBroadFolder`).
 - **S13:** CSP con `base-uri 'none'; object-src 'none'; form-action 'none'`. L'app non ha `<form>`, `<base>` né `<object>`. `frame-ancestors` non è stato aggiunto, perché in una CSP data come meta viene ignorato.
 - **S11:** `scripts/python.mjs` avvia l'interprete con la cartella di lavoro nella radice del repository. `PYTHON` resta il modo per indicare un interprete preciso.
-- **S7:** `read_pdf` rifiuta un file oltre 50 MB, letto con un tetto e mai per intero, e un documento oltre 200 pagine. Non viene mai troncato.
+- **S7:** `read_pdf` rifiuta un file oltre 50 MB, letto con un tetto, e un documento oltre 200 pagine, senza mai troncarlo. Anche il comando `extract` non tiene più il file in memoria per intero: ne calcola l'impronta a pezzi (`hashlib.file_digest`), così un file oltre il limite non si legge mai tutto in memoria.
 
 ## Ruling
 
@@ -26,6 +26,13 @@ Ramo `fix/revisione-sicurezza`. Gli ID (S1-S14) sono quelli del rapporto della r
 - **Segnaposto dei percorsi:** sono accettati `user`, `user1`, `user2`, …, una sola lettera (`C:/Users/x.json`) e ciò che non comincia con una lettera o una cifra (`<nome>`, `…`).
 
 ## Non fatto, e perché
+
+- **Vulnerabilità di `zip` 4.6.1 (6 avvisi, trovati dal primo giro del job `audit`):** RUSTSEC-2026-0367, -0368, -0369, -0429, -0545, -0548. `zip` arriva solo tramite `tauri-plugin-updater` 2.14.0. La correzione a monte esiste: `tauri-plugin-updater` 2.14.1 (28 ottobre 2026) usa `zip` ^9. Serve però un `Cargo.lock` nuovo, che su questo Mac non si può generare. Per ora i sei ID sono ignorati uno per uno in `deny.toml`, con il motivo scritto; le altre vulnerabilità restano bloccanti. Il rischio nel frattempo è basso: i nostri file di aggiornamento sono un `.exe` NSIS e un `.app.tar.gz`, non archivi `.zip`, e l'updater verifica la firma prima di usarli. Questo l'ho dedotto dalla documentazione del plugin, non dal suo sorgente: va confermato. Passi per l'aggiornamento:
+  1. in `apps/desktop/src-tauri/Cargo.toml`, `tauri-plugin-updater = "=2.14.1"`;
+  2. push del ramo: `cargo-lock.yml` prepara l'artifact `cargo-lock` (rosso finché non lo si committa);
+  3. committare il `Cargo.lock` dell'artifact (`gh run download <run> -n cargo-lock`);
+  4. togliere da `deny.toml` le sei righe `ignore`;
+  5. provare la build: `gh workflow run build.yml --ref <ramo>`.
 
 - **CLI `estratti` (S9 e S11):** il controllo della cartella e la ricerca di `python` stanno in `scripts/estratti.mjs`, che in questo giro non si poteva toccare.
 - **S9, ambito già concesso:** la finestra di scelta aggiunge la cartella all'ambito (che persisted-scope ricorda) prima che l'app la rifiuti. Per toglierla serve un comando Rust.
@@ -50,6 +57,8 @@ Da incollare dalla cartella del repository. Nessuno di questi comandi è stato e
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 
 # S1: repository privato (sezioni 37 e 40 della specifica)
+# ATTENZIONE, prima di eseguirlo leggi la domanda 1: con il repository privato su un account
+# Free, Pro o Team i revisori obbligatori di release non esistono e il job guard rifiuta sempre
 gh repo edit "$repo" --visibility private --accept-visibility-change-consequences
 
 # S2: environment release e ruleset delle etichette: il blocco del punto 1 di
@@ -85,7 +94,22 @@ Se il repository resta privato, secret scanning e CodeQL possono richiedere GitH
 
 Domande:
 
-1. **S1:** repository privato, oppure pubblico con la cronologia riscritta (`git filter-repo`, push forzato, richiesta al supporto per `refs/pull/*`)? Senza uno dei due, la pulizia del commit `c533240` non ha effetto. I nomi delle vie e della città restano così (vedi l'elenco sopra)?
+1. **S1 e S2 insieme: visibilità e protezione della chiave.** Senza una delle scelte qui sotto, la pulizia del commit `c533240` non ha effetto.
+
+   Vincolo, dedotto dalla documentazione di GitHub e non provato: sui piani GitHub Free, Pro e Team i revisori obbligatori degli environment esistono solo nei repository **pubblici**. Con il repository privato su un account personale, il job `guard` rifiuterà per sempre e la protezione di S2 (approvazione di user1 prima della firma) non si può avere. Le strade sono tre.
+
+   - **(a) Pubblico, con la cronologia riscritta** (`git filter-repo` su nomi, vie e città, push forzato, richiesta al supporto per `refs/pull/*` e per le viste in cache).
+     - Pro: environment con revisore e job `guard` funzionano come sono; la firma resta su GitHub; gratuito.
+     - Contro: lavoro delicato e irreversibile; le copie e i fork già fatti restano; il codice e i documenti restano leggibili da tutti, contro le sezioni 37 e 40 della specifica.
+   - **(b) Privato, con un altro modello di firma**: per esempio un comando che user1 lancia sul proprio Mac, che firma i due file e li carica, senza chiave su GitHub (via il secret, l'environment e il job `sign`).
+     - Pro: codice e cronologia non pubblici; la chiave non lascia mai il Mac; nessun costo.
+     - Contro: serve codice nuovo per firmare e pubblicare; la firma dipende dal Mac di user1 e da dove è la chiave (S3); le release vanno in un secondo repository pubblico, a cui va puntato l'updater.
+   - **(c) Privato, con un piano a pagamento** che offre i revisori degli environment nei repository privati.
+     - Pro: nulla da cambiare nel flusso; codice privato.
+     - Contro: costo ricorrente; da verificare prima quale piano basta e se vale per un account personale.
+
+   Resta poi una domanda: i nomi delle vie e della città restano così (vedi l’elenco sopra)?
+
 2. **S3:** spostare la chiave privata fuori da iCloud e dalle cartelle in cui lavorano gli agenti? Aggiungere una password (secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, due righe in `build.yml`)? Come revisore di `release`, un account o un dispositivo che gli agenti non usano?
 3. **S4:** la regola «Unione PR autonoma» va ristretta alle PR il cui ramo e autore sono di user1 e che non toccano `.github/`, `scripts/release.mjs`, `scripts/bundle-python.mjs`, `tauri.conf.json`, `capabilities/` e i file di lock? Le PR di Dependabot non si uniscono mai in automatico? Serve un `CODEOWNERS` su quei percorsi?
 4. **S6:** nel journal, per le carte degli inquilini, salvare solo i nomi dei campi cambiati, e prevedere un comando «cancella i dati personali di un inquilino»? Tocca la regola «non si cancella mai».

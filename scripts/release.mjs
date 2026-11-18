@@ -12,7 +12,7 @@
 //
 //   node scripts/release.mjs environment <owner/name>
 //     Before the signing key is used or sent: the environment `release` exists, has at least one
-//     required reviewer and admits only v* tags (read with `gh api`, GET only). GitHub would create
+//     required reviewer, no administrator bypass and admits only v* tags (read with `gh api`, GET only). GitHub would create
 //     a missing environment by itself, without reviewers, the first time a job names it, so the
 //     job guard of build.yml runs this outside that environment, and setup-updater.mjs before
 //     sending the key. Anyone who can change the workflow can also drop this check: it catches a
@@ -170,6 +170,11 @@ export function releaseEnvironmentProblems(repository, api = ghApiGet) {
   if (!reviewers) {
     problems.push(
       "L'environment «release» non ha un revisore obbligatorio: chiunque spinga un'etichetta firmerebbe senza approvazione (docs/distribuzione.md, punto 1).",
+    );
+  }
+  if (environment.can_admins_bypass !== false) {
+    problems.push(
+      "L'environment «release» lascia che gli amministratori saltino le regole: va tolto «Allow administrators to bypass configured protection rules» (docs/distribuzione.md, punto 1).",
     );
   }
   const custom = environment.deployment_branch_policy?.custom_branch_policies === true;

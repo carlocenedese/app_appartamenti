@@ -32,7 +32,7 @@ Crea l'environment `release`, che aspetta l'approvazione di user1 e accetta solo
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 me=$(gh api user -q .id)
 gh api -X PUT "repos/$repo/environments/release" --input - <<EOF
-{"reviewers":[{"type":"User","id":$me}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}
+{"reviewers":[{"type":"User","id":$me}],"can_admins_bypass":false,"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}
 EOF
 gh api -X POST "repos/$repo/environments/release/deployment-branch-policies" -f name='v*' -f type=tag
 gh api -X POST "repos/$repo/rulesets" --input - <<'EOF'
@@ -40,7 +40,7 @@ gh api -X POST "repos/$repo/rulesets" --input - <<'EOF'
 EOF
 ```
 
-(`actor_id` 5 è il ruolo «Admin» del repository.) Si controlla su GitHub in Settings, Environments, `release` (revisore user1, «Deployment branches and tags»: `v*`) e Settings, Rules, Rulesets. Gli stessi passi si possono fare a mano da quelle pagine.
+(`actor_id` 5 è il ruolo «Admin» del repository.) Si controlla su GitHub in Settings, Environments, `release` (revisore user1, «Allow administrators to bypass» spento, «Deployment branches and tags»: `v*`) e Settings, Rules, Rulesets. Gli stessi passi si possono fare a mano da quelle pagine.
 
 ### 2. Mettere la chiave nell'environment (un comando)
 
@@ -52,7 +52,7 @@ node scripts/setup-updater.mjs "<cartella della chiave>"
 
 Il comando:
 
-- prima di leggere la chiave, controlla con `gh api` (solo lettura) che l'environment `release` esista, abbia almeno un revisore obbligatorio e ammetta solo le etichette `v*`; altrimenti si ferma e dice che cosa manca (prima il punto 1);
+- prima di leggere la chiave, controlla con `gh api` (solo lettura) che l'environment `release` esista, abbia almeno un revisore obbligatorio, non lasci saltare le regole agli amministratori e ammetta solo le etichette `v*`; altrimenti si ferma e dice che cosa manca (prima il punto 1);
 - trova nella cartella la coppia di chiavi già creata l'11 novembre 2026 (un file `….key` e il suo `….key.pub`; non ne crea di nuove);
 - mostra il repository (letto da `git remote get-url origin`) e manda la chiave privata a GitHub come secret `TAURI_SIGNING_PRIVATE_KEY` dell'environment `release` (non la mostra e non la scrive altrove);
 - scrive la chiave pubblica in `apps/desktop/src-tauri/tauri.conf.json`.

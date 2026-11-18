@@ -312,6 +312,7 @@ function protectedRelease() {
         { type: 'branch_policy' },
       ],
       deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+      can_admins_bypass: false,
     },
     [POLICIES_PATH]: { total_count: 1, branch_policies: [{ name: 'v*', type: 'tag' }] },
   };
@@ -335,6 +336,16 @@ describe('releaseEnvironmentProblems', () => {
       answers[ENV_PATH].protection_rules = rules;
       expect(releaseEnvironmentProblems('o/r', fakeApi(answers))).toEqual([
         expect.stringMatching(/revisore/),
+      ]);
+    }
+  });
+
+  it('refuses an environment that administrators can bypass', () => {
+    for (const bypass of [true, undefined]) {
+      const answers = protectedRelease();
+      answers[ENV_PATH].can_admins_bypass = bypass;
+      expect(releaseEnvironmentProblems('o/r', fakeApi(answers))).toEqual([
+        expect.stringMatching(/amministratori/),
       ]);
     }
   });

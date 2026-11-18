@@ -373,6 +373,19 @@ describe('isTooBroadFolder', () => {
       '/var/root',
       'C:\\Users',
       'C:\\Users\\user2\\',
+      '~/',
+      '~\\',
+      '/Volumes',
+      '/Volumes/Dati',
+      '/mnt',
+      '/mnt/c',
+      '/media/user2',
+      '\\\\server\\share',
+      '\\\\server\\share\\',
+      '\\\\?\\C:\\',
+      '\\\\?\\C:\\Users\\user2',
+      '\\\\?\\UNC\\server\\share',
+      '/System/Volumes/Data/Users/user2',
     ]) {
       expect(isTooBroadFolder(folder), folder).toBe(true);
     }
@@ -385,6 +398,12 @@ describe('isTooBroadFolder', () => {
       'C:\\Users\\user2\\Dropbox\\Appartamenti',
       'D:\\Bollette',
       '/Volumes/Dati/Bollette',
+      '/mnt/c/Bollette',
+      '/media/user2/Disco/Bollette',
+      '\\\\server\\share\\Bollette',
+      '\\\\?\\C:\\Users\\user2\\Dropbox',
+      '\\\\?\\UNC\\server\\share\\Bollette',
+      '/System/Volumes/Data/Users/user2/Dropbox',
     ]) {
       expect(isTooBroadFolder(folder), folder).toBe(false);
     }

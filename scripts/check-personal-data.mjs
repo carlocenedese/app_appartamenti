@@ -177,7 +177,9 @@ const DETECTORS = [
   },
   {
     kind: 'private path',
-    pattern: /(?:\/Users\/|\/home\/|\b[A-Za-z]:[\\/]+Users[\\/]+)([\p{L}\p{N}][\p{L}\p{N}._-]*)/giu,
+    // Not inside a URL: `https://github.com/users/<name>` is a web address, not a folder.
+    pattern:
+      /(?<!:\/\/\S*)(?:\/Users\/|\/home\/|\b[A-Za-z]:[\\/]+Users[\\/]+)([\p{L}\p{N}][\p{L}\p{N}._-]*)/giu,
     accept: ([, account]) => !PLACEHOLDER_ACCOUNTS.test(account.split('.')[0]),
   },
   {

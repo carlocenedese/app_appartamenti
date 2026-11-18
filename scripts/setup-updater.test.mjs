@@ -38,6 +38,7 @@ const PROTECTED = {
   [ENV]: {
     protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'User' }] }],
     deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+    can_admins_bypass: false,
   },
   [`${ENV}/deployment-branch-policies`]: {
     total_count: 1,
