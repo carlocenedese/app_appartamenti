@@ -44,13 +44,20 @@
             "type": "string"
           },
           "before": {},
-          "after": {}
+          "after": {},
+          "supersedes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
         "required": [
           "path",
           "after"
         ],
-        "description": "One record file changed by the operation, as whole records with their rev. `after` is the record as written to disk: its rev is the one after the rev of `before` (1 when the operation created the record), and a record is deleted by writing it with `deleted: true`, never by removing the file. `before` is the record as it was, and is absent when the operation created the record. `path` is a safe path below the workspace root: no absolute path, no `..`, none of the characters Windows forbids in names."
+        "description": "One record file changed by the operation, as whole records with their rev. `after` is the record as written to disk: its rev is the one after the rev of `before` (1 when the operation created the record), and a record is deleted by writing it with `deleted: true`, never by removing the file. `before` is the record as it was, and is absent when the operation created the record. `path` is a safe path below the workspace root: no absolute path, no `..`, none of the characters Windows forbids in names. `supersedes` lists the operations whose `after` at this path the change also replaces: the versions a `fork.resolve` merged, or a write that failed under its retry."
       }
     },
     "undoes": {
