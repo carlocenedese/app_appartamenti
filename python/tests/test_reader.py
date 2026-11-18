@@ -8,13 +8,17 @@ import tempfile
 import unicodedata
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PYTHON_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PYTHON_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pdfmaker  # noqa: E402
+from bollette_pdf import reader  # noqa: E402
 from bollette_pdf.reader import (  # noqa: E402
+    MAX_FILE_BYTES,
+    MAX_PAGES,
     MIN_TEXT_CHARS,
     PdfReadError,
     dump_document,
@@ -98,6 +102,27 @@ class ReaderTest(unittest.TestCase):
                 self.assertNotIn(path.name, str(caught.exception))
         with self.assertRaises(PdfReadError):
             read_pdf(self.dir / "missing.pdf")
+
+    def test_refuses_a_file_over_the_size_limit_before_parsing_it(self) -> None:
+        path = self.dir / "grande.pdf"
+        path.write_bytes(b"%PDF-1.4\n" + b"0" * 2000)
+        with mock.patch.object(reader, "MAX_FILE_BYTES", 1000), mock.patch.object(reader, "extract_pages") as parse:
+            with self.assertRaises(PdfReadError) as caught:
+                read_pdf(path)
+        parse.assert_not_called()
+        self.assertIn("troppo grande", str(caught.exception))
+        self.assertNotIn(path.name, str(caught.exception))
+        self.assertGreaterEqual(MAX_FILE_BYTES, 20 * 1024 * 1024)
+
+    def test_refuses_a_document_over_the_page_limit(self) -> None:
+        path = self.pdf([[(72, 100, f"pagina {n}")] for n in range(4)])
+        with mock.patch.object(reader, "MAX_PAGES", 3):
+            with self.assertRaises(PdfReadError) as caught:
+                read_pdf(path)
+            self.assertIn("troppe pagine", str(caught.exception))
+        with mock.patch.object(reader, "MAX_PAGES", 4):
+            self.assertEqual(read_pdf(path).pages, 4)
+        self.assertGreaterEqual(MAX_PAGES, 50)
 
     def test_round_trip_of_the_dump(self) -> None:
         doc = read_pdf(self.pdf([[(72, 100, "Totale da pagare"), (400, 100, "98,46 €")], [(72, 90, "due")]]))

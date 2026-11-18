@@ -125,8 +125,9 @@ jobs:
   # Blocking. npm: only high and critical advisories of production dependencies. pip: any known
   # advisory of python/requirements.txt (pip-audit has no severity filter). Cargo: in the job rust.
   # A false positive is silenced in the repository, with a reason, never by removing the step:
-  # npm with `--ignore <GHSA-...>` on the pnpm audit line, pip with `--ignore-vuln <ID>` on the
-  # pip-audit line, Cargo in deny.toml ([advisories] ignore), each with a comment saying why.
+  # npm: `pnpm audit --ignore <GHSA-...>` once on a computer, which writes the id in
+  # pnpm-workspace.yaml (auditConfig.ignoreGhsas), committed with a comment; pip with
+  # `--ignore-vuln <ID>` on the pip-audit line; Cargo in deny.toml ([advisories] ignore).
   audit:
     name: audit
     runs-on: ubuntu-latest
