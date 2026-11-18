@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import type { ZodType } from 'zod';
 import { refuseClosedPeriodChanges } from './closed-period-guard';
+import { isoDate } from './period';
 import { TimestampSchema, WorkspaceSchema, recordSchemas } from './model';
 import {
   DEFAULT_CONFLICT_RULES,
@@ -282,7 +283,7 @@ async function commitOperation(
   }
   const { operations } = await readJournal(store);
   // F5: what a closed period counted does not change until it is reopened.
-  await refuseClosedPeriodChanges(store, operations, changes);
+  await refuseClosedPeriodChanges(store, operations, changes, forkedPaths(operations));
   const touches = touchesByPath(operations);
   /** For each path written on top of the head of the journal rather than on the disk. */
   const realigned = new Map<string, { rev: number; supersedes: string[] }>();
@@ -816,7 +817,7 @@ export async function refuseClosedPeriodUndo(
         after: change.before,
       })),
     );
-    await refuseClosedPeriodChanges(store, operations, back);
+    await refuseClosedPeriodChanges(store, operations, back, forkedPaths(operations));
   }
 }
 
@@ -876,6 +877,14 @@ export async function undoOperation(
   await refuseIfDiverged(store, operations, [target, ...dependents]);
   // F5: refused before the first undo of a cascade, so that none is left half done.
   await refuseClosedPeriodUndo(store, [target, ...dependents], operations);
+  // Finding 9: no undo closes a period without a new snapshot. Imported here, when needed, because
+  // `period-close.ts` reads the settlement, which imports this module.
+  if (
+    [target, ...dependents].some((o) => o.kind === 'period.close' || o.kind === 'period.reopen')
+  ) {
+    const { refuseClosingUndo } = await import('./period-close');
+    await refuseClosingUndo(store, [target, ...dependents], isoDate(clock().slice(0, 10)));
+  }
 
   // Each round undoes one dependent that nothing else depends on, then looks again with the new
   // undo in the journal, so a dependent that was brought back by a redo is handled like the rest.
@@ -1101,6 +1110,12 @@ async function forkHeads(store: Store, path: string): Promise<Touch[]> {
  * is the `before` of this operation when it was a head, and the operation can be undone. Throws,
  * writing nothing, when `path` is not forked or `keepOpId` is not one of its versions (see
  * `forkVersions`).
+ *
+ * It does not pass through the closed-period guard (F5, `refuseClosedPeriodChanges`): it writes one
+ * of the versions already in the journal, each of which passed the guard when it was written, and
+ * refusing it would leave the record forked with no way out. For a `periodClose` the choice can
+ * drop the marks of the other version (sent, settled, reopened): `scegli-versione` lists them for
+ * each version (`closeMarks`) so the person sees what is lost.
  */
 export async function resolveFork(
   store: Store,

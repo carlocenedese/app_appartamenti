@@ -18,7 +18,7 @@ import type { ConguaglioInput, ConguaglioResult, CostCategory } from './conguagl
 import { apartmentFolder } from './accounts';
 import type { FreeDebit } from './condominio';
 import { safeWord } from './proposal';
-import { closeState, closingOf, unsettledTenants } from './closing';
+import { closeState, closingOf, differenceTenants, unsettledTenants } from './closing';
 import type {
   Apartment,
   Bill,
@@ -244,6 +244,12 @@ export function settlementStateText(
       : closing.sentOn === undefined
         ? []
         : [`da saldare ${String(unsettledTenants(closing).length)}`]),
+    // G: settled on an earlier closing of the period, only the difference is left.
+    ...(differenceTenants(closing).length > 0
+      ? [
+          `saldato fino alla chiusura precedente, differenza da saldare ${String(differenceTenants(closing).length)}`,
+        ]
+      : []),
   ];
   const notes = [
     ...(flags.changed ? ["dopo la chiusura c'è un conguaglio supplementare"] : []),

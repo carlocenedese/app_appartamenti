@@ -8,7 +8,7 @@ import { pendingDocuments } from './bill-import';
 import { loadCondo } from './condo-store';
 import { compareConsumption, worstLevel } from './consumption';
 import { consumptionThresholdsFor } from './consumption-store';
-import { closeState, closingOf, unsettledTenants } from './closing';
+import { closeState, closingOf, differenceTenants, unsettledTenants } from './closing';
 import { calcConguaglio, SettlementInputError } from './conguaglio';
 import { loadContractChecks, loadContractStatus } from './contract-store';
 import { loadExcelInput } from './excel-store';
@@ -245,6 +245,10 @@ export async function loadDashboard(
         add(apartmentId, 'conguaglio:da-inviare');
       } else if (closing !== undefined) {
         add(apartmentId, 'conguaglio:da-saldare', unsettledTenants(closing).length);
+      }
+      // G: tenants settled on an earlier closing of the period, with a difference left.
+      if (closing !== undefined) {
+        add(apartmentId, 'conguaglio:differenza-da-saldare', differenceTenants(closing).length);
       }
       add(apartmentId, 'conguaglio:voci-in-attesa', result.pending.length);
       if (result.unassigned !== 0) add(apartmentId, 'conguaglio:posti-vuoti');

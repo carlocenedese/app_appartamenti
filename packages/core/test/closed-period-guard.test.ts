@@ -3,19 +3,29 @@
 // apartment, one tenant all year, a bill of 90,00 for July–September.
 import { describe, expect, it } from 'vitest';
 import {
+  ApartmentSchema,
+  BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
   ClosedPeriodError,
   ContractSchema,
   InstalmentSchema,
+  MovementClassSchema,
   PaymentSchema,
+  PeriodCloseSchema,
   TenancySchema,
   TenantRecoverySchema,
+  checkConsistency,
+  closeMarks,
   closePeriod,
   commitChange,
+  forkVersions,
   loadAll,
+  markPeriodSent,
+  markTenantSettled,
   readJournal,
   recordPath,
+  recordSchemas,
   reopenPeriod,
   undoFile,
   undoOperation,
@@ -249,5 +259,228 @@ describe('closed period guard, kind by kind (F5)', () => {
     const before = (await readJournal(store)).operations.length;
     await expect(undoFile(store, `hash-b-lug`, 'p1', later, ids('u'))).rejects.toThrow(refused);
     expect((await readJournal(store)).operations).toHaveLength(before);
+  });
+});
+
+/** Another computer with the same folder: every record and journal file copied. */
+async function cloneOf(from: MemoryStore): Promise<MemoryStore> {
+  const to = new MemoryStore();
+  for (const dir of ['_app/journal', ...Object.keys(recordSchemas).map((k) => `_app/dati/${k}`)]) {
+    for (const name of await from.list(dir)) {
+      to.putRaw(`${dir}/${name}`, from.getRaw(`${dir}/${name}`) ?? '');
+    }
+  }
+  return to;
+}
+
+describe('closed period guard, second review', () => {
+  it('finding 4: what existed is read from the closing, not the clocks (an operation synced late is new)', async () => {
+    const store = await closed();
+    const close = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records[0];
+    expect(close?.inputs).toContain('bill/b-lug');
+    expect(close?.inputs).toContain(
+      'payment/' + String((await loadAll(store, 'payment', PaymentSchema)).records[0]?.id),
+    );
+    // Written on a computer whose clock is behind, arrived after the closing: not in the snapshot.
+    const behind = () => '2026-11-01T09:00:00.000Z';
+    const synced = bill('b-sync', '2026-08-01', '2026-08-31', 2000, {
+      dueDate: isoDate('2026-09-10'),
+    });
+    await write(store, 'bill', synced, undefined, behind);
+    const now = await one(store, 'bill', BillSchema, 'b-sync');
+    await write(store, 'bill', { ...now, amount: 2100 }, now, behind, 'fix');
+    // A record counted at closing stays refused, whatever the clock of the change.
+    const counted = await one(store, 'bill', BillSchema, 'b-lug');
+    await expect(
+      write(store, 'bill', { ...counted, amount: 1 }, counted, behind, 'fix'),
+    ).rejects.toThrow(ClosedPeriodError);
+  });
+
+  it('finding 5: without inputs, a record older than the journal stays guarded after a change outside the view', async () => {
+    const store = await closed();
+    const close = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records[0];
+    if (close === undefined) throw new Error('close');
+    const old = { ...close, inputs: undefined };
+    await write(store, 'periodClose', old, close, clock, 'old');
+    store.putRaw(
+      recordPath('bill', 'b-raw'),
+      JSON.stringify(bill('b-raw', '2026-02-01', '2026-02-28', 1500)),
+    );
+    const raw = await one(store, 'bill', BillSchema, 'b-raw');
+    await write(store, 'bill', { ...raw, filePath: 'spostata.pdf' }, raw, later, 'move');
+    const moved = await one(store, 'bill', BillSchema, 'b-raw');
+    await expect(
+      write(store, 'bill', { ...moved, amount: 1600 }, moved, later, 'fix'),
+    ).rejects.toThrow(ClosedPeriodError);
+  });
+
+  it('finding 6: a forked closing blocks only its apartment and months; the versions show their marks', async () => {
+    const a = await closed();
+    const b = await cloneOf(a);
+    await markPeriodSent(a, { ...QUERY, on: '2026-11-20' }, 'p1', later, ids('send'));
+    await markTenantSettled(
+      b,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-01' },
+      'p2',
+      later,
+      ids('settle'),
+    );
+    for (const name of await b.list('_app/journal')) {
+      a.putRaw(`_app/journal/${name}`, b.getRaw(`_app/journal/${name}`) ?? '');
+    }
+    const path = recordPath('periodClose', 'chiusura-apt-2025-26');
+    expect(await checkConsistency(a)).toEqual([{ path, reason: 'forked' }]);
+    // Another apartment goes on.
+    await write(
+      a,
+      'bill',
+      bill('b-altro', '2026-02-01', '2026-02-28', 1000, { apartmentId: 'apt-2' }),
+      undefined,
+      later,
+    );
+    // The forked apartment's months are blocked, whatever existed at closing.
+    await expect(
+      write(a, 'bill', bill('b-nuova', '2026-02-01', '2026-02-28', 1000), undefined, later),
+    ).rejects.toThrow(ClosedPeriodError);
+    const marks = (await forkVersions(a, path)).map((op) =>
+      closeMarks(PeriodCloseSchema.parse(op.changes.find((c) => c.path === path)?.after)),
+    );
+    expect(marks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sentOn: '2026-11-20', settled: [] }),
+        expect.objectContaining({ settled: ['t-a'] }),
+      ]),
+    );
+  });
+
+  it("finding 10: a settlement payment of the previous period dated in the closed months is not the closed period's", async () => {
+    const previous = payment('t-a', '2025-11', 5000, {
+      id: 'pay-prev',
+      kind: 'conguaglio',
+      date: isoDate('2025-11-15'),
+      forMonth: undefined,
+    });
+    const store = await closed([
+      [
+        'contract',
+        {
+          id: 'ctr-0',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt',
+          type: '1+1',
+          start: '2024-10',
+          end: '2025-09',
+          settlement: 'annuale',
+        },
+      ],
+      ['payment', previous],
+    ]);
+    const p = await one(store, 'payment', PaymentSchema, 'pay-prev');
+    await write(store, 'payment', { ...p, amount: 5200 }, p, later, 'fix');
+  });
+
+  it('B: beds and the shares of a supply of the apartment are refused; another apartment is not', async () => {
+    const store = await closed();
+    const apt = await one(store, 'apartment', ApartmentSchema, 'apt');
+    await expect(write(store, 'apartment', { ...apt, posti: 2 }, apt, later, 'x')).rejects.toThrow(
+      ClosedPeriodError,
+    );
+    await write(store, 'apartment', { ...apt, address: 'Indirizzo inventato' }, apt, later, 'x');
+    const supply = (apartments: { apartmentId: string; weight: number }[]) => ({
+      id: 'sup-1',
+      v: 1,
+      rev: 1,
+      label: 'UTENZA-1',
+      apartments,
+    });
+    await expect(
+      write(store, 'supply', supply([{ apartmentId: 'apt', weight: 10000 }]), undefined, later),
+    ).rejects.toThrow(ClosedPeriodError);
+    await write(
+      store,
+      'supply',
+      supply([{ apartmentId: 'apt-2', weight: 10000 }]),
+      undefined,
+      later,
+    );
+  });
+
+  it('J: the movement of a counted match and the class of a counted recovery are refused', async () => {
+    const tx = (id: string, amount: number) => ({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt',
+      date: '2026-08-10',
+      amount,
+      description: 'Movimento inventato',
+      statementHash: 'h',
+    });
+    const store = await closed([
+      ['transaction', tx('tx-b-lug', -9000)],
+      ['transaction', tx('tx-rec', -1500)],
+      [
+        'movementClass',
+        {
+          id: 'mc-tx-rec',
+          v: 1,
+          rev: 1,
+          transactionId: 'tx-rec',
+          kind: 'altro',
+          apartmentId: 'apt',
+        },
+      ],
+      [
+        'tenantRecovery',
+        {
+          id: 'rec-tx',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt',
+          transactionId: 'tx-rec',
+          amount: 1500,
+          shares: [{ tenantId: 't-a', amount: 1500 }],
+          status: 'da-recuperare',
+          date: '2026-08-10',
+        },
+      ],
+    ]);
+    const paid = await one(store, 'transaction', BankTransactionSchema, 'tx-b-lug');
+    await expect(write(store, 'transaction', undefined, paid, later, 'del')).rejects.toThrow(
+      ClosedPeriodError,
+    );
+    const cls = await one(store, 'movementClass', MovementClassSchema, 'mc-tx-rec');
+    const rest = { ...cls, apartmentId: undefined };
+    await expect(
+      write(
+        store,
+        'movementClass',
+        { ...rest, kind: 'escluso', excludeReason: 'non-reale' },
+        cls,
+        later,
+        'x',
+      ),
+    ).rejects.toThrow(ClosedPeriodError);
+    // A new movement of the period is accepted.
+    await write(store, 'transaction', tx('tx-nuovo', -100), undefined, later);
+  });
+
+  it('finding 9: a direct undo of a reopening after a change is refused in the core', async () => {
+    const store = await closed();
+    const reopened = await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-11-20', reason: 'Correzione' },
+      'p1',
+      later,
+      ids('r'),
+    );
+    if (reopened.status !== 'saved') throw new Error('reopen');
+    // The stay ends in June: the bill of July–September is no longer the tenant's.
+    const stay = await one(store, 'tenancy', TenancySchema, 'tcy-t-a-2025-10');
+    await write(store, 'tenancy', { ...stay, to: '2026-06' }, stay, later, 'end');
+    await expect(
+      undoOperation(store, reopened.operationId, 'p1', later, ids('u')),
+    ).rejects.toMatchObject({ name: 'ClosingUndoError', reason: 'reopen-changed' });
   });
 });

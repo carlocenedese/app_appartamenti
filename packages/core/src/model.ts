@@ -1442,8 +1442,13 @@ const PeriodSnapshotSchema = z.object({
       recupero: CentsSchema,
       /** Not a cost: asked in the supplementary settlement when it falls (F11). */
       forfaitIncassato: CentsSchema,
-      /** Last year's condominium settlement (R3): not a cost of R5, a warning when it changes. */
+      /** Last year's condominium settlement (R3): a change after closing is supplementary (K). */
       conguaglioPrec: CentsSchema,
+      /**
+       * H: the flat charge counted at the previous closing and no longer collected when the
+       * reopened period was closed again (part of the due, shown on a line of its own).
+       */
+      forfaitNonIncassato: CentsSchema.optional(),
     }),
   ),
   /** The shares of the empty beds, last year's condominium settlement excluded. */
@@ -1456,6 +1461,19 @@ const PeriodSettledSchema = z.array(
     tenantId: NonEmptyString,
     on: ISODateSchema,
     transactionId: NonEmptyString.optional(),
+  }),
+);
+
+/**
+ * D: supplementary settlements marked settled by user1: the tenant, the date, the movement if any
+ * and the amount of the supplementary settled then (a later difference is still due).
+ */
+const SupplementarySettledSchema = z.array(
+  z.object({
+    tenantId: NonEmptyString,
+    on: ISODateSchema,
+    transactionId: NonEmptyString.optional(),
+    amount: CentsSchema,
   }),
 );
 
@@ -1483,6 +1501,14 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
   sentOn: ISODateSchema.optional(),
   /** The tenants whose settlement user1 marked as settled (F1), once each. */
   settled: PeriodSettledSchema.optional(),
+  /** The supplementary settlements marked settled (D), once per tenant. */
+  supplementarySettled: SupplementarySettledSchema.optional(),
+  /**
+   * The records the snapshot counted, as `<kind>/<id>`, sorted (F5): what existed at the closing,
+   * read from the folder and not from the clocks, so an operation of another computer synced
+   * after the closing is new.
+   */
+  inputs: z.array(NonEmptyString).optional(),
   /** Present when the period was reopened after this closing (F3): it is no longer closed. */
   reopened: PeriodReopenedSchema.optional(),
   /** The earlier closings of the period, each reopened, oldest first (F3). */
@@ -1494,6 +1520,7 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
         snapshot: PeriodSnapshotSchema,
         sentOn: ISODateSchema.optional(),
         settled: PeriodSettledSchema.optional(),
+        supplementarySettled: SupplementarySettledSchema.optional(),
         reopened: PeriodReopenedSchema,
       }),
     )

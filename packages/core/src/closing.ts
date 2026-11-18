@@ -10,10 +10,11 @@ import type { Cents } from './money';
 import type { ISODate } from './period';
 
 /**
- * One tenant of the supplementary settlement: the difference in costs (`delta`) and, on a line of
- * its own (F11), the flat charge collected at the closing and no longer collected (`forfaitDelta`,
- * positive is to ask the tenant). `action` reads both; a negative `forfaitDelta` (more collected
- * than at the closing, which a closing should not allow) is `da-verificare`.
+ * One tenant of the supplementary settlement: the difference in costs (`delta`, last year's
+ * condominium settlement included, answer K) and, on a line of its own (F11), the flat charge
+ * collected at the closing and no longer collected (`forfaitDelta`, positive is to ask the
+ * tenant). `action` reads both; more flat charge collected than at the closing (beyond what was
+ * missing then, `forfaitNonIncassato`) is `da-verificare` (answer F).
  */
 export interface ClosingRow extends Omit<SupplementaryRow, 'action'> {
   forfaitDelta: Cents;
@@ -38,10 +39,7 @@ export interface PeriodClosed {
   unassignedDelta: Cents;
   /** Some difference is not 0: a supplementary settlement is due (R5, F11). */
   changed: boolean;
-  /**
-   * Data of the snapshot that is neither a cost nor the flat charge changed since the closing
-   * (last year's condominium settlement, the tenants of the period): to be checked by a person.
-   */
+  /** The tenants of the period changed since the closing (one is new or gone): to check. */
   dataChanged: boolean;
 }
 
@@ -49,29 +47,86 @@ export interface PeriodClosed {
 export const isLiveClose = (close: PeriodClose): boolean =>
   close.deleted !== true && close.reopened === undefined;
 
-/** What one tenant owed at the closing: the `due` of `calcConguaglio` from the snapshot. */
-export const snapshotDue = (t: PeriodClose['snapshot']['tenants'][number]): Cents =>
+type SnapshotTenant = PeriodClose['snapshot']['tenants'][number];
+
+/**
+ * What one tenant owed at the closing: the `due` of `calcConguaglio` from the snapshot (the flat
+ * charge missing at a closing after a reopening, `forfaitNonIncassato`, is part of it: H).
+ */
+export const snapshotDue = (t: SnapshotTenant): Cents =>
   cents(t.spese + t.rata + t.conguaglioPrec + t.commissione + t.recupero - t.forfaitIncassato);
 
 /**
- * The step of a closing (F1, F3): `riaperto`; `saldato` once it is sent and every tenant with
- * something to settle at the closing is marked; `inviato`; else `chiuso`.
+ * Where the settlement of one tenant of a closing stands (F1, answers D and G of user1):
+ * - `saldato`: marked settled on this closing, nothing left;
+ * - `differenza`: not marked on this closing, but on an earlier one of the period (or its
+ *   supplementary was): only `remaining`, the due now less what that closing settled, is left;
+ * - `da-saldare`: never marked, `remaining` is the whole due.
+ * `fni` is the flat charge missing at this closing that `remaining` holds (H).
+ */
+export function tenantBalance(
+  close: PeriodClose,
+  tenantId: string,
+): { status: 'saldato' | 'differenza' | 'da-saldare'; due: Cents; remaining: Cents; fni: Cents } {
+  const own = close.snapshot.tenants.find((t) => t.tenantId === tenantId);
+  const due = own === undefined ? cents(0) : snapshotDue(own);
+  const fni = cents(own?.forfaitNonIncassato ?? 0);
+  if ((close.settled ?? []).some((s) => s.tenantId === tenantId)) {
+    return { status: 'saldato', due, remaining: cents(0), fni: cents(0) };
+  }
+  // The latest earlier closing with a mark for the tenant: what it settled is not due again (G).
+  for (const earlier of [...(close.history ?? [])].reverse()) {
+    const settled = (earlier.settled ?? []).some((s) => s.tenantId === tenantId);
+    const supplementary = (earlier.supplementarySettled ?? []).find((s) => s.tenantId === tenantId);
+    if (!settled && supplementary === undefined) continue;
+    const then = earlier.snapshot.tenants.find((t) => t.tenantId === tenantId);
+    const base =
+      (settled && then !== undefined ? snapshotDue(then) : 0) + (supplementary?.amount ?? 0);
+    return { status: 'differenza', due, remaining: cents(due - base), fni };
+  }
+  return { status: 'da-saldare', due, remaining: due, fni };
+}
+
+/**
+ * The step of a closing (F1, F3): `riaperto`; `saldato` once it is sent and no tenant has
+ * anything left to settle (`unsettledTenants`); `inviato`; else `chiuso`.
  */
 export function closeState(close: PeriodClose): 'chiuso' | 'inviato' | 'saldato' | 'riaperto' {
   if (close.reopened !== undefined) return 'riaperto';
   if (close.sentOn === undefined) return 'chiuso';
-  const settled = new Set((close.settled ?? []).map((s) => s.tenantId));
-  return close.snapshot.tenants.every((t) => snapshotDue(t) === 0 || settled.has(t.tenantId))
-    ? 'saldato'
-    : 'inviato';
+  return unsettledTenants(close).length === 0 ? 'saldato' : 'inviato';
 }
 
-/** The tenants with something to settle at the closing that user1 has not marked as settled. */
+/** The tenants with something left to settle on this closing (`tenantBalance`). */
 export function unsettledTenants(close: PeriodClose): string[] {
-  const settled = new Set((close.settled ?? []).map((s) => s.tenantId));
   return close.snapshot.tenants
-    .filter((t) => snapshotDue(t) !== 0 && !settled.has(t.tenantId))
+    .filter((t) => tenantBalance(close, t.tenantId).remaining !== 0)
     .map((t) => t.tenantId);
+}
+
+/** Of `unsettledTenants`, those settled up to an earlier closing: only a difference is left (G). */
+export function differenceTenants(close: PeriodClose): string[] {
+  return unsettledTenants(close).filter((id) => tenantBalance(close, id).status === 'differenza');
+}
+
+/**
+ * The marks of a closing a person must not lose when choosing between two versions of it
+ * (finding 6, `scegli-versione`): sent, settled, supplementary settled, reopened, earlier closings.
+ */
+export function closeMarks(close: PeriodClose): {
+  sentOn?: string;
+  settled: string[];
+  supplementarySettled: string[];
+  reopenedOn?: string;
+  earlierClosings: number;
+} {
+  return {
+    ...(close.sentOn === undefined ? {} : { sentOn: close.sentOn }),
+    settled: (close.settled ?? []).map((s) => s.tenantId),
+    supplementarySettled: (close.supplementarySettled ?? []).map((s) => s.tenantId),
+    ...(close.reopened === undefined ? {} : { reopenedOn: close.reopened.on }),
+    earlierClosings: close.history?.length ?? 0,
+  };
 }
 
 export const periodCloseId = (apartmentId: string, periodLabel: string): string =>
@@ -121,20 +176,34 @@ export function closingOf(
     tenancies: input.tenancies,
     asOf,
   });
-  // Both sorted by tenant id (`calcConguaglio` sorts its rows). The flat charge is not here: F11.
-  const was = close.snapshot.tenants.map((t) => [t.tenantId, t.conguaglioPrec]);
-  const is = current.tenants.map((t) => [t.tenantId, t.condominio.conguaglioPrec]);
-  const dataChanged = JSON.stringify(was) !== JSON.stringify(is);
+  // Answer K: last year's condominium settlement changed since the closing is supplementary too.
+  const prec = (rows: readonly { tenantId: string; conguaglioPrec: number }[]) =>
+    new Map(rows.map((t) => [t.tenantId, t.conguaglioPrec]));
+  const precThen = prec(close.snapshot.tenants);
+  const precNow = prec(
+    current.tenants.map((t) => ({
+      tenantId: t.tenantId,
+      conguaglioPrec: t.condominio.conguaglioPrec,
+    })),
+  );
+  const ids = (rows: readonly { tenantId: string }[]) =>
+    JSON.stringify(rows.map((t) => t.tenantId).sort());
+  const dataChanged = ids(close.snapshot.tenants) !== ids(current.tenants);
   const collected = (rows: readonly { tenantId: string; forfaitIncassato: number }[]) =>
     new Map(rows.map((t) => [t.tenantId, t.forfaitIncassato]));
   const atClose = collected(close.snapshot.tenants);
   const now = collected(current.tenants);
+  const missingThen = new Map(
+    close.snapshot.tenants.map((t) => [t.tenantId, t.forfaitNonIncassato ?? 0]),
+  );
   const tenants = supplementary.tenants.map((row): ClosingRow => {
+    const delta = cents(
+      row.delta + (precNow.get(row.tenantId) ?? 0) - (precThen.get(row.tenantId) ?? 0),
+    );
     const forfaitDelta = cents((atClose.get(row.tenantId) ?? 0) - (now.get(row.tenantId) ?? 0));
-    if (forfaitDelta === 0) return { ...row, forfaitDelta };
-    const total = row.delta + forfaitDelta;
+    const total = delta + forfaitDelta;
     const action =
-      forfaitDelta < 0
+      forfaitDelta + (missingThen.get(row.tenantId) ?? 0) < 0
         ? 'da-verificare'
         : total === 0
           ? 'nessuna'
@@ -143,7 +212,7 @@ export function closingOf(
             : row.departed
               ? 'da-trattenere-o-richiedere'
               : 'da-pagare';
-    return { ...row, forfaitDelta, action };
+    return { ...row, delta, forfaitDelta, action };
   });
   return {
     status: close.reopened === undefined ? 'closed' : 'reopened',
