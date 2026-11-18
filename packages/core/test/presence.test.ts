@@ -96,7 +96,15 @@ describe('writePresence and readPresence', () => {
   it('is not seen by loadAll', async () => {
     const store = new MemoryStore();
     await writePresence(store, 'u1', now);
-    expect(await loadAll(store, 'bill', BillSchema)).toEqual({ records: [], problems: [] });
-    expect(await loadAll(store, 'user', UserSchema)).toEqual({ records: [], problems: [] });
+    expect(await loadAll(store, 'bill', BillSchema)).toEqual({
+      records: [],
+      problems: [],
+      missing: [],
+    });
+    expect(await loadAll(store, 'user', UserSchema)).toEqual({
+      records: [],
+      problems: [],
+      missing: [],
+    });
   });
 });

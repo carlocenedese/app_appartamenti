@@ -320,3 +320,31 @@ describe('conflict copies of the review (revisione 2026-11-18, G2)', () => {
     }
   });
 });
+
+describe('records the calculations cannot use (revisione 2026-11-18, point 4)', () => {
+  it('make the folder not writable with unreadable-files, never writable and then a throw', async () => {
+    for (const [name, text] of [
+      ['u2.json', '{"id": "u2", "v": 1, "re'],
+      ['u2.json', JSON.stringify({ id: 'u2', v: 1, rev: 1 })],
+      ['renamed.json', userJson('u9')],
+    ] as const) {
+      const store = await cleanFolder();
+      store.putRaw(`_app/dati/user/${name}`, text);
+      const result = await assessWorkspace(store, app);
+      expect(result.writable, name).toBe(false);
+      expect(result.reasons).toContainEqual({
+        code: 'unreadable-files',
+        paths: [`_app/dati/user/${name}`],
+      });
+    }
+  });
+
+  it('includes an id in two files of which none is named after it', async () => {
+    const store = await cleanFolder();
+    store.putRaw('_app/dati/user/a.json', userJson('u7'));
+    store.putRaw('_app/dati/user/b.json', userJson('u7'));
+    expect((await assessWorkspace(store, app)).reasons).toEqual([
+      { code: 'unreadable-files', paths: ['_app/dati/user/a.json', '_app/dati/user/b.json'] },
+    ]);
+  });
+});

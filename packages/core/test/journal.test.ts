@@ -1349,7 +1349,11 @@ describe('forks: two operations leave the same rev (revisione 2026-11-18, G1)', 
       name: 'UnreadableRecordsError',
       records: [{ id: 'bill-1', reason: 'forked' }],
     });
-    expect(await loadAll(store, 'note', NoteSchema)).toEqual({ records: [], problems: [] });
+    expect(await loadAll(store, 'note', NoteSchema)).toEqual({
+      records: [],
+      problems: [],
+      missing: [],
+    });
   });
 
   it('resolves a fork whose record file is cut short or missing', async () => {

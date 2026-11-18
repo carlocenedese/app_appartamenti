@@ -224,7 +224,7 @@ export async function loadAll<T extends { id: string }>(
   schema: ZodType<T>,
   opts: LoadOptions = {},
   conflictRules: readonly ConflictNameRule[] = DEFAULT_CONFLICT_RULES,
-): Promise<{ records: T[]; problems: Problem[] }> {
+): Promise<{ records: T[]; problems: Problem[]; missing: Problem[] }> {
   assertSafeSegment(kind);
   const naming = { stemOf: (record: T) => record.id, strict: true };
   const loaded = await loadDir(store, `${DATA_DIR}/${kind}`, schema, naming, opts, conflictRules);
@@ -247,7 +247,7 @@ export async function loadAll<T extends { id: string }>(
       })),
     );
   }
-  return { records: loaded.records, problems: loaded.problems };
+  return { records: loaded.records, problems: loaded.problems, missing };
 }
 
 /**

@@ -104,11 +104,13 @@ describe('loadAll', () => {
     expect(await loadAll(store, 'bill', BillSchema, TOLERANT)).toEqual({
       records: [],
       problems: [],
+      missing: [],
     });
     store.putRaw('_app/dati/apartment/a.json', '{}');
     expect(await loadAll(store, 'bill', BillSchema, TOLERANT)).toEqual({
       records: [],
       problems: [],
+      missing: [],
     });
   });
 

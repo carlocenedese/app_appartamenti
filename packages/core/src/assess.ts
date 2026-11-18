@@ -71,9 +71,11 @@ const READ_ONLY_MESSAGES: Record<ReadOnlyCode, string> = {
     'ripristinalo dalla cronologia delle versioni di Dropbox; se è dimostrato che non ha lasciato ' +
     'effetti, si può mettere da parte.',
   'unreadable-files':
-    'Alcuni file non si possono leggere ora: chiudili se sono aperti in un altro programma ' +
-    "(Excel, l'antivirus), controlla che Dropbox li tenga su questo computer e che tu abbia i " +
-    'permessi, poi ricontrolla.',
+    'Alcuni file dei dati non si possono usare: sono vuoti o rovinati, di una forma che questa ' +
+    'app non conosce, con un nome diverso dal loro id, oppure non si leggono ora (aperti in un ' +
+    "altro programma come Excel o l'antivirus, non tenuti da Dropbox su questo computer, senza " +
+    'permessi). Chiudi i programmi e ricontrolla; se il file è rovinato, ripristinalo dalla ' +
+    'cronologia delle versioni di Dropbox; una copia fatta a mano va spostata fuori da _app.',
   'newer-data':
     "Alcuni dati sono stati scritti da una versione più nuova dell'app: aggiorna l'app per " +
     'modificarli. Fino ad allora la cartella è in sola lettura, anche per gli annullamenti.',
@@ -135,10 +137,16 @@ export async function assessWorkspace(
   const workspace = WorkspaceSchema.safeParse(raw);
   const compat = workspace.success ? checkCompat(workspace.data, app) : 'invalid';
   const found: Problem[] = [];
+  const unusable = new Set<string>();
   const schemas: [string, ZodType<{ id: string }>][] = Object.entries(recordSchemas);
   for (const [kind, schema] of schemas) {
     const loaded = await loadAll(store, kind, schema, { tolerant: true }, conflictRules);
     found.push(...loaded.problems);
+    // A record of the folder that cannot be used makes every calculation of its kind refuse
+    // (`loadAll`), so the folder is not writable either; a newer `v` is `newer-data`.
+    for (const { path, reason } of loaded.missing) {
+      if (reason !== 'future-version' && reason !== 'forked') unusable.add(path);
+    }
   }
   const journal = (await readJournal(store, conflictRules)).problems;
   // checkConsistency also reports the conflict copies of the records, the journal and workspace.json.
@@ -163,6 +171,9 @@ export async function assessWorkspace(
   for (const problem of problems) {
     const code = blockingCode(problem, problem.path.startsWith(`${JOURNAL_DIR}/`));
     if (code !== undefined) add(code, problem.path);
+  }
+  for (const path of [...unusable].sort(compareText)) {
+    if (!(byCode.get('unreadable-files') ?? []).includes(path)) add('unreadable-files', path);
   }
   const reasons = REASON_ORDER.flatMap((code) => {
     const paths = byCode.get(code);
