@@ -279,17 +279,15 @@ export async function confirmIncome(
     ({ status: 'refused', reason }) as const;
   if ((await checkConsistency(store)).length > 0) return refuse('inconsistent-store');
   const state = await loadIncomeState(store);
-  const proposal = reconcileIncome(state).proposals.find((p) => p.id === input.proposalId);
+  const income = reconcileIncome(state);
+  const proposal = income.proposals.find((p) => p.id === input.proposalId);
   const tx = state.transactions.find((t) => t.id === proposal?.transactionId);
   const account = state.accounts.find((a) => a.id === tx?.accountId);
   if (proposal === undefined || tx === undefined || account === undefined) {
-    // E7: a proposal of a live movement still without a payment was there before another
-    // confirmation changed the picture (it may now be automatic): run riconcilia again.
+    // E7: the movement of the proposal has become automatic after another confirmation: run
+    // riconcilia again (it writes the payment), the listing in hand is out of date.
     const txId = /^p-(?:chi|cosa)-(.+)$/.exec(input.proposalId)?.[1];
-    const stale =
-      proposal === undefined &&
-      state.transactions.some((t) => t.id === txId && t.deleted !== true) &&
-      !state.payments.some((p) => p.transactionId === txId && p.deleted !== true);
+    const stale = proposal === undefined && income.payments.some((p) => p.transactionId === txId);
     return refuse(stale ? 'stale-proposal' : 'unknown-proposal');
   }
   const { apartmentId } = account;
