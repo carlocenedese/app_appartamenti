@@ -43,13 +43,13 @@ async function put(
 }
 async function apartments() {
   const store = new MemoryStore();
-  await put(store, 'apartment', [apartment('berchet'), apartment('lovarini')]);
+  await put(store, 'apartment', [apartment('app-a'), apartment('app-b')]);
   return store;
 }
-const berchet = (extra: Partial<SetImuYearInput> = {}): SetImuYearInput => ({
-  apartmentId: 'berchet',
+const aptA = (extra: Partial<SetImuYearInput> = {}): SetImuYearInput => ({
+  apartmentId: 'app-a',
   year: '2026',
-  f24Group: 'berchet-lovarini',
+  f24Group: 'app-a-app-b',
   rates: [{ index: 1 }, { index: 2 }],
   ...extra,
 });
@@ -61,34 +61,34 @@ const years = async (store: MemoryStore) =>
 describe('setImuYear (plan 3d, task 1)', () => {
   it('saves, updates with a new rev, and writes nothing for the same request again', async () => {
     const store = await apartments();
-    expect(await save(store, berchet())).toEqual({
+    expect(await save(store, aptA())).toEqual({
       status: 'saved',
       operationId: 'e-1',
-      imuYearId: 'imu-berchet-2026',
+      imuYearId: 'imu-app-a-2026',
     });
     const [op] = (await readJournal(store)).operations;
     expect(op).toMatchObject({
       kind: 'imu.expected',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       summary: 'Aggiornati gli importi IMU attesi.',
     });
-    const update = berchet({ rates: [{ index: 1, expected: cents(60000) }, { index: 2 }] });
+    const update = aptA({ rates: [{ index: 1, expected: cents(60000) }, { index: 2 }] });
     expect(await save(store, update, 'f')).toMatchObject({ status: 'saved', operationId: 'f-1' });
     expect(await years(store)).toEqual([
       {
         ...base,
         rev: 2,
-        id: 'imu-berchet-2026',
-        apartmentId: 'berchet',
+        id: 'imu-app-a-2026',
+        apartmentId: 'app-a',
         year: '2026',
-        f24Group: 'berchet-lovarini',
+        f24Group: 'app-a-app-b',
         rates: [{ index: 1, expected: 60000 }, { index: 2 }],
       },
     ]);
     const before = await snapshot(store);
     expect(await save(store, update, 'g')).toEqual({
       status: 'unchanged',
-      imuYearId: 'imu-berchet-2026',
+      imuYearId: 'imu-app-a-2026',
     });
     expect(await snapshot(store)).toEqual(before);
   });
@@ -100,14 +100,14 @@ describe('setImuYear (plan 3d, task 1)', () => {
         ...base,
         rev: 3,
         deleted: true,
-        id: 'imu-berchet-2026',
-        apartmentId: 'berchet',
+        id: 'imu-app-a-2026',
+        apartmentId: 'app-a',
         year: '2026',
-        f24Group: 'berchet-lovarini',
+        f24Group: 'app-a-app-b',
         rates: [{ index: 1 }, { index: 2 }],
       },
     ]);
-    expect(await save(store, berchet())).toMatchObject({ status: 'saved' });
+    expect(await save(store, aptA())).toMatchObject({ status: 'saved' });
     const [saved] = await years(store);
     expect(saved).toMatchObject({ rev: 4 });
     expect(saved).not.toHaveProperty('deleted');
@@ -115,7 +115,7 @@ describe('setImuYear (plan 3d, task 1)', () => {
 
   it('an annual total without amounts per rate is saved (question 10, data only)', async () => {
     const store = await apartments();
-    expect(await save(store, berchet({ annualTotal: cents(130000) }))).toMatchObject({
+    expect(await save(store, aptA({ annualTotal: cents(130000) }))).toMatchObject({
       status: 'saved',
     });
     expect((await years(store))[0]).toMatchObject({ annualTotal: 130000 });
@@ -123,39 +123,37 @@ describe('setImuYear (plan 3d, task 1)', () => {
 
   it('refusals write nothing', async () => {
     const store = await apartments();
-    await save(store, berchet());
+    await save(store, aptA());
     const before = await snapshot(store);
     const refused = (reason: string) => ({ status: 'refused', reason });
     const three = { index: 3 };
     expect(
       await save(store, {
-        ...berchet({ rates: [{ index: 1 }, { index: 2 }, three] }),
-        apartmentId: 'lovarini',
+        ...aptA({ rates: [{ index: 1 }, { index: 2 }, three] }),
+        apartmentId: 'app-b',
       }),
     ).toEqual(refused('rates-mismatch'));
-    expect(await save(store, berchet({ apartmentId: 'nessuno' }))).toEqual(
+    expect(await save(store, aptA({ apartmentId: 'nessuno' }))).toEqual(
       refused('unknown-apartment'),
     );
-    expect(await save(store, berchet({ rates: [{ index: 1 }, three] }))).toEqual(
+    expect(await save(store, aptA({ rates: [{ index: 1 }, three] }))).toEqual(refused('bad-rates'));
+    expect(await save(store, aptA({ rates: [] }))).toEqual(refused('bad-rates'));
+    expect(await save(store, aptA({ rates: [{ index: 1, expected: cents(0) }] }))).toEqual(
       refused('bad-rates'),
     );
-    expect(await save(store, berchet({ rates: [] }))).toEqual(refused('bad-rates'));
-    expect(await save(store, berchet({ rates: [{ index: 1, expected: cents(0) }] }))).toEqual(
-      refused('bad-rates'),
-    );
-    expect(await save(store, berchet({ annualTotal: cents(-1) }))).toEqual(refused('bad-rates'));
+    expect(await save(store, aptA({ annualTotal: cents(-1) }))).toEqual(refused('bad-rates'));
     expect(await snapshot(store)).toEqual(before);
 
     // Another year or another group: no mismatch.
     expect(
-      await save(store, { ...berchet({ year: '2027', rates: [three] }), apartmentId: 'lovarini' }),
+      await save(store, { ...aptA({ year: '2027', rates: [three] }), apartmentId: 'app-b' }),
     ).toEqual(refused('bad-rates'));
     expect(
       await save(
         store,
         {
-          ...berchet({ f24Group: 'solo-lovarini', rates: [{ index: 1 }] }),
-          apartmentId: 'lovarini',
+          ...aptA({ f24Group: 'solo-app-b', rates: [{ index: 1 }] }),
+          apartmentId: 'app-b',
         },
         'x',
       ),
@@ -164,11 +162,11 @@ describe('setImuYear (plan 3d, task 1)', () => {
 
   it('a diverged store is inconsistent-store, nothing written', async () => {
     const store = await apartments();
-    await save(store, berchet());
-    const path = recordPath('imuYear', 'imu-berchet-2026');
-    store.putRaw(path, (store.getRaw(path) ?? '').replace('berchet-lovarini', 'altro-gruppo'));
+    await save(store, aptA());
+    const path = recordPath('imuYear', 'imu-app-a-2026');
+    store.putRaw(path, (store.getRaw(path) ?? '').replace('app-a-app-b', 'altro-gruppo'));
     const before = await snapshot(store);
-    expect(await save(store, berchet({ annualTotal: cents(1000) }), 'h')).toEqual({
+    expect(await save(store, aptA({ annualTotal: cents(1000) }), 'h')).toEqual({
       status: 'refused',
       reason: 'inconsistent-store',
     });
@@ -197,7 +195,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
     dateFormat: 'DD/MM/YYYY',
     f24Pattern: '^PAGAMENTO F24\\b',
   };
-  const f24 = (id: string, date: string, amount: number, where = 'berchet') => ({
+  const f24 = (id: string, date: string, amount: number, where = 'app-a') => ({
     ...base,
     id,
     apartmentId: where,
@@ -207,7 +205,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
     description: 'PAGAMENTO F24 DELEGA 0001',
     statementHash: 's',
   });
-  const imuYear = (apartmentId: string, f24Group = 'berchet-lovarini') => ({
+  const imuYear = (apartmentId: string, f24Group = 'app-a-app-b') => ({
     ...base,
     id: `imu-${apartmentId}-2026`,
     apartmentId,
@@ -217,24 +215,20 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
   });
   async function f24Store() {
     const store = new MemoryStore();
-    await put(store, 'apartment', ['berchet', 'lovarini', 'pulci'].map(apartment));
+    await put(store, 'apartment', ['app-a', 'app-b', 'app-c'].map(apartment));
     await put(store, 'account', [
-      account('berchet', 'IT85X0542811101000000000301'),
-      account('lovarini', 'IT09X0542811101000000000311'),
+      account('app-a', 'IT85X0542811101000000000301'),
+      account('app-b', 'IT09X0542811101000000000311'),
     ]);
     await put(store, 'bankProfile', [profile]);
-    await put(store, 'imuYear', [
-      imuYear('berchet'),
-      imuYear('lovarini'),
-      imuYear('pulci', 'pulci'),
-    ]);
+    await put(store, 'imuYear', [imuYear('app-a'), imuYear('app-b'), imuYear('app-c', 'app-c')]);
     await put(store, 'transaction', [
       f24('f', '2026-06-14', -100000),
       f24('g', '2026-06-20', -100000),
     ]);
     return store;
   }
-  const rate1 = { f24Group: 'berchet-lovarini', year: '2026', rateIndex: 1 };
+  const rate1 = { f24Group: 'app-a-app-b', year: '2026', rateIndex: 1 };
   const assign = (
     store: MemoryStore,
     extra: Partial<typeof rate1> & { transactionId?: string } = {},
@@ -274,7 +268,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
         id: 'mc-f',
         transactionId: 'f',
         kind: 'tasse',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         f24: true,
         imu: rate1,
       },
@@ -282,7 +276,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
     const [op] = (await readJournal(store)).operations;
     expect(op).toMatchObject({
       kind: 'imu.assign',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       summary: 'Assegnato un F24 a una rata IMU.',
     });
     expect(await proposalIds(store)).toEqual(['p-f24-g']);
@@ -295,7 +289,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
 
   it('from an F24 confirmed «da ripartire»: the same class with rev + 1; undone, without imu', async () => {
     const store = await f24Store();
-    expect(await confirmF24(store, 'berchet')).toMatchObject({ status: 'confirmed' });
+    expect(await confirmF24(store, 'app-a')).toMatchObject({ status: 'confirmed' });
     expect(await assign(store)).toEqual({
       status: 'assigned',
       operationId: 'a-1',
@@ -306,7 +300,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
         id: 'mc-f',
         rev: 2,
         f24: true,
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         imu: rate1,
       }),
     ]);
@@ -316,14 +310,14 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
     );
     await undoOperation(store, 'a-1', 'p1', clock, ids('v'));
     const [back] = await classes(store);
-    expect(back).toMatchObject({ id: 'mc-f', rev: 3, f24: true, apartmentId: 'berchet' });
+    expect(back).toMatchObject({ id: 'mc-f', rev: 3, f24: true, apartmentId: 'app-a' });
     expect(back).not.toHaveProperty('imu');
   });
 
   it('refusals write nothing (Review Focus 2)', async () => {
     const store = await f24Store();
-    // F24 confirmed in full for Lovarini (question 5 of 3c): no IMU candidate.
-    await confirmF24(store, 'lovarini', 'g');
+    // F24 confirmed in full for Appartamento B (question 5 of 3c): no IMU candidate.
+    await confirmF24(store, 'app-b', 'g');
     await put(store, 'transaction', [
       { ...f24('gone', '2026-06-21', -100000), deleted: true },
       { ...f24('plain', '2026-06-22', -100000), description: 'BONIFICO INVENTATO' },
@@ -337,7 +331,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
     }
     expect(await assign(store, { rateIndex: 3 })).toEqual(refused('unknown-rate'));
     expect(await assign(store, { year: '2027' })).toEqual(refused('unknown-rate'));
-    expect(await assign(store, { f24Group: 'pulci' })).toEqual(refused('payer-not-in-group'));
+    expect(await assign(store, { f24Group: 'app-c' })).toEqual(refused('payer-not-in-group'));
     expect(await snapshot(store)).toEqual(before);
 
     // A second F24 on the same rate (question 9), and one already assigned.
@@ -369,9 +363,9 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
 
   it('a diverged store is inconsistent-store, nothing written', async () => {
     const store = await f24Store();
-    await confirmF24(store, 'berchet', 'g');
+    await confirmF24(store, 'app-a', 'g');
     const path = recordPath('movementClass', 'mc-g');
-    store.putRaw(path, (store.getRaw(path) ?? '').replace('berchet', 'lovarini'));
+    store.putRaw(path, (store.getRaw(path) ?? '').replace('app-a', 'app-b'));
     const before = await snapshot(store);
     expect(await assign(store)).toEqual(refused('inconsistent-store'));
     expect(await snapshot(store)).toEqual(before);
@@ -419,7 +413,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
         ruleId: 'imur-f',
       });
       expect(await rules(store)).toEqual([
-        { ...base, id: 'imur-f', accountId: 'acc-berchet', f24Group: 'berchet-lovarini' },
+        { ...base, id: 'imur-f', accountId: 'acc-app-a', f24Group: 'app-a-app-b' },
       ]);
       const [op] = (await readJournal(store)).operations;
       expect(op?.changes.map((c) => c.path)).toEqual([
@@ -428,7 +422,7 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
       ]);
       // The second F24 of the account: the group, its year, the lowest open rate.
       expect(await suggestionOf(store, 'g')).toEqual({
-        f24Group: 'berchet-lovarini',
+        f24Group: 'app-a-app-b',
         year: '2026',
         rateIndex: 2,
       });
@@ -458,34 +452,34 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
       await undoOperation(store, 'a-1', 'p1', clock, ids('u'));
       await remember(store, {}, 'b');
       await put(store, 'imuYear', [
-        { ...imuYear('berchet', 'berchet-solo'), id: 'imu-berchet-2027', year: '2027' },
+        { ...imuYear('app-a', 'app-a-solo'), id: 'imu-app-a-2027', year: '2027' },
       ]);
       await put(store, 'transaction', [f24('k', '2027-06-14', -50000)]);
       expect(await suggestionOf(store, 'k')).toEqual({
-        f24Group: 'berchet-lovarini',
+        f24Group: 'app-a-app-b',
       });
       expect(
-        await remember(store, { transactionId: 'k', f24Group: 'berchet-solo', year: '2027' }, 'c'),
+        await remember(store, { transactionId: 'k', f24Group: 'app-a-solo', year: '2027' }, 'c'),
       ).toMatchObject({ status: 'assigned', ruleId: 'imur-k' });
       expect(await rules(store)).toEqual([
         {
           ...base,
           rev: 2,
           id: 'imur-f',
-          accountId: 'acc-berchet',
-          f24Group: 'berchet-lovarini',
+          accountId: 'acc-app-a',
+          f24Group: 'app-a-app-b',
           validTo: '2027-06-13',
         },
         {
           ...base,
           id: 'imur-k',
-          accountId: 'acc-berchet',
-          f24Group: 'berchet-solo',
+          accountId: 'acc-app-a',
+          f24Group: 'app-a-solo',
           validFrom: '2027-06-14',
         },
       ]);
       // The older F24 still falls under the older rule.
-      expect(await suggestionOf(store, 'g')).toMatchObject({ f24Group: 'berchet-lovarini' });
+      expect(await suggestionOf(store, 'g')).toMatchObject({ f24Group: 'app-a-app-b' });
       // The first assignment is undone only after the later one that closed its rule.
       await expect(undoOperation(store, 'b-1', 'p1', clock, ids('u'))).rejects.toThrow(
         /depend on it/,
@@ -498,8 +492,8 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
         {
           ...base,
           id: 'imur-old',
-          accountId: 'acc-berchet',
-          f24Group: 'pulci',
+          accountId: 'acc-app-a',
+          f24Group: 'app-c',
           validFrom: '2026-06-14',
         },
       ]);
@@ -512,9 +506,9 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
   });
 
   describe('the expected under an assignment (answer of user1, 16 Nov 2026, R136 question (a))', () => {
-    const lovarini = (extra: Partial<SetImuYearInput> = {}): SetImuYearInput => ({
-      ...berchet(),
-      apartmentId: 'lovarini',
+    const aptB = (extra: Partial<SetImuYearInput> = {}): SetImuYearInput => ({
+      ...aptA(),
+      apartmentId: 'app-b',
       ...extra,
     });
     const blocked = { status: 'refused', reason: 'has-dependents', recordIds: ['mc-f'] };
@@ -523,47 +517,40 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
       const store = await f24Store();
       await assign(store);
       const before = await snapshot(store);
-      expect(await save(store, lovarini({ f24Group: 'altro' }))).toEqual(blocked);
-      expect(await save(store, berchet({ f24Group: 'altro' }))).toEqual(blocked);
-      await put(store, 'imuYear', [{ ...imuYear('lovarini'), deleted: true }]);
+      expect(await save(store, aptB({ f24Group: 'altro' }))).toEqual(blocked);
+      expect(await save(store, aptA({ f24Group: 'altro' }))).toEqual(blocked);
+      await put(store, 'imuYear', [{ ...imuYear('app-b'), deleted: true }]);
       const alone = await snapshot(store);
-      expect(await save(store, berchet({ rates: [{ index: 1 }] }))).toEqual(blocked);
+      expect(await save(store, aptA({ rates: [{ index: 1 }] }))).toEqual(blocked);
       expect(await snapshot(store)).toEqual(alone);
-      await put(store, 'imuYear', [{ ...imuYear('lovarini'), rev: 1 }]);
+      await put(store, 'imuYear', [{ ...imuYear('app-b'), rev: 1 }]);
       expect(await snapshot(store)).toEqual(before);
       // The amounts only: saved; another year or group: not concerned.
       expect(
-        await save(
-          store,
-          lovarini({ rates: [{ index: 1, expected: cents(40000) }, { index: 2 }] }),
-        ),
+        await save(store, aptB({ rates: [{ index: 1, expected: cents(40000) }, { index: 2 }] })),
       ).toMatchObject({ status: 'saved' });
-      expect(await save(store, lovarini({ year: '2027', f24Group: 'altro' }), 'k')).toMatchObject({
+      expect(await save(store, aptB({ year: '2027', f24Group: 'altro' }), 'k')).toMatchObject({
         status: 'saved',
       });
     });
 
     it('undoBlockedBy names the assignments an undo of imu.expected would change', async () => {
       const store = await f24Store();
-      // Lovarini leaves and comes back with amounts: two imu.expected on its year.
-      expect(await save(store, lovarini({ f24Group: 'solo-lovarini' }), 'x')).toMatchObject({
+      // Appartamento B leaves and comes back with amounts: two imu.expected on its year.
+      expect(await save(store, aptB({ f24Group: 'solo-app-b' }), 'x')).toMatchObject({
         operationId: 'x-1',
       });
       expect(
         await save(
           store,
-          lovarini({ rates: [{ index: 1, expected: cents(40000) }, { index: 2 }] }),
+          aptB({ rates: [{ index: 1, expected: cents(40000) }, { index: 2 }] }),
           'y',
         ),
       ).toMatchObject({ operationId: 'y-1' });
-      const created = await save(
-        store,
-        { ...berchet({ year: '2027', rates: [{ index: 1 }] }) },
-        'z',
-      );
+      const created = await save(store, { ...aptA({ year: '2027', rates: [{ index: 1 }] }) }, 'z');
       expect(created).toMatchObject({ operationId: 'z-1' });
       await assign(store);
-      // Back to solo-lovarini: the rate of the F24 loses an apartment.
+      // Back to solo-app-b: the rate of the F24 loses an apartment.
       expect(await undoBlockedBy(store, 'y-1')).toEqual(['mc-f']);
       // Another year: nothing assigned there.
       expect(await undoBlockedBy(store, 'z-1')).toEqual([]);

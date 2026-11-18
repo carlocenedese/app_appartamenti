@@ -50,15 +50,15 @@ const year = (
     id: `imu-${apartmentId}-2026`,
     apartmentId,
     year: '2026',
-    f24Group: 'berchet-lovarini',
+    f24Group: 'app-a-app-b',
     rates,
   });
 const tx = (id: string, amount: number, extra: Record<string, unknown> = {}): BankTransaction =>
   BankTransactionSchema.parse({
     ...base,
     id,
-    apartmentId: 'berchet',
-    accountId: 'acc-berchet',
+    apartmentId: 'app-a',
+    accountId: 'acc-app-a',
     date: '2026-06-14',
     amount,
     description: 'PAGAMENTO F24 DELEGA 0001',
@@ -71,14 +71,14 @@ const assigned = (transactionId: string, rateIndex = 1, extra: Record<string, un
     id: `mc-${transactionId}`,
     transactionId,
     kind: 'tasse',
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     f24: true,
-    imu: { f24Group: 'berchet-lovarini', year: '2026', rateIndex },
+    imu: { f24Group: 'app-a-app-b', year: '2026', rateIndex },
     ...extra,
   });
 const years = [
-  year('lovarini', [{ index: 1, expected: 40000 }, { index: 2 }]),
-  year('berchet', [
+  year('app-b', [{ index: 1, expected: 40000 }, { index: 2 }]),
+  year('app-a', [
     { index: 1, expected: 60000 },
     { index: 2, expected: 60000 },
   ]),
@@ -94,7 +94,7 @@ describe('imuRates (plan 3d, task 3)', () => {
     for (const paid of [101001, 98999]) {
       expect([paid, status(paid)]).toEqual([paid, 'da-riconciliare']);
     }
-    const one = [year('berchet', [{ index: 1, expected: 1 }])];
+    const one = [year('app-a', [{ index: 1, expected: 1 }])];
     expect(status(1, one)).toBe('pagata');
     expect(status(2, one)).toBe('da-riconciliare');
   });
@@ -117,20 +117,20 @@ describe('imuRates (plan 3d, task 3)', () => {
     expect(imuRates({ years, classes: [assigned('f')], transactions: [tx('f', -101001)] })).toEqual(
       [
         {
-          f24Group: 'berchet-lovarini',
+          f24Group: 'app-a-app-b',
           year: '2026',
           rateIndex: 1,
-          apartmentIds: ['berchet', 'lovarini'],
+          apartmentIds: ['app-a', 'app-b'],
           status: 'da-riconciliare',
           expected: 100000,
           paid: 101001,
           transactionId: 'f',
         },
         {
-          f24Group: 'berchet-lovarini',
+          f24Group: 'app-a-app-b',
           year: '2026',
           rateIndex: 2,
-          apartmentIds: ['berchet', 'lovarini'],
+          apartmentIds: ['app-a', 'app-b'],
           status: 'attesa',
         },
       ],
@@ -139,8 +139,8 @@ describe('imuRates (plan 3d, task 3)', () => {
 
   it('an amount missing for one apartment: importo-mancante with an F24, attesa without (question 4)', () => {
     const ys = [
-      year('lovarini', [{ index: 1 }, { index: 2 }]),
-      year('berchet', [{ index: 1, expected: 60000 }, { index: 2 }]),
+      year('app-b', [{ index: 1 }, { index: 2 }]),
+      year('app-a', [{ index: 1, expected: 60000 }, { index: 2 }]),
     ];
     const [withF24] = imuRates({
       years: ys,
@@ -156,8 +156,8 @@ describe('imuRates (plan 3d, task 3)', () => {
     const due = (b: string, l: string) =>
       imuRates({
         years: [
-          year('berchet', [{ index: 1, dueDate: b }]),
-          year('lovarini', [{ index: 1, dueDate: l }]),
+          year('app-a', [{ index: 1, dueDate: b }]),
+          year('app-b', [{ index: 1, dueDate: l }]),
         ],
         classes: [],
         transactions: [],
@@ -180,7 +180,7 @@ describe('imuRates (plan 3d, task 3)', () => {
     ).toBe('attesa');
     const deletedYear = ImuYearSchema.parse({ ...years[0], deleted: true });
     expect(imuRates({ ...live, years: [deletedYear, years[1] as ImuYear] })[0]).toMatchObject({
-      apartmentIds: ['berchet'],
+      apartmentIds: ['app-a'],
       expected: 60000,
       status: 'da-riconciliare',
     });
@@ -217,9 +217,9 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
       for (const r of records)
         await s.writeJsonAtomic(recordPath(kind, r.id), recordSchemas[kind].parse(r));
     };
-    await put('apartment', [apartment('berchet'), apartment('lovarini')]);
+    await put('apartment', [apartment('app-a'), apartment('app-b')]);
     await put('account', [
-      { ...base, id: 'acc-berchet', apartmentId: 'berchet', label: 'Conto', bankProfileId: 'bp' },
+      { ...base, id: 'acc-app-a', apartmentId: 'app-a', label: 'Conto', bankProfileId: 'bp' },
     ]);
     await put('transaction', [tx('f', -101001)]);
     await put('movementClass', [
@@ -228,7 +228,7 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
         id: 'mc-f',
         transactionId: 'f',
         kind: 'tasse',
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         f24: true,
       }),
     ]);
@@ -240,7 +240,7 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
       {
         apartmentId,
         year: '2026',
-        f24Group: 'berchet-lovarini',
+        f24Group: 'app-a-app-b',
         rates: [{ index: 1, expected: cents(expected) }],
       },
       'p1',
@@ -248,13 +248,13 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
       ids(prefix),
     );
 
-  it('a new expected of Lovarini brings the rate from da-riconciliare to pagata; writes nothing', async () => {
+  it('a new expected of Appartamento B brings the rate from da-riconciliare to pagata; writes nothing', async () => {
     const s = await store();
-    await save(s, 'berchet', 60000, 'a');
-    await save(s, 'lovarini', 40000, 'b');
+    await save(s, 'app-a', 60000, 'a');
+    await save(s, 'app-b', 40000, 'b');
     await assignImuF24(
       s,
-      { transactionId: 'f', f24Group: 'berchet-lovarini', year: '2026', rateIndex: 1 },
+      { transactionId: 'f', f24Group: 'app-a-app-b', year: '2026', rateIndex: 1 },
       'p1',
       clock,
       ids('c'),
@@ -266,7 +266,7 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
     });
     expect(await loadImuRates(s, { year: '2027' })).toEqual({ status: 'computed', rates: [] });
     expect(await snapshot(s)).toEqual(before);
-    await save(s, 'lovarini', 41001, 'd');
+    await save(s, 'app-b', 41001, 'd');
     expect(await loadImuRates(s)).toMatchObject({
       rates: [{ status: 'pagata', expected: 101001 }],
     });
@@ -280,11 +280,11 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
 
   it('the tolerance of the workspace settings reaches loadImuRates, loadScadenzario, loadTaxTable and the balances (I9)', async () => {
     const s = await store();
-    await save(s, 'berchet', 60000, 'a');
-    await save(s, 'lovarini', 40000, 'b');
+    await save(s, 'app-a', 60000, 'a');
+    await save(s, 'app-b', 40000, 'b');
     await assignImuF24(
       s,
-      { transactionId: 'f', f24Group: 'berchet-lovarini', year: '2026', rateIndex: 1 },
+      { transactionId: 'f', f24Group: 'app-a-app-b', year: '2026', rateIndex: 1 },
       'p1',
       clock,
       ids('c'),
@@ -325,8 +325,8 @@ describe('loadImuRates and the IMU writes (plan 3d, task 3)', () => {
 
   it('refuses a diverged store', async () => {
     const s = await store();
-    await save(s, 'berchet', 60000, 'a');
-    const path = recordPath('imuYear', 'imu-berchet-2026');
+    await save(s, 'app-a', 60000, 'a');
+    const path = recordPath('imuYear', 'imu-app-a-2026');
     s.putRaw(path, (s.getRaw(path) ?? '').replace('60000', '1'));
     expect(await loadImuRates(s)).toEqual({ status: 'refused', reason: 'inconsistent-store' });
   });
@@ -432,17 +432,17 @@ describe('imuShares and the annual check (plan 3d, task 4; answers of user1, 16 
 
   it('splits the actual debit in proportion to the expected of the same rate', () => {
     expect(sharesOf(years, 100500)).toEqual([
-      { apartmentId: 'berchet', amount: 60300 },
-      { apartmentId: 'lovarini', amount: 40200 },
+      { apartmentId: 'app-a', amount: 60300 },
+      { apartmentId: 'app-b', amount: 40200 },
     ]);
     const half = [
-      year('lovarini', [{ index: 1, expected: 50000 }]),
-      year('berchet', [{ index: 1, expected: 50000 }]),
+      year('app-b', [{ index: 1, expected: 50000 }]),
+      year('app-a', [{ index: 1, expected: 50000 }]),
     ];
     // Largest remainders, a tie to the first apartment; the sum is the debit.
     expect(sharesOf(half, 100001)).toEqual([
-      { apartmentId: 'berchet', amount: 50001 },
-      { apartmentId: 'lovarini', amount: 50000 },
+      { apartmentId: 'app-a', amount: 50001 },
+      { apartmentId: 'app-b', amount: 50000 },
     ]);
   });
 
@@ -456,8 +456,8 @@ describe('imuShares and the annual check (plan 3d, task 4; answers of user1, 16 
       [12345, 67891, 80236],
     ] as const) {
       const ys = [
-        year('berchet', [{ index: 1, expected: b }]),
-        year('lovarini', [{ index: 1, expected: l }]),
+        year('app-a', [{ index: 1, expected: b }]),
+        year('app-b', [{ index: 1, expected: l }]),
       ];
       const shares = sharesOf(ys, paid) ?? [];
       expect([b, l, shares.reduce((sum, x) => sum + x.amount, 0)]).toEqual([b, l, paid]);
@@ -469,21 +469,18 @@ describe('imuShares and the annual check (plan 3d, task 4; answers of user1, 16 
 
   it('no split out of the 1% or with the expected of one apartment only', () => {
     expect(sharesOf(years, 101001)).toBeUndefined();
-    const one = [
-      year('lovarini', [{ index: 1 }]),
-      year('berchet', [{ index: 1, expected: 60000 }]),
-    ];
+    const one = [year('app-b', [{ index: 1 }]), year('app-a', [{ index: 1, expected: 60000 }])];
     expect(sharesOf(one, 60000)).toBeUndefined();
   });
 
   const annual = (b: number | undefined, l: number | undefined) =>
-    ['berchet', 'lovarini'].map((apartmentId, i) =>
+    ['app-a', 'app-b'].map((apartmentId, i) =>
       ImuYearSchema.parse({
         ...base,
         id: `imu-${apartmentId}-2026`,
         apartmentId,
         year: '2026',
-        f24Group: 'berchet-lovarini',
+        f24Group: 'app-a-app-b',
         ...([b, l][i] === undefined ? {} : { annualTotal: [b, l][i] }),
         rates: [{ index: 1 }, { index: 2 }],
       }),
@@ -499,8 +496,8 @@ describe('imuShares and the annual check (plan 3d, task 4; answers of user1, 16 
     expect(both[0]).toMatchObject({ annual: { expected: 200000, paid: 201000 } });
     expect(both[0]).not.toHaveProperty('expected');
     expect(imuShares(both[0] as ImuRate, ys, cents(-100000))).toEqual([
-      { apartmentId: 'berchet', amount: 65000 },
-      { apartmentId: 'lovarini', amount: 35000 },
+      { apartmentId: 'app-a', amount: 65000 },
+      { apartmentId: 'app-b', amount: 35000 },
     ]);
     // 2.000,00 € expected: 2.020,00 € is in line, 2.020,01 € is not.
     expect(

@@ -14,8 +14,8 @@ aperto.
 
 Dopo il 3c un F24 confermato resta sul conto che l'ha pagato e, se è dell'appartamento di quel conto,
 finisce in `toSplit` del saldo tra conti, «da ripartire», senza importo (decisione 9 del 3c, R131).
-L'F24 dell'IMU di Berchet e Lovarini esce dal conto di Berchet e paga cinque immobili (tre di Berchet,
-due di Lovarini) senza dividerli: per R3 va ripartito tra i due appartamenti in parti proporzionali nel
+L'F24 dell'IMU di Appartamento A e Appartamento B esce dal conto di Appartamento A e paga cinque immobili (tre di Appartamento A,
+due di Appartamento B) senza dividerli: per R3 va ripartito tra i due appartamenti in parti proporzionali nel
 Saldo tra conti, e l'app deve dire se quanto pagato torna con quanto atteso.
 
 ## Obiettivo
@@ -35,7 +35,7 @@ Saldo tra conti, e l'app deve dire se quanto pagato torna con quanto atteso.
 - Compilazione dell'F24 (sezione 23: l'app non compila nulla).
 - Scadenze e pagamenti (stati «in scadenza», «in ritardo», ricevute, Home) e Tasse e stime (sezione
   34): useranno le rate di questo piano, in altri piani.
-- IMU di Pulci (user2): fuori da questa richiesta; il modello non la esclude.
+- IMU di Appartamento C (user2): fuori da questa richiesta; il modello non la esclude.
 - Conguaglio degli inquilini: l'IMU non c'entra (R3) e nessun record del conguaglio cambia.
 - Schermate, veste grafica.
 
@@ -43,15 +43,15 @@ Saldo tra conti, e l'app deve dire se quanto pagato torna con quanto atteso.
 
 Dalla richiesta del 16 novembre 2026, vincolanti:
 
-1. **Totali IMU 2025** di Berchet e di Lovarini comunicati da user1. Sono dati reali: **non entrano nel
+1. **Totali IMU 2025** di Appartamento A e di Appartamento B comunicati da user1. Sono dati reali: **non entrano nel
    repository** (CLAUDE.md, `pnpm data:check`), user1 li inserisce con la riga di comando nel suo
    archivio. Le fixture usano importi inventati.
 2. **Due rate all'anno** per legge. Il numero di rate e gli importi sono **dati** inseriti da user1,
    non codice (nessuna regola fiscale nel codice).
 3. **Prospetto 2026 non ancora disponibile:** il modello accetta gli importi attesi per rata, per
    appartamento e anno, inseriti più tardi; una rata senza importo atteso è ammessa.
-4. **Un F24 paga cinque immobili** (tre di Berchet, due di Lovarini) e non li separa.
-5. **L'F24 esce dal conto di Berchet** e si ripartisce tra i due appartamenti in proporzione agli
+4. **Un F24 paga cinque immobili** (tre di Appartamento A, due di Appartamento B) e non li separa.
+5. **L'F24 esce dal conto di Appartamento A** e si ripartisce tra i due appartamenti in proporzione agli
    importi attesi, nel Saldo tra conti (sezione 24, R3).
 6. **Riconoscimento:** la prima volta user1 assegna a mano ogni F24 alla sua rata IMU; l'app salva una
    regola e impara; la proposta è **sempre mostrata per conferma**, mai registrata da sola (coerente
@@ -70,7 +70,7 @@ Tutti `v: 1`, campi minimi; sui record esistenti solo campi opzionali, nessuna m
 
 - **`imuYear`** (`_app/dati/imuYear/imu-<apartmentId>-<year>.json`): un record per appartamento e anno.
   Campi: `apartmentId`; `year` (`AAAA`); `f24Group` (testo: gli appartamenti con lo stesso
-  `f24Group` e lo stesso `year` sono pagati dallo stesso F24, per esempio `berchet-lovarini`);
+  `f24Group` e lo stesso `year` sono pagati dallo stesso F24, per esempio `app-a-app-b`);
   `annualTotal?` (`Cents` > 0, il totale annuo se è l'unico dato noto, come per il 2025); `rates`: una
   voce per rata `{ index, expected?, dueDate? }`, con `index` da 1 a n senza buchi, `expected` `Cents`
   > 0 quando noto, `dueDate` solo come dato inserito (domanda 6). Nessun nome, nessun dato catastale
@@ -131,13 +131,13 @@ modificare nulla è la domanda 5.
 
 ## 4. Ripartizione nel saldo tra conti (domande 1-5 e 10, risposte)
 
-R3 e la decisione 5 fissano: dal conto di Berchet, in parti proporzionali, tra i due appartamenti.
+R3 e la decisione 5 fissano: dal conto di Appartamento A, in parti proporzionali, tra i due appartamenti.
 Con le risposte di user1 (domande 1-5 e 10, R164) un F24 di una rata `pagata` dà una voce
 `kind: 'imu'` per ogni appartamento del gruppo diverso da quello del conto, con la sua quota
 dell'addebito effettivo; una rata non `pagata` resta in `toSplit` con il motivo
 (`imu-importo-mancante`, `imu-da-riconciliare`), mai con un importo nel netto. **Esempio
-(importi inventati):** rata 1 attesa Berchet 600,00 €, Lovarini 400,00 €; F24 di 1.005,00 € dal conto
-di Berchet (dentro l'1%): quote 603,00 € e 402,00 €, «Lovarini deve a Berchet 402,00 €».
+(importi inventati):** rata 1 attesa Appartamento A 600,00 €, Appartamento B 400,00 €; F24 di 1.005,00 € dal conto
+di Appartamento A (dentro l'1%): quote 603,00 € e 402,00 €, «Appartamento B deve a Appartamento A 402,00 €».
 
 ## 5. Regola appresa e suggerimento (domande 7 e 8, risposte)
 
@@ -244,4 +244,4 @@ decisioni, al posto delle domande:
 
 - Scadenze e pagamenti (stati dalla data, Home, ricevute), Tasse e stime (sezione 34).
 - Interfaccia e veste grafica.
-- IMU di Pulci, F24 di più rate o di più anni (domanda 9).
+- IMU di Appartamento C, F24 di più rate o di più anni (domanda 9).

@@ -63,7 +63,7 @@ async function seed(
 const tenancy = (id: string, extra: Record<string, unknown> = {}) => ({
   ...base,
   id,
-  apartmentId: 'pulci',
+  apartmentId: 'app-c',
   tenantId: 'ten-anna',
   room: 'A',
   from: '2025-10',
@@ -81,8 +81,8 @@ async function fixtureStore() {
     [
       {
         ...base,
-        id: 'pulci',
-        name: 'pulci',
+        id: 'app-c',
+        name: 'app-c',
         locatore: 'user2',
         posti: 2,
         rooms: ['A', 'B'],
@@ -90,8 +90,8 @@ async function fixtureStore() {
       },
       {
         ...base,
-        id: 'lovarini',
-        name: 'lovarini',
+        id: 'app-b',
+        name: 'app-b',
         locatore: 'user1',
         posti: 1,
         annualitaStart: { month: 10, day: 1 },
@@ -112,8 +112,8 @@ async function fixtureStore() {
     [
       {
         ...base,
-        id: 'ctr-pulci',
-        apartmentId: 'pulci',
+        id: 'ctr-app-c',
+        apartmentId: 'app-c',
         type: '1+1',
         start: '2025-10',
         end: '2026-09',
@@ -124,7 +124,7 @@ async function fixtureStore() {
       {
         ...base,
         id: 'ctr-lov',
-        apartmentId: 'lovarini',
+        apartmentId: 'app-b',
         type: '3+2',
         start: '2024-04',
         end: '2029-03',
@@ -138,14 +138,14 @@ async function fixtureStore() {
 
 const arrival = (extra: Partial<SaveTenancyInput> = {}): SaveTenancyInput => ({
   id: 'tcy-carla',
-  apartmentId: 'pulci',
+  apartmentId: 'app-c',
   tenantId: 'ten-carla',
   room: 'B',
   from: yearMonth('2025-11'),
   monthlyRent: cents(36000),
   monthlyForfait: cents(3000),
   expectedDeposit: cents(50000),
-  contractId: 'ctr-pulci',
+  contractId: 'ctr-app-c',
   ...extra,
 });
 const takeover = (extra: Partial<TakeoverInput> = {}): TakeoverInput => ({
@@ -162,7 +162,7 @@ const takeover = (extra: Partial<TakeoverInput> = {}): TakeoverInput => ({
 });
 const tenancies = async (store: MemoryStore) =>
   (await loadAll(store, 'tenancy', TenancySchema, { includeDeleted: true })).records;
-const contract = async (store: MemoryStore, id = 'ctr-pulci') =>
+const contract = async (store: MemoryStore, id = 'ctr-app-c') =>
   (await loadAll(store, 'contract', ContractSchema, { includeDeleted: true })).records.find(
     (c) => c.id === id,
   );
@@ -247,7 +247,7 @@ describe('saveTenancy (plan 11, task 2)', () => {
   it('more tenants than beds is beds-conflict too-many-tenants', async () => {
     const store = await fixtureStore();
     const lov = (id: string, tenantId: string) =>
-      arrival({ id, tenantId, apartmentId: 'lovarini', room: undefined, contractId: undefined });
+      arrival({ id, tenantId, apartmentId: 'app-b', room: undefined, contractId: undefined });
     expect(await saveTenancy(store, lov('t-1', 'ten-anna'), 'p1', clock, ids('l'))).toMatchObject({
       status: 'saved',
     });
@@ -325,8 +325,8 @@ describe('a shorter stay and the recoveries (plan 11, review)', () => {
     const store = new MemoryStore();
     const apt = {
       ...base,
-      id: 'berchet',
-      name: 'berchet',
+      id: 'app-a',
+      name: 'app-a',
       locatore: 'user1',
       posti: 1,
       annualitaStart: { month: 10, day: 1 },
@@ -334,7 +334,7 @@ describe('a shorter stay and the recoveries (plan 11, review)', () => {
     const ctr = {
       ...base,
       id: 'ctr-b',
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       type: '1+1',
       start: '2025-10',
       end: '2027-09',
@@ -354,7 +354,7 @@ describe('a shorter stay and the recoveries (plan 11, review)', () => {
     await seed(
       store,
       'tenancy',
-      [tenancy('tcy-a', { apartmentId: 'berchet', room: undefined, to: '2027-09' })],
+      [tenancy('tcy-a', { apartmentId: 'app-a', room: undefined, to: '2027-09' })],
       's3',
     );
     await seed(store, 'contract', [ctr], 's4');
@@ -364,7 +364,7 @@ describe('a shorter stay and the recoveries (plan 11, review)', () => {
   const recovery = (periodLabel: string | undefined, status = 'da-recuperare') => ({
     ...base,
     id: 'rec-1',
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     instalmentId: 'str-1',
     amount: 2000,
     shares: [{ tenantId: 'ten-anna', amount: 2000 }],
@@ -454,7 +454,7 @@ describe('recordTakeover (plan 11, task 2)', () => {
     expect(bruno).toEqual({
       ...base,
       id: 'tcy-bruno',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       tenantId: 'ten-bruno',
       room: 'A',
       from: '2026-03',
@@ -562,7 +562,7 @@ describe('undoing the tenancy operations (plan 11, task 2)', () => {
     );
     expect(anna?.room).toBe('A');
     const apt = (await loadAll(store, 'apartment', recordSchemas.apartment)).records.find(
-      (a) => a.id === 'pulci',
+      (a) => a.id === 'app-c',
     );
     await commitChange(
       store,
@@ -572,7 +572,7 @@ describe('undoing the tenancy operations (plan 11, task 2)', () => {
         summary: 'Dati di prova.',
         changes: [
           {
-            path: recordPath('apartment', 'pulci'),
+            path: recordPath('apartment', 'app-c'),
             before: apt,
             after: recordSchemas.apartment.parse({ ...apt, rev: 2, rooms: ['B', 'C'] }),
           },
@@ -594,7 +594,7 @@ describe('undoing the tenancy operations (plan 11, task 2)', () => {
         {
           ...base,
           id: 'pay-c1',
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
           tenantId: 'ten-carla',
           date: '2025-10-25',
           amount: 50000,
@@ -649,7 +649,7 @@ async function swapStore(bruno: Record<string, unknown> = {}) {
 }
 
 const swap = (extra: Partial<RoomSwapInput> = {}): RoomSwapInput => ({
-  apartmentId: 'pulci',
+  apartmentId: 'app-c',
   tenancyIdA: 'tcy-anna',
   tenancyIdB: 'tcy-bruno',
   month: yearMonth('2026-03'),
@@ -673,7 +673,7 @@ describe('recordRoomSwap (plan 18)', () => {
     expect(byId.get('tcy-anna-2026-03')).toEqual({
       ...base,
       id: 'tcy-anna-2026-03',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       tenantId: 'ten-anna',
       room: 'B',
       from: '2026-03',
@@ -684,7 +684,7 @@ describe('recordRoomSwap (plan 18)', () => {
     expect(byId.get('tcy-bruno-2026-03')).toEqual({
       ...base,
       id: 'tcy-bruno-2026-03',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       tenantId: 'ten-bruno',
       room: 'A',
       from: '2026-03',
@@ -744,16 +744,16 @@ describe('recordRoomSwap (plan 18)', () => {
       'tenancy',
       [
         tenancy('tcy-carla', { tenantId: 'ten-carla', from: '2026-10', to: '2027-09' }),
-        tenancy('tcy-lov', { apartmentId: 'lovarini', tenantId: 'ten-carla', room: undefined }),
+        tenancy('tcy-lov', { apartmentId: 'app-b', tenantId: 'ten-carla', room: undefined }),
       ],
       'c',
     );
     const before = await snapshot(store);
     const cases: [Partial<RoomSwapInput>, string][] = [
       [{ tenancyIdB: 'tcy-nope' }, 'unknown-tenancy'],
-      [{ apartmentId: 'lovarini' }, 'unknown-tenancy'],
+      [{ apartmentId: 'app-b' }, 'unknown-tenancy'],
       [{ tenancyIdB: 'tcy-anna' }, 'same-tenant'],
-      [{ apartmentId: 'lovarini', tenancyIdA: 'tcy-lov', tenancyIdB: 'tcy-lov' }, 'same-tenant'],
+      [{ apartmentId: 'app-b', tenancyIdA: 'tcy-lov', tenancyIdB: 'tcy-lov' }, 'same-tenant'],
       [{ tenancyIdB: 'tcy-carla' }, 'same-room'],
       [{ month: yearMonth('2025-10') }, 'invalid-tenancy'],
       [{ month: yearMonth('2026-10') }, 'invalid-tenancy'],
@@ -774,12 +774,12 @@ describe('recordRoomSwap (plan 18)', () => {
       store,
       'tenancy',
       ['ten-bruno', 'ten-carla'].map((tenantId) =>
-        tenancy(`tcy-${tenantId}`, { apartmentId: 'lovarini', tenantId, room: undefined }),
+        tenancy(`tcy-${tenantId}`, { apartmentId: 'app-b', tenantId, room: undefined }),
       ),
       'c',
     );
     const input = swap({
-      apartmentId: 'lovarini',
+      apartmentId: 'app-b',
       tenancyIdA: 'tcy-ten-bruno',
       tenancyIdB: 'tcy-ten-carla',
     });
@@ -801,8 +801,8 @@ describe('recordRoomSwap (plan 18)', () => {
       [
         {
           ...base,
-          id: 'ctr-pulci-2',
-          apartmentId: 'pulci',
+          id: 'ctr-app-c-2',
+          apartmentId: 'app-c',
           type: '1+1',
           start: '2025-10',
           end: '2026-09',
@@ -821,7 +821,7 @@ describe('recordRoomSwap (plan 18)', () => {
     await seed(
       taken,
       'tenancy',
-      [tenancy('tcy-bruno-2026-03', { apartmentId: 'lovarini', room: undefined })],
+      [tenancy('tcy-bruno-2026-03', { apartmentId: 'app-b', room: undefined })],
       'c',
     );
     expect(await recordRoomSwap(taken, swap(), 'p1', clock, ids('w'))).toEqual({
@@ -989,8 +989,8 @@ describe('recordRoomSwap (plan 18)', () => {
       [
         {
           ...base,
-          id: 'ctr-pulci-2',
-          apartmentId: 'pulci',
+          id: 'ctr-app-c-2',
+          apartmentId: 'app-c',
           type: '1+1',
           start: '2025-10',
           end: '2026-09',
@@ -1132,11 +1132,11 @@ describe('recordRoomSwap (plan 18)', () => {
     const ctr = await contract(store);
     if (ctr === undefined) throw new Error('no contract');
     const [label] = settlementPeriods(ctr, { month: 10, day: 1 }).map((p) => p.label);
-    const loaded = await loadExcelInput(store, { apartmentId: 'pulci', periodLabel: label ?? '' });
+    const loaded = await loadExcelInput(store, { apartmentId: 'app-c', periodLabel: label ?? '' });
     if (loaded.status !== 'ok') throw new Error(loaded.reason);
     // One bill of one month before the swap and one after: the odd cent goes to room A (R30).
     const luce = (id: string, from: string, to: string) =>
-      bill(id, from, to, 10001, { apartmentId: 'pulci' });
+      bill(id, from, to, 10001, { apartmentId: 'app-c' });
     const early = luce('luce-1', '2026-01-01', '2026-01-31');
     const later = luce('luce-2', '2026-04-01', '2026-04-30');
     const input = {

@@ -16,7 +16,7 @@ const interest = (principal: number, rates: RatePeriod[], from: string, to: stri
   legalInterest(cents(principal), rates, isoDate(from), isoDate(to));
 
 describe('legalInterest', () => {
-  it('computes the Berchet example: 5 whole months in 2025 and 7 in 2026', () => {
+  it('computes the Appartamento A example: 5 whole months in 2025 and 7 in 2026', () => {
     // 50000 * 200 * 5 + 50000 * 160 * 7 = 106 000 000; / 120 000 = 883.33 -> 883.
     expect(interest(50000, RATES, '2025-08-01', '2026-07-31')).toBe(883);
   });

@@ -118,7 +118,7 @@
 
 - [ ] **Step 1: test che falliscono.** Per ogni fixture di `fixtures/pdf/` (18 oggi): stessi valori, confidenze e stato attesi, `pageRange [1, pages]`, `documentKind` del profilo; e lo stesso risultato con `--pages 1-<pages>` letto dalla riga di comando, salvo `pageRange` uguale. Il rapporto su una cartella temporanea con un composto letto intero conta 1 nella colonna «più documenti» del suo profilo.
 - [ ] **Step 2:** `PYTHON=<venv> pnpm python:test` fallisce.
-- [ ] **Step 3: implementare** la colonna; lanciare il rapporto in sola lettura sulle cartelle reali (Lovarini, Pulci, Berchet) e scrivere in `docs/rules/lettura-pdf.md` **solo numeri**: file con l'avviso per profilo, con la nota che l'avviso scatta anche su un documento solo con una tabella di storico e che i casi vanno guardati da user1; nessun nome di file, importo o testo. Una riga in `docs/progress.md`.
+- [ ] **Step 3: implementare** la colonna; lanciare il rapporto in sola lettura sulle cartelle reali (Appartamento B, Appartamento C, Appartamento A) e scrivere in `docs/rules/lettura-pdf.md` **solo numeri**: file con l'avviso per profilo, con la nota che l'avviso scatta anche su un documento solo con una tabella di storico e che i casi vanno guardati da user1; nessun nome di file, importo o testo. Una riga in `docs/progress.md`.
 - [ ] **Step 4:** lint, `pnpm python:test`, `REQUIRE_PYTHON=1 pnpm test`, `pnpm data:check` passano.
 - [ ] **Step 5: commit** `test(pdf): non regressione delle fixture e conteggi dell'avviso più documenti (piano 2b-2, task 5)`.
 

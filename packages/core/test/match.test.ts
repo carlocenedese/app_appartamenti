@@ -22,7 +22,7 @@ type MatchInput = Parameters<typeof matchToTransactions>[0];
 const WINDOW = { daysBefore: 5, daysAfter: 10 };
 // A period covers one account only, so the tests cover the three apartments of the fixtures.
 function covering(from: string, to: string): MatchInput['statementPeriods'] {
-  return ['berchet', 'lovarini', 'pulci'].map((apartmentId) => ({
+  return ['app-a', 'app-b', 'app-c'].map((apartmentId) => ({
     apartmentId,
     from: isoDate(from),
     to: isoDate(to),
@@ -36,7 +36,7 @@ function bill(id: string, extra: Partial<Bill> = {}): Bill {
     id,
     v: 1,
     rev: 1,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     category: 'elettricita',
     supplier: 'Luce Srl',
     dueDate: isoDate('2026-11-10'),
@@ -56,7 +56,7 @@ function tx(id: string, date: string, amount: number, extra: Partial<BankTransac
     id,
     v: 1,
     rev: 1,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     date: isoDate(date),
     amount: cents(amount),
     description: 'ADDEBITO DIRETTO SDD LUCE SRL',
@@ -71,7 +71,7 @@ function instalment(id: string, extra: Partial<Instalment> = {}): Instalment {
     id,
     v: 1,
     rev: 1,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     kind: 'condominio',
     esercizio: '2026-27',
     rateIndex: 1,
@@ -120,7 +120,7 @@ function run(input: Partial<MatchInput>): ReturnType<typeof matchToTransactions>
   });
 }
 
-// The common TARI notice of Berchet and Lovarini, paid from Berchet's account.
+// The common TARI notice of Appartamento A and Appartamento B, paid from Appartamento A's account.
 function tariShared(): Instalment[] {
   const common = {
     kind: 'tari' as const,
@@ -134,16 +134,16 @@ function tariShared(): Instalment[] {
     coversTo: yearMonth('2026-04'),
   };
   return [
-    instalment('tari-berchet', {
+    instalment('tari-app-a', {
       ...common,
-      apartmentId: 'berchet',
+      apartmentId: 'app-a',
       rata: cents(10075),
       shared: { groupId: 'avviso-89064', groupTotal: cents(18600), weight: cents(10075) },
     }),
-    instalment('tari-lovarini', {
+    instalment('tari-app-b', {
       ...common,
-      apartmentId: 'lovarini',
-      paidFromApartmentId: 'berchet',
+      apartmentId: 'app-b',
+      paidFromApartmentId: 'app-a',
       rata: cents(8471),
       shared: { groupId: 'avviso-89064', groupTotal: cents(18600), weight: cents(8471) },
     }),
@@ -243,28 +243,28 @@ describe('matchToTransactions: exact matches', () => {
   });
 
   it('expects rata alone for a TARI instalment', () => {
-    const tari = instalment('tari-pulci', {
+    const tari = instalment('tari-app-c', {
       kind: 'tari',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       rata: cents(13772),
       conguaglioPrec: cents(0),
     });
     const result = run({
       instalments: [tari],
-      transactions: [tx('t1', '2026-10-11', -13772, { apartmentId: 'pulci' })],
+      transactions: [tx('t1', '2026-10-11', -13772, { apartmentId: 'app-c' })],
     });
     expect(result.matches).toHaveLength(1);
   });
 
   it('looks for a debit only on the paying account', () => {
-    const rata = instalment('cond-1', { apartmentId: 'lovarini', paidFromApartmentId: 'berchet' });
-    const onLovarini = run({
+    const rata = instalment('cond-1', { apartmentId: 'app-b', paidFromApartmentId: 'app-a' });
+    const onAptB = run({
       instalments: [rata],
-      transactions: [tx('t1', '2026-10-10', -19800, { apartmentId: 'lovarini' })],
+      transactions: [tx('t1', '2026-10-10', -19800, { apartmentId: 'app-b' })],
     });
-    expect(onLovarini.matches).toEqual([]);
-    const onBerchet = run({ instalments: [rata], transactions: [tx('t1', '2026-10-10', -19800)] });
-    expect(onBerchet.matches).toHaveLength(1);
+    expect(onAptB.matches).toEqual([]);
+    const onAptA = run({ instalments: [rata], transactions: [tx('t1', '2026-10-10', -19800)] });
+    expect(onAptA.matches).toHaveLength(1);
   });
 
   it('never assigns one debit compatible with two bills of the same amount', () => {
@@ -724,8 +724,8 @@ describe('matchToTransactions: periods without a statement', () => {
   it('assumes each member of a shared notice for its share', () => {
     const result = run({ instalments: tariShared(), statementPeriods: [] });
     expect(result.matches.map((m) => [m.itemId, m.amount, m.by, m.transactionId])).toEqual([
-      ['tari-berchet', 10104, 'assumed', 'assumed-tari-berchet'],
-      ['tari-lovarini', 8496, 'assumed', 'assumed-tari-lovarini'],
+      ['tari-app-a', 10104, 'assumed', 'assumed-tari-app-a'],
+      ['tari-app-b', 8496, 'assumed', 'assumed-tari-app-b'],
     ]);
   });
 
@@ -766,31 +766,29 @@ describe('matchToTransactions: periods without a statement', () => {
 });
 
 describe('matchToTransactions: periods per account', () => {
-  const berchetOnly = [
-    { apartmentId: 'berchet', from: isoDate('2026-01-01'), to: isoDate('2026-12-31') },
+  const aptAOnly = [
+    { apartmentId: 'app-a', from: isoDate('2026-01-01'), to: isoDate('2026-12-31') },
   ];
 
-  it("assumes Pulci's bill as paid when only Berchet's account has a statement", () => {
+  it("assumes Appartamento C's bill as paid when only Appartamento A's account has a statement", () => {
     const result = run({
       bills: [
-        bill('b-pulci', { apartmentId: 'pulci' }),
-        bill('b-berchet', { fileHash: 'hash-other' }),
+        bill('b-app-c', { apartmentId: 'app-c' }),
+        bill('b-app-a', { fileHash: 'hash-other' }),
       ],
-      statementPeriods: berchetOnly,
+      statementPeriods: aptAOnly,
     });
-    expect(result.matches.map((m) => [m.itemId, m.by])).toEqual([['b-pulci', 'assumed']]);
-    expect(result.pending).toEqual([{ itemType: 'bill', itemId: 'b-berchet' }]);
+    expect(result.matches.map((m) => [m.itemId, m.by])).toEqual([['b-app-c', 'assumed']]);
+    expect(result.pending).toEqual([{ itemType: 'bill', itemId: 'b-app-a' }]);
   });
 
   it('covers an instalment paid from another account with the period of that account', () => {
-    const [berchet, lovarini] = tariShared() as [Instalment, Instalment];
-    const result = run({ instalments: [berchet, lovarini], statementPeriods: berchetOnly });
+    const [aptA, aptB] = tariShared() as [Instalment, Instalment];
+    const result = run({ instalments: [aptA, aptB], statementPeriods: aptAOnly });
     expect(result.matches).toEqual([]);
-    expect(result.pending.map((ref) => ref.itemId)).toEqual(['tari-berchet', 'tari-lovarini']);
-    const lovariniOnly = [{ ...berchetOnly[0], apartmentId: 'lovarini' }] as typeof berchetOnly;
-    expect(
-      run({ instalments: [berchet, lovarini], statementPeriods: lovariniOnly }).matches,
-    ).toHaveLength(2);
+    expect(result.pending.map((ref) => ref.itemId)).toEqual(['tari-app-a', 'tari-app-b']);
+    const aptBOnly = [{ ...aptAOnly[0], apartmentId: 'app-b' }] as typeof aptAOnly;
+    expect(run({ instalments: [aptA, aptB], statementPeriods: aptBOnly }).matches).toHaveLength(2);
   });
 });
 
@@ -958,12 +956,12 @@ describe('matchToTransactions: commissions', () => {
 describe('splitSharedDebit', () => {
   it('splits the TARI debit by supply totals, with the sign of the items', () => {
     const shares = splitSharedDebit(cents(-18600), [
-      { itemId: 'tari-berchet', weight: cents(10075) },
-      { itemId: 'tari-lovarini', weight: cents(8471) },
+      { itemId: 'tari-app-a', weight: cents(10075) },
+      { itemId: 'tari-app-b', weight: cents(8471) },
     ]);
     expect(shares).toEqual([
-      { itemId: 'tari-berchet', amount: 10104 },
-      { itemId: 'tari-lovarini', amount: 8496 },
+      { itemId: 'tari-app-a', amount: 10104 },
+      { itemId: 'tari-app-b', amount: 8496 },
     ]);
     expect(shares.reduce((sum, { amount }) => sum + amount, 0)).toBe(18600);
   });
@@ -1004,22 +1002,22 @@ describe('splitSharedDebit', () => {
 });
 
 describe('matchToTransactions: shared TARI notice', () => {
-  it('matches the single debit on Berchet to both instalments, split by supply', () => {
+  it('matches the single debit on Appartamento A to both instalments, split by supply', () => {
     const result = run({
       instalments: tariShared(),
       transactions: [tx('t-tari', '2026-03-16', -18600, { description: 'PAGOPA TARI' })],
     });
     expect(result.matches).toEqual([
       expect.objectContaining({
-        id: 'm-instalment-tari-berchet-amount-t-tari',
-        itemId: 'tari-berchet',
+        id: 'm-instalment-tari-app-a-amount-t-tari',
+        itemId: 'tari-app-a',
         amount: 10104,
         confirmed: true,
         by: 'auto',
       }),
       expect.objectContaining({
-        id: 'm-instalment-tari-lovarini-amount-t-tari',
-        itemId: 'tari-lovarini',
+        id: 'm-instalment-tari-app-b-amount-t-tari',
+        itemId: 'tari-app-b',
         amount: 8496,
         confirmed: true,
         by: 'auto',
@@ -1028,19 +1026,19 @@ describe('matchToTransactions: shared TARI notice', () => {
     expect(result.pending).toEqual([]);
   });
 
-  it('never matches the instalment of Lovarini to a debit on the account of Lovarini', () => {
+  it('never matches the instalment of Appartamento B to a debit on the account of Appartamento B', () => {
     const result = run({
       instalments: tariShared(),
       transactions: [
-        tx('t-lov', '2026-03-16', -18600, { apartmentId: 'lovarini' }),
-        tx('t-lov-share', '2026-03-16', -8496, { apartmentId: 'lovarini' }),
-        tx('t-lov-weight', '2026-03-16', -8471, { apartmentId: 'lovarini' }),
+        tx('t-lov', '2026-03-16', -18600, { apartmentId: 'app-b' }),
+        tx('t-lov-share', '2026-03-16', -8496, { apartmentId: 'app-b' }),
+        tx('t-lov-weight', '2026-03-16', -8471, { apartmentId: 'app-b' }),
       ],
     });
     expect(result.matches).toEqual([]);
     expect(result.pending).toEqual([
-      { itemType: 'instalment', itemId: 'tari-berchet' },
-      { itemType: 'instalment', itemId: 'tari-lovarini' },
+      { itemType: 'instalment', itemId: 'tari-app-a' },
+      { itemType: 'instalment', itemId: 'tari-app-b' },
     ]);
   });
 
@@ -1061,8 +1059,8 @@ describe('matchToTransactions: shared TARI notice', () => {
       ],
     });
     const expected = splitSharedDebit(cents(-80), [
-      { itemId: 'tari-berchet', weight: cents(10075) },
-      { itemId: 'tari-lovarini', weight: cents(8471) },
+      { itemId: 'tari-app-a', weight: cents(10075) },
+      { itemId: 'tari-app-b', weight: cents(8471) },
     ]);
     expect(expected.map(({ amount }) => amount)).toEqual([43, 37]);
     expect(
@@ -1073,44 +1071,44 @@ describe('matchToTransactions: shared TARI notice', () => {
   });
 
   it('leaves a shared notice with one instalment only pending, never matched nor assumed', () => {
-    const [berchet] = tariShared() as [Instalment, Instalment];
+    const [aptA] = tariShared() as [Instalment, Instalment];
     const debit = tx('t-tari', '2026-03-16', -18600);
-    const result = run({ instalments: [berchet], transactions: [debit] });
+    const result = run({ instalments: [aptA], transactions: [debit] });
     expect(result.matches).toEqual([]);
-    expect(result.pending).toEqual([{ itemType: 'instalment', itemId: 'tari-berchet' }]);
+    expect(result.pending).toEqual([{ itemType: 'instalment', itemId: 'tari-app-a' }]);
     expect(result.invalidGroups).toEqual([{ groupId: 'avviso-89064', reason: 'incomplete' }]);
     expect(result.unmatchedTransactions).toEqual(['t-tari']);
     // Outside every statement it is not taken as paid either.
-    const outside = run({ instalments: [berchet], statementPeriods: [] });
+    const outside = run({ instalments: [aptA], statementPeriods: [] });
     expect(outside.matches).toEqual([]);
-    expect(outside.pending).toEqual([{ itemType: 'instalment', itemId: 'tari-berchet' }]);
+    expect(outside.pending).toEqual([{ itemType: 'instalment', itemId: 'tari-app-a' }]);
   });
 
   it('leaves an inconsistent group pending and reports it', () => {
-    const [berchet, lovarini] = tariShared() as [Instalment, Instalment];
-    const ownAccount: Instalment = { ...lovarini };
+    const [aptA, aptB] = tariShared() as [Instalment, Instalment];
+    const ownAccount: Instalment = { ...aptB };
     delete ownAccount.paidFromApartmentId;
-    const otherDay: Instalment = { ...lovarini, dueDate: isoDate('2026-03-20') };
+    const otherDay: Instalment = { ...aptB, dueDate: isoDate('2026-03-20') };
     const otherTotal: Instalment = {
-      ...lovarini,
+      ...aptB,
       shared: { groupId: 'avviso-89064', groupTotal: cents(18700), weight: cents(8471) },
     };
     const zeroWeight: Instalment = {
-      ...lovarini,
+      ...aptB,
       shared: { groupId: 'avviso-89064', groupTotal: cents(18600), weight: cents(0) },
     };
     const debit = tx('t-tari', '2026-03-16', -18600);
     for (const broken of [ownAccount, otherDay, otherTotal, zeroWeight]) {
       for (const statementPeriods of [ALL_OF_2026, []]) {
         const result = run({
-          instalments: [berchet, broken],
+          instalments: [aptA, broken],
           transactions: [debit],
           statementPeriods,
         });
         expect(result.matches).toEqual([]);
         expect(result.pending).toEqual([
-          { itemType: 'instalment', itemId: 'tari-berchet' },
-          { itemType: 'instalment', itemId: 'tari-lovarini' },
+          { itemType: 'instalment', itemId: 'tari-app-a' },
+          { itemType: 'instalment', itemId: 'tari-app-b' },
         ]);
         expect(result.invalidGroups).toEqual([{ groupId: 'avviso-89064', reason: 'inconsistent' }]);
       }
@@ -1118,30 +1116,30 @@ describe('matchToTransactions: shared TARI notice', () => {
   });
 
   it('still matches the other items when a group is invalid, and sorts the groups', () => {
-    const [berchet] = tariShared() as [Instalment, Instalment];
+    const [aptA] = tariShared() as [Instalment, Instalment];
     const lone: Instalment = {
-      ...berchet,
+      ...aptA,
       id: 'tari-other',
       shared: { groupId: 'avviso-00001', groupTotal: cents(5000), weight: cents(5000) },
     };
     const result = run({
-      bills: [bill('b-lov', { apartmentId: 'lovarini' })],
-      instalments: [berchet, lone, instalment('i-pulci', { apartmentId: 'pulci' })],
+      bills: [bill('b-lov', { apartmentId: 'app-b' })],
+      instalments: [aptA, lone, instalment('i-app-c', { apartmentId: 'app-c' })],
       transactions: [
-        tx('t-lov', '2026-11-12', -21460, { apartmentId: 'lovarini' }),
-        tx('t-pulci', '2026-10-10', -19800, { apartmentId: 'pulci' }),
+        tx('t-lov', '2026-11-12', -21460, { apartmentId: 'app-b' }),
+        tx('t-app-c', '2026-10-10', -19800, { apartmentId: 'app-c' }),
       ],
     });
     expect(result.matches.map((m) => m.id)).toEqual([
       'm-bill-b-lov-amount-t-lov',
-      'm-instalment-i-pulci-amount-t-pulci',
+      'm-instalment-i-app-c-amount-t-app-c',
     ]);
     expect(result.invalidGroups).toEqual([
       { groupId: 'avviso-00001', reason: 'incomplete' },
       { groupId: 'avviso-89064', reason: 'incomplete' },
     ]);
     expect(result.pending).toEqual([
-      { itemType: 'instalment', itemId: 'tari-berchet' },
+      { itemType: 'instalment', itemId: 'tari-app-a' },
       { itemType: 'instalment', itemId: 'tari-other' },
     ]);
   });
@@ -1163,9 +1161,9 @@ describe('expectedDebit', () => {
   });
 
   it('is the instalment of a TARI notice, also when the notice is shared', () => {
-    const [berchet] = tariShared() as [Instalment, Instalment];
-    expect(expectedDebit(berchet)).toBe(10075);
-    expect(expectedDebit({ ...berchet, conguaglioPrec: cents(999) })).toBe(10075);
+    const [aptA] = tariShared() as [Instalment, Instalment];
+    expect(expectedDebit(aptA)).toBe(10075);
+    expect(expectedDebit({ ...aptA, conguaglioPrec: cents(999) })).toBe(10075);
   });
 });
 
@@ -1302,20 +1300,20 @@ describe('tariNote', () => {
   };
   const months = { from: yearMonth('2026-01'), to: yearMonth('2026-04') };
 
-  it('explains the common notice of Berchet and Lovarini, with the transfer between accounts', () => {
+  it('explains the common notice of Appartamento A and Appartamento B, with the transfer between accounts', () => {
     const note = tariNote({
       avviso,
       months,
       transaction: tx('t-tari', '2026-03-16', -18600),
       parts: [
         {
-          apartmentName: 'Berchet',
+          apartmentName: 'Appartamento A',
           utenzaTotal: cents(10075),
           share: cents(10104),
           paidFromOtherAccount: false,
         },
         {
-          apartmentName: 'Lovarini',
+          apartmentName: 'Appartamento B',
           utenzaTotal: cents(8471),
           share: cents(8496),
           paidFromOtherAccount: true,
@@ -1324,9 +1322,9 @@ describe('tariNote', () => {
     });
     expect(note).toBe(
       'Avviso 2026/1/89064, periodo gennaio–aprile 2026, mesi assegnati gennaio–aprile 2026. ' +
-        'Addebito 186,00 € il 16/03/2026 sul conto di Berchet. ' +
-        "Utenze: Berchet 100,75 €, Lovarini 84,71 €; riparto dell'addebito in proporzione: " +
-        'Berchet 101,04 €, Lovarini 84,96 €. Storno: Lovarini deve 84,96 € a Berchet.',
+        'Addebito 186,00 € il 16/03/2026 sul conto di Appartamento A. ' +
+        "Utenze: Appartamento A 100,75 €, Appartamento B 84,71 €; riparto dell'addebito in proporzione: " +
+        'Appartamento A 101,04 €, Appartamento B 84,96 €. Storno: Appartamento B deve 84,96 € a Appartamento A.',
     );
   });
 
@@ -1337,7 +1335,7 @@ describe('tariNote', () => {
       transaction: tx('t-tari', '2026-03-16', -18600),
       parts: [
         {
-          apartmentName: 'Berchet',
+          apartmentName: 'Appartamento A',
           utenzaTotal: cents(18600),
           share: cents(18600),
           paidFromOtherAccount: false,
@@ -1349,7 +1347,7 @@ describe('tariNote', () => {
     expect(note).not.toContain('16/03/2026, periodo');
   });
 
-  it('has no transfer for a notice of Pulci', () => {
+  it('has no transfer for a notice of Appartamento C', () => {
     const note = tariNote({
       avviso: {
         number: '2026/1/12345',
@@ -1357,10 +1355,10 @@ describe('tariNote', () => {
         dueDate: isoDate('2026-11-16'),
       },
       months: { from: yearMonth('2026-09'), to: yearMonth('2026-12') },
-      transaction: tx('t-pulci', '2026-11-16', -123456, { apartmentId: 'pulci' }),
+      transaction: tx('t-app-c', '2026-11-16', -123456, { apartmentId: 'app-c' }),
       parts: [
         {
-          apartmentName: 'Pulci',
+          apartmentName: 'Appartamento C',
           utenzaTotal: cents(123456),
           share: cents(123456),
           paidFromOtherAccount: false,
@@ -1369,7 +1367,7 @@ describe('tariNote', () => {
     });
     expect(note).toBe(
       'Avviso 2026/1/12345, periodo settembre–dicembre 2026, mesi assegnati settembre–dicembre 2026. ' +
-        'Addebito 1.234,56 € il 16/11/2026 sul conto di Pulci. Utenze: Pulci 1.234,56 €.',
+        'Addebito 1.234,56 € il 16/11/2026 sul conto di Appartamento C. Utenze: Appartamento C 1.234,56 €.',
     );
     expect(note).not.toContain('Storno');
   });
@@ -1380,7 +1378,7 @@ describe('tariNote', () => {
       transaction: tx('t', '2026-01-05', -500),
       parts: [
         {
-          apartmentName: 'Pulci',
+          apartmentName: 'Appartamento C',
           utenzaTotal: cents(500),
           share: cents(500),
           paidFromOtherAccount: false,
@@ -1398,13 +1396,13 @@ describe('tariNote', () => {
   it('requires exactly one part paid from its own account', () => {
     const transaction = tx('t', '2026-03-16', -100);
     const other = {
-      apartmentName: 'Lovarini',
+      apartmentName: 'Appartamento B',
       utenzaTotal: cents(50),
       share: cents(50),
       paidFromOtherAccount: true,
     };
     expect(() => tariNote({ avviso, months, transaction, parts: [other] })).toThrow(RangeError);
-    const own = { ...other, apartmentName: 'Berchet', paidFromOtherAccount: false };
+    const own = { ...other, apartmentName: 'Appartamento A', paidFromOtherAccount: false };
     expect(() => tariNote({ avviso, months, transaction, parts: [own, own] })).toThrow(RangeError);
   });
 });
@@ -1445,11 +1443,7 @@ describe('MATCH_WINDOW, matchId and statementPeriodsOf (plan 3c, task 3)', () =>
   it('one period per live statement of a live account, never merged, sorted', () => {
     expect(
       statementPeriodsOf(
-        [
-          account('acc-l', 'lovarini'),
-          account('acc-b', 'berchet'),
-          account('acc-x', 'pulci', true),
-        ],
+        [account('acc-l', 'app-b'), account('acc-b', 'app-a'), account('acc-x', 'app-c', true)],
         [
           statement('s3', 'acc-b', '2027-03-01', '2027-03-31'),
           statement('s1', 'acc-b', '2027-01-01', '2027-01-31'),
@@ -1460,9 +1454,9 @@ describe('MATCH_WINDOW, matchId and statementPeriodsOf (plan 3c, task 3)', () =>
         ],
       ),
     ).toEqual([
-      { apartmentId: 'berchet', from: '2027-01-01', to: '2027-01-31' },
-      { apartmentId: 'berchet', from: '2027-03-01', to: '2027-03-31' },
-      { apartmentId: 'lovarini', from: '2027-01-01', to: '2027-06-30' },
+      { apartmentId: 'app-a', from: '2027-01-01', to: '2027-01-31' },
+      { apartmentId: 'app-a', from: '2027-03-01', to: '2027-03-31' },
+      { apartmentId: 'app-b', from: '2027-01-01', to: '2027-06-30' },
     ]);
   });
 });

@@ -37,8 +37,8 @@ describe('golden report', () => {
   });
 
   it('gives Excel, app and difference per tenant and category, then the known deviations', () => {
-    const fixture = readGolden('berchet-2024-25.json');
-    const report = goldenReport('berchet-2024-25.json', fixture);
+    const fixture = readGolden('app-a-2024-25.json');
+    const report = goldenReport('app-a-2024-25.json', fixture);
     expect(report).toContain('| ten-a | Luce | € 74,20 | € 73,75 | - € 0,45 |');
     expect(report).toContain('| ten-a | **Totale** | € 159,83 | € 150,09 | - € 9,74 |');
     expect(report).toContain('- App: € 1.228,33; posti vuoti: € 0,00.');
@@ -50,15 +50,15 @@ describe('golden report', () => {
   });
 
   it('keeps a tenant that only the Excel knows', () => {
-    const fixture = readGolden('berchet-2024-25.json');
+    const fixture = readGolden('app-a-2024-25.json');
     const excel = [...(fixture.excel ?? []), { tenantId: 'ten-z', byCategory: { internet: 599 } }];
-    const report = goldenReport('berchet-2024-25.json', { ...fixture, excel });
+    const report = goldenReport('app-a-2024-25.json', { ...fixture, excel });
     expect(report).toContain('| ten-z | Internet | € 5,99 | € 0,00 | - € 5,99 |');
     expect(report).toContain('| ten-z | — | — | — |');
   });
 
   it('shows a dash where the fixture has no Excel amounts', () => {
-    const fixture = readGolden('berchet-2024-25.json');
+    const fixture = readGolden('app-a-2024-25.json');
     const report = goldenReport('prova-2024-25.json', { ...fixture, excel: undefined });
     expect(report).toContain('La fixture non riporta gli importi dell’Excel.');
     expect(report).toContain('| ten-a | Luce | — | € 73,75 | — |');

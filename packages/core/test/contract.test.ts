@@ -14,10 +14,10 @@ import type { Contract, Payment, Tenancy } from '../src/index';
 
 // Invented amounts only (plan 7).
 const contract = ContractSchema.parse({
-  id: 'ctr-berchet',
+  id: 'ctr-app-a',
   v: 1,
   rev: 1,
-  apartmentId: 'berchet',
+  apartmentId: 'app-a',
   type: '1+1',
   start: '2025-10',
   end: '2027-09',
@@ -52,7 +52,7 @@ const makeContract = (id: string, extra: Record<string, unknown> = {}) =>
   ContractSchema.parse({
     ...base,
     id,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     type: '1+1',
     start: '2025-10',
     end: '2027-09',
@@ -63,7 +63,7 @@ const makeTenancy = (id: string, extra: Record<string, unknown> = {}) =>
   TenancySchema.parse({
     ...base,
     id,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     tenantId: 'ten-anna',
     from: '2025-10',
     to: '2026-09',
@@ -75,7 +75,7 @@ const makePayment = (id: string, extra: Record<string, unknown> = {}) =>
   PaymentSchema.parse({
     ...base,
     id,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     tenantId: 'ten-anna',
     date: '2025-09-25',
     amount: 50000,
@@ -94,7 +94,7 @@ const checks = (
 
 describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
   const linked = (tenancyIds: string[], extra: Record<string, unknown> = {}) =>
-    makeContract('ctr-berchet', { tenancyIds, ...extra });
+    makeContract('ctr-app-a', { tenancyIds, ...extra });
 
   it('a clean contract has no checks', () => {
     expect(
@@ -109,16 +109,16 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
   it('unknown-tenancy: deleted after linking', () => {
     expect(
       checks([linked(['tcy-a'], { end: '2026-09' })], [makeTenancy('tcy-a', { deleted: true })]),
-    ).toEqual([{ code: 'unknown-tenancy', contractId: 'ctr-berchet', tenancyId: 'tcy-a' }]);
+    ).toEqual([{ code: 'unknown-tenancy', contractId: 'ctr-app-a', tenancyId: 'tcy-a' }]);
   });
 
   it('tenancy-other-apartment', () => {
     expect(
       checks(
         [linked(['tcy-l'], { end: '2026-09' })],
-        [makeTenancy('tcy-l', { apartmentId: 'lovarini' })],
+        [makeTenancy('tcy-l', { apartmentId: 'app-b' })],
       ),
-    ).toEqual([{ code: 'tenancy-other-apartment', contractId: 'ctr-berchet', tenancyId: 'tcy-l' }]);
+    ).toEqual([{ code: 'tenancy-other-apartment', contractId: 'ctr-app-a', tenancyId: 'tcy-l' }]);
   });
 
   it.each([
@@ -127,7 +127,7 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
     ['has no end', { to: undefined }],
   ])('tenancy-outside-contract: %s', (_name, extra) => {
     expect(checks([linked(['tcy-a'])], [makeTenancy('tcy-a', extra)])).toEqual([
-      { code: 'tenancy-outside-contract', contractId: 'ctr-berchet', tenancyId: 'tcy-a' },
+      { code: 'tenancy-outside-contract', contractId: 'ctr-app-a', tenancyId: 'tcy-a' },
     ]);
   });
 
@@ -162,13 +162,13 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
       makeTenancy('tcy-old', { from: '2024-10', to: '2025-09' }),
     ];
     expect(checks([linked(['tcy-a'], { end: '2026-09' })], tenancies)).toEqual([
-      { code: 'unlinked-tenancy', contractId: 'ctr-berchet', tenancyId: 'tcy-b' },
+      { code: 'unlinked-tenancy', contractId: 'ctr-app-a', tenancyId: 'tcy-b' },
     ]);
     expect(checks([linked([], { end: '2026-09' })], tenancies)).toEqual([
-      { code: 'unlinked-tenancy', contractId: 'ctr-berchet', tenancyId: 'tcy-a' },
-      { code: 'unlinked-tenancy', contractId: 'ctr-berchet', tenancyId: 'tcy-b' },
+      { code: 'unlinked-tenancy', contractId: 'ctr-app-a', tenancyId: 'tcy-a' },
+      { code: 'unlinked-tenancy', contractId: 'ctr-app-a', tenancyId: 'tcy-b' },
     ]);
-    expect(checks([makeContract('ctr-berchet', { end: '2026-09' })], tenancies)).toEqual([]);
+    expect(checks([makeContract('ctr-app-a', { end: '2026-09' })], tenancies)).toEqual([]);
   });
 
   it('unlinked-tenancy names the first contract by id', () => {
@@ -195,7 +195,7 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
   it.each([
     ['deleted', makePayment('pay-c1', { deleted: true })],
     ['no longer a caparra', makePayment('pay-c1', { kind: 'altro' })],
-    ['of another apartment', makePayment('pay-c1', { apartmentId: 'lovarini' })],
+    ['of another apartment', makePayment('pay-c1', { apartmentId: 'app-b' })],
   ])('unknown-deposit: %s', (_name, payment) => {
     expect(
       checks(
@@ -203,7 +203,7 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
         [makeTenancy('tcy-a')],
         [payment],
       ),
-    ).toEqual([{ code: 'unknown-deposit', contractId: 'ctr-berchet', paymentId: 'pay-c1' }]);
+    ).toEqual([{ code: 'unknown-deposit', contractId: 'ctr-app-a', paymentId: 'pay-c1' }]);
   });
 
   it('deposit-other-tenant: the deposit of Bruno Esempio with only Anna Prova linked', () => {
@@ -213,7 +213,7 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
         [makeTenancy('tcy-a')],
         [makePayment('pay-b', { tenantId: 'ten-bruno' })],
       ),
-    ).toEqual([{ code: 'deposit-other-tenant', contractId: 'ctr-berchet', paymentId: 'pay-b' }]);
+    ).toEqual([{ code: 'deposit-other-tenant', contractId: 'ctr-app-a', paymentId: 'pay-b' }]);
   });
 
   it('a tenancy linked to the contract of another apartment (actual behaviour)', () => {
@@ -224,12 +224,12 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
       checks(
         [
           linked(['tcy-l'], { end: '2026-09', depositPaymentIds: ['pay-c1'] }),
-          makeContract('ctr-lov', { apartmentId: 'lovarini', tenancyIds: [], end: '2026-09' }),
+          makeContract('ctr-lov', { apartmentId: 'app-b', tenancyIds: [], end: '2026-09' }),
         ],
-        [makeTenancy('tcy-l', { apartmentId: 'lovarini', from: '2025-09' })],
+        [makeTenancy('tcy-l', { apartmentId: 'app-b', from: '2025-09' })],
         [makePayment('pay-c1')],
       ),
-    ).toEqual([{ code: 'tenancy-other-apartment', contractId: 'ctr-berchet', tenancyId: 'tcy-l' }]);
+    ).toEqual([{ code: 'tenancy-other-apartment', contractId: 'ctr-app-a', tenancyId: 'tcy-l' }]);
   });
 
   it('a deleted contract gives nothing and does not count for links', () => {
@@ -266,10 +266,10 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
       ['ctr-2', 'contract-overlap'],
       ['ctr-2', 'tenancy-linked-twice'],
       ['ctr-2', 'unlinked-tenancy'], // the first contract by id
-      ['ctr-berchet', 'deposit-other-tenant'],
-      ['ctr-berchet', 'tenancy-linked-twice'],
-      ['ctr-berchet', 'unknown-deposit'],
-      ['ctr-berchet', 'unknown-tenancy'],
+      ['ctr-app-a', 'deposit-other-tenant'],
+      ['ctr-app-a', 'tenancy-linked-twice'],
+      ['ctr-app-a', 'unknown-deposit'],
+      ['ctr-app-a', 'unknown-tenancy'],
     ]);
   });
 });
@@ -279,8 +279,7 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
 describe('contractChecks: rent-differs (plan 7, task 4)', () => {
   const initial = { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 };
   const renewal = { from: '2026-10', monthlyRent: 165000, monthlyAdvance: 15000 };
-  const berchet = (rent?: unknown[]) =>
-    makeContract('ctr-berchet', rent === undefined ? {} : { rent });
+  const aptA = (rent?: unknown[]) => makeContract('ctr-app-a', rent === undefined ? {} : { rent });
   // Anna Prova, Bruno Esempio, Carla Finta, Dario Inventato 350 + 30; Elena Fittizia 330 + 30.
   const year = [
     ...['anna', 'bruno', 'carla', 'dario'].map((n) => makeTenancy(`tcy-${n}`, { tenantId: n })),
@@ -290,10 +289,10 @@ describe('contractChecks: rent-differs (plan 7, task 4)', () => {
     checks([contract], tenancies, [], yearMonth(month)).filter((c) => c.code === 'rent-differs');
 
   it('the example: one interval per equal months, the month of asOf included', () => {
-    expect(rentChecks(berchet([initial]), year)).toEqual([
+    expect(rentChecks(aptA([initial]), year)).toEqual([
       {
         code: 'rent-differs',
-        contractId: 'ctr-berchet',
+        contractId: 'ctr-app-a',
         from: '2025-10',
         to: '2026-09',
         expected: 175000,
@@ -301,7 +300,7 @@ describe('contractChecks: rent-differs (plan 7, task 4)', () => {
       },
       {
         code: 'rent-differs',
-        contractId: 'ctr-berchet',
+        contractId: 'ctr-app-a',
         from: '2026-10',
         to: '2026-11',
         expected: 175000,
@@ -327,17 +326,17 @@ describe('contractChecks: rent-differs (plan 7, task 4)', () => {
       monthlyRent: 33000,
       monthlyForfait: 3000,
     });
-    expect(rentChecks(berchet([initial, renewal]), [...year, ...next, extra])).toEqual([
+    expect(rentChecks(aptA([initial, renewal]), [...year, ...next, extra])).toEqual([
       expect.objectContaining({ from: '2025-10', to: '2026-09' }),
     ]);
   });
 
   it('no month after asOf, none before the first entry, none without rent', () => {
-    expect(rentChecks(berchet([initial]), year, '2026-09').map((c) => c.to)).toEqual(['2026-09']);
-    const late = makeContract('ctr-berchet', { rent: [{ ...initial, from: '2026-01' }] });
+    expect(rentChecks(aptA([initial]), year, '2026-09').map((c) => c.to)).toEqual(['2026-09']);
+    const late = makeContract('ctr-app-a', { rent: [{ ...initial, from: '2026-01' }] });
     expect(rentChecks(late, year).map((c) => c.from)).toEqual(['2026-01', '2026-10']);
-    expect(rentChecks(berchet(), year)).toEqual([]);
-    expect(rentChecks(berchet([initial]), year, '2025-09')).toEqual([]);
+    expect(rentChecks(aptA(), year)).toEqual([]);
+    expect(rentChecks(aptA([initial]), year, '2025-09')).toEqual([]);
   });
 
   it('a tenancy that leaves in 2026-03 opens a new interval from 2026-04', () => {
@@ -345,7 +344,7 @@ describe('contractChecks: rent-differs (plan 7, task 4)', () => {
       t.id === 'tcy-elena' ? { ...t, to: yearMonth('2026-03') } : t,
     );
     expect(
-      rentChecks(berchet([initial]), leaving, '2026-09').map((c) => [c.from, c.to, c.actual]),
+      rentChecks(aptA([initial]), leaving, '2026-09').map((c) => [c.from, c.to, c.actual]),
     ).toEqual([
       ['2025-10', '2026-03', 188000],
       ['2026-04', '2026-09', 152000],
@@ -353,7 +352,7 @@ describe('contractChecks: rent-differs (plan 7, task 4)', () => {
   });
 
   it('months that add up exactly give nothing, deleted tenancies do not count', () => {
-    const exact = makeContract('ctr-berchet', {
+    const exact = makeContract('ctr-app-a', {
       end: '2026-09',
       rent: [{ from: '2025-10', monthlyRent: 172000, monthlyAdvance: 16000 }],
     });
@@ -364,12 +363,12 @@ describe('contractChecks: rent-differs (plan 7, task 4)', () => {
 
 describe('contractChecks: contract-overlap (user1, question 9 of plan 7, R181)', () => {
   it('the example: a renewal saved as a new contract, months in common 2026-10 – 2027-09', () => {
-    const renewal = makeContract('ctr-berchet-2', { start: '2026-10', end: '2028-09' });
-    expect(checks([renewal, makeContract('ctr-berchet')])).toEqual([
+    const renewal = makeContract('ctr-app-a-2', { start: '2026-10', end: '2028-09' });
+    expect(checks([renewal, makeContract('ctr-app-a')])).toEqual([
       {
         code: 'contract-overlap',
-        contractId: 'ctr-berchet',
-        otherContractId: 'ctr-berchet-2',
+        contractId: 'ctr-app-a',
+        otherContractId: 'ctr-app-a-2',
         from: '2026-10',
         to: '2027-09',
       },
@@ -381,7 +380,7 @@ describe('contractChecks: contract-overlap (user1, question 9 of plan 7, R181)',
       makeContract('ctr-a', { start: '2025-10', end: '2026-09' }),
       makeContract('ctr-b', { start: '2026-10', end: '2027-09' }),
       makeContract('ctr-c', { start: '2026-09', end: '2026-10' }),
-      makeContract('ctr-l', { apartmentId: 'lovarini' }),
+      makeContract('ctr-l', { apartmentId: 'app-b' }),
       makeContract('ctr-gone', { deleted: true }),
     ];
     expect(checks(contracts).map((c) => [c.contractId, c.otherContractId, c.from, c.to])).toEqual([
@@ -407,11 +406,11 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
   it('the rate of the year: the one rate of the live cedolare contracts touching the year', () => {
     const cedolare = (id: string, extra: Record<string, unknown> = {}) =>
       makeContract(id, { taxRegime: 'cedolare', cedolareRateBp: 1000, ...extra });
-    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2026')).toBe(1000);
+    expect(cedolareRateForYear([cedolare('a')], 'app-a', '2026')).toBe(1000);
     // 2025-10 to 2027-09 touches 2025, 2026 and 2027, not 2024 or 2028.
-    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2024')).toBeUndefined();
-    expect(cedolareRateForYear([cedolare('a')], 'berchet', '2028')).toBeUndefined();
-    expect(cedolareRateForYear([cedolare('a')], 'lovarini', '2026')).toBeUndefined();
+    expect(cedolareRateForYear([cedolare('a')], 'app-a', '2024')).toBeUndefined();
+    expect(cedolareRateForYear([cedolare('a')], 'app-a', '2028')).toBeUndefined();
+    expect(cedolareRateForYear([cedolare('a')], 'app-b', '2026')).toBeUndefined();
     expect(
       cedolareRateForYear(
         [
@@ -421,7 +420,7 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
           makeContract('ord', { taxRegime: 'ordinario', deleted: true }),
           makeContract('old', { taxRegime: 'ordinario', start: '2024-01', end: '2025-12' }),
         ],
-        'berchet',
+        'app-a',
         '2026',
       ),
     ).toBe(1000);
@@ -429,7 +428,7 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
     expect(
       cedolareRateForYear(
         [cedolare('a'), cedolare('b', { cedolareRateBp: 2100 })],
-        'berchet',
+        'app-a',
         '2026',
       ),
     ).toBeUndefined();
@@ -447,7 +446,7 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
     expect(
       cedolareRateForYear(
         [makeContract('ord', { ...before, taxRegime: 'ordinario' }), cedolare],
-        'berchet',
+        'app-a',
         '2026',
       ),
     ).toBeUndefined();
@@ -456,12 +455,12 @@ describe('cedolare estimate (user1, question 1 of plan 7, R182)', () => {
       expect(
         cedolareRateForYear(
           [makeContract('x', { ...before, ...extra }), cedolare],
-          'berchet',
+          'app-a',
           '2026',
         ),
       ).toBeUndefined();
     }
-    expect(cedolareRateForYear([cedolare], 'berchet', '2026')).toBe(1000);
+    expect(cedolareRateForYear([cedolare], 'app-a', '2026')).toBe(1000);
   });
 });
 

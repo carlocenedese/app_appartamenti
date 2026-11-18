@@ -169,7 +169,7 @@ pagamento). L'importazione non si annulla comunque finché c'è la classe (R125)
 
 ## Test (solo fixture sintetiche)
 
-Appartamenti `berchet`, `lovarini`, `pulci` con locatori inventati (`Locatore Uno`, `Locatore Due`),
+Appartamenti `app-a`, `app-b`, `app-c` con locatori inventati (`Locatore Uno`, `Locatore Due`),
 importi e date inventati; stato al giorno della scadenza (da pagare) e al giorno dopo (in ritardo);
 `soonDays` 0 e 10; F24 entro e fuori dall'1%; rata con addebito diverso; avviso comune; contratti
 finiti e vivi; percorso completo della riga di comando con annullamento.

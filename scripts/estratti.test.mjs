@@ -1483,10 +1483,10 @@ describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, t
         rev: 1,
         id,
         direction: 'out',
-        accountId: 'acc-pulci',
+        accountId: 'acc-app-c',
         key: 'iban:IT04X0542811101000000000401',
         kind,
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         ...extra,
       });
       await putRecords(s.dir, {
@@ -1504,7 +1504,7 @@ describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, t
         '--categoria',
         'condominio',
         '--appartamento',
-        'pulci',
+        'app-c',
       ]);
       expect(refused.code).toBe(1);
       expect(refused.json).toEqual({
@@ -1577,7 +1577,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
     readdirSync(join(dir, '_app', 'dati', 'movementClass')).map((f) =>
       JSON.parse(readFileSync(join(dir, '_app', 'dati', 'movementClass', f), 'utf8')),
     );
-  const NOTES = ['acc-berchet', 'acc-lovarini', 'acc-pulci'].map((accountId) => ({
+  const NOTES = ['acc-app-a', 'acc-app-b', 'acc-app-c'].map((accountId) => ({
     accountId,
     f24PatternMissing: true,
     message: 'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
@@ -1615,12 +1615,12 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       const snap = snapshot(s.dir);
       const uscita = ['uscita', ...s.common, '--proposta', 'p-uscita-tx-p-fornitore-feb'];
       for (const bad of [
-        [...uscita, '--categoria', 'varie', '--appartamento', 'pulci'],
+        [...uscita, '--categoria', 'varie', '--appartamento', 'app-c'],
         [...uscita, '--categoria', 'altro'],
-        [...uscita, '--appartamento', 'pulci'],
-        [...uscita, '--categoria', 'altro', '--appartamento', 'pulci', 'x'],
-        [...uscita, '--categoria', 'altro', '--appartamento', 'pulci', '--scopo', 'saldo'],
-        [...uscita, '--categoria', 'altro', '--appartamento', 'pulci', '--tipo', 'altro'],
+        [...uscita, '--appartamento', 'app-c'],
+        [...uscita, '--categoria', 'altro', '--appartamento', 'app-c', 'x'],
+        [...uscita, '--categoria', 'altro', '--appartamento', 'app-c', '--scopo', 'saldo'],
+        [...uscita, '--categoria', 'altro', '--appartamento', 'app-c', '--tipo', 'altro'],
         ['riconcilia', ...s.common, '--scopo', 'saldo'],
         ['riconcilia', ...s.common, '--f24'],
         ['riconcilia', ...s.common, '--proposta', 'x'],
@@ -1676,7 +1676,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       ]) {
         expect([bad.slice(0, 1), run(bad).code]).toEqual([bad.slice(0, 1), 2]);
       }
-      const f24 = run([...uscita, '--categoria', 'altro', '--appartamento', 'pulci', '--f24']);
+      const f24 = run([...uscita, '--categoria', 'altro', '--appartamento', 'app-c', '--f24']);
       expect([f24.code, f24.json.reason]).toEqual([1, 'f24-not-tasse']);
       const nobody = run([...uscita, '--categoria', 'altro', '--appartamento', 'nessuno']);
       expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-apartment']);
@@ -1727,7 +1727,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         'saldo',
         undefined,
       ]);
-      const out = run([...uscita, '--categoria', 'altro', '--appartamento', 'pulci']);
+      const out = run([...uscita, '--categoria', 'altro', '--appartamento', 'app-c']);
       expect(out.code).toBe(0);
       expect(out.json).toEqual({
         status: 'confirmed',
@@ -1738,14 +1738,14 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
 
       // The second statements: the same pair and the same supplier, now automatic.
       const iban = {
-        berchet: 'IT85X0542811101000000000301',
+        aptA: 'IT85X0542811101000000000301',
         supplier: 'IT04X0542811101000000000401',
       };
+      expect(april(s, 'acc-app-b', [['01/04/2027', `Giroconto ${iban.aptA}`, '200,00']]).code).toBe(
+        0,
+      );
       expect(
-        april(s, 'acc-lovarini', [['01/04/2027', `Giroconto ${iban.berchet}`, '200,00']]).code,
-      ).toBe(0);
-      expect(
-        april(s, 'acc-pulci', [['10/04/2027', `Bonifico ${iban.supplier}`, '40,00']]).code,
+        april(s, 'acc-app-c', [['10/04/2027', `Bonifico ${iban.supplier}`, '40,00']]).code,
       ).toBe(0);
       const second = run(['riconcilia', ...s.common]);
       expect(second.code).toBe(0);
@@ -1766,7 +1766,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       expect(saldi.code).toBe(0);
       expect(saldi.json).toEqual({
         status: 'ok',
-        pairs: [{ creditorApartmentId: 'lovarini', debtorApartmentId: 'berchet', items: 2 }],
+        pairs: [{ creditorApartmentId: 'app-b', debtorApartmentId: 'app-a', items: 2 }],
         toSplit: 0,
         toSplitImu: 0,
         unverified: 0,
@@ -1788,7 +1788,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
   );
 
   it(
-    'saldi --dettagli dà l’importo e le voci: Lovarini deve a Berchet 185,76 € (esempio del disegno)',
+    'saldi --dettagli dà l’importo e le voci: Appartamento B deve a Appartamento A 185,76 € (esempio del disegno)',
     async () => {
       const dir = join(root, `d${String((counter += 1))}`);
       mkdirSync(dir);
@@ -1803,8 +1803,8 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       const tx = (id, date, amount) => ({
         ...base,
         id,
-        apartmentId: 'berchet',
-        accountId: 'acc-berchet',
+        apartmentId: 'app-a',
+        accountId: 'acc-app-a',
         date,
         amount,
         description: 'ADDEBITO',
@@ -1840,22 +1840,22 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       const tari = { kind: 'tari', esercizio: '2027', coversFrom: '2027-01', coversTo: '2027-12' };
       const shared = (weight) => ({ groupId: 'avviso-1', groupTotal: 18600, weight });
       await putRecords(dir, {
-        account: [account('acc-berchet', 'berchet'), account('acc-lovarini', 'lovarini')],
+        account: [account('acc-app-a', 'app-a'), account('acc-app-b', 'app-b')],
         instalment: [
           instalment('tari-b', {
             ...tari,
-            apartmentId: 'berchet',
+            apartmentId: 'app-a',
             rata: 10104,
             shared: shared(10104),
           }),
           instalment('tari-l', {
             ...tari,
-            apartmentId: 'lovarini',
-            paidFromApartmentId: 'berchet',
+            apartmentId: 'app-b',
+            paidFromApartmentId: 'app-a',
             rata: 8496,
             shared: shared(8496),
           }),
-          instalment('condo-l', { apartmentId: 'lovarini', paidFromApartmentId: 'berchet' }),
+          instalment('condo-l', { apartmentId: 'app-b', paidFromApartmentId: 'app-a' }),
         ],
         match: [
           match('tari-b', 't-tari', '2027-03-31', 10104),
@@ -1875,15 +1875,15 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
             id: 'mc-t-forn',
             transactionId: 't-forn',
             kind: 'altro',
-            apartmentId: 'berchet',
+            apartmentId: 'app-a',
           },
         ],
         transfer: [
           {
             ...base,
             id: 'tr-1',
-            fromAccountId: 'acc-lovarini',
-            toAccountId: 'acc-berchet',
+            fromAccountId: 'acc-app-b',
+            toAccountId: 'acc-app-a',
             amount: 20000,
             date: '2027-04-20',
             purpose: 'saldo',
@@ -1896,7 +1896,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       expect(plain.code).toBe(0);
       expect(plain.json).toEqual({
         status: 'ok',
-        pairs: [{ creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', items: 4 }],
+        pairs: [{ creditorApartmentId: 'app-a', debtorApartmentId: 'app-b', items: 4 }],
         toSplit: 0,
         toSplitImu: 0,
         unverified: 0,
@@ -1906,8 +1906,8 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       expect(details.code).toBe(0);
       expect(details.json.pairs).toEqual([
         {
-          creditorApartmentId: 'berchet',
-          debtorApartmentId: 'lovarini',
+          creditorApartmentId: 'app-a',
+          debtorApartmentId: 'app-b',
           amount: 18576,
           items: [
             expect.objectContaining({ kind: 'rata', amount: 8496, refId: 'tari-l' }),
@@ -1959,9 +1959,9 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         'giroconto-manuale',
         ...s.common,
         '--da',
-        'acc-lovarini',
+        'acc-app-b',
         '--a',
-        'acc-berchet',
+        'acc-app-a',
         '--data',
         '2027-04-20',
         '--scopo',
@@ -1984,7 +1984,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       }
       const unknown = run(manual(['--importo', '50,00', '--a', 'acc-nessuno']));
       expect([unknown.code, unknown.json.reason]).toEqual([1, 'unknown-account']);
-      const same = run(manual(['--importo', '50,00', '--a', 'acc-lovarini']));
+      const same = run(manual(['--importo', '50,00', '--a', 'acc-app-b']));
       expect([same.code, same.json.reason]).toEqual([1, 'same-account']);
       expect(snapshot(s.dir)).toEqual(snap);
       const recorded = run(manual(['--importo', '50,00']));
@@ -2013,7 +2013,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       expect([saved.amount, saved.source, saved.fromAccountId]).toEqual([
         5000,
         'manual',
-        'acc-lovarini',
+        'acc-app-b',
       ]);
       const undo = run([
         'annulla-riconciliazione',
@@ -2023,9 +2023,9 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
       ]);
       expect(undo.code).toBe(0);
 
-      // A refund to the tenant of Lovarini, from the account of Lovarini.
+      // A refund to the tenant of Appartamento B, from the account of Appartamento B.
       expect(
-        april(s, 'acc-lovarini', [
+        april(s, 'acc-app-b', [
           ['15/04/2027', 'Restituzione IT79X0542811101000000000312', '100,00'],
         ]).code,
       ).toBe(0);
@@ -2097,7 +2097,7 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         '--categoria',
         'altro',
         '--appartamento',
-        'pulci',
+        'app-c',
         '--solo-questa-volta',
       ]);
       expect(once.code).toBe(0);
@@ -2146,7 +2146,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
     '--anno',
     '2026',
     '--gruppo',
-    'berchet-lovarini',
+    'app-a-app-b',
     ...extra,
   ];
 
@@ -2162,16 +2162,16 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       };
       const snap = snapshot(s.dir);
       for (const bad of [
-        atteso(s, 'berchet'),
-        atteso(s, 'berchet', '--rata', '1:abc'),
-        atteso(s, 'berchet', '--rata', 'x'),
-        atteso(s, 'berchet', '--rata', '1:600,00:2026-13-01'),
-        atteso(s, 'berchet', '--rata', '1:600,00:2026-06-16:x'),
-        atteso(s, 'berchet', '--rata', '1', '--totale', 'abc'),
-        atteso(s, 'berchet', '--rata', '1', 'x'),
-        atteso(s, 'berchet', '--rata', '1', '--dettagli'),
-        [...atteso(s, 'berchet', '--rata', '1'), '--anno', '26'],
-        ['imu-atteso', ...s.common, '--appartamento', 'berchet', '--anno', '2026', '--rata', '1'],
+        atteso(s, 'app-a'),
+        atteso(s, 'app-a', '--rata', '1:abc'),
+        atteso(s, 'app-a', '--rata', 'x'),
+        atteso(s, 'app-a', '--rata', '1:600,00:2026-13-01'),
+        atteso(s, 'app-a', '--rata', '1:600,00:2026-06-16:x'),
+        atteso(s, 'app-a', '--rata', '1', '--totale', 'abc'),
+        atteso(s, 'app-a', '--rata', '1', 'x'),
+        atteso(s, 'app-a', '--rata', '1', '--dettagli'),
+        [...atteso(s, 'app-a', '--rata', '1'), '--anno', '26'],
+        ['imu-atteso', ...s.common, '--appartamento', 'app-a', '--anno', '2026', '--rata', '1'],
         ['riconcilia', ...s.common, '--gruppo', 'x'],
         ['riconcilia', ...s.common, '--rata', '1'],
       ]) {
@@ -2179,33 +2179,33 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       }
       expect(snapshot(s.dir)).toEqual(snap);
 
-      const saved = run(atteso(s, 'berchet', '--rata', '1:600,00', '--rata', '2::2026-12-16'));
+      const saved = run(atteso(s, 'app-a', '--rata', '1:600,00', '--rata', '2::2026-12-16'));
       expect(saved.code).toBe(0);
       expect(saved.json).toEqual({
         status: 'saved',
-        imuYearId: 'imu-berchet-2026',
+        imuYearId: 'imu-app-a-2026',
         operationId: saved.json.operationId,
       });
-      const file = join(s.dir, '_app', 'dati', 'imuYear', 'imu-berchet-2026.json');
+      const file = join(s.dir, '_app', 'dati', 'imuYear', 'imu-app-a-2026.json');
       expect(JSON.parse(readFileSync(file, 'utf8')).rates).toEqual([
         { index: 1, expected: 60000 },
         { index: 2, dueDate: '2026-12-16' },
       ]);
       const snap2 = snapshot(s.dir);
-      const again = run(atteso(s, 'berchet', '--rata', '1:600,00', '--rata', '2::2026-12-16'));
+      const again = run(atteso(s, 'app-a', '--rata', '1:600,00', '--rata', '2::2026-12-16'));
       expect([again.code, again.json]).toEqual([
         0,
-        { status: 'unchanged', imuYearId: 'imu-berchet-2026' },
+        { status: 'unchanged', imuYearId: 'imu-app-a-2026' },
       ]);
       expect(snapshot(s.dir)).toEqual(snap2);
 
-      const three = run(atteso(s, 'lovarini', '--rata', '1', '--rata', '2', '--rata', '3'));
+      const three = run(atteso(s, 'app-b', '--rata', '1', '--rata', '2', '--rata', '3'));
       expect([three.code, three.json.reason]).toEqual([1, 'rates-mismatch']);
       const nobody = run(atteso(s, 'nessuno', '--rata', '1', '--rata', '2'));
       expect([nobody.code, nobody.json.reason]).toEqual([1, 'unknown-apartment']);
-      const zero = run(atteso(s, 'lovarini', '--rata', '1:0,00', '--rata', '2'));
+      const zero = run(atteso(s, 'app-b', '--rata', '1:0,00', '--rata', '2'));
       expect([zero.code, zero.json.reason]).toEqual([1, 'bad-rates']);
-      const total = run(atteso(s, 'lovarini', '--totale', '700,00', '--rata', '1', '--rata', '2'));
+      const total = run(atteso(s, 'app-b', '--totale', '700,00', '--rata', '1', '--rata', '2'));
       expect(total.code).toBe(0);
       expect(snapshot(s.dir)).not.toEqual(snap2);
 
@@ -2218,7 +2218,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       expect(undo.code).toBe(0);
       expect(
         JSON.parse(
-          readFileSync(join(s.dir, '_app', 'dati', 'imuYear', 'imu-lovarini-2026.json'), 'utf8'),
+          readFileSync(join(s.dir, '_app', 'dati', 'imuYear', 'imu-app-b-2026.json'), 'utf8'),
         ).deleted,
       ).toBe(true);
       noAmounts(outs.join(''));
@@ -2226,7 +2226,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
     TIMEOUT,
   );
 
-  /** treConti with the F24 pattern, the IMU of 2027 for Berchet and Lovarini, two F24 in June. */
+  /** treConti with the F24 pattern, the IMU of 2027 for Appartamento A and Appartamento B, two F24 in June. */
   async function imuSetup(outs) {
     const s = await treConti({ f24Pattern: '^PAGAMENTO F24\\b' });
     const run = (args) => {
@@ -2236,8 +2236,8 @@ describe('pnpm estratti IMU (piano 3d)', () => {
     };
     const rates = ['--rata', '1:600,00', '--rata', '2:600,00'];
     for (const [apartmentId, amounts] of [
-      ['berchet', rates],
-      ['lovarini', ['--rata', '1:400,00', '--rata', '2:400,00']],
+      ['app-a', rates],
+      ['app-b', ['--rata', '1:400,00', '--rata', '2:400,00']],
     ]) {
       const args = atteso(s, apartmentId, ...amounts).map((a) => (a === '2026' ? '2027' : a));
       expect(run(args).code).toBe(0);
@@ -2251,7 +2251,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       'importa',
       ...s.common,
       '--conto',
-      'acc-berchet',
+      'acc-app-a',
       '--dal',
       '2027-06-01',
       '--al',
@@ -2272,7 +2272,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
     '--movimento',
     movement,
     '--gruppo',
-    'berchet-lovarini',
+    'app-a-app-b',
     '--anno',
     '2027',
     '--rata',
@@ -2292,7 +2292,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
         f24(s, s.first, '1', '--rata', '2'),
         f24(s, s.first, '1', 'x'),
         f24(s, s.first, '1', '--totale', '1,00'),
-        f24(s, s.first, '1').filter((a) => a !== '--gruppo' && a !== 'berchet-lovarini'),
+        f24(s, s.first, '1').filter((a) => a !== '--gruppo' && a !== 'app-a-app-b'),
         f24(s, s.first, '1').map((a) => (a === '2027' ? '27' : a)),
       ]) {
         expect([bad, s.run(bad).code]).toEqual([bad, 2]);
@@ -2346,18 +2346,18 @@ describe('pnpm estratti IMU (piano 3d)', () => {
     async () => {
       const outs = [];
       const s = await imuSetup(outs);
-      const lovarini = (group) =>
-        atteso(s, 'lovarini', '--rata', '1:400,00', '--rata', '2:400,00').map((a) =>
-          a === '2026' ? '2027' : a === 'berchet-lovarini' ? group : a,
+      const aptB = (group) =>
+        atteso(s, 'app-b', '--rata', '1:400,00', '--rata', '2:400,00').map((a) =>
+          a === '2026' ? '2027' : a === 'app-a-app-b' ? group : a,
         );
-      expect(s.run(lovarini('solo-lovarini')).code).toBe(0);
-      const back = s.run(lovarini('berchet-lovarini'));
+      expect(s.run(aptB('solo-app-b')).code).toBe(0);
+      const back = s.run(aptB('app-a-app-b'));
       expect(back.code).toBe(0);
       expect(s.run(f24(s, s.first, '1')).code).toBe(0);
       const snap = snapshot(s.dir);
       const message =
         'Rifiutato: un F24 è assegnato a una rata IMU che cambierebbe: annullare prima l’assegnazione.';
-      const changed = s.run(lovarini('altro'));
+      const changed = s.run(aptB('altro'));
       expect([
         changed.code,
         changed.json.reason,
@@ -2406,7 +2406,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
         step: 'f24',
         reason: 'f24',
         suggestedKind: 'tasse',
-        imuSuggestion: { f24Group: 'berchet-lovarini', year: '2027', rateIndex: 2 },
+        imuSuggestion: { f24Group: 'app-a-app-b', year: '2027', rateIndex: 2 },
       });
       // Only a suggestion: the second F24 is still to assign.
       expect(s.run(['imu', ...s.common]).json.rates[1]).toMatchObject({ status: 'attesa', f24: 0 });
@@ -2424,7 +2424,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       expect(s.run(f24(s, s.second, '2')).code).toBe(0);
       const message = 'Rata IMU da riconciliare: controllare gli importi attesi (imu-atteso).';
       const rate = (rateIndex, status, f24Count = 1) => ({
-        f24Group: 'berchet-lovarini',
+        f24Group: 'app-a-app-b',
         year: '2027',
         rateIndex,
         status,
@@ -2454,7 +2454,7 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       // The paid rate is split (task 4): one imu item; the other stays in toSplit.
       expect(saldi.json).toMatchObject({
         status: 'ok',
-        pairs: [{ creditorApartmentId: 'berchet', debtorApartmentId: 'lovarini', items: 1 }],
+        pairs: [{ creditorApartmentId: 'app-a', debtorApartmentId: 'app-b', items: 1 }],
         toSplit: 1,
         toSplitImu: 1,
       });
@@ -2486,15 +2486,15 @@ describe('pnpm estratti IMU (piano 3d)', () => {
       expect(reasons).toEqual([[s.second, 2, 'imu-da-riconciliare']]);
       expect(saldiDetails.pairs[0]).toMatchObject({
         amount: 40000,
-        items: [{ kind: 'imu', forApartmentId: 'lovarini', amount: 40000, refId: s.first }],
+        items: [{ kind: 'imu', forApartmentId: 'app-b', amount: 40000, refId: s.first }],
       });
       // The expected corrected: both paid.
-      const fixed = atteso(s, 'lovarini', '--rata', '1:400,00', '--rata', '2:410,01').map((a) =>
+      const fixed = atteso(s, 'app-b', '--rata', '1:400,00', '--rata', '2:410,01').map((a) =>
         a === '2026' ? '2027' : a,
       );
       expect(cli(fixed).code).toBe(0);
       expect(cli(['imu', ...s.common]).json.toReconcile).toBe(0);
-      // 1.010,01 € on 600,00 € and 410,01 €: Lovarini owes 400,00 € + 410,01 €.
+      // 1.010,01 € on 600,00 € and 410,01 €: Appartamento B owes 400,00 € + 410,01 €.
       expect(cli(['saldi', ...s.common, '--dettagli']).json).toMatchObject({
         pairs: [{ amount: 81001 }],
         toSplit: [],
@@ -2522,7 +2522,7 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     id,
     v: 1,
     rev: 1,
-    apartmentId: 'berchet',
+    apartmentId: 'app-a',
     tenantId,
     from: '2025-10',
     to: '2026-09',
@@ -2536,8 +2536,8 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     mkdirSync(dir);
     const store = new FsStore(dir);
     const records = [
-      ['apartment', apartment({ id: 'berchet' })],
-      ['apartment', apartment({ id: 'lovarini' })],
+      ['apartment', apartment({ id: 'app-a' })],
+      ['apartment', apartment({ id: 'app-b' })],
       ['tenancy', tenancy('tcy-a', 'ten-anna')],
       ['tenancy', tenancy('tcy-b', 'ten-bruno')],
       [
@@ -2546,7 +2546,7 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
           id: 'pay-c1',
           v: 1,
           rev: 1,
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
           tenantId: 'ten-anna',
           date: '2025-09-25',
           amount: 50000,
@@ -2577,9 +2577,9 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     'contratto',
     ...s.common,
     '--id',
-    'ctr-berchet',
+    'ctr-app-a',
     '--appartamento',
-    'berchet',
+    'app-a',
     '--tipo',
     '1+1',
     '--inizio',
@@ -2606,18 +2606,18 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     'contratto-canone',
     ...s.common,
     '--contratto',
-    'ctr-berchet',
+    'ctr-app-a',
     ...extra,
   ];
   const stored = (s) =>
-    JSON.parse(readFileSync(join(s.dir, '_app', 'dati', 'contract', 'ctr-berchet.json'), 'utf8'));
+    JSON.parse(readFileSync(join(s.dir, '_app', 'dati', 'contract', 'ctr-app-a.json'), 'utf8'));
 
   it('contratto: salva, la seconda volta non scrive, aliquota in punti base, argomenti 2', async () => {
     const s = await contractSetup();
     const saved = await run(contratto(s, ...full));
     expect([saved.code, saved.json]).toEqual([
       0,
-      { status: 'saved', contractId: 'ctr-berchet', operationId: saved.json.operationId },
+      { status: 'saved', contractId: 'ctr-app-a', operationId: saved.json.operationId },
     ]);
     expect(stored(s)).toMatchObject({
       agreedRent: true,
@@ -2630,7 +2630,7 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     const snap = snapshot(s.dir);
     expect((await run(contratto(s, ...full))).json).toEqual({
       status: 'unchanged',
-      contractId: 'ctr-berchet',
+      contractId: 'ctr-app-a',
     });
     expect(snapshot(s.dir)).toEqual(snap);
     const rate = (value) =>
@@ -2663,9 +2663,9 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
       contratto(s, 'x'),
       contratto(s).map((a) => (a === '1+1' ? '2+2' : a)),
       contratto(s).map((a) => (a === 'annuale' ? 'mensile' : a)),
-      contratto(s).map((a) => (a === 'ctr-berchet' ? 'ctr:berchet' : a)),
-      ['contratto', ...s.common, '--id', 'ctr-berchet'],
-      ['riconcilia', ...s.common, '--contratto', 'ctr-berchet'],
+      contratto(s).map((a) => (a === 'ctr-app-a' ? 'ctr:app-a' : a)),
+      ['contratto', ...s.common, '--id', 'ctr-app-a'],
+      ['riconcilia', ...s.common, '--contratto', 'ctr-app-a'],
       ['riconcilia', ...s.common, '--presenze', 'tcy-a'],
       ['imu', ...s.common, '--aliquota-cedolare', '10'],
       ['contratti', ...s.common, '--tipo', '1+1'],
@@ -2701,7 +2701,7 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     );
     expect([first.code, first.json]).toEqual([
       0,
-      { status: 'saved', contractId: 'ctr-berchet', operationId: first.json.operationId },
+      { status: 'saved', contractId: 'ctr-app-a', operationId: first.json.operationId },
     ]);
     expect(stored(s).rent).toEqual([
       { from: '2025-10', monthlyRent: 160000, monthlyAdvance: 15000 },
@@ -2746,8 +2746,8 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
       status: 'ok',
       contracts: [
         {
-          id: 'ctr-berchet',
-          apartmentId: 'berchet',
+          id: 'ctr-app-a',
+          apartmentId: 'app-a',
           type: '1+1',
           start: '2025-10',
           end: '2027-09',
@@ -2763,14 +2763,14 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
       checks: [
         {
           code: 'rent-differs',
-          contractId: 'ctr-berchet',
+          contractId: 'ctr-app-a',
           from: '2025-10',
           to: '2026-09',
           message,
         },
         {
           code: 'rent-differs',
-          contractId: 'ctr-berchet',
+          contractId: 'ctr-app-a',
           from: '2026-10',
           to: '2026-11',
           message,
@@ -2784,7 +2784,7 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
       /CODICE-PROVA|tcy-|pay-|2025-09-20|1000|160000|165000|15000|76000|175000|180000/,
     );
     expect(text).not.toMatch(/[0-9],[0-9]{2}/);
-    expect((await go(['contratti', ...s.common, '--appartamento', 'lovarini'])).json).toEqual({
+    expect((await go(['contratti', ...s.common, '--appartamento', 'app-b'])).json).toEqual({
       status: 'ok',
       contracts: [],
       checks: [],
@@ -2836,15 +2836,15 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     const s = await contractSetup();
     expect((await run(contratto(s))).code).toBe(0);
     const renewal = contratto(s, '--inizio', '2026-10', '--fine', '2028-09').map((a) =>
-      a === 'ctr-berchet' ? 'ctr-berchet-2' : a,
+      a === 'ctr-app-a' ? 'ctr-app-a-2' : a,
     );
     expect((await run(renewal)).code).toBe(0);
     const list = await run(['contratti', ...s.common]);
     expect(list.json.checks).toEqual([
       {
         code: 'contract-overlap',
-        contractId: 'ctr-berchet',
-        otherContractId: 'ctr-berchet-2',
+        contractId: 'ctr-app-a',
+        otherContractId: 'ctr-app-a-2',
         from: '2026-10',
         to: '2027-09',
         message:
@@ -2862,17 +2862,17 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
       'affitti-anno',
       ...s.common,
       '--appartamento',
-      'berchet',
+      'app-a',
       ...extra,
     ];
     const saved = await run(affitti('--anno', '2026', '--totale', '19350,00'));
     expect([saved.code, saved.json]).toEqual([
       0,
-      { status: 'saved', rentYearId: 'rent-berchet-2026', operationId: saved.json.operationId },
+      { status: 'saved', rentYearId: 'rent-app-a-2026', operationId: saved.json.operationId },
     ]);
     expect((await run(affitti('--anno', '2026', '--totale', '19350,00'))).json).toEqual({
       status: 'unchanged',
-      rentYearId: 'rent-berchet-2026',
+      rentYearId: 'rent-app-a-2026',
     });
     const snap = snapshot(s.dir);
     for (const bad of [
@@ -2901,12 +2901,12 @@ describe('pnpm estratti contratti (piano 7, task 5)', () => {
     expect(snapshot(s.dir)).toEqual(snap);
 
     const list = await run(['contratti', ...s.common]);
-    expect(list.json.rentYears).toEqual([{ apartmentId: 'berchet', year: '2026' }]);
+    expect(list.json.rentYears).toEqual([{ apartmentId: 'app-a', year: '2026' }]);
     expect(list.out).not.toMatch(/1935000|193500/);
     const details = await run(['contratti', ...s.common, '--dettagli']);
     expect(details.json.rentYears).toEqual([
       {
-        apartmentId: 'berchet',
+        apartmentId: 'app-a',
         year: '2026',
         totalRent: 1935000,
         cedolareRateBp: 1000,
@@ -2975,14 +2975,14 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
     return { dir, common: ['--cartella', dir, '--ora', ORA] };
   }
   const base = {
-    berchet: ['--id', 'ctr-berchet', '--appartamento', 'berchet', '--tipo', '1+1'],
-    lovarini: ['--id', 'ctr-lovarini', '--appartamento', 'lovarini', '--tipo', '3+2'],
+    aptA: ['--id', 'ctr-app-a', '--appartamento', 'app-a', '--tipo', '1+1'],
+    aptB: ['--id', 'ctr-app-b', '--appartamento', 'app-b', '--tipo', '3+2'],
   };
   const commands = (s) => [
     [
       'contratto',
       ...s.common,
-      ...base.berchet,
+      ...base.aptA,
       '--inizio',
       '2025-10',
       '--fine',
@@ -3009,7 +3009,7 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
     [
       'contratto',
       ...s.common,
-      ...base.lovarini,
+      ...base.aptB,
       '--inizio',
       '2025-10',
       '--fine',
@@ -3026,7 +3026,7 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
       'contratto-canone',
       ...s.common,
       '--contratto',
-      'ctr-berchet',
+      'ctr-app-a',
       '--dal',
       '2025-10',
       '--canone',
@@ -3038,7 +3038,7 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
       'contratto-canone',
       ...s.common,
       '--contratto',
-      'ctr-berchet',
+      'ctr-app-a',
       '--dal',
       '2026-10',
       '--canone',
@@ -3063,13 +3063,13 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
     const list = await run(['contratti', ...s.common]);
     outs.push(list.out);
     expect(list.json.checks).toEqual([
-      { code: 'deposit-other-tenant', contractId: 'ctr-berchet' },
-      { code: 'rent-differs', contractId: 'ctr-berchet', from: '2025-10', to: '2026-09', message },
-      { code: 'tenancy-outside-contract', contractId: 'ctr-berchet' },
+      { code: 'deposit-other-tenant', contractId: 'ctr-app-a' },
+      { code: 'rent-differs', contractId: 'ctr-app-a', from: '2025-10', to: '2026-09', message },
+      { code: 'tenancy-outside-contract', contractId: 'ctr-app-a' },
     ]);
     expect(list.json.contracts.map((c) => [c.id, c.type, c.settlement, c.taxRegime])).toEqual([
-      ['ctr-berchet', '1+1', 'annuale', 'cedolare'],
-      ['ctr-lovarini', '3+2', 'intero-contratto', 'ordinario'],
+      ['ctr-app-a', '1+1', 'annuale', 'cedolare'],
+      ['ctr-app-b', '3+2', 'intero-contratto', 'ordinario'],
     ]);
     const details = await run(['contratti', ...s.common, '--dettagli']);
     expect(details.json.checks).toEqual([
@@ -3103,7 +3103,7 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
     expect(undo.code).toBe(0);
     const after = await run(['contratti', ...s.common]);
     expect(after.json.checks.filter((c) => c.code === 'rent-differs')).toEqual([
-      { code: 'rent-differs', contractId: 'ctr-berchet', from: '2025-10', to: '2026-11', message },
+      { code: 'rent-differs', contractId: 'ctr-app-a', from: '2025-10', to: '2026-11', message },
     ]);
 
     // The Excel and the settlement periods as with a contract of the fields of before.
@@ -3111,10 +3111,10 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
       [
         'contract',
         {
-          id: 'ctr-berchet',
+          id: 'ctr-app-a',
           v: 1,
           rev: 1,
-          apartmentId: 'berchet',
+          apartmentId: 'app-a',
           type: '1+1',
           start: '2025-10',
           end: '2027-09',
@@ -3124,25 +3124,16 @@ describe('pnpm estratti contratti sulla fixture di due appartamenti (piano 7, ta
     ]);
     const stored = (dir) =>
       ContractSchema.parse(
-        JSON.parse(readFileSync(join(dir, '_app', 'dati', 'contract', 'ctr-berchet.json'), 'utf8')),
+        JSON.parse(readFileSync(join(dir, '_app', 'dati', 'contract', 'ctr-app-a.json'), 'utf8')),
       );
     const annualita = FIXTURE_CONTRACTS.records.apartment[0].annualitaStart;
     expect(settlementPeriods(stored(s.dir), annualita)).toEqual(
       settlementPeriods(stored(plain.dir), annualita),
     );
     const excelOf = async (dir) => {
-      const target = join(dir, 'berchet.xlsx');
+      const target = join(dir, 'app-a.xlsx');
       const r = await excelMain(
-        [
-          '--cartella',
-          dir,
-          '--appartamento',
-          'berchet',
-          '--periodo',
-          '2025-26',
-          '--uscita',
-          target,
-        ],
+        ['--cartella', dir, '--appartamento', 'app-a', '--periodo', '2025-26', '--uscita', target],
         { newId: () => 'tmp-excel', link: linkSync },
       );
       expect(r.code).toBe(0);
@@ -3681,14 +3672,14 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
       id,
       v: 1,
       rev: 1,
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       date: '2026-11-10',
       amount,
       description: 'Causale-inventata-F24',
       statementHash: 'h',
     });
     const records = [
-      ['apartment', apartment({ id: 'pulci', locatore: 'Locatore-Inventato-Due' })],
+      ['apartment', apartment({ id: 'app-c', locatore: 'Locatore-Inventato-Due' })],
       ['transaction', tx('t-f24', -6700)],
       ['transaction', tx('t-free', -1600)],
       [
@@ -3699,7 +3690,7 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
           rev: 1,
           transactionId: 't-f24',
           kind: 'tasse',
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
           f24: true,
         },
       ],
@@ -3728,7 +3719,7 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
       'scadenza-nuova',
       ...s.common,
       '--appartamento',
-      'pulci',
+      'app-c',
       ...extra,
     ];
     const registro = await run(
@@ -3812,14 +3803,14 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
           source: 'payable',
           id: registro.json.payableId,
           kind: 'registro',
-          apartmentIds: ['pulci'],
+          apartmentIds: ['app-c'],
           state: 'in-ritardo',
         },
         {
           source: 'payable',
           id: bollo.json.payableId,
           kind: 'bollo',
-          apartmentIds: ['pulci'],
+          apartmentIds: ['app-c'],
           // Within the default 15 days (R309).
           state: 'in-scadenza',
           repeatYearly: true,
@@ -3866,7 +3857,7 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
         source: 'payable',
         id: registro.json.payableId,
         kind: 'registro',
-        apartmentIds: ['pulci'],
+        apartmentIds: ['app-c'],
         state: 'pagata',
         taxpayers: ['Locatore-Inventato-Due'],
         dueDate: '2026-11-13',
@@ -3911,7 +3902,7 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
       'scadenza-nuova',
       ...s.common,
       '--appartamento',
-      'pulci',
+      'app-c',
       '--tipo',
       'bollo',
       '--scadenza',
@@ -3949,7 +3940,7 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
       'scadenza-nuova',
       ...s.common,
       '--appartamento',
-      'pulci',
+      'app-c',
       '--tipo',
       'cedolare',
       '--scadenza',
@@ -4383,16 +4374,16 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     const dir = join(root, `p${String((counter += 1))}`);
     mkdirSync(dir);
     const records = [
-      ['apartment', apartment({ id: 'pulci', posti: 2, rooms: ['A', 'B'] })],
+      ['apartment', apartment({ id: 'app-c', posti: 2, rooms: ['A', 'B'] })],
       ['tenant', { id: 'ten-anna', v: 1, rev: 1, name: 'Anna Prova' }],
       ['tenant', { id: 'ten-bruno', v: 1, rev: 1, name: 'Bruno Esempio' }],
       [
         'contract',
         {
-          id: 'ctr-pulci',
+          id: 'ctr-app-c',
           v: 1,
           rev: 1,
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
           type: '1+1',
           start: '2025-10',
           end: '2026-09',
@@ -4405,7 +4396,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
           id: 'pay-c1',
           v: 1,
           rev: 1,
-          apartmentId: 'pulci',
+          apartmentId: 'app-c',
           tenantId: 'ten-anna',
           date: '2025-09-25',
           amount: 50000,
@@ -4438,7 +4429,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     '--id',
     'tcy-anna',
     '--appartamento',
-    'pulci',
+    'app-c',
     '--inquilino',
     'ten-anna',
     '--posto',
@@ -4454,7 +4445,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     '--caparra-attesa',
     '500,00',
     '--contratto',
-    'ctr-pulci',
+    'ctr-app-c',
     ...extra,
   ];
   const subentro = (s, ...extra) => [
@@ -4480,7 +4471,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
     'caparra-restituzione',
     ...s.common,
     '--appartamento',
-    'pulci',
+    'app-c',
     '--inquilino',
     'ten-anna',
     '--conguaglio',
@@ -4513,8 +4504,8 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       status: 'ok',
       contracts: [
         {
-          contractId: 'ctr-pulci',
-          apartmentId: 'pulci',
+          contractId: 'ctr-app-c',
+          apartmentId: 'app-c',
           tenancies: { futura: 0, 'in-corso': 0, uscita: 2 },
           takeovers: 1,
           deposits: { versata: 1, diversa: 0, mancante: 1, 'non-impostata': 0 },
@@ -4598,7 +4589,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       ['tasso-legale', ...s.common, '--anno', '2025', '--tasso', '2', '--tasso', '3'],
       ['tasso-legale', ...s.common, '--anno', '25', '--tasso', '2'],
       restituzione(s, '--addebito', 'senza-importo'),
-      ['caparra-restituzione', ...s.common, '--appartamento', 'pulci'],
+      ['caparra-restituzione', ...s.common, '--appartamento', 'app-c'],
       ['stato-contratti', ...s.common, '--posto', 'A'],
     ]) {
       expect((await run(args)).code).toBe(2);
@@ -4618,9 +4609,9 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       'contratto',
       ...s.common,
       '--id',
-      'ctr-pulci',
+      'ctr-app-c',
       '--appartamento',
-      'pulci',
+      'app-c',
       '--tipo',
       '1+1',
       '--inizio',
@@ -4660,7 +4651,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       'scambio-camera',
       ...s.common,
       '--appartamento',
-      'pulci',
+      'app-c',
       '--presenza-a',
       'tcy-anna',
       '--presenza-b',
@@ -4695,7 +4686,7 @@ describe('pnpm estratti presenze, subentro e caparre (piano 11, task 4)', () => 
       scambio('--canone-b', '-1,00'),
       scambio('--mese', '2026-13'),
       scambio('--affitto', '1,00'),
-      ['scambio-camera', ...s.common, '--appartamento', 'pulci', '--presenza-a', 'tcy-anna'],
+      ['scambio-camera', ...s.common, '--appartamento', 'app-c', '--presenza-a', 'tcy-anna'],
     ]) {
       expect((await run(args)).code).toBe(2);
     }
@@ -4740,7 +4731,7 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
         profileId: 'p1',
         kind: 'test.seed',
         summary: 'x',
-        changes: [{ path: recordPath('apartment', 'pulci'), after: apartment({ id: 'pulci' }) }],
+        changes: [{ path: recordPath('apartment', 'app-c'), after: apartment({ id: 'app-c' }) }],
       },
       () => ORA,
       () => `seed-${String((k += 1))}`,
@@ -4779,7 +4770,7 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     const lettura = join(dir, 'lettura.json');
     writeFileSync(lettura, JSON.stringify(reading));
     const common = ['--cartella', dir, '--ora', ORA];
-    const args = [...common, '--appartamento', 'pulci', '--lettura', lettura, pdf];
+    const args = [...common, '--appartamento', 'app-c', '--lettura', lettura, pdf];
 
     // Plan 19, R330: no threshold needed; without settings no alarm and no error.
     expect((await run(['bolletta', ...args, '--soglia-consumi', 'x'])).code).toBe(2);
@@ -4802,7 +4793,7 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     expect(board.code).toBe(0);
     expect(board.json.apartments).toEqual([
       {
-        apartmentId: 'pulci',
+        apartmentId: 'app-c',
         counts: { 'documento-da-rivedere': 1 },
         consumptionThresholds: false,
       },
@@ -4814,7 +4805,7 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     const { filePath } = JSON.parse(
       readFileSync(join(dir, '_app', 'dati', 'bill', `${confirmed.json.ids[0]}.json`), 'utf8'),
     );
-    const plan = billFileMove(apartment({ id: 'pulci' }), filePath);
+    const plan = billFileMove(apartment({ id: 'app-c' }), filePath);
     const moved = join(dir, ...plan.filed.split('/'));
     expect([existsSync(pdf), existsSync(moved)]).toEqual([false, true]);
     const movedArgs = args.map((a) => (a === pdf ? moved : a));
@@ -4833,14 +4824,14 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     expect((await run(['annulla-bolletta', ...common, '--pagine', '2-1', pdf])).code).toBe(2);
     const empty = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
     expect(empty.json.apartments).toEqual([
-      { apartmentId: 'pulci', counts: {}, consumptionThresholds: false },
+      { apartmentId: 'app-c', counts: {}, consumptionThresholds: false },
     ]);
     expect((await run(['cruscotto', ...common, '--lettura', lettura])).code).toBe(2);
 
     // A file outside the shared folder stays where it is; a taken place is never written over.
     const outside = join(root, `fuori-${String((counter += 1))}.pdf`);
     writeFileSync(outside, readFileSync(inbox));
-    const outsideArgs = [...common, '--appartamento', 'pulci', '--lettura', lettura, outside];
+    const outsideArgs = [...common, '--appartamento', 'app-c', '--lettura', lettura, outside];
     const kept = await run(['bolletta', ...outsideArgs, '--soglia-consumi', '30', '--conferma']);
     expect([kept.json.status, kept.json.file]).toEqual(['confermata', 'outside-folder']);
     expect(existsSync(outside)).toBe(true);
@@ -4874,7 +4865,7 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
       id,
       v: 1,
       rev: 1,
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       supplier: 'Fornitore-Inventato-Gas',
       category: 'gas',
       periodStart: start,
@@ -4893,7 +4884,7 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
         kind: 'test.seed',
         summary: 'x',
         changes: [
-          { path: recordPath('apartment', 'pulci'), after: apartment({ id: 'pulci' }) },
+          { path: recordPath('apartment', 'app-c'), after: apartment({ id: 'app-c' }) },
           {
             path: recordPath('bill', 'b-prev'),
             after: bill('b-prev', '2025-01-01', '2025-01-31', '100'),
@@ -4909,7 +4900,7 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
               id: 'tcy-p',
               v: 1,
               rev: 1,
-              apartmentId: 'pulci',
+              apartmentId: 'app-c',
               tenantId: 'ten-p',
               from: '2025-10',
               monthlyRent: 40000,
@@ -4922,7 +4913,7 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
               id: 'ctr-p',
               v: 1,
               rev: 1,
-              apartmentId: 'pulci',
+              apartmentId: 'app-c',
               type: '1+1',
               start: '2025-10',
               end: '2027-09',
@@ -4970,7 +4961,7 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
     const board = await run(['cruscotto', ...common, '--oggi', '2026-11-17']);
     expect(board.code).toBe(0);
     expect(board.json.apartments[0]).toMatchObject({
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       consumptionThresholds: true,
     });
     expect(board.json.apartments[0].counts['consumi:rosso']).toBe(1);
@@ -5016,7 +5007,7 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
         ocrPages: [],
       }),
     );
-    const billArgs = [...common, '--appartamento', 'pulci', '--lettura', lettura, pdf];
+    const billArgs = [...common, '--appartamento', 'app-c', '--lettura', lettura, pdf];
     const alarmed = await run(['bolletta', ...billArgs]);
     expect(alarmed.code).toBe(0);
     expect(alarmed.json.codes).toContain('consumption-alarm');
@@ -5037,7 +5028,7 @@ describe('pnpm estratti soglie-consumi, consumi e appartamento --codici (piano 1
     ]) {
       expect((await run(bad)).code).toBe(2);
     }
-    const codes = await run(['appartamento', ...common, '--id', 'pulci', '--codici', 'POD-PROVA']);
+    const codes = await run(['appartamento', ...common, '--id', 'app-c', '--codici', 'POD-PROVA']);
     expect([codes.code, codes.json.status]).toEqual([0, 'updated']);
     const undo = await run([
       'annulla-riconciliazione',

@@ -27,7 +27,7 @@ function ids(prefix = 'id'): () => string {
   return () => `${prefix}-${String(++n)}`;
 }
 const draft = (over: Partial<SupplyDraft> = {}): SupplyDraft => ({
-  label: 'Berchet',
+  label: 'Appartamento A',
   rows: [
     { apartmentId: 'apt-b', basisPoints: 6000 },
     { apartmentId: 'apt-l', basisPoints: 4000 },
@@ -47,7 +47,7 @@ describe('linkSupply', () => {
       clock,
       ids(),
     );
-    expect(supply).toMatchObject({ id: 'id-1', label: 'Berchet', rev: 1 });
+    expect(supply).toMatchObject({ id: 'id-1', label: 'Appartamento A', rev: 1 });
     expect(supply.apartments).toEqual([
       { apartmentId: 'apt-b', weight: 6000 },
       { apartmentId: 'apt-l', weight: 4000 },
@@ -87,7 +87,7 @@ describe('linkSupply duplicate label', () => {
     const store = new MemoryStore();
     await linkSupply(store, draft(), 'p1', clock, ids('a'));
     await expect(
-      linkSupply(store, draft({ label: 'BERCHET' }), 'p1', clock, ids('b')),
+      linkSupply(store, draft({ label: 'APPARTAMENTO A' }), 'p1', clock, ids('b')),
     ).rejects.toThrow("Esiste già un'utenza con questa etichetta.");
     expect(await files(store)).toHaveLength(1);
   });
@@ -144,12 +144,12 @@ describe('updateSupply', () => {
     const next = await updateSupply(
       store,
       supply,
-      draft({ label: 'Berchet bis', rows: [{ apartmentId: 'apt-b', basisPoints: 10000 }] }),
+      draft({ label: 'Appartamento A bis', rows: [{ apartmentId: 'apt-b', basisPoints: 10000 }] }),
       'p1',
       clock,
       ids('b'),
     );
-    expect(next).toMatchObject({ id: supply.id, label: 'Berchet bis', rev: 2 });
+    expect(next).toMatchObject({ id: supply.id, label: 'Appartamento A bis', rev: 2 });
     expect(next.apartments).toEqual([{ apartmentId: 'apt-b', weight: 10000 }]);
     const ops = (await readJournal(store)).operations;
     expect(ops.map((o) => o.kind).sort()).toEqual(['supply.link', 'supply.update']);
@@ -181,7 +181,7 @@ describe('removeSupply and liveSupplies', () => {
   it('marks the supply deleted and stops listing it', async () => {
     const store = new MemoryStore();
     const a = await linkSupply(store, draft(), 'p1', clock, ids('a'));
-    const b = await linkSupply(store, draft({ label: 'Lovarini' }), 'p1', clock, ids('b'));
+    const b = await linkSupply(store, draft({ label: 'Appartamento B' }), 'p1', clock, ids('b'));
     expect((await liveSupplies(store)).map((s) => s.id)).toEqual([a.id, b.id]);
     const gone = await removeSupply(store, a, 'p1', clock, ids('c'));
     expect(gone).toMatchObject({ deleted: true, rev: 2 });
@@ -226,7 +226,7 @@ describe('removeSupply and liveSupplies', () => {
         periodEnd: f('2026-04-30'),
         amount: f(10075),
       },
-      parts: [{ label: 'Berchet', amount: 10075, source }],
+      parts: [{ label: 'Appartamento A', amount: 10075, source }],
       identifiers: [],
       checks: [{ code: 'total-matches-items', ok: true, message: 'ok' }],
       warnings: [],
@@ -324,7 +324,7 @@ describe('saveSupply (CLI, review of 18 Nov 2026, E5)', () => {
     expect(
       await saveSupply(
         store,
-        draft({ label: 'berchet', rows: [{ apartmentId: 'apt-b', basisPoints: 10000 }] }),
+        draft({ label: 'appartamento a', rows: [{ apartmentId: 'apt-b', basisPoints: 10000 }] }),
         'p1',
         clock,
         ids('y'),

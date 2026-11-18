@@ -17,7 +17,7 @@ inventato (sezione 22).
 ## Ambito
 
 - **Piano 2a (questo):** PDF con testo, per i fornitori che oggi hanno i tre appartamenti (luce,
-  gas, internet e avvisi TARI, compresa la TARI condivisa tra Berchet e Lovarini).
+  gas, internet e avvisi TARI, compresa la TARI condivisa tra Appartamento A e Appartamento B).
 - **Piano 2b (dopo):** scansioni con OCR (acqua), condominio (tabella di ripartizione), PDF con più
   documenti.
 - **Un PDF senza testo** non produce campi: risposta `senza-testo`, da compilare a mano. Le
@@ -80,7 +80,7 @@ di fornitura) e dove trovare ogni campo: un'etichetta di ancoraggio, la posizion
 all'etichetta (a destra, sotto, sulla stessa riga), un'espressione regolare, il tipo (importo, data,
 periodo, testo) e se il campo è obbligatorio. Ha una data di inizio validità (sezione 22): se il
 layout cambia nasce un profilo nuovo e il vecchio resta per i PDF vecchi. Per la TARI condivisa tra
-Berchet e Lovarini il profilo dichiara le utenze dell'avviso, che alimentano `splitSharedDebit` e
+Appartamento A e Appartamento B il profilo dichiara le utenze dell'avviso, che alimentano `splitSharedDebit` e
 `tariNote` del piano 1.
 
 I profili nel repository non contengono codici cliente, POD, PDR o indirizzi: riconoscono per

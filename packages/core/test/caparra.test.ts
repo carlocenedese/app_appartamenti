@@ -19,7 +19,7 @@ const sumOfLines = (lines: { amount: number }[]): number =>
   lines.reduce((sum, { amount }) => sum + amount, 0);
 
 describe('caparraReturn', () => {
-  it('computes the Berchet example: 500,00 + 8,83 - 460,21 - 33,50 = 15,12', () => {
+  it('computes the Appartamento A example: 500,00 + 8,83 - 460,21 - 33,50 = 15,12', () => {
     const result = caparraReturn(input(50000, 883, 46021, [{ label: 'Zanzariera', amount: 3350 }]));
     expect(result.total).toBe(1512);
     expect(result.lines).toEqual([

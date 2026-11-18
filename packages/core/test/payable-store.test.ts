@@ -24,7 +24,7 @@ const base = { v: 1, rev: 1 };
 const tx = (id: string, amount = -6700) => ({
   ...base,
   id,
-  apartmentId: 'pulci',
+  apartmentId: 'app-c',
   date: '2026-11-10',
   amount,
   description: 'x',
@@ -35,7 +35,7 @@ const cls = (transactionId: string, extra: object = {}) => ({
   id: `mc-${transactionId}`,
   transactionId,
   kind: 'tasse',
-  apartmentId: 'pulci',
+  apartmentId: 'app-c',
   ...extra,
 });
 
@@ -67,8 +67,8 @@ async function setup() {
   await seed(store, 'apartment', [
     {
       ...base,
-      id: 'pulci',
-      name: 'pulci',
+      id: 'app-c',
+      name: 'app-c',
       locatore: 'Locatore Due',
       posti: 2,
       annualitaStart: { month: 10, day: 1 },
@@ -96,7 +96,7 @@ const op = (result: { status: string; operationId?: string }) =>
 const payables = async (store: MemoryStore) =>
   (await loadAll(store, 'payable', PayableSchema, { includeDeleted: true })).records;
 const input = {
-  apartmentId: 'pulci',
+  apartmentId: 'app-c',
   kind: 'registro' as const,
   dueDate: isoDate('2026-11-16'),
 };
@@ -115,7 +115,7 @@ describe('savePayable (plan 9, task 3)', () => {
     expect(journal.operations.find((o) => o.id === op(created))).toMatchObject({
       kind: 'payable.save',
       summary: 'Salvata una scadenza.',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
     });
     await setPayablePaid(
       store,
@@ -347,7 +347,7 @@ describe('repeatPayable', () => {
     expect((await payables(store)).find((p) => p.id === 'scad-r-1')).toEqual({
       ...base,
       id: 'scad-r-1',
-      apartmentId: 'pulci',
+      apartmentId: 'app-c',
       kind: 'bollo',
       dueDate: '2027-11-15',
       repeatYearly: true,
