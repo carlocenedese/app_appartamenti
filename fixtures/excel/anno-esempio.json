@@ -1,5 +1,5 @@
 {
-  "description": "Annualità 2026-27 inventata dell'appartamento Nord (4 posti) per l'Excel dei conguagli (piano 5): luce a cavallo agosto-novembre 2026, internet con commissione, gas presunto (nessun estratto), acqua in attesa (nessun addebito), TARI comune a Nord e Sud addebitata dal conto di Nord, una rata di condominio con parte della proprietà e conguaglio dell'anno prima, il posto D vuoto da ottobre a dicembre, Elena lascia il posto C a Carla da marzo, i canoni, un conguaglio versato (+50,00 €), uno restituito (−12,00 €) e una caparra restituita (−538,40 €, che nel file non c'è). Nomi e importi inventati.",
+  "description": "Annualità 2026-27 inventata dell'appartamento Nord (4 posti) per l'Excel dei conguagli (piano 5): luce a cavallo agosto-novembre 2026, internet con commissione, gas da verificare (nessun estratto, decisione B1), acqua in attesa (nessun addebito), TARI comune a Nord e Sud addebitata dal conto di Nord, una rata di condominio con parte della proprietà e conguaglio dell'anno prima, il posto D vuoto da ottobre a dicembre, Elena lascia il posto C a Carla da marzo, i canoni, un conguaglio versato (+50,00 €), uno restituito (−12,00 €) e una caparra restituita (−538,40 €, che nel file non c'è). Nomi e importi inventati.",
   "apartmentId": "apt-nord",
   "period": { "label": "2026-27", "from": "2026-10", "to": "2027-09" },
   "apartments": [
@@ -264,19 +264,6 @@
       "part": "amount",
       "confirmed": true,
       "by": "auto"
-    },
-    {
-      "id": "m-bill-bill-gas-amount-assumed-bill-gas",
-      "v": 1,
-      "rev": 1,
-      "itemType": "bill",
-      "itemId": "bill-gas",
-      "transactionId": "assumed-bill-gas",
-      "transactionDate": "2027-03-15",
-      "amount": 9000,
-      "part": "amount",
-      "confirmed": true,
-      "by": "assumed"
     },
     {
       "id": "m-instalment-inst-tari-nord-amount-tx-tari",

@@ -297,8 +297,8 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     expect(await closePeriod(store, QUERY, 'p1', clock, ids('d'))).toEqual(refused);
     const december = decemberNotice('2025');
     await put(store, 'instalment', december);
-    // Registered but not debited yet: still refused.
-    expect(await closePeriod(store, QUERY, 'p1', clock, ids('e'))).toEqual(refused);
+    // Registered but not debited yet: still refused (an item of the period without a debit).
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('e'))).status).toBe('refused');
     await put(store, 'match', match(december, 3000, { transactionDate: isoDate('2025-12-16') }));
     expect((await closePeriod(store, QUERY, 'p1', clock, ids('f'))).status).toBe('closed');
   });

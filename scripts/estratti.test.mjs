@@ -1383,7 +1383,7 @@ describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, t
         yielded: 0,
         proposals: [],
         pending: 0,
-        assumed: 1,
+        unverified: 1,
         invalidGroups: 0,
         operationId: matchOp.id,
       });
@@ -3324,7 +3324,7 @@ describe('pnpm estratti condominio (piano 8)', () => {
         },
       ],
     ]);
-    // A statement covering the months, so that nothing is assumed paid (R2).
+    // A statement covering the months, so that nothing is left to verify (B1).
     await commitChange(
       new FsStore(s.dir),
       {

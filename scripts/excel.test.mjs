@@ -87,8 +87,9 @@ describe('pnpm excel', () => {
         period: '2026-27',
         sheets: 4,
         tenants: 5,
-        items: 5,
-        pending: 1,
+        // The gas bill has no statement: to verify (B1), among the pending items.
+        items: 4,
+        pending: 2,
       });
       const loaded = await loadExcelInput(new FsStore(data), {
         apartmentId: 'apt-nord',

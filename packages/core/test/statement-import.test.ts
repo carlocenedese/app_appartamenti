@@ -1243,15 +1243,18 @@ describe('C1 after an undone statement (review of 18 Nov 2026, point 7)', () => 
     const plan = async () => {
       const { run, written } = await planMatch(store);
       if (run.status !== 'matched') throw new Error('refused');
-      return { assumed: run.assumed, written: written.map((m) => [m.itemId, m.transactionId]) };
+      return {
+        unverified: run.unverified,
+        written: written.map((m) => [m.itemId, m.transactionId]),
+      };
     };
     const [tx] = await live(store);
-    expect(await plan()).toEqual({ assumed: [], written: [['b-late', tx?.id]] });
+    expect(await plan()).toEqual({ unverified: [], written: [['b-late', tx?.id]] });
     expect(await undoImport(store, imported.statement.id, 'p1', clock, newId)).toMatchObject({
       status: 'undone',
     });
     expect(await plan()).toEqual({
-      assumed: [{ itemType: 'bill', itemId: 'b-late' }],
+      unverified: [{ itemType: 'bill', itemId: 'b-late' }],
       written: [],
     });
     expect(await live(store)).toEqual([]);

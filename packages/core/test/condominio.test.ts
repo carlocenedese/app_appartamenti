@@ -131,8 +131,10 @@ describe('condoCheck (plan 8, task 5, section 12)', () => {
     expect(statusOf(r, [], '2026-05-11')).toBe('senza-addebito');
   });
 
-  it('assunta, and what does not count: unconfirmed, deleted, commission, other items', () => {
-    expect(statusOf(r, [debit(r, 15000, 'tx-1', { by: 'assumed' })], '2026-06-01')).toBe('assunta');
+  it('da-verificare for an assumed match stored before B1, and what does not count: unconfirmed, deleted, commission, other items', () => {
+    expect(statusOf(r, [debit(r, 15000, 'tx-1', { by: 'assumed' })], '2026-06-01')).toBe(
+      'da-verificare',
+    );
     const ignored = [
       debit(r, 15000, 'tx-1', { confirmed: false }),
       debit(r, 15000, 'tx-2', { deleted: true }),
@@ -254,8 +256,8 @@ describe('loadCondo (plan 8, task 5)', () => {
     });
     expect(one).toMatchObject({
       status: 'computed',
-      // No statement covers the period: the instalment is assumed paid (R2, `planMatch`).
-      rates: [{ instalmentId: 'r1', status: 'assunta' }],
+      // No statement covers the period: the instalment is never taken as paid (B1).
+      rates: [{ instalmentId: 'r1', status: 'senza-addebito' }],
       differences: [{ apartmentId: 'apt', difference: 6000 }],
       recoveries: [],
       warnings: [],

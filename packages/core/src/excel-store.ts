@@ -1,15 +1,13 @@
 /**
  * The data of the Excel of one apartment and one period, read from the store (plan 5, R155).
  * The period comes from the apartment's contracts (`settlementPeriods`); the matches are the
- * saved ones plus the assumed ones `planMatch` computes (R2: with no statement an item is taken
- * as paid). Writes nothing.
+ * saved ones: an item with no statement is never taken as paid (B1). Writes nothing.
  */
 import type { ZodType } from 'zod';
 import type { ExcelInput } from './excel';
 import { loadFreeDebits } from './condo-store';
 import { recoverableMovements } from './condominio';
 import { writesBlocked } from './journal';
-import { planMatch } from './match-store';
 import {
   ApartmentSchema,
   BankTransactionSchema,
@@ -70,10 +68,7 @@ export async function loadExcelInput(
     return refuse('ambiguous-period');
   }
 
-  const matches = [
-    ...(await records('match', BillMatchSchema)),
-    ...(await planMatch(store)).assumedMatches,
-  ];
+  const matches = await records('match', BillMatchSchema);
   // Every settlement period, once and in order (R177).
   const spans = [
     ...new Map(all.map((p) => [`${p.from}/${p.to}`, { from: p.from, to: p.to }])).values(),

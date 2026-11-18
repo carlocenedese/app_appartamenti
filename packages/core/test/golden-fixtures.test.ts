@@ -84,10 +84,11 @@ describe('golden fixtures', () => {
       }
     });
 
-    // Without statements every item is assumed paid; with them the fixture would also need the
-    // statement periods, which the fixture shape does not carry yet.
+    // Without statements the matching step no longer takes any item as paid (B1, 18 Nov 2026):
+    // every item is to verify. The fixture keeps the `assumed` matches the step produced before
+    // B1, as stored records: they are still read, and the golden values rest on them.
     it.skipIf(fixture.transactions.length > 0)(
-      'records the matches the matching step produces, with the same pending items',
+      'records, as matches stored before B1, the items the matching step now leaves to verify',
       () => {
         const result = matchToTransactions({
           bills: fixture.bills,
@@ -97,7 +98,11 @@ describe('golden fixtures', () => {
           statementPeriods: [],
           existing: [],
         });
-        expect(result.matches).toEqual(fixture.matches);
+        expect(result.matches).toEqual([]);
+        expect(fixture.matches.every((m) => m.by === 'assumed')).toBe(true);
+        expect(result.unverified.map((ref) => ref.itemId).sort()).toEqual(
+          [...new Set(fixture.matches.map((m) => m.itemId))].sort(),
+        );
         expect(result.pending.map((ref) => ref.itemId).sort()).toEqual(
           [...fixture.expectedPending].sort(),
         );

@@ -91,21 +91,21 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       null,
     ]);
     const rows = rowsOf(sheet);
+    // The gas bill has no statement: to verify (B1), among the pending items, never paid.
     expect(rows.map((r) => r[0])).toEqual([
-      'Conguaglio provvisorio: voci in attesa 1',
+      'Conguaglio provvisorio: voci in attesa 2',
       'Tipo',
       'Elettricità',
       'Internet',
       'TARI',
       'Condominio',
-      'Gas',
       'Totale',
       undefined,
       'Voci in attesa di pagamento',
       'Tipo',
+      'Gas',
       'Acqua',
     ]);
-    expect(rows.find((r) => r[0] === 'Gas')?.[6]).toBe('assunta, non verificata');
     expect(rows.find((r) => r[0] === 'Elettricità')?.[11]).toBe(
       'Bolletta a cavallo: € 60,01 nei mesi agosto–settembre 2026, fuori da questo periodo.',
     );
@@ -240,7 +240,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
   it('says on top that the settlement is provisional (question 5)', () => {
     for (const name of ['Bollette', 'Conguagli']) {
       expect(get(name)?.rows[0]).toEqual([
-        { kind: 'text', value: 'Conguaglio provvisorio: voci in attesa 1' },
+        { kind: 'text', value: 'Conguaglio provvisorio: voci in attesa 2' },
       ]);
     }
     expect(rowsOf(get('Affitti versati'))[0]?.[0]).toBe('Posto');
@@ -249,10 +249,18 @@ describe('buildConguaglioWorkbook on the fixture', () => {
   it('lists the pending items at the bottom of the bills, with no amount (question 6)', () => {
     const rows = get('Bollette')?.rows ?? [];
     const t = (value: string) => ({ kind: 'text', value });
-    expect(rows.slice(-4)).toEqual([
+    expect(rows.slice(-5)).toEqual([
       [],
       [t('Voci in attesa di pagamento')],
       [t('Tipo'), t('Fornitore'), null, t('Periodo dal'), t('Periodo al'), t('Motivo')],
+      [
+        t('Gas'),
+        t('Gas Esempio'),
+        null,
+        { kind: 'date', value: '2027-01-01' },
+        { kind: 'date', value: '2027-02-28' },
+        t('in attesa di pagamento'),
+      ],
       [
         t('Acqua'),
         t('Acqua Esempio'),
@@ -316,7 +324,7 @@ describe('buildConguaglioWorkbook variants', () => {
 
   it('has no pending list with nothing pending, and says 0 on top', () => {
     const input = fixtureInput();
-    input.bills = input.bills.filter((b) => b.id !== 'bill-acqua');
+    input.bills = input.bills.filter((b) => b.id !== 'bill-acqua' && b.id !== 'bill-gas');
     const rows = rowsOf(sheets(input).get('Bollette'));
     expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 0']);
     expect(rows.at(-1)?.[0]).toBe('Totale');
@@ -326,9 +334,10 @@ describe('buildConguaglioWorkbook variants', () => {
     const input = fixtureInput();
     input.matches = input.matches.filter((m) => m.itemId !== 'inst-cond-1');
     const rows = rowsOf(sheets(input).get('Bollette'));
-    expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 2']);
-    expect(rows.slice(-2)).toEqual([
+    expect(rows[0]).toEqual(['Conguaglio provvisorio: voci in attesa 3']);
+    expect(rows.slice(-3)).toEqual([
       ['Condominio', null, null, '2026-10-01', '2027-01-31', 'in attesa di pagamento'],
+      ['Gas', 'Gas Esempio', null, '2027-01-01', '2027-02-28', 'in attesa di pagamento'],
       ['Acqua', 'Acqua Esempio', null, '2027-04-01', '2027-06-30', 'in attesa di pagamento'],
     ]);
   });
@@ -635,7 +644,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '66bec46bd41be2fdfd63e0ea850f2e55014f5ed0b118c791a6256fa65301439d',
+      '12e0d0d6d3788f00aa09e29b615726a002a04143c773cf63eb0508b7dd298fc8',
     );
   });
 });

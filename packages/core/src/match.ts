@@ -1,7 +1,7 @@
 /**
  * Matching of bills and instalments (condominium, TARI) with the debits of the bank statements
  * (section 42, R2, R3 and R7). A cost counts only once its debit is in the CSV, so every item
- * ends up matched, proposed for a person to confirm, ambiguous, assumed or pending.
+ * ends up matched, proposed for a person to confirm, ambiguous, pending or to verify.
  *
  * - Exact match: the paying account (`paidFromApartmentId`, else `apartmentId`), the amount to
  *   the cent with the opposite sign, the debit date inside the window around the due date (for a
@@ -17,11 +17,12 @@
  *   together to one debit of `groupTotal` and the debit is split by their `weight`. A notice with
  *   one instalment only (the others not entered yet) or whose instalments disagree on paying
  *   account, due date or total, or carry a weight that is not positive, is reported in
- *   `invalidGroups`: its instalments stay pending, never matched nor assumed.
+ *   `invalidGroups`: its instalments stay pending, never matched nor to verify.
  * - Proposal: besides the exact pairs without the supplier, a bill whose debit has another amount
  *   but the supplier in the description gets an unconfirmed match, one-to-one only; with several
  *   possible debits it stays pending.
- * - A period no statement covers: its items are taken as paid (`by: 'assumed'`, R2).
+ * - A period no statement covers: its items are never taken as paid; they are `unverified`, «da
+ *   verificare» (B1, decided by user1 on 18 Nov 2026). No `by: 'assumed'` match is made any more.
  * - Commission (R7): the debit row tied to a matched debit by the disposition code follows the
  *   items of that debit with the same split (see `commission.ts`).
  *
@@ -52,13 +53,13 @@ export interface MatchInput {
   window: { daysBefore: number; daysAfter: number };
   /**
    * Periods covered by a bank statement, each of one account (`apartmentId`). An item is covered
-   * only by a period of its paying account; due outside all of them it is assumed paid.
+   * only by a period of its paying account; due outside all of them it is to verify (B1).
    */
   statementPeriods: { apartmentId: string; from: ISODate; to: ISODate }[];
   /**
    * Matches already recorded. Confirmed ones (manual or automatic) are kept unchanged and their
-   * movements and items are not matched again; unconfirmed and `assumed` ones are dropped and
-   * computed again, so a statement read later can verify an item taken as paid (R2).
+   * movements and items are not matched again; unconfirmed ones and `assumed` ones stored before
+   * B1 are dropped and computed again.
    */
   existing: BillMatch[];
 }
@@ -68,6 +69,12 @@ export interface MatchResult {
   matches: BillMatch[];
   /** Items without any match, ambiguous ones included: they stay out of the settlement. */
   pending: MatchItemRef[];
+  /**
+   * Items whose reference day no statement of their paying account covers, with no candidate
+   * debit: «da verificare» (B1), never taken as paid. Without a match like `pending`, but not in
+   * it; sorted.
+   */
+  unverified: MatchItemRef[];
   /** One entry per item of a component that is not one-to-one; a shared notice by its group id. */
   ambiguous: { itemId: string; transactionIds: string[] }[];
   /** Transactions no match uses. */
@@ -295,7 +302,7 @@ export const MATCH_WINDOW = { daysBefore: 5, daysAfter: 10 } as const;
 /**
  * One period per live statement of a live account, in the apartment of the account (R106),
  * sorted by apartment, `from` and `to`. Never merged: a gap between two statements stays
- * uncovered, so its items are assumed paid.
+ * uncovered, so its items are to verify (B1).
  */
 export function statementPeriodsOf(
   accounts: Account[],
@@ -358,7 +365,7 @@ export function matchToTransactions(input: MatchInput): MatchResult {
   const bills = input.bills.filter((bill) => bill.deleted !== true);
   const instalments = input.instalments.filter((instalment) => instalment.deleted !== true);
   const transactions = uniqueTransactions(input.transactions);
-  // Assumed matches are recomputed too: once a statement covers the period, R2 applies.
+  // Assumed matches stored before B1 are dropped: the item is matched again or to verify.
   const kept = input.existing.filter(
     (match) => match.confirmed && match.by !== 'assumed' && match.deleted !== true,
   );
@@ -369,7 +376,7 @@ export function matchToTransactions(input: MatchInput): MatchResult {
 
   const created: BillMatch[] = [];
   const open: ItemNode[] = [];
-  // Items whose reference day no statement covers: assumed paid (R2, R125), unless C1 below.
+  // Items whose reference day no statement covers: to verify (B1), unless C1 below.
   const gap: ItemNode[] = [];
   const { nodes, invalidGroups } = buildNodes(bills, instalments);
   for (const node of nodes) {
@@ -426,21 +433,17 @@ export function matchToTransactions(input: MatchInput): MatchResult {
   };
   const touched = matchPass(open, free).transactions;
 
-  // C1: an item of a gap is still assumed (R125), unless a movement of a statement in its window,
-  // left by the items the statements cover, is a candidate for it (same amount, or another
-  // amount with the supplier named): then it is matched or proposed, R2 «conta l'addebitato».
+  // C1: an item of a gap is to verify (B1), unless a movement of a statement in its window, left
+  // by the items the statements cover, is a candidate for it (same amount, or another amount with
+  // the supplier named): then it is matched or proposed, R2 «conta l'addebitato».
   const left = free.filter((t) => !touched.has(t.id));
   const seen = gap.filter((node) => left.some((t) => isExact(node, t) || isOther(node, t)));
   // An item whose only candidate another gap item took is matched, proposed or ambiguous with
-  // nothing: it is assumed, as without a candidate (R125).
+  // nothing: it is to verify, as without a candidate (B1).
   const reached = matchPass(seen, left).nodes;
-  for (const node of gap) {
-    if (reached.has(node.key)) continue;
-    for (const member of node.members) {
-      const assumed = { id: `assumed-${member.itemId}`, date: node.ref };
-      created.push(makeMatch(member, 'amount', assumed, member.amount, true, 'assumed'));
-    }
-  }
+  const toVerify = new Set(
+    gap.filter((node) => !reached.has(node.key)).flatMap((node) => node.members.map(refKey)),
+  );
 
   const sharedById = new Map(instalments.map((i) => [i.id, i.shared]));
   const sharedOf = (item: MatchItemRef) =>
@@ -462,13 +465,16 @@ export function matchToTransactions(input: MatchInput): MatchResult {
       itemId: instalment.id,
     })),
   ];
-  const pending = items
+  const unmatched = items
     .filter((item) => !withMatch.has(refKey(item)))
     .sort((a, b) => byText(refKey(a), refKey(b)));
+  const pending = unmatched.filter((item) => !toVerify.has(refKey(item)));
+  const unverified = unmatched.filter((item) => toVerify.has(refKey(item)));
   const used = new Set(matches.map((m) => m.transactionId));
   return {
     matches,
     pending,
+    unverified,
     ambiguous: ambiguous.sort((a, b) => byText(a.itemId, b.itemId)),
     unmatchedTransactions: transactions.filter((t) => !used.has(t.id)).map((t) => t.id),
     invalidGroups,

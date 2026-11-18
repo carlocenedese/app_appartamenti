@@ -21,7 +21,8 @@ import { compareText } from './text';
 import type { XlsxCell, XlsxWorkbook } from './xlsx-write';
 
 /** `instalmentStatus` without a date (plan 8, R195): the file has no clock. */
-export type OwnersStatus = 'pagata' | 'importo-diverso' | 'duplicato' | 'assunta' | 'in-attesa';
+export type OwnersStatus =
+  'pagata' | 'importo-diverso' | 'duplicato' | 'da-verificare' | 'in-attesa';
 
 export interface OwnersItem {
   instalmentId: string;
@@ -73,7 +74,7 @@ const STATUS_LABELS: Record<OwnersStatus, string> = {
   pagata: 'pagata',
   'importo-diverso': 'importo diverso',
   duplicato: 'duplicato',
-  assunta: 'assunta, non verificata',
+  'da-verificare': 'da verificare',
   'in-attesa': 'in attesa di pagamento',
 };
 

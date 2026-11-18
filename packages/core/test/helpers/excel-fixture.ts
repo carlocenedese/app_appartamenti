@@ -85,10 +85,9 @@ export const statementRecord = (id: string, from: string, to: string) => ({
 });
 
 /**
- * The fixture as the records of a store: every record except the assumed match (assumed matches
- * are never saved), one account and statements for October-December 2026 and July-September
- * 2027, so the gas bill of March 2027 has no statement (assumed) and the water bill of July 2027
- * waits for its debit.
+ * The fixture as the records of a store: every record, one account and statements for
+ * October-December 2026 and July-September 2027, so the gas bill of March 2027 has no statement
+ * (to verify, B1) and the water bill of July 2027 waits for its debit.
  */
 export function fixtureRecords(fixture: ExcelFixture = FIXTURE): StoreRecords {
   return {
@@ -98,7 +97,7 @@ export function fixtureRecords(fixture: ExcelFixture = FIXTURE): StoreRecords {
     tenancy: fixture.tenancies,
     bill: fixture.bills,
     instalment: fixture.instalments,
-    match: fixture.matches.filter((m) => m.by !== 'assumed'),
+    match: fixture.matches,
     payment: fixture.payments,
     account: [
       {

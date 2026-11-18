@@ -1241,7 +1241,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         yielded: match.yielded,
         proposals: match.proposals.map((p) => ({ id: p.id, reason: p.reason })),
         pending: match.pending.length,
-        assumed: match.assumed.length,
+        unverified: match.unverified.length,
         invalidGroups: match.invalidGroups.length,
         // E1: a shared notice registered before the fix has no paying account on its rates.
         ...(match.invalidGroups.length > 0 ? { message: MESSAGES['invalid-shared-notice'] } : {}),

@@ -49,7 +49,7 @@ export interface ExcelItem {
   dueDate?: ISODate;
   /** The dates of the debits matched to the amount, distinct and sorted; assumed ones excluded. */
   debitDates: ISODate[];
-  /** Every amount match is assumed (no statement covers it, R2). */
+  /** Every amount match is an `assumed` one stored before B1: shown «da verificare». */
   assumed: boolean;
   /** The amount debited; for a condominium instalment, the tenants' part (R8). */
   amount: Cents;
@@ -461,7 +461,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     date(item.from),
     date(item.to),
     date(item.dueDate),
-    text(item.assumed ? 'assunta, non verificata' : item.debitDates.map(dayMonthYear).join(', ')),
+    text(item.assumed ? 'da verificare' : item.debitDates.map(dayMonthYear).join(', ')),
     euro(item.amount),
     euro(item.commission),
     euro(item.inPeriod),

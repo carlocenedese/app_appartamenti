@@ -634,23 +634,10 @@ describe('matchToTransactions: periods without a statement', () => {
     expect(result.pending).toEqual([{ itemType: 'bill', itemId: 'b1' }]);
   });
 
-  it('assumes a bill due outside every covered period as paid, for the document amount', () => {
+  it('B1: a bill due outside every covered period is to verify, never assumed paid', () => {
     const result = run({ bills: [bill('b1')], statementPeriods: firstHalf });
-    expect(result.matches).toEqual([
-      {
-        id: 'm-bill-b1-amount-assumed-b1',
-        v: 1,
-        rev: 1,
-        itemType: 'bill',
-        itemId: 'b1',
-        transactionId: 'assumed-b1',
-        transactionDate: '2026-11-10',
-        amount: 21460,
-        part: 'amount',
-        confirmed: true,
-        by: 'assumed',
-      },
-    ]);
+    expect(result.matches).toEqual([]);
+    expect(result.unverified).toEqual([{ itemType: 'bill', itemId: 'b1' }]);
     expect(result.pending).toEqual([]);
   });
 
@@ -667,18 +654,21 @@ describe('matchToTransactions: periods without a statement', () => {
     ]);
   });
 
-  it('C1: a gap item without a candidate stays assumed (R125)', () => {
+  it('B1: a bill of 100,00 due 31/01, statement from 01/02, no debit found: to verify', () => {
     const r = run({
-      bills: [bill('b1', { dueDate: isoDate('2026-01-31') })],
+      bills: [bill('b1', { dueDate: isoDate('2026-01-31'), amount: cents(10000) })],
       transactions: [tx('t1', '2026-02-03', -5000, { description: 'BONIFICO ALTRO' })],
       statementPeriods: covering('2026-02-01', '2026-02-28'),
     });
-    expect(r.matches.map((m) => [m.itemId, m.by])).toEqual([['b1', 'assumed']]);
+    expect(r.matches).toEqual([]);
+    expect(r.unverified).toEqual([{ itemType: 'bill', itemId: 'b1' }]);
+    expect(r.pending).toEqual([]);
+    expect(r.unmatchedTransactions).toEqual(['t1']);
   });
 
-  it('C1: a gap item whose only candidate another gap item took is assumed, in any order', () => {
+  it('C1, B1: a gap item whose only candidate another gap item took is to verify, in any order', () => {
     // Statement from 02/02; b1 Luce 50,00 due 28/01, b2 Gas 70,00 due 27/01; one debit of 70,00
-    // on 03/02 naming LUCE SRL: b2 takes it, b1 has nothing left and stays assumed (R125).
+    // on 03/02 naming LUCE SRL: b2 takes it, b1 has nothing left and is to verify (B1).
     const bills = [
       bill('b1', { dueDate: isoDate('2026-01-28'), amount: cents(5000) }),
       bill('b2', {
@@ -692,9 +682,9 @@ describe('matchToTransactions: periods without a statement', () => {
     const statementPeriods = covering('2026-02-02', '2026-02-28');
     const first = run({ bills, transactions, statementPeriods });
     expect(first.matches.map((m) => [m.itemId, m.by, m.transactionId, m.confirmed])).toEqual([
-      ['b1', 'assumed', 'assumed-b1', true],
       ['b2', 'auto', 't1', false],
     ]);
+    expect(first.unverified).toEqual([{ itemType: 'bill', itemId: 'b1' }]);
     expect(first.pending).toEqual([]);
     expect(run({ bills: [...bills].reverse(), transactions, statementPeriods })).toEqual(first);
   });
@@ -714,36 +704,45 @@ describe('matchToTransactions: periods without a statement', () => {
       transactions: [tx('t1', '2026-02-03', -5000, { description: 'ADDEBITO LUCE SRL GAS SPA' })],
       statementPeriods: covering('2026-02-01', '2026-02-28'),
     });
-    expect(r.matches.map((m) => [m.itemId, m.by, m.transactionId])).toEqual([
-      ['b1', 'assumed', 'assumed-b1'],
-      ['b2', 'auto', 't1'],
-    ]);
+    expect(r.matches.map((m) => [m.itemId, m.by, m.transactionId])).toEqual([['b2', 'auto', 't1']]);
+    expect(r.unverified).toEqual([{ itemType: 'bill', itemId: 'b1' }]);
     expect(r.ambiguous).toEqual([]);
   });
 
-  it('assumes each member of a shared notice for its share', () => {
+  it('B1: every member of a shared notice without a statement is to verify', () => {
     const result = run({ instalments: tariShared(), statementPeriods: [] });
-    expect(result.matches.map((m) => [m.itemId, m.amount, m.by, m.transactionId])).toEqual([
-      ['tari-berchet', 10104, 'assumed', 'assumed-tari-berchet'],
-      ['tari-lovarini', 8496, 'assumed', 'assumed-tari-lovarini'],
-    ]);
+    expect(result.matches).toEqual([]);
+    expect(result.unverified.map((r) => r.itemId)).toEqual(['tari-berchet', 'tari-lovarini']);
   });
 
-  it('verifies an assumed match again once a statement covers its period', () => {
+  it('drops an assumed match stored before B1 and matches the item again', () => {
     const b = bill('b1');
-    const first = run({ bills: [b], statementPeriods: [] });
-    expect(first.matches.map((m) => m.by)).toEqual(['assumed']);
+    const old = {
+      id: 'm-bill-b1-amount-assumed-b1',
+      v: 1 as const,
+      rev: 1,
+      itemType: 'bill' as const,
+      itemId: 'b1',
+      transactionId: 'assumed-b1',
+      transactionDate: isoDate('2026-11-10'),
+      amount: cents(21460),
+      part: 'amount' as const,
+      confirmed: true,
+      by: 'assumed' as const,
+    };
     const second = run({
       bills: [b],
       transactions: [tx('t1', '2026-11-12', -21460)],
-      existing: first.matches,
+      existing: [old],
     });
     expect(second.matches.map((m) => [m.by, m.transactionId])).toEqual([['auto', 't1']]);
     expect(second.unmatchedTransactions).toEqual([]);
-    const unpaid = run({ bills: [b], existing: first.matches });
+    const unpaid = run({ bills: [b], existing: [old] });
     expect(unpaid.matches).toEqual([]);
     expect(unpaid.pending).toEqual([{ itemType: 'bill', itemId: 'b1' }]);
-    expect(run({ bills: [b], statementPeriods: [], existing: first.matches })).toEqual(first);
+    const uncovered = run({ bills: [b], statementPeriods: [], existing: [old] });
+    expect(uncovered.matches).toEqual([]);
+    expect(uncovered.unverified).toEqual([{ itemType: 'bill', itemId: 'b1' }]);
   });
 
   it('counts a movement only once when two statements overlap', () => {
@@ -770,7 +769,7 @@ describe('matchToTransactions: periods per account', () => {
     { apartmentId: 'berchet', from: isoDate('2026-01-01'), to: isoDate('2026-12-31') },
   ];
 
-  it("assumes Pulci's bill as paid when only Berchet's account has a statement", () => {
+  it("leaves Pulci's bill to verify when only Berchet's account has a statement (B1)", () => {
     const result = run({
       bills: [
         bill('b-pulci', { apartmentId: 'pulci' }),
@@ -778,7 +777,8 @@ describe('matchToTransactions: periods per account', () => {
       ],
       statementPeriods: berchetOnly,
     });
-    expect(result.matches.map((m) => [m.itemId, m.by])).toEqual([['b-pulci', 'assumed']]);
+    expect(result.matches).toEqual([]);
+    expect(result.unverified).toEqual([{ itemType: 'bill', itemId: 'b-pulci' }]);
     expect(result.pending).toEqual([{ itemType: 'bill', itemId: 'b-berchet' }]);
   });
 
@@ -788,9 +788,12 @@ describe('matchToTransactions: periods per account', () => {
     expect(result.matches).toEqual([]);
     expect(result.pending.map((ref) => ref.itemId)).toEqual(['tari-berchet', 'tari-lovarini']);
     const lovariniOnly = [{ ...berchetOnly[0], apartmentId: 'lovarini' }] as typeof berchetOnly;
-    expect(
-      run({ instalments: [berchet, lovarini], statementPeriods: lovariniOnly }).matches,
-    ).toHaveLength(2);
+    const elsewhere = run({ instalments: [berchet, lovarini], statementPeriods: lovariniOnly });
+    expect(elsewhere.matches).toEqual([]);
+    expect(elsewhere.unverified.map((ref) => ref.itemId)).toEqual([
+      'tari-berchet',
+      'tari-lovarini',
+    ]);
   });
 });
 

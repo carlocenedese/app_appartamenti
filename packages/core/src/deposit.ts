@@ -11,7 +11,6 @@ import { recoverableMovements } from './condominio';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
 import { legalInterest } from './interest';
-import { planMatch } from './match-store';
 import { commitChange, writesBlocked } from './journal';
 import {
   ApartmentSchema,
@@ -309,10 +308,7 @@ export async function loadDepositReturn(
     if (paid !== 0) settled.push({ label: 'Conguaglio già versato', amount: cents(-paid) });
   }
 
-  const matches = [
-    ...(await loadAll(store, 'match', BillMatchSchema)).records,
-    ...(await planMatch(store)).assumedMatches,
-  ];
+  const matches = (await loadAll(store, 'match', BillMatchSchema)).records;
   const transactions = (await loadAll(store, 'transaction', BankTransactionSchema)).records;
   const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
   const recoveries = withheldRecoveries({

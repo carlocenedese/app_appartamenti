@@ -121,7 +121,7 @@ const hera = (extra = {}) => ({
 });
 
 describe('runMatch (plan 3c, task 3)', () => {
-  it('matches inside a statement, assumes outside, leaves pending without a debit', async () => {
+  it('matches inside a statement, leaves to verify outside (B1), leaves pending without a debit', async () => {
     const store = await build({
       instalment: instalments(),
       transaction: [tx('tx-jan', '2027-01-22', -15000)],
@@ -133,7 +133,7 @@ describe('runMatch (plan 3c, task 3)', () => {
       proposals: [],
       pending: [{ itemType: 'instalment', itemId: 'i-mar' }],
       ambiguous: [],
-      assumed: [{ itemType: 'instalment', itemId: 'i-feb' }],
+      unverified: [{ itemType: 'instalment', itemId: 'i-feb' }],
       invalidGroups: [],
       operationId: 'r-1',
     });

@@ -143,7 +143,7 @@ describe('loadDashboard', () => {
           counts: {
             'caparra:mancante': 1,
             // The same instalment in both lists: the two families are not to be summed (R264).
-            'condominio:assunta': 1,
+            'condominio:senza-addebito': 1,
             'contratto:tenancy-outside-contract': 1,
             'contratto:unknown-tenancy': 1,
             'movimento-senza-uso': 1,
@@ -287,12 +287,12 @@ describe('loadDashboard on the Excel fixture', () => {
     });
     if (result.status !== 'computed') throw new Error(result.reason);
     expect(result.settlements).toEqual([
-      { apartmentId: 'apt-nord', periodLabel: '2026-27', pending: 1, unassigned: 8891 },
+      { apartmentId: 'apt-nord', periodLabel: '2026-27', pending: 2, unassigned: 8891 },
     ]);
     expect(result.apartments).toEqual([
       {
         apartmentId: 'apt-nord',
-        counts: { 'conguaglio:posti-vuoti': 1, 'conguaglio:voci-in-attesa': 1 },
+        counts: { 'conguaglio:posti-vuoti': 1, 'conguaglio:voci-in-attesa': 2 },
         consumptionThresholds: false,
       },
       { apartmentId: 'apt-sud', counts: {}, consumptionThresholds: false },

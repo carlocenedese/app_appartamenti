@@ -15,7 +15,6 @@ import {
 import type { CondoCheckRow, CondoDifference, CondoEstimate, FreeDebit } from './condominio';
 import type { ZodType } from 'zod';
 import { commitChange, writesBlocked } from './journal';
-import { planMatch } from './match-store';
 import { expectedDebit } from './match';
 import {
   AccountSchema,
@@ -322,8 +321,8 @@ export type LoadCondoResult =
 
 /**
  * The owners' check on `query.asOf` and the differences of the documents, for one apartment and
- * fiscal year when given; the matches are the saved ones plus the assumed ones of `planMatch`
- * (R2, as the Excel). Writes nothing; refused while `checkConsistency` reports a problem.
+ * fiscal year when given; the matches are the saved ones (B1: never one taken as paid without
+ * a statement, as the Excel). Writes nothing; refused while `checkConsistency` reports a problem.
  */
 export async function loadCondo(
   store: Store,
@@ -346,10 +345,7 @@ export async function loadCondo(
           (query.apartmentId === undefined || r.apartmentId === query.apartmentId),
     )
     .sort((a, b) => compareText(a.id, b.id));
-  const matches = [
-    ...(await loadAll(store, 'match', BillMatchSchema)).records,
-    ...(await planMatch(store)).assumedMatches,
-  ];
+  const matches = (await loadAll(store, 'match', BillMatchSchema)).records;
   const documents = (await loadAll(store, 'condoDocument', CondoDocumentSchema)).records.filter(
     wanted,
   );

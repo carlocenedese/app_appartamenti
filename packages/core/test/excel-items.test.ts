@@ -32,7 +32,6 @@ describe('excelItems on the fixture', () => {
       'bill-internet',
       'inst-tari-nord',
       'inst-cond-1',
-      'bill-gas',
     ]);
   });
 
@@ -64,11 +63,21 @@ describe('excelItems on the fixture', () => {
     );
   });
 
-  it('marks an assumed bill and leaves out a bill without its debit', () => {
-    const gas = byId(items, 'bill-gas');
+  it('leaves out a bill to verify (B1) and a bill without its debit', () => {
+    expect(byId(items, 'bill-gas')).toBeUndefined();
+    expect(byId(items, 'bill-acqua')).toBeUndefined();
+  });
+
+  it('marks a bill with an assumed match stored before B1, without a debit date', () => {
+    const input = fixtureInput();
+    input.matches.push({
+      ...amountMatch('bill', 'bill-gas', 9000),
+      transactionId: 'assumed-bill-gas',
+      by: 'assumed',
+    });
+    const gas = byId(itemsOf(input), 'bill-gas');
     expect(gas?.assumed).toBe(true);
     expect(gas?.debitDates).toEqual([]);
-    expect(byId(items, 'bill-acqua')).toBeUndefined();
   });
 
   it("gives the condominium the tenants' part and the TARI this apartment's share", () => {
