@@ -403,6 +403,17 @@ describe('a shorter stay and the recoveries (plan 11, review)', () => {
     ).toMatchObject({ status: 'saved' });
   });
 
+  it('saveTenancy refuses the same shorter stay (review of 18 Nov 2026, U4)', async () => {
+    const { store, second } = await twoYears();
+    await seed(store, 'tenantRecovery', [recovery(second)], 'r');
+    const [stay] = (await loadAll(store, 'tenancy', TenancySchema)).records;
+    if (stay === undefined) throw new Error('no stay');
+    const save = (to: string, prefix: string) =>
+      saveTenancy(store, { ...stay, to: yearMonth(to) }, 'p1', clock, ids(prefix));
+    expect(await save('2026-05', 's')).toEqual({ status: 'refused', reason: 'has-recoveries' });
+    expect(await save('2026-12', 't')).toMatchObject({ status: 'saved' });
+  });
+
   it('a non-recuperabile recovery or one without a period does not block', async () => {
     for (const r of [recovery(undefined), recovery('2026-27', 'non-recuperabile')]) {
       const { store } = await twoYears();

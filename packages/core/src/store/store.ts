@@ -66,6 +66,8 @@ export type Problem = {
    *   is loaded and can be read, but `commitChange` refuses to write over it.
    * - `forked`: two operations of the journal left the latest `rev` of the record with different
    *   content (two people changed it at once); the person chooses which to keep (`resolveFork`).
+   * - `dangling-reference`: a live record holds the id of a record that is missing or deleted
+   *   (see `referenceProblems`); the path is the one of the record holding it.
    */
   reason:
     | 'malformed-json'
@@ -77,7 +79,8 @@ export type Problem = {
     | 'diverged'
     | 'forked'
     | 'unknown-fields'
-    | 'unreadable';
+    | 'unreadable'
+    | 'dangling-reference';
   /** For `conflicted-copy`: the file the copy was made from, when its name can be worked out. */
   originalPath?: string;
 };
