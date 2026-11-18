@@ -36,8 +36,8 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
   - Il desktop resta in sola lettura e indica il comando.
 - **`ripara`** ripara i `diverged` che può e riporta il resto in `left`: biforcazioni, rev uguali o superiori, copie di conflitto. Non si ferma al primo rifiuto.
 - **Nessuna biforcazione creata in casa.** `commitChange` controlla che il record sul disco sia come dice l'ultima operazione del registro.
-  - Se l'operazione più avanti è della stessa persona, è la sua scrittura fallita: la nuova modifica va sopra il suo rev.
-  - Altrimenti rifiuta (`diverged`).
+  - La nuova modifica va sopra il rev dell'operazione più avanti solo se è un'operazione che lo stesso Store ha visto fallire in questa sessione, e il record è ancora come quell'operazione l'aveva trovato.
+  - In ogni altro caso rifiuta (`diverged`), anche per la stessa persona su un altro computer o per il profilo `cli`. La via d'uscita è `ripara`, che applica dal registro la modifica mancante senza perdere nulla.
   - Vale per tutti gli scrittori, anche quelli senza controllo preliminare.
 - **`resolveFork`** parte dalla versione sul disco, se è una delle biforcate, altrimenti dalla versione scelta. Il rev nuovo sta sopra tutte le versioni, anche con il file troncato o mancante.
 - **Record inutilizzabili.** Troncati, di forma diversa, con nome diverso dall'id o con id doppi senza originale danno `unreadable-files` in `assessWorkspace`: mai più `writable: true` seguito da un'eccezione.
@@ -65,11 +65,21 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
 - Una biforcazione si segnala solo sul `rev` massimo. Se dopo la biforcazione qualcuno ha già scritto un `rev` più alto, la biforcazione resta nella storia e non blocca.
 - `raiseDataFormat` scrive `workspace.json` fuori dal registro, come fa `createWorkspace`. Due computer che lo alzano insieme scrivono lo stesso contenuto. Se Dropbox crea comunque una copia di conflitto, quella blocca la cartella (G2) finché non la si toglie.
 - Anche le letture (Excel, cruscotto) rifiutano con una copia di conflitto, perché fanno già il controllo `checkConsistency`.
-- Riallineamento dopo una scrittura fallita: se l'operazione più avanti del registro ha lo stesso `profileId` di chi scrive, la si considera una scrittura fallita della stessa persona. È un'ipotesi: la stessa persona su due computer non si distingue. Il caso peggiore è una copia di conflitto di Dropbox, che blocca la cartella (G2).
+- Riallineamento dopo una scrittura fallita (corretto nella seconda revisione).
+  - Il primo giro riconosceva la scrittura fallita dallo stesso `profileId`, e così perdeva in silenzio una modifica riuscita sull'altro computer della stessa persona.
+  - Ora vale solo per le operazioni che quello stesso Store ha visto fallire in questa sessione. Una ripresa in un altro processo passa da `ripara`, che applica l'operazione rimasta a metà.
+  - I flussi di ripresa coperti dai test (conferma delle bollette, ripresa dell'importazione, creazione del gruppo) usano lo stesso Store e passano senza modifiche.
+- `repairDiverged` scrive solo se il record sul disco è uno stato su cui l'ultima operazione si appoggia, seguendo la catena dei `before`; mancante e troncato valgono come «da completare».
+  - Così, se durante una ripresa arriva la modifica concorrente di un altro computer, «Ripara» non la sovrascrive: rifiuta e serve una persona.
+  - Limite: questo caso ristretto appare come `diverged` con riparazione rifiutata, non come `forked`.
 - `loadAll` conosce le biforcazioni dall'ultimo `checkConsistency` fatto su quello store (scorciatoia annotata in `load.ts`). Ogni store e ogni calcolo lo chiamano per primo. Un chiamante che non lo fa può non vedere una biforcazione nata dopo.
 - La regola di iCloud (« 2.json») non tocca i nomi che l'app scrive: id e file del registro non hanno spazi.
 
 ## Arretrato
+
+- L'annullo di una scelta (`fork.resolve`) rimette la versione che c'era sul disco, non la biforcazione: l'altra versione resta nel registro.
+- `resolveFork` con un rev sul disco più alto delle versioni (un terzo computer ha scritto sopra e la sua operazione non è ancora arrivata) scrive comunque la scelta. Va rifiutato: è da fare.
+- Gli scrittori senza `checkConsistency` preliminare (supply-store, statement-import, accounts, confirmation, dedupe, users, notes) leggono con `loadAll`. Con uno Store appena creato, `loadAll` non conosce ancora le biforcazioni. La scrittura sul record biforcato la rifiuta comunque `commitChange`; resta il rischio di decisioni prese leggendo un record biforcato. Da far passare per `writesBlocked` come gli altri.
 
 - **G9.** Gli orologi sfasati nell'avviso di presenza. Va scelto tra l'ora di modifica del file e una tolleranza simmetrica più ampia, che però cambia i test di presenza. È una decisione di prodotto.
 - **G10.** Le impostazioni della macchina non sono scritte in modo atomico (`machine-settings.ts`). Serve lo scope Tauri per il file temporaneo.

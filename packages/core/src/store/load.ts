@@ -232,10 +232,11 @@ export async function loadAll<T extends { id: string }>(
     (problem) => MISSING_RECORD.has(problem.reason) || loaded.orphanDuplicates.has(problem.path),
   );
   // A forked record: which of its versions is right is not known, so it is not used either.
-  const forked = forkedSeen.get(store);
-  for (const record of loaded.records) {
-    const path = `${DATA_DIR}/${kind}/${record.id}.json`.normalize('NFC');
-    if (forked?.has(path) === true) missing.push({ path, reason: 'forked' });
+  // Every forked path of the kind counts, also a record whose file is missing or that one version
+  // marks deleted: either way the calculation would go on without knowing which is right.
+  const prefix = `${DATA_DIR}/${kind}/`;
+  for (const path of [...(forkedSeen.get(store) ?? [])].sort(compareText)) {
+    if (path.startsWith(prefix)) missing.push({ path, reason: 'forked' });
   }
   if (opts.tolerant !== true && missing.length > 0) {
     throw new UnreadableRecordsError(

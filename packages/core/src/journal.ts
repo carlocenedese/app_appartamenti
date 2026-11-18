@@ -278,12 +278,14 @@ async function commitOperation(
     if (forked.has(path)) throw new InconsistentRecordError(path, 'forked');
     const latest = touches.get(path)?.at(-1);
     if (latest === undefined || jsonEqual(onDisk, latest.after)) continue;
-    // The journal is ahead of the record (missing or at a lower rev). When the operation ahead is
-    // of the same profile, it is this person's own write that failed half way (they were told it
-    // failed) and this change replaces it: it goes on top of its rev, from what is on disk. When it
-    // is someone else's, its record may still be on its way through Dropbox: refused.
-    const behind = onDisk === undefined || (hasRev(onDisk) && onDisk.rev < latest.after.rev);
-    if (!behind || latest.operation.profileId !== input.profileId) {
+    // The journal is ahead of the record. Only when the operation ahead is one whose record write
+    // failed through this very store, and the record is still as that operation found it, is it
+    // known that the change never landed: this one replaces it, on top of its rev. Anything else
+    // (the same person on another computer, a record still on its way through Dropbox) is
+    // refused: `repairDiverged` applies what the journal says without losing it.
+    const failed = failedOperations.get(store)?.has(latest.operation.id) === true;
+    const found = latest.operation.changes.find((change) => change.path === path)?.before;
+    if (!failed || !jsonEqual(onDisk, found)) {
       throw new InconsistentRecordError(path, 'diverged');
     }
     realigned.set(path, latest.after.rev + 1);
@@ -299,19 +301,35 @@ async function commitOperation(
   };
 
   await store.writeJsonAtomic(file, operation);
-  for (const { path, before, after } of changes) {
-    const expectedRev = before?.rev ?? null;
-    const rev = realigned.get(path);
-    if (rev === undefined) {
-      await writeRecord(store, path, after, { expectedRev });
-      continue;
+  try {
+    for (const { path, before, after } of changes) {
+      const expectedRev = before?.rev ?? null;
+      const rev = realigned.get(path);
+      if (rev === undefined) {
+        await writeRecord(store, path, after, { expectedRev });
+        continue;
+      }
+      const actual = await currentRev(store, path);
+      if (actual !== expectedRev) throw new StaleWriteError(path, expectedRev, actual);
+      await store.writeJsonAtomic(path, { ...after, rev });
     }
-    const actual = await currentRev(store, path);
-    if (actual !== expectedRev) throw new StaleWriteError(path, expectedRev, actual);
-    await store.writeJsonAtomic(path, { ...after, rev });
+  } catch (error) {
+    // The operation is in the journal but its records are not (all) written: a retry through this
+    // store may go on top of it (see above).
+    const failed = failedOperations.get(store) ?? new Set<string>();
+    failed.add(operation.id);
+    failedOperations.set(store, failed);
+    throw error;
   }
   return operation;
 }
+
+/**
+ * The operations whose record writes failed through each store, in this session. Only those are
+ * known not to have landed; a journal ahead of the records for any other reason is never written
+ * over (revisione 2026-11-18, second review).
+ */
+const failedOperations = new WeakMap<Store, Set<string>>();
 
 /**
  * Thrown by `commitChange`, writing nothing, when a record it would change is not as the journal
@@ -370,7 +388,7 @@ export async function readJournal(
 // --- Order of the operations on a record -----------------------------------------------------
 
 /** What one operation leaves in one record file: the `after` of its change to that path. */
-type Touch = { operation: Operation; after: JsonRecord & { rev: number } };
+type Touch = { operation: Operation; before: unknown; after: JsonRecord & { rev: number } };
 
 /**
  * Orders what two operations did to the same record: by the `rev` they leave in it, then by time,
@@ -392,10 +410,10 @@ function compareTouches(a: Touch, b: Touch): number {
 function touchesByPath(operations: readonly Operation[]): Map<string, Touch[]> {
   const byPath = new Map<string, Touch[]>();
   for (const operation of operations) {
-    for (const { path, after } of operation.changes) {
+    for (const { path, before, after } of operation.changes) {
       if (!hasRev(after)) continue; // not in a file that passed the schema
       const touches = byPath.get(path) ?? [];
-      touches.push({ operation, after });
+      touches.push({ operation, before, after });
       byPath.set(path, touches);
     }
   }
@@ -847,7 +865,30 @@ export async function repairDiverged(store: Store, path: string): Promise<void> 
         `not below rev ${String(after.rev)} of its latest operation in the journal`,
     );
   }
+  // A record on disk that the latest operation does not build on (through the chain of `before`s)
+  // is a change that operation knew nothing of: writing over it would lose it.
+  if (hasRev(onDisk) && !onChain(touchesByPath(operations).get(normalised) ?? [], onDisk)) {
+    throw new Error(
+      `Refusing to repair ${path}: the record on disk is not a state its latest operation builds on`,
+    );
+  }
   await store.writeJsonAtomic(normalised, after);
+}
+
+/**
+ * Whether `record` is a state the latest of `touches` builds on: its `before`, or the `before` of
+ * the operation that left that state, and so on down the chain.
+ */
+function onChain(touches: readonly Touch[], record: unknown): boolean {
+  const seen = new Set<Touch>();
+  for (let touch = touches.at(-1); touch !== undefined && !seen.has(touch);) {
+    seen.add(touch);
+    const { before } = touch;
+    if (before === undefined) return false;
+    if (jsonEqual(before, record)) return true;
+    touch = touches.find(({ after }) => jsonEqual(after, before));
+  }
+  return false;
 }
 
 /**

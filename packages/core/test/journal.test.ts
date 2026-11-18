@@ -1321,19 +1321,22 @@ describe('forks: two operations leave the same rev (revisione 2026-11-18, G1)', 
     expect(await store.readJson(BILL_PATH)).toMatchObject({ amount: 3, rev: 3 });
   });
 
-  it('refuses to write over a record whose newer operation is of someone else, writing nothing', async () => {
+  it('refuses to write over a record whose newer operation this store did not see fail', async () => {
     const { store, commit } = setup();
     await commit(createBill());
     const before = await store.readJson(BILL_PATH);
     store.failRecordWrites = 1;
     await expect(commit(changeBill(before, bill('bill-1', { amount: 2 })))).rejects.toThrow();
-    const names = await journalNames(store);
-    const other = { ...changeBill(before, bill('bill-1', { amount: 3 })), profileId: 'prof-z' };
-    await expect(commitChange(store, other, frozen, idList('op-z'))).rejects.toMatchObject({
+    // Another process (or computer) on the same files, even of the same person.
+    const elsewhere = await copyJournal(store);
+    elsewhere.putRaw(BILL_PATH, store.getRaw(BILL_PATH) ?? '');
+    const names = await journalNames(elsewhere);
+    const other = changeBill(before, bill('bill-1', { amount: 3 }));
+    await expect(commitChange(elsewhere, other, frozen, idList('op-z'))).rejects.toMatchObject({
       name: 'InconsistentRecordError',
       reason: 'diverged',
     });
-    expect(await journalNames(store)).toEqual(names);
+    expect(await journalNames(elsewhere)).toEqual(names);
   });
 
   it('blocks only the writes and the reads of the forked record', async () => {
