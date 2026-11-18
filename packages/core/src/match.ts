@@ -369,20 +369,15 @@ export function matchToTransactions(input: MatchInput): MatchResult {
 
   const created: BillMatch[] = [];
   const open: ItemNode[] = [];
+  // Items whose reference day no statement covers: assumed paid (R2, R125), unless C1 below.
+  const gap: ItemNode[] = [];
   const { nodes, invalidGroups } = buildNodes(bills, instalments);
   for (const node of nodes) {
     if (node.members.some((member) => covered.has(refKey(member)))) continue;
     const inStatement = input.statementPeriods.some(
       (p) => p.apartmentId === node.account && p.from <= node.ref && node.ref <= p.to,
     );
-    if (inStatement) {
-      open.push(node);
-      continue;
-    }
-    for (const member of node.members) {
-      const assumed = { id: `assumed-${member.itemId}`, date: node.ref };
-      created.push(makeMatch(member, 'amount', assumed, member.amount, true, 'assumed'));
-    }
+    (inStatement ? open : gap).push(node);
   }
 
   const commissions = commissionLinks(transactions);
@@ -391,35 +386,60 @@ export function matchToTransactions(input: MatchInput): MatchResult {
     const days = daysBetween(t.date, node.ref);
     return t.apartmentId === node.account && -daysBefore <= days && days <= daysAfter;
   };
+  const isExact = (node: ItemNode, t: BankTransaction): boolean =>
+    node.expected !== 0 && t.amount === -node.expected && inWindow(node, t);
+  // Another amount: bills only (a supplier to look for).
+  const isOther = (node: ItemNode, t: BankTransaction): boolean =>
+    node.supplier !== undefined &&
+    Math.sign(t.amount) === -Math.sign(node.expected) &&
+    t.amount !== -node.expected &&
+    namesSupplier(node.supplier, t) &&
+    inWindow(node, t);
 
-  const exact = solve(
-    open,
-    free,
-    (node, t) => node.expected !== 0 && t.amount === -node.expected && inWindow(node, t),
-  );
-  for (const [node, t] of exact.pairs) {
-    // R2: the supplier must be in the description. Without it (a bill only) the pair is a
-    // proposal for a person to confirm, not an automatic match.
-    const confirmed = node.supplier === undefined || namesSupplier(node.supplier, t);
-    for (const member of node.members) {
-      created.push(makeMatch(member, 'amount', t, member.amount, confirmed, 'auto'));
+  const ambiguous: Solution['ambiguous'] = [];
+  /** Exact matches, then proposals of another amount; the movements and items it touched. */
+  const matchPass = (items: ItemNode[], pool: BankTransaction[]) => {
+    const exact = solve(items, pool, isExact);
+    for (const [node, t] of exact.pairs) {
+      // R2: the supplier must be in the description. Without it (a bill only) the pair is a
+      // proposal for a person to confirm, not an automatic match.
+      const confirmed = node.supplier === undefined || namesSupplier(node.supplier, t);
+      for (const member of node.members) {
+        created.push(makeMatch(member, 'amount', t, member.amount, confirmed, 'auto'));
+      }
     }
-  }
+    ambiguous.push(...exact.ambiguous);
+    // Among the items and movements the exact pass did not touch.
+    const proposals = solve(
+      items.filter((node) => !exact.touchedNodes.has(node.key)),
+      pool.filter((t) => !exact.touchedTransactions.has(t.id)),
+      isOther,
+    );
+    for (const [node, t] of proposals.pairs) {
+      const member = node.members[0] as MatchItemRef;
+      created.push(makeMatch(member, 'amount', t, cents(-t.amount), false, 'auto'));
+    }
+    return {
+      transactions: new Set([...exact.touchedTransactions, ...proposals.touchedTransactions]),
+      nodes: new Set([...exact.touchedNodes, ...proposals.touchedNodes]),
+    };
+  };
+  const touched = matchPass(open, free).transactions;
 
-  // Proposals of another amount: bills only, among the items and movements the exact pass did not
-  // touch.
-  const proposals = solve(
-    open.filter((node) => node.supplier !== undefined && !exact.touchedNodes.has(node.key)),
-    free.filter((t) => !exact.touchedTransactions.has(t.id)),
-    (node, t) =>
-      Math.sign(t.amount) === -Math.sign(node.expected) &&
-      t.amount !== -node.expected &&
-      namesSupplier(node.supplier ?? '', t) &&
-      inWindow(node, t),
-  );
-  for (const [node, t] of proposals.pairs) {
-    const member = node.members[0] as MatchItemRef;
-    created.push(makeMatch(member, 'amount', t, cents(-t.amount), false, 'auto'));
+  // C1: an item of a gap is still assumed (R125), unless a movement of a statement in its window,
+  // left by the items the statements cover, is a candidate for it (same amount, or another
+  // amount with the supplier named): then it is matched or proposed, R2 «conta l'addebitato».
+  const left = free.filter((t) => !touched.has(t.id));
+  const seen = gap.filter((node) => left.some((t) => isExact(node, t) || isOther(node, t)));
+  // An item whose only candidate another gap item took is matched, proposed or ambiguous with
+  // nothing: it is assumed, as without a candidate (R125).
+  const reached = matchPass(seen, left).nodes;
+  for (const node of gap) {
+    if (reached.has(node.key)) continue;
+    for (const member of node.members) {
+      const assumed = { id: `assumed-${member.itemId}`, date: node.ref };
+      created.push(makeMatch(member, 'amount', assumed, member.amount, true, 'assumed'));
+    }
   }
 
   const sharedById = new Map(instalments.map((i) => [i.id, i.shared]));
@@ -449,7 +469,7 @@ export function matchToTransactions(input: MatchInput): MatchResult {
   return {
     matches,
     pending,
-    ambiguous: exact.ambiguous.sort((a, b) => byText(a.itemId, b.itemId)),
+    ambiguous: ambiguous.sort((a, b) => byText(a.itemId, b.itemId)),
     unmatchedTransactions: transactions.filter((t) => !used.has(t.id)).map((t) => t.id),
     invalidGroups,
   };

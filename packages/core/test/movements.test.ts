@@ -143,7 +143,13 @@ describe('excludeMovement (plan 3c, task 1)', () => {
     });
     expect(await snapshot(store)).toEqual(before);
 
-    await saveTenant(store, { id: 't-anna', name: 'Anna Verdi' }, 'p1', clock, ids('a'));
+    await saveTenant(
+      store,
+      { id: 't-anna', name: 'Anna Verdi', language: 'it' },
+      'p1',
+      clock,
+      ids('a'),
+    );
     store.putRaw(recordPath('tenant', 't-anna'), '{"id":"t-anna","v":1,"rev":1,"name":"Altro"}\n');
     const diverged = await snapshot(store);
     expect(await exclude(store, 'tx-bruno-2026-01')).toEqual({

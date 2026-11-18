@@ -61,6 +61,7 @@ import {
   AccountSchema,
   ApartmentSchema,
   BillSchema,
+  InstalmentSchema,
   BankProfileSchema,
   CsvError,
   ExcludeReasonSchema,
@@ -155,6 +156,8 @@ const PYTHON_TIMEOUT_MS = 60_000;
 
 const MESSAGES = {
   'bad-arguments': 'Argomenti non validi: vedere l’uso di «pnpm estratti».',
+  'annualita-not-first-day':
+    'Argomenti non validi: l’annualità comincia il giorno 1 di un mese (per esempio --annualita 10-01), perché i periodi di conguaglio sono a mesi interi.',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
   'bad-file': 'Il file non esiste, non si può leggere o è troppo grande.',
   'bad-profile': 'Il profilo della banca non è valido.',
@@ -188,6 +191,16 @@ const MESSAGES = {
   'inconsistent-store':
     'Rifiutato: i dati non sono come li lascia il registro: eseguire «pnpm estratti ripara».',
   'unknown-proposal': 'Rifiutato: proposta sconosciuta o già confermata.',
+  'month-outside-presence':
+    'Attenzione: il mese del canone è fuori dalla presenza dell’inquilino. Registrato; controllare il mese.',
+  'month-already-paid':
+    'Attenzione: per questo mese c’è già un altro canone confermato dell’inquilino. Registrato; controllare il mese.',
+  'invalid-shared-notice':
+    'Un avviso comune (TARI) non si può abbinare: se è stato registrato prima del 18 novembre 2026, annullarlo con «annulla-bolletta» e registrarlo di nuovo con «bolletta».',
+  'already-recorded':
+    'Già registrato, nessuna modifica: per registrarne un secondo uguale usare --id.',
+  'stale-proposal':
+    "Rifiutato: la situazione è cambiata dopo un'altra conferma (il movimento può essere diventato automatico): rilanciare riconcilia e scegliere dalla lista nuova.",
   'tenant-not-allowed': 'Rifiutato: inquilino non ammesso per questa proposta.',
   'empty-parts': 'Rifiutato: nessuna parte, o una parte senza importo positivo.',
   'sum-mismatch': 'Rifiutato: la somma delle parti non è l’importo del movimento.',
@@ -210,6 +223,8 @@ const MESSAGES = {
   'unknown-operation': 'Rifiutato: operazione sconosciuta.',
   'already-undone': 'Rifiutato: l’operazione è già stata annullata.',
   'has-dependents': 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
+  'class-has-dependents':
+    'Rifiutato: la classificazione automatica del movimento ha un recupero, un pagamento di tasse o una scadenza pagata: decidere prima se vale la bolletta o il recupero.',
   'movement-has-dependents':
     'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
   'unknown-transaction': 'Rifiutato: movimento sconosciuto o cancellato.',
@@ -380,6 +395,20 @@ const SWAP_MESSAGES = {
   'tenancy-exists':
     'Rifiutato: una presenza nuova esiste già con altri dati: annullare lo scambio precedente (annulla-riconciliazione) o scegliere altri identificativi con --id-a e --id-b.',
 };
+
+/**
+ * E12: `--importo -15,00` as `--importo=-15,00`: a value that starts with a minus and a digit,
+ * after an option that takes a value, is that value (parseArgs would read an option `-1`).
+ */
+const negativeValues = (args) =>
+  args.flatMap((arg, i) => {
+    const previous = args[i - 1] ?? '';
+    const name = previous.startsWith('--') && !previous.includes('=') ? previous.slice(2) : '';
+    if (/^-\d/.test(arg) && OPTIONS[name]?.type === 'string') return [];
+    const next = args[i + 1] ?? '';
+    const own = arg.startsWith('--') && !arg.includes('=') ? arg.slice(2) : '';
+    return /^-\d/.test(next) && OPTIONS[own]?.type === 'string' ? [`${arg}=${next}`] : [arg];
+  });
 
 class Stop extends Error {
   constructor(status, reason, extra = {}) {
@@ -672,6 +701,12 @@ const yearStart = (text) => {
   if (found === null) throw invalid('bad-arguments');
   return { month: Number(found[1]), day: Number(found[2]) };
 };
+/** E6: settlement periods are whole months, so the lease year starts on day 1 (`MM-01`). */
+const leaseYearStart = (text) => {
+  const start = yearStart(text);
+  if (start.day !== 1) throw invalid('annualita-not-first-day');
+  return start;
+};
 const DIFFERENCE_TO = { inquilini: 'tenants', proprietario: 'owner' };
 
 const optional = (key, value) => (value === undefined ? {} : { [key]: value });
@@ -761,6 +796,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw error instanceof Stop ? error : invalid('bad-profile');
     }
     const operation = await saveBankProfile(store, profile, who, clock, newId);
+    if (operation === undefined) return { status: 'unchanged', id: profile.id };
     return { status: 'saved', id: profile.id, operationId: operation.id };
   }
 
@@ -779,6 +815,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       newId,
     );
     if (result.status === 'rejected') throw new Stop('rejected', result.reason);
+    if (result.status === 'unchanged') return { status: 'unchanged', id: result.account.id };
     return { status: 'saved', id: result.account.id, operationId: result.operationId };
   }
 
@@ -1039,6 +1076,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (error instanceof RangeError) throw invalid('bad-arguments');
       throw error;
     }
+    if (operation === undefined) return { status: 'unchanged', id: values.id };
     return { status: 'saved', id: values.id, operationId: operation.id };
   }
 
@@ -1123,6 +1161,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         pending: match.pending.length,
         assumed: match.assumed.length,
         invalidGroups: match.invalidGroups.length,
+        // E1: a shared notice registered before the fix has no paying account on its rates.
+        ...(match.invalidGroups.length > 0 ? { message: MESSAGES['invalid-shared-notice'] } : {}),
         ...(match.operationId === undefined ? {} : { operationId: match.operationId }),
       },
       // Ids, reasons and counts only (R132); the movements and the legs with --dettagli.
@@ -1276,9 +1316,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-arguments');
     }
     if (amount <= 0) throw invalid('bad-arguments');
+    if (values.id !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(values.id)) {
+      throw invalid('bad-arguments');
+    }
     const result = await recordManualTransfer(
       store,
       {
+        ...optional('id', values.id),
         fromAccountId: values.da,
         toAccountId: values.a,
         amount,
@@ -1290,6 +1334,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
       newId,
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    // Ruling (E2): the same transfer again is that transfer; a second identical one needs --id.
+    if (result.status === 'unchanged') {
+      return values.id === undefined
+        ? { ...result, message: MESSAGES['already-recorded'] }
+        : result;
+    }
     return { status: 'recorded', operationId: result.operationId, transferId: result.transferId };
   }
 
@@ -1419,7 +1469,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...optional('posti', v.posti === undefined ? undefined : Number(v.posti)),
         ...optional(
           'annualitaStart',
-          v.annualita === undefined ? undefined : yearStart(v.annualita),
+          v.annualita === undefined ? undefined : leaseYearStart(v.annualita),
         ),
         ...optional(
           'condominioStart',
@@ -2270,7 +2320,6 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (percent !== undefined && !/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(percent)) {
       throw invalid('bad-arguments');
     }
-    const bytes = readBytes(positionals[0]);
     let read;
     try {
       read = ExtractionResultSchema.safeParse(
@@ -2279,7 +2328,30 @@ async function command(name, values, positionals, store, who, clock, newId) {
     } catch {
       throw invalid('bad-reading');
     }
-    if (!read.success) throw invalid('bad-reading');
+    // E15: with --dettagli, the paths of the fields that do not fit (names, never values).
+    if (!read.success) {
+      throw invalid(
+        'bad-reading',
+        values.dettagli === true
+          ? { fields: [...new Set(read.error.issues.map((i) => i.path.join('.')))].sort() }
+          : {},
+      );
+    }
+    let bytes;
+    try {
+      bytes = readBytes(positionals[0]);
+    } catch (error) {
+      // E14: the PDF moved by an earlier registration of this same reading: say so.
+      const { fileHash } = read.data;
+      const registered = [
+        ...(await loadAll(store, 'bill', BillSchema)).records,
+        ...(await loadAll(store, 'instalment', InstalmentSchema)).records,
+      ].find((r) => r.fileHash === fileHash);
+      if (registered !== undefined) {
+        throw new Stop('rejected', 'duplicate-bill', { existingId: registered.id });
+      }
+      throw error;
+    }
     // Without --codici, those of the apartment (`appartamento --codici`, R314).
     const knownCodes =
       values.codici === undefined ? undefined : values.codici.split(',').filter((c) => c !== '');
@@ -2545,7 +2617,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (
       positionals.length > 0 ||
       !PayableKindSchema.safeParse(values.tipo).success ||
-      ![undefined, 'cedolare', 'registro'].includes(values.voce)
+      ![undefined, 'cedolare', 'registro'].includes(values.voce) ||
+      // E3: the ids of payables start with `scad-`, so a typo is no other kind of id.
+      (values.id !== undefined && !/^scad-[A-Za-z0-9_-]{1,59}$/.test(values.id))
     ) {
       throw invalid('bad-arguments');
     }
@@ -2570,6 +2644,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
       newId,
     );
     if (result.status === 'refused') throw new Stop('rejected', result.reason);
+    // Ruling (E3): the same payable again is that payable; a second identical one needs --id.
+    if (result.status === 'unchanged' && values.id === undefined) {
+      return { ...result, message: MESSAGES['already-recorded'] };
+    }
     return result;
   }
 
@@ -2636,7 +2714,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
         'errors' in result ? { errors: result.errors } : {},
       );
     }
-    return { status: 'confirmed', operationId: result.operationId, matchIds: result.matchIds };
+    // amountDiffers: bill ids confirmed for the debit, not the document amount (R2: «importo
+    // diverso», an id only, no amount).
+    return {
+      status: 'confirmed',
+      operationId: result.operationId,
+      matchIds: result.matchIds,
+      ...optional('amountDiffers', result.amountDiffers),
+    };
   }
 
   if (name === 'conferma') {
@@ -2660,6 +2745,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
       operationId: result.operationId,
       paymentIds: result.paymentIds,
       ...(result.payerId === undefined ? {} : { payerId: result.payerId }),
+      // B17: codes and months only (no amount): a rent month outside the presence or paid twice.
+      ...optional(
+        'warnings',
+        result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
+      ),
     };
   }
 
@@ -2879,7 +2969,12 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     }
     let parsed;
     try {
-      parsed = parseArgs({ args: rest, options: OPTIONS, allowPositionals: true, strict: true });
+      parsed = parseArgs({
+        args: negativeValues(rest),
+        options: OPTIONS,
+        allowPositionals: true,
+        strict: true,
+      });
     } catch {
       throw invalid('bad-arguments');
     }

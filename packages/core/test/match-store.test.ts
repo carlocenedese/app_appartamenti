@@ -235,6 +235,51 @@ describe('runMatch (plan 3c, task 3)', () => {
     ]);
   });
 
+  it('U3: an automatic class with a recovery on its movement never yields: proposal, refusal', async () => {
+    const store = await build({
+      bill: [bill('b-hera', 6300, '2027-03-10')],
+      transaction: [tx('tx-hera', '2027-03-12', -6300, 'ADDEBITO SDD HERA COMM')],
+      movementClass: [hera({ ruleId: 'rule-tx-old' })],
+      tenantRecovery: [
+        {
+          ...base,
+          id: 'rec-1',
+          apartmentId: 'berchet',
+          transactionId: 'tx-hera',
+          amount: 6300,
+          shares: [{ tenantId: 't-a', amount: 6300 }],
+          status: 'da-recuperare',
+        },
+      ],
+    });
+    const before = await snapshot(store);
+    expect(await run(store)).toMatchObject({
+      written: 0,
+      yielded: 0,
+      proposals: [{ id: 'p-abb-b-hera', transactionId: 'tx-hera', reason: 'has-dependents' }],
+    });
+    expect(
+      await confirmMatch(
+        store,
+        {
+          parts: [
+            {
+              itemType: 'bill',
+              itemId: 'b-hera',
+              transactionId: 'tx-hera',
+              amount: cents(6300),
+              part: 'amount',
+            },
+          ],
+        },
+        'p1',
+        clock,
+        ids('c'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'class-has-dependents' });
+    expect(await snapshot(store)).toEqual(before);
+  });
+
   it('question 6: a class confirmed by hand stays, the match becomes a proposal', async () => {
     const store = await build({
       bill: [bill('b-hera', 6300, '2027-03-10')],
@@ -540,5 +585,38 @@ describe('confirmMatch (plan 3c, task 3)', () => {
       reason: 'inconsistent-store',
     });
     expect(await snapshot(store)).toEqual(diverged);
+  });
+
+  it('I1: a bill confirmed for its whole, different debit (R2), never an instalment', async () => {
+    const store = await build({
+      bill: [bill('b100', 10000, '2027-01-15')],
+      instalment: [instalment('i-x', '2027-01-20')],
+      transaction: [
+        tx('tx-a', '2027-01-16', -10500, 'ADDEBITO HERA'),
+        tx('tx-c', '2027-01-20', -15500),
+      ],
+    });
+    // Part of the debit, or more than it: still refused as before.
+    expect(await confirm(store, [part('tx-a', 10400)])).toMatchObject({
+      reason: 'invalid-matches',
+    });
+    expect(
+      await confirm(store, [
+        {
+          itemType: 'instalment',
+          itemId: 'i-x',
+          transactionId: 'tx-c',
+          amount: cents(15500),
+          part: 'amount',
+        },
+      ]),
+    ).toMatchObject({ reason: 'invalid-matches', errors: [{ code: 'item-over', id: 'i-x' }] });
+    expect(await confirm(store, [part('tx-a', 10500)])).toEqual({
+      status: 'confirmed',
+      operationId: 'c-1',
+      matchIds: ['m-bill-b100-amount-tx-a'],
+      amountDiffers: ['b100'],
+    });
+    expect(await matches(store)).toMatchObject([{ amount: 10500, by: 'manual' }]);
   });
 });

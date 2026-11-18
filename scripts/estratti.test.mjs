@@ -33,6 +33,15 @@ import { ibanEndingWith } from '../packages/core/test/helpers/iban-build.ts';
 import { main } from './estratti.mjs';
 import { main as excelMain } from './excel.mjs';
 
+/**
+ * `text` without random ids (UUIDs) and hashes: an invented amount looked for in stdout must not
+ * match by chance inside an id (the flaky run 44240240937).
+ */
+const withoutIds = (text) =>
+  text
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<id>')
+    .replace(/[0-9a-f]{16,}/gi, '<hash>');
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const FIXTURE = JSON.parse(
   readFileSync(join(ROOT, 'fixtures', 'bank', 'profilo-sintetico.json'), 'utf8'),
@@ -726,7 +735,7 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       const all = [...s.outputs, first.out, ok.out, dry.out, real.out].join('');
       for (const secret of [NAME, CAUSALE, LABEL, IBAN]) expect(all).not.toContain(secret);
       // The amount as a whole number: not a part of a random hexadecimal id (flaky on a chance match).
-      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
+      expect(withoutIds(all)).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
       expect(scanText(all)).toEqual([]);
     },
     TIMEOUT,
@@ -1034,7 +1043,7 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       const all = [done.out, refused.out, again.out].join('');
       for (const secret of [NAME, CAUSALE, IBAN]) expect(all).not.toContain(secret);
       // The amount as a whole number: not a part of a random hexadecimal id (flaky on a chance match).
-      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
+      expect(withoutIds(all)).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
     },
     TIMEOUT,
   );
@@ -1203,7 +1212,7 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
       const all = [unknown.out, manual.out, done.out, after.out, back.out].join('');
       for (const secret of [NAME, CAUSALE, IBAN, LABEL]) expect(all).not.toContain(secret);
       // The amount as a whole number: not a part of a random hexadecimal id (flaky on a chance match).
-      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
+      expect(withoutIds(all)).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
       expect(scanText(all)).toEqual([]);
     },
     TIMEOUT,
@@ -1266,7 +1275,7 @@ describe('pnpm estratti escludi (piano 3c, task 1)', () => {
 
       const all = [unknown.out, done.out, again.out, back.out, blocked.out].join('');
       for (const secret of [NAME, CAUSALE, IBAN, LABEL]) expect(all).not.toContain(secret);
-      expect(all).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
+      expect(withoutIds(all)).not.toMatch(/(?<![0-9a-f])850(?![0-9a-f])/);
       expect(scanText(all)).toEqual([]);
     },
     TIMEOUT,
@@ -1391,7 +1400,7 @@ describe('pnpm estratti riconcilia, abbina, annulla-riconciliazione (piano 3c, t
         '9999999999',
       ];
       for (const secret of secrets) expect(run.out).not.toContain(secret);
-      expect(run.out).not.toMatch(
+      expect(withoutIds(run.out)).not.toMatch(
         /(?<![0-9a-f])(50000|45000|30000|20000|6300|4000|1500)(?![0-9a-f])/,
       );
       expect(run.out).not.toMatch(/[0-9],[0-9]{2}/);
@@ -1985,6 +1994,16 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
         operationId: recorded.json.operationId,
         transferId: recorded.json.transferId,
       });
+      // E2 Ruling: the same line again writes nothing and says how to record a second one.
+      const before = snapshot(s.dir);
+      const rerun = run(manual(['--importo', '50,00']));
+      expect([rerun.code, rerun.json.status, rerun.json.transferId]).toEqual([
+        0,
+        'unchanged',
+        recorded.json.transferId,
+      ]);
+      expect(rerun.json.message).toContain('usare --id');
+      expect(snapshot(s.dir)).toEqual(before);
       const saved = JSON.parse(
         readFileSync(
           join(s.dir, '_app', 'dati', 'transfer', `${recorded.json.transferId}.json`),
@@ -2113,7 +2132,9 @@ describe('pnpm estratti uscite, giroconti e saldi (piano 3c, task 10)', () => {
 describe('pnpm estratti IMU (piano 3d)', () => {
   /** No invented amount of the IMU fixture in `text` (R107). */
   const noAmounts = (text) => {
-    expect(text).not.toMatch(/(?<![0-9a-f-])(60000|40000|100000|101001|1001)(?![0-9a-f-])/);
+    expect(withoutIds(text)).not.toMatch(
+      /(?<![0-9a-f-])(60000|40000|100000|101001|1001)(?![0-9a-f-])/,
+    );
     expect(text).not.toMatch(/[0-9],[0-9]{2}/);
     expect(scanText(text)).toEqual([]);
   };
@@ -3719,8 +3740,23 @@ describe('pnpm estratti scadenze (piano 9, task 4)', () => {
         status: 'saved',
         payableId: registro.json.payableId,
         operationId: registro.json.operationId,
+        action: 'created',
       },
     ]);
+    // E3 Ruling: the same line again is that payable, and says how to record a second one.
+    const rerun = await run(
+      nuova('--tipo', 'registro', '--scadenza', '2026-11-13', '--importo', '67,00'),
+    );
+    expect([rerun.code, rerun.json.status, rerun.json.payableId]).toEqual([
+      0,
+      'unchanged',
+      registro.json.payableId,
+    ]);
+    expect(rerun.json.message).toContain('usare --id');
+    // A new id must look like one (scad-…): a typo is a bad argument, never another payable.
+    expect(
+      (await run(nuova('--tipo', 'registro', '--scadenza', '2026-11-13', '--id', 'refuso'))).code,
+    ).toBe(2);
     const bollo = await run(nuova('--tipo', 'bollo', '--scadenza', '2026-11-20', '--ogni-anno'));
     expect(bollo.code).toBe(0);
     const same = await run(

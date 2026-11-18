@@ -148,6 +148,8 @@ describe('Step 1: values of the specification', () => {
         if (commission !== 0) matches.push(match(item, commission, { part: 'commission' }));
         if (roll < 0.7) expectedTotal += paid + commission;
       }
+      // One owner share for the esercizio, the same on every rate (R3, I5).
+      const quota = cents(int(0, 3000));
       for (let index = 1; index <= 3; index += 1) {
         if (next() < 0.3) continue;
         const coverage = rateCoverage(yearMonth('2026-10'), 3, index);
@@ -158,7 +160,7 @@ describe('Step 1: values of the specification', () => {
           coversTo: coverage.to,
           // Some records carry only last year's settlement, some a rata below the owner share.
           rata: cents(next() < 0.2 ? 0 : next() < 0.2 ? int(1, 1000) : int(0, 60000)),
-          quotaProprieta: cents(int(0, 3000)),
+          quotaProprieta: quota,
           conguaglioPrec: cents(int(-5000, 5000)),
           straordinaria: next() < 0.1,
         });

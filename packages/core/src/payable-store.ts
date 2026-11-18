@@ -37,7 +37,8 @@ type Refused<R extends string> = { status: 'refused'; reason: R };
 type Saved = { status: 'saved'; operationId: string; payableId: string };
 
 export type SavePayableResult =
-  | Saved
+  /** `action`: a new payable or a change of a live one (E3: a typo in `id` is visible). */
+  | (Saved & { action: 'created' | 'updated' })
   | { status: 'unchanged'; payableId: string }
   | Refused<
       | 'inconsistent-store'
@@ -113,7 +114,7 @@ async function write(
 /**
  * Creates (`id` absent) or updates a live payable in one `payable.save` operation; an update keeps
  * `paid` and `previousId`. Refused without writing: `inconsistent-store`, `unknown-apartment` (not
- * live), `unknown-payable` (`id` not a live payable), `bad-amount` (not a positive integer),
+ * live), `unknown-payable` (`id` of a deleted payable; a new `id` creates it, E3), `bad-amount` (not a positive integer),
  * `bad-year` (`taxYear` not a whole number 1-9999), `bad-voice` (a `taxVoice` on a cedolare or
  * registro payable, which is its own voce: R303). The same content is `unchanged`.
  */
@@ -130,9 +131,17 @@ export async function savePayable(
   if (await writesBlocked(store)) return refuse('inconsistent-store');
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   if (!apartments.some((a) => a.id === input.apartmentId)) return refuse('unknown-apartment');
-  const before =
-    input.id === undefined ? undefined : (await livePayables(store)).find((p) => p.id === input.id);
-  if (input.id !== undefined && before === undefined) return refuse('unknown-payable');
+  const live = await livePayables(store);
+  const before = input.id === undefined ? undefined : live.find((p) => p.id === input.id);
+  // E3: a new `id` creates the payable (as `contratto` and `presenza`); one of a deleted payable
+  // stays refused, it is not brought back.
+  const deletedId =
+    input.id !== undefined &&
+    before === undefined &&
+    (await loadAll(store, 'payable', PayableSchema, { includeDeleted: true })).records.some(
+      (p) => p.id === input.id,
+    );
+  if (deletedId) return refuse('unknown-payable');
   if (badAmount(input.expected)) return refuse('bad-amount');
   if (badYear(input.taxYear)) return refuse('bad-year');
   if (input.taxVoice !== undefined && (input.kind === 'cedolare' || input.kind === 'registro')) {
@@ -156,7 +165,23 @@ export async function savePayable(
   ) {
     return { status: 'unchanged', payableId: before.id };
   }
-  return write(
+  // E3: without `id`, a live payable created with the same fields (paid since or not) is a
+  // rerun: unchanged.
+  if (input.id === undefined) {
+    const created = (p: Omit<Payable, 'v' | 'rev'>) =>
+      JSON.stringify([
+        p.apartmentId,
+        p.kind,
+        p.dueDate,
+        p.expected,
+        p.repeatYearly,
+        p.taxYear,
+        p.taxVoice,
+      ]);
+    const same = live.find((p) => p.previousId === undefined && created(p) === created(after));
+    if (same !== undefined) return { status: 'unchanged', payableId: same.id };
+  }
+  const saved = await write(
     store,
     'payable.save',
     'Salvata una scadenza.',
@@ -166,6 +191,7 @@ export async function savePayable(
     clock,
     newId,
   );
+  return { ...saved, action: before === undefined ? 'created' : 'updated' };
 }
 
 /**

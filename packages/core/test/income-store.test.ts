@@ -86,6 +86,16 @@ describe('saveTenant', () => {
     );
     const t = (await loadAll(store, 'tenant', TenantSchema)).records.find((x) => x.id === 't-new');
     expect(t).toEqual({ id: 't-new', v: 1, rev: 2, name: 'Nome Cambiato', language: 'en' });
+    // E8: the same name and language again write nothing.
+    expect(
+      await saveTenant(
+        store,
+        { id: 't-new', name: 'Nome Cambiato', language: 'en' },
+        'p1',
+        clock,
+        ids('c'),
+      ),
+    ).toBeUndefined();
   });
 
   it('brings a deleted tenant back with a new rev', async () => {
@@ -139,7 +149,13 @@ describe('runReconcile', () => {
 
   it('refuses on a record changed by hand over the journal, also for a dry run', async () => {
     const store = await yearStore();
-    await saveTenant(store, { id: 't-anna', name: 'Anna Verdi' }, 'p1', clock, ids('a'));
+    await saveTenant(
+      store,
+      { id: 't-anna', name: 'Anna Verdi', language: 'it' },
+      'p1',
+      clock,
+      ids('a'),
+    );
     store.putRaw(recordPath('tenant', 't-anna'), '{"id":"t-anna","v":1,"rev":1,"name":"Altro"}\n');
     const before = await snapshot(store);
     const refused = { status: 'refused', reason: 'inconsistent-store' };
@@ -182,6 +198,45 @@ describe('confirmIncome', () => {
     expect((await proposalsOf(store)).some((p) => p.transactionId === 'tx-bruno-2026-02')).toBe(
       false,
     );
+  });
+
+  it('E7: the next proposal of the same payer, now automatic, is stale: run riconcilia again', async () => {
+    const store = await yearStore();
+    await confirmIncome(store, bruno(), 'p1', clock, ids('op'));
+    const next = bruno({ proposalId: 'p-chi-tx-bruno-2026-02', parts: [canone('2026-02', 43000)] });
+    expect(await confirmIncome(store, next, 'p1', clock, ids('x'))).toEqual({
+      status: 'refused',
+      reason: 'stale-proposal',
+    });
+  });
+
+  it('B17: a rent month outside the presence or already paid is confirmed with a warning', async () => {
+    const store = await yearStore();
+    const r = await confirmIncome(
+      store,
+      bruno({ parts: [canone('2025-06', 43000)] }),
+      'p1',
+      clock,
+      ids('op'),
+    );
+    expect(r).toMatchObject({
+      status: 'confirmed',
+      warnings: [{ code: 'month-outside-presence', month: '2025-06' }],
+    });
+    // «Solo questa volta»: February stays a «chi»; confirmed for January, a month already paid.
+    const once = await yearStore();
+    await confirmIncome(once, bruno({ rememberPayer: false }), 'p1', clock, ids('a'));
+    const twice = await confirmIncome(
+      once,
+      bruno({ proposalId: 'p-chi-tx-bruno-2026-02', parts: [canone('2026-01', 43000)] }),
+      'p1',
+      clock,
+      ids('b'),
+    );
+    expect(twice).toMatchObject({
+      status: 'confirmed',
+      warnings: [{ code: 'month-already-paid', month: '2026-01' }],
+    });
   });
 
   it('splits a movement into parts whose sum is its amount', async () => {
@@ -553,7 +608,13 @@ describe('confirmIncome', () => {
   it('never puts names, IBANs, descriptions or amounts in a summary', async () => {
     const store = await yearStore();
     const newId = ids('op');
-    await saveTenant(store, { id: 't-anna', name: 'Anna Verdi' }, 'p1', clock, newId);
+    await saveTenant(
+      store,
+      { id: 't-anna', name: 'Anna Verdi', language: 'it' },
+      'p1',
+      clock,
+      newId,
+    );
     await runReconcile(store, 'p1', clock, newId);
     for (const c of year.expected.confirmations) await confirmIncome(store, c, 'p1', clock, newId);
     await runReconcile(store, 'p1', clock, newId);

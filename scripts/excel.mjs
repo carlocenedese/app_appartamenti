@@ -62,6 +62,8 @@ const MESSAGES = {
   'ambiguous-period': 'Rifiutato: due contratti danno periodi diversi con questa etichetta.',
   'missing-tenant': 'Rifiutato: un inquilino del periodo non ha un’anagrafica.',
   'settlement-input': 'Rifiutato: le presenze o le rate non permettono il conguaglio.',
+  'bad-periods':
+    'Rifiutato: con i dati dell’appartamento non si costruiscono i periodi di conguaglio (per esempio un’annualità che non comincia il giorno 1): correggerli, ripetere non serve.',
   failed: 'Operazione non riuscita: ripetere il comando.',
 };
 
@@ -127,10 +129,20 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
       });
     }
 
-    const loaded = await loadExcelInput(new FsStore(values.cartella), {
-      apartmentId: values.appartamento,
-      periodLabel: values.periodo,
-    });
+    let loaded;
+    try {
+      loaded = await loadExcelInput(new FsStore(values.cartella), {
+        apartmentId: values.appartamento,
+        periodLabel: values.periodo,
+      });
+    } catch (error) {
+      // E6: only the periods that cannot be built (a lease year not from day 1, period.ts); any
+      // other error stays a failure.
+      if (error instanceof RangeError && error.message.startsWith('Settlement periods are whole')) {
+        throw rejected('bad-periods');
+      }
+      throw error;
+    }
     if (loaded.status !== 'ok') throw rejected(loaded.reason);
     if (target === undefined) {
       const file = join(
@@ -172,7 +184,11 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
         throw rejected('missing-tenant', { tenantIds: error.tenantIds });
       }
       if (error instanceof SettlementInputError) {
-        throw rejected('settlement-input', { code: error.code });
+        // I5: the ids of the rates to correct (ids only, no amount).
+        throw rejected('settlement-input', {
+          code: error.code,
+          ...(error.instalmentIds === undefined ? {} : { instalmentIds: error.instalmentIds }),
+        });
       }
       throw error;
     }
