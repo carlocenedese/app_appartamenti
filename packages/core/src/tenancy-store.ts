@@ -22,6 +22,7 @@ import type { Cents } from './money';
 import { parseOrThrow } from './parse';
 import { addMonths, monthsInPeriod, isoDate, settlementPeriods } from './period';
 import type { YearMonth } from './period';
+import { recordDependents } from './references';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -38,7 +39,8 @@ export type TenancyRefusal =
   | 'no-contract'
   | 'tenancy-exists'
   | 'beds-conflict'
-  | 'has-recoveries';
+  | 'has-recoveries'
+  | 'tenancy-in-use';
 
 export type TenancyWriteResult =
   | { status: 'saved'; operationId: string; tenancyId: string }
@@ -49,6 +51,8 @@ export type TenancyWriteResult =
       /** `beds-conflict`: what `calcConguaglio` would throw, and the first month it would. */
       code?: SettlementInputErrorCode;
       month?: YearMonth;
+      /** `tenancy-in-use`: the payments, recoveries and contracts that lean on the stay, sorted. */
+      recordIds?: string[];
     };
 
 export interface SaveTenancyInput {
@@ -243,7 +247,11 @@ const linked = (c: Contract, tenancyId: string): Contract =>
  * operation. Refused without writing, in this order: `inconsistent-store`; `invalid-tenancy` (an
  * id that is not `[A-Za-z0-9_-]{1,64}`, `to` before `from`, a negative rent or flat charge, an
  * expected deposit that is not positive); `unknown-apartment`; `unknown-tenant`; `unknown-contract`
- * (absent, deleted or of another apartment); `beds-conflict` (what `calcConguaglio` would throw).
+ * (absent, deleted or of another apartment); `beds-conflict` (what `calcConguaglio` would throw);
+ * for a live stay given another tenant or apartment, `tenancy-in-use` with the payments and
+ * recoveries its undo would leave without a stay and the contracts that list it (make a new
+ * stay instead: review of 18 Nov 2026, U4); for a live stay whose months change,
+ * `has-recoveries` as `endTenancy`.
  */
 export async function saveTenancy(
   store: Store,
@@ -270,6 +278,34 @@ export async function saveTenancy(
   const conflict = bedsConflict(apartment, state.tenancies, [record]);
   if (conflict !== undefined) return refuseBeds(conflict);
   const before = state.tenancies.find((t) => t.id === record.id);
+  if (
+    isLive(before) &&
+    (before.tenantId !== record.tenantId || before.apartmentId !== record.apartmentId)
+  ) {
+    // Review of 18 Nov 2026 (U4): what the undo of the stay would leave behind, so a new stay.
+    const recordIds = [
+      ...(await tenancyUndoBlockers(store, [
+        { path: recordPath('tenancy', before.id), after: before },
+      ])),
+      ...(await recordDependents(store, [{ type: 'tenancy', id: before.id }]))
+        .filter((r) => r.type !== 'note')
+        .map((r) => r.id),
+    ];
+    if (recordIds.length > 0) {
+      return {
+        status: 'refused',
+        reason: 'tenancy-in-use',
+        recordIds: [...new Set(recordIds)].sort(compareText),
+      };
+    }
+  }
+  if (
+    isLive(before) &&
+    (before.from !== record.from || before.to !== record.to) &&
+    leavesRecovery(state, apartment, [record])
+  ) {
+    return refuse('has-recoveries');
+  }
   return write(
     store,
     record.id,

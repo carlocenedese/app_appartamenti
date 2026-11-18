@@ -174,3 +174,105 @@ describe('undo of a creation with live records pointing at it', () => {
     ).toEqual(['mc-x']);
   });
 });
+
+describe('saveTenancy over a live stay (review of 18 Nov 2026, U4)', () => {
+  async function stayWithUses() {
+    const store = new MemoryStore();
+    await put(store, 'apartment', [
+      {
+        ...base,
+        id: 'berchet',
+        name: 'berchet',
+        locatore: 'Locatore fittizio',
+        posti: 2,
+        annualitaStart: { month: 1, day: 1 },
+      },
+    ]);
+    await put(store, 'tenant', [
+      { ...base, id: 't1', name: 'Inquilino Uno' },
+      { ...base, id: 't2', name: 'Inquilino Due' },
+    ]);
+    await put(store, 'tenancy', [
+      {
+        ...base,
+        id: 'ten1',
+        apartmentId: 'berchet',
+        tenantId: 't1',
+        from: '2027-01',
+        monthlyRent: 50000,
+        monthlyForfait: 5000,
+      },
+    ]);
+    return store;
+  }
+  const other = {
+    id: 'ten1',
+    apartmentId: 'berchet',
+    tenantId: 't2',
+    from: '2027-01',
+    monthlyRent: 50000,
+    monthlyForfait: 5000,
+  } as never;
+
+  it('refuses another tenant while payments and recoveries of the stay live', async () => {
+    const store = await stayWithUses();
+    await put(store, 'tenantRecovery', [
+      {
+        ...base,
+        id: 'rec1',
+        apartmentId: 'berchet',
+        amount: -2000,
+        shares: [{ tenantId: 't1', amount: -2000 }],
+        status: 'da-recuperare',
+        date: '2027-09-15',
+      },
+    ]);
+    await put(store, 'payment', [
+      {
+        ...base,
+        id: 'pay1',
+        apartmentId: 'berchet',
+        tenantId: 't1',
+        date: '2027-09-05',
+        amount: 55000,
+        confirmed: true,
+        kind: 'canone',
+        forMonth: '2027-09',
+        source: 'manual',
+      },
+    ]);
+    expect(await saveTenancy(store, other, 'p1', clock, ids('o'))).toEqual({
+      status: 'refused',
+      reason: 'tenancy-in-use',
+      recordIds: ['pay1', 'rec1'],
+    });
+  });
+
+  it('refuses another tenant for a stay a contract lists, and accepts it for a bare stay', async () => {
+    const store = await stayWithUses();
+    expect(await saveTenancy(store, other, 'p1', clock, ids('o'))).toMatchObject({
+      status: 'saved',
+    });
+    await put(store, 'contract', [
+      {
+        ...base,
+        id: 'c1',
+        apartmentId: 'berchet',
+        type: '4+4',
+        start: '2027-01',
+        end: '2030-12',
+        settlement: 'annuale',
+        tenancyIds: ['ten1'],
+      },
+    ]);
+    expect(
+      await saveTenancy(
+        store,
+        { ...(other as object), tenantId: 't1' } as never,
+        'p1',
+        clock,
+        ids('p'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'tenancy-in-use', recordIds: ['c1'] });
+  });
+});
