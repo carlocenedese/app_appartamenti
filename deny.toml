@@ -39,7 +39,7 @@ private = { ignore = true }
 # The list is a policy, not an inventory: do not warn about entries no crate uses right now.
 unused-allowed-license = "allow"
 
-# Known vulnerabilities (RustSec), checked by `cargo deny ... check advisories` in the job rust of
+# Known vulnerabilities (RustSec), checked by `cargo deny ... check advisories` in the job audit of
 # .github/workflows/ci.yml. Every vulnerability is an error (cargo-deny has no severity filter);
 # unmaintained crates are not, because Tauri's own tree carries some and only a vulnerability
 # needs action. A false positive goes in `ignore`, with a reason and an expiry:

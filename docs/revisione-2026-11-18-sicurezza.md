@@ -9,9 +9,10 @@ Ramo `fix/revisione-sicurezza`. Gli ID (S1-S14) sono quelli del rapporto della r
 - **S14:** riga 3 di `README.md` riscritta in modo neutro.
 - **S5:** job `audit` in `ci.yml`, bloccante:
   - `pnpm audit --prod --audit-level high`;
-  - `pip-audit` 2.10.1 (Apache-2.0), in un virtualenv del job e mai nel pacchetto, sui requisiti con hash. Blocca su qualsiasi avviso noto, perché non ha un filtro di gravità.
+  - `pip-audit` 2.10.1 (Apache-2.0), in un virtualenv del job e mai nel pacchetto, sui requisiti con hash. Blocca su qualsiasi avviso noto, perché non ha un filtro di gravità;
+  - `cargo deny check advisories` (cargo-deny 0.20.2, senza compilare). Anche questo non ha un filtro di gravità; in `deny.toml`, `[advisories]` dà errore solo per le vulnerabilità, non per i crate non mantenuti.
 
-  Job `rust`, su Windows, sulle PR che toccano l'app Rust, i file Cargo o `deny.toml`, e ogni notte: `cargo check --locked` e `cargo deny check licenses advisories`. In `deny.toml`, `[advisories]` dà errore solo per le vulnerabilità, non per i crate non mantenuti. Dependabot anche per `cargo` e `pip`. Per silenziare un falso positivo vedi il commento del job `audit`: sempre nel repository, con un motivo scritto, mai togliendo il passo.
+  Job `rust`, su Windows, solo sulle PR: `cargo check --locked` e `cargo deny check licenses` quando la PR tocca l'app Rust, i file Cargo o `deny.toml`; altrimenti è verde subito e può essere un controllo obbligatorio. Dependabot anche per `cargo` e `pip`. Per silenziare un falso positivo vedi il commento del job `audit`: sempre nel repository, con un motivo scritto, mai togliendo il passo.
 
 - **Qualità CI (richiesta del coordinatore):** nel job `check`, `pnpm --filter desktop build` (vite build) e `pnpm tools:test` (non su Windows, dove `python3` non c'è).
 - **S9:** l'app rifiuta, alla creazione e all'apertura (anche della cartella salvata), una radice (`/`, `C:\`, `~`), una cartella home e la cartella che contiene le home (`isTooBroadFolder`).
@@ -55,7 +56,8 @@ gh repo edit "$repo" --visibility private --accept-visibility-change-consequence
 # docs/distribuzione.md, PRIMA di setup-updater. Poi la verifica:
 node scripts/release.mjs environment "$repo"
 
-# S2, S4: main protetto, con PR e controlli obbligatori, senza force push né cancellazione
+# S2, S4: main protetto, con PR e controlli obbligatori. SOLO DOPO aver unito questo ramo:
+# prima i job audit e rust non esistono su main e ogni PR resterebbe bloccata, senza force push né cancellazione
 # (l'Admin può aggirarlo solo tramite PR)
 gh api -X POST "repos/$repo/rulesets" --input - <<'EOF'
 {"name":"main protetto","target":"branch","enforcement":"active",

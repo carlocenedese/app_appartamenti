@@ -122,8 +122,9 @@ jobs:
         run: pnpm tools:test
 
   # Known vulnerabilities in what the app ships (S5 of the security review of 18 November 2026).
-  # Blocking. npm: only high and critical advisories of production dependencies. pip: any known
-  # advisory of python/requirements.txt (pip-audit has no severity filter). Cargo: in the job rust.
+  # Blocking. npm: only high and critical advisories of production dependencies. pip and Cargo:
+  # any known vulnerability (pip-audit and cargo-deny have no severity filter; deny.toml leaves
+  # unmaintained crates out).
   # A false positive is silenced in the repository, with a reason, never by removing the step:
   # npm: `pnpm audit --ignore <GHSA-...>` once on a computer, which writes the id in
   # pnpm-workspace.yaml (auditConfig.ignoreGhsas), committed with a comment; pip with
@@ -162,13 +163,29 @@ jobs:
           "$RUNNER_TEMP/audit/bin/python" -m pip install --quiet pip-audit==2.10.1
           "$RUNNER_TEMP/audit/bin/pip-audit" --require-hashes --disable-pip --progress-spinner off -r python/requirements.txt
 
-  # The Rust app compiles with the committed Cargo.lock, and its crates have no known
-  # vulnerability (cargo deny, deny.toml). On pull requests only when the Rust app, a Cargo file
-  # or deny.toml changes; every night and by hand always. Windows, like the release build: on
-  # Linux Tauri needs the WebKitGTK system libraries.
+      # As in cargo-lock.yml: cargo-deny reads Cargo.lock through cargo metadata, nothing is built.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2.90.0
+        with:
+          tool: cargo-deny@0.20.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Audit the Rust dependencies
+        run: cargo deny --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --config deny.toml check advisories
+
+  # Pull requests only: the Rust app compiles with the committed Cargo.lock and its crate licences
+  # pass deny.toml. The steps run only when the Rust app, a Cargo file or deny.toml changes;
+  # otherwise the job is green at once, so it can be a required check. Windows, like the release
+  # build: on Linux Tauri needs the WebKitGTK system libraries.
   rust:
     name: rust
-    if: github.event_name != 'push'
+    if: github.event_name == 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -182,10 +199,10 @@ jobs:
       - name: Look for changes to the Rust app
         id: changes
         shell: bash
+        # The list first, then grep: with pipefail, grep -q closing the pipe early could fail it.
         run: |
-          if [ "$GITHUB_EVENT_NAME" != pull_request ] ||
-            git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" |
-            grep -qE '^apps/desktop/src-tauri/|(^|/)Cargo\.(toml|lock)$|^deny\.toml$'; then
+          changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD")
+          if grep -qE '^apps/desktop/src-tauri/|(^|/)Cargo\.(toml|lock)$|^deny\.toml$' <<< "$changed"; then
             echo rust=true >> "$GITHUB_OUTPUT"
           fi
 
@@ -237,6 +254,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Check Rust licences and advisories
+      - name: Check Rust licences
         if: steps.changes.outputs.rust == 'true'
-        run: cargo deny --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --config deny.toml check licenses advisories
+        run: cargo deny --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --config deny.toml check licenses
