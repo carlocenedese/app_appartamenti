@@ -27,12 +27,7 @@ Ramo `fix/revisione-sicurezza`. Gli ID (S1-S14) sono quelli del rapporto della r
 
 ## Non fatto, e perché
 
-- **Vulnerabilità di `zip` 4.6.1 (6 avvisi, trovati dal primo giro del job `audit`):** RUSTSEC-2026-0367, -0368, -0369, -0429, -0545, -0548. `zip` arriva solo tramite `tauri-plugin-updater` 2.14.0. La correzione a monte esiste: `tauri-plugin-updater` 2.14.1 (28 ottobre 2026) usa `zip` ^9. Serve però un `Cargo.lock` nuovo, che su questo Mac non si può generare. Per ora i sei ID sono ignorati uno per uno in `deny.toml`, con il motivo scritto; le altre vulnerabilità restano bloccanti. Il rischio nel frattempo è basso: i nostri file di aggiornamento sono un `.exe` NSIS e un `.app.tar.gz`, non archivi `.zip`, e l'updater verifica la firma prima di usarli. Questo l'ho dedotto dalla documentazione del plugin, non dal suo sorgente: va confermato. Passi per l'aggiornamento:
-  1. in `apps/desktop/src-tauri/Cargo.toml`, `tauri-plugin-updater = "=2.14.1"`;
-  2. push del ramo: `cargo-lock.yml` prepara l'artifact `cargo-lock` (rosso finché non lo si committa);
-  3. committare il `Cargo.lock` dell'artifact (`gh run download <run> -n cargo-lock`);
-  4. togliere da `deny.toml` le sei righe `ignore`;
-  5. provare la build: `gh workflow run build.yml --ref <ramo>`.
+- **Vulnerabilità di `zip` 4.6.1 (6 avvisi, trovati dal primo giro del job `audit`):** RUSTSEC-2026-0367, -0368, -0369, -0429, -0545, -0548. `zip` arrivava solo tramite `tauri-plugin-updater` 2.14.0. Corretto aggiornando il plugin a 2.14.1 (crate e pacchetto npm), che usa `zip` ^9, con un `Cargo.lock` rigenerato da `cargo-lock.yml`. Nessun avviso è ignorato in `deny.toml`.
 
 - **CLI `estratti` (S9 e S11):** il controllo della cartella e la ricerca di `python` stanno in `scripts/estratti.mjs`, che in questo giro non si poteva toccare.
 - **S9, ambito già concesso:** la finestra di scelta aggiunge la cartella all'ambito (che persisted-scope ricorda) prima che l'app la rifiuti. Per toglierla serve un comando Rust.

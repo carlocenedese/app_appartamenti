@@ -48,19 +48,3 @@ unused-allowed-license = "allow"
 unmaintained = "none"
 unsound = "workspace"
 yanked = "warn"
-
-# Six vulnerabilities of zip 4.6.1, which reaches us only through tauri-plugin-updater 2.14.0.
-# Fixed upstream: tauri-plugin-updater 2.14.1 (28 October 2026) depends on zip ^9. The bump needs
-# a new Cargo.lock from cargo-lock.yml (no Rust on user1's Mac), so it is a separate step: see
-# docs/revisione-2026-11-18-sicurezza.md. Until then: our update files are an NSIS .exe and a
-# .app.tar.gz, not .zip archives, and the updater checks the minisign signature before using them
-# (read from the plugin's documentation, not from its source: to be confirmed).
-# Remove these lines with the bump (cargo-deny then warns about any ignore that no longer applies).
-ignore = [
-  { id = "RUSTSEC-2026-0367", reason = "zip 4.6.1 via tauri-plugin-updater 2.14.0: bump to 2.14.1 pending" },
-  { id = "RUSTSEC-2026-0368", reason = "zip 4.6.1 via tauri-plugin-updater 2.14.0: bump to 2.14.1 pending" },
-  { id = "RUSTSEC-2026-0369", reason = "zip 4.6.1 via tauri-plugin-updater 2.14.0: bump to 2.14.1 pending" },
-  { id = "RUSTSEC-2026-0429", reason = "zip 4.6.1 via tauri-plugin-updater 2.14.0: bump to 2.14.1 pending" },
-  { id = "RUSTSEC-2026-0545", reason = "zip 4.6.1 via tauri-plugin-updater 2.14.0: bump to 2.14.1 pending" },
-  { id = "RUSTSEC-2026-0548", reason = "zip 4.6.1 via tauri-plugin-updater 2.14.0: bump to 2.14.1 pending" },
-]

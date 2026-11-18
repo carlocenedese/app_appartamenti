@@ -36,7 +36,7 @@ function fakeRoot({
     'updater:allow-download-and-install',
     'process:allow-restart',
   ],
-  locked = { updater: '2.14.0', process: '2.4.0' },
+  locked = { updater: '2.14.1', process: '2.4.0' },
 } = {}) {
   const tauri = join(dir, 'apps', 'desktop', 'src-tauri');
   mkdirSync(join(tauri, 'src'), { recursive: true });
@@ -47,7 +47,7 @@ function fakeRoot({
   writeFileSync(
     join(tauri, 'Cargo.toml'),
     `[package]\nname = "x"\nversion = "${version}"\n\n[dependencies]\ntauri = { version = "=2.12.5" }\n` +
-      (plugin ? 'tauri-plugin-updater = "=2.14.0"\ntauri-plugin-process = "=2.4.0"\n' : ''),
+      (plugin ? 'tauri-plugin-updater = "=2.14.1"\ntauri-plugin-process = "=2.4.0"\n' : ''),
   );
   writeFileSync(
     join(tauri, 'Cargo.lock'),
