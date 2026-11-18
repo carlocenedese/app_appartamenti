@@ -295,7 +295,7 @@ async function commitOperation(
     const state = stateOf(touches.get(path) ?? []);
     if (state.forked) throw new InconsistentRecordError(path, 'forked');
     if (
-      state.heads.length === 0 ||
+      (touches.get(path) ?? []).length === 0 ||
       (state.head !== undefined && jsonEqual(onDisk, state.head.after))
     ) {
       continue;
@@ -505,15 +505,20 @@ function replacedBy(touch: Touch, touches: readonly Touch[]): Touch[] {
  *
  * - `forked`: two heads or more, so two computers changed the record and neither saw the other;
  * - `head`: the one head, when there is one: the record must be equal to it;
+ * - `top`: `head`, or, while `incomplete`, the one head at the highest rev: a record equal to it
+ *   is not reported (the folder stays writable), but it cannot be written, repaired or chosen
+ *   until the missing operation file arrives;
  * - `incomplete`: the changes start from more than one place (nothing, for a creation, or a
  *   version no operation here left, as a record older than the journal), or one supersedes an
  *   operation that is not here: an operation file has not arrived yet, and more heads then mean
  *   waiting, not a fork;
- * - `builtOn(record)`: whether `record` is a version the head replaced, directly or not.
+ * - `builtOn(record)`: whether the head was built on `record`, through `before`s and explicit
+ *   `supersedes`.
  */
 function stateOf(touches: readonly Touch[]): {
   heads: Touch[];
   head: Touch | undefined;
+  top: Touch | undefined;
   forked: boolean;
   incomplete: boolean;
   builtOn: (record: unknown) => boolean;
@@ -532,7 +537,11 @@ function stateOf(touches: readonly Touch[]): {
     if (touch.supersedes?.some((id) => !ids.has(id)) === true) incomplete = true;
     const others = replacedBy(touch, touches);
     for (const other of others) superseded.add(other);
-    const replaced = others.map((other) => keys.get(other) ?? '');
+    // Only `before` and an explicit `supersedes` make a version an ancestor that «Ripara» may write
+    // over. What an old operation is read to replace only stops being a head: a branch it never
+    // saw (a third computer's, arrived later) stays hidden as before, but is never overwritten.
+    const replaced =
+      touch.supersedes === undefined ? [] : others.map((other) => keys.get(other) ?? '');
     if (touch.before !== undefined) {
       const before = versionKey(touch.before);
       replaced.push(before);
@@ -546,10 +555,12 @@ function stateOf(touches: readonly Touch[]): {
   }
   // A superseded version stops being a head only when every change that left it is superseded:
   // the same content left by another operation (another computer's) was not replaced.
-  const replacedKeys = new Set(builtUpon);
-  for (const key of left) {
-    if ([...keys].every(([touch, k]) => k !== key || superseded.has(touch))) replacedKeys.add(key);
+  const standing = new Map<string, number>();
+  for (const [touch, key] of keys) {
+    if (!superseded.has(touch)) standing.set(key, (standing.get(key) ?? 0) + 1);
   }
+  const replacedKeys = new Set(builtUpon);
+  for (const key of left) if (!standing.has(key)) replacedKeys.add(key);
   const heads: Touch[] = [];
   const seen = new Set<string>();
   for (const touch of [...touches].sort((a, b) => compareByTime(a.operation, b.operation))) {
@@ -573,7 +584,10 @@ function stateOf(touches: readonly Touch[]): {
     return false;
   };
   if (starts.size > 1) incomplete = true;
-  return { heads, head, forked: heads.length > 1 && !incomplete, incomplete, builtOn };
+  const topRev = Math.max(...heads.map(({ after }) => after.rev));
+  const atTop = heads.filter(({ after }) => after.rev === topRev);
+  const top = incomplete && atTop.length === 1 ? atTop[0] : head;
+  return { heads, head, top, forked: heads.length > 1 && !incomplete, incomplete, builtOn };
 }
 
 /** For every path, the operation of its latest change (see `compareTouches`): what left it so. */
@@ -966,10 +980,10 @@ export async function checkConsistency(
       problems.push({ path, reason: 'forked' });
       continue;
     }
-    const { head } = stateOf(list);
+    const { top } = stateOf(list);
     const onDisk = await readOrMark(store, path);
     if (onDisk === UNREADABLE) problems.push({ path, reason: 'unreadable' });
-    else if (head === undefined || !jsonEqual(onDisk, head.after)) {
+    else if (top === undefined || !jsonEqual(onDisk, top.after)) {
       problems.push({ path, reason: 'diverged' });
     }
   }
