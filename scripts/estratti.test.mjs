@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
@@ -872,16 +872,71 @@ describe('pnpm estratti: inquilino, riconcilia, conferma', () => {
         readdirSync(join(s.dir, '_app', 'dati', 'payment'))[0],
       );
       const record = JSON.parse(readFileSync(file, 'utf8'));
+      const rel = `_app/dati/payment/${basename(file)}`;
+      // Same rev, other content: it could be another computer's change whose operation has not
+      // arrived, so «ripara» leaves it and says so (revisione 2026-11-18, G1).
       writeFileSync(file, JSON.stringify({ ...record, amount: record.amount + 1 }));
-
       const refused = cli(['riconcilia', ...s.common]);
       expect(refused.code).toBe(1);
       expect(refused.json).toMatchObject({ status: 'rejected', reason: 'inconsistent-store' });
+      const left = cli(['ripara', ...s.common]);
+      expect(left.code).toBe(0);
+      expect(left.json).toMatchObject({
+        status: 'repaired',
+        repaired: 0,
+        left: [{ path: rel, reason: 'repair-refused' }],
+      });
+      expect(JSON.parse(readFileSync(file, 'utf8')).amount).toBe(record.amount + 1);
+      // Cut short, as an interrupted write leaves it: repaired.
+      writeFileSync(file, '{"id": "');
       const repaired = cli(['ripara', ...s.common]);
       expect(repaired.code).toBe(0);
       expect(repaired.json).toMatchObject({ status: 'repaired', repaired: 1 });
       expect(JSON.parse(readFileSync(file, 'utf8')).amount).toBe(record.amount);
-      expect(cli(['ripara', ...s.common]).json).toMatchObject({ repaired: 0 });
+      expect(cli(['ripara', ...s.common]).json).toEqual({ status: 'repaired', repaired: 0 });
+      expect(cli(['riconcilia', ...s.common]).code).toBe(0);
+
+      // A fork: another operation left the same rev with other content. «ripara» reports it,
+      // riconcilia refuses the payments, scegli-versione lists the versions and keeps one.
+      const journal = join(s.dir, '_app', 'journal');
+      const [opName] = readdirSync(journal).filter((name) =>
+        readFileSync(join(journal, name), 'utf8').includes(basename(file)),
+      );
+      const op = JSON.parse(readFileSync(join(journal, opName), 'utf8'));
+      const other = {
+        ...op,
+        id: 'op-altro',
+        profileId: 'altro',
+        changes: op.changes.map((c) =>
+          c.path === rel ? { ...c, after: { ...c.after, amount: c.after.amount + 5 } } : c,
+        ),
+      };
+      writeFileSync(
+        join(journal, `${op.at.replace(/[-:.]/g, '')}-altro-op-altro.json`),
+        JSON.stringify(other),
+      );
+      expect(cli(['ripara', ...s.common]).json).toMatchObject({
+        repaired: 0,
+        left: [{ path: rel, reason: 'forked' }],
+      });
+      expect(cli(['riconcilia', ...s.common]).json).toMatchObject({
+        status: 'rejected',
+        reason: 'unreadable-records',
+        paths: [rel],
+      });
+      const versions = cli(['scegli-versione', ...s.common, '--file', rel]);
+      expect(versions.code).toBe(0);
+      expect(versions.json.versions.map((v) => v.operationId).sort()).toEqual(
+        [op.id, 'op-altro'].sort(),
+      );
+      expect(versions.json.versions[0]).not.toHaveProperty('record');
+      expect(
+        cli(['scegli-versione', ...s.common, '--file', rel, '--operazione', 'nessuna']).json,
+      ).toMatchObject({ status: 'rejected', reason: 'not-forked' });
+      const kept = cli(['scegli-versione', ...s.common, '--file', rel, '--operazione', op.id]);
+      expect(kept.json).toMatchObject({ status: 'resolved' });
+      expect(JSON.parse(readFileSync(file, 'utf8')).amount).toBe(record.amount);
+      expect(cli(['ripara', ...s.common]).json).toEqual({ status: 'repaired', repaired: 0 });
       expect(cli(['riconcilia', ...s.common]).code).toBe(0);
     },
     TIMEOUT,

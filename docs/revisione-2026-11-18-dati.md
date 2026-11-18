@@ -26,20 +26,37 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
 4. La `v` dei record resta 1. `v` > 1 vuol dire una forma nuova, che la vecchia app non scrive mai.
 5. Limite: l'impronta vede solo ciò che sta nel JSON Schema. Una regola `.refine` nuova di Zod va valutata a mano.
 
+## Secondo giro (revisione indipendente)
+
+- **Biforcazione con via d'uscita.** `pnpm estratti scegli-versione --file <percorso relativo del record>` elenca le versioni: id dell'operazione, data e id dell'utente, e il contenuto solo con `--dettagli`. Con `--operazione <id>` chiama `resolveFork`, e la scelta si può annullare. L'opzione è `--operazione` e non `--tieni`, perché `--tieni` è già un'opzione booleana di `decidi`.
+- **Una biforcazione blocca solo il suo record.**
+  - Gli store usano `writesBlocked`, che ignora `forked`.
+  - `commitChange` rifiuta le scritture sul record biforcato (`InconsistentRecordError`).
+  - `loadAll` rifiuta (`UnreadableRecordsError`, motivo `forked`) solo i calcoli che leggono quel tipo di record. Gli altri calcoli continuano.
+  - Il desktop resta in sola lettura e indica il comando.
+- **`ripara`** ripara i `diverged` che può e riporta il resto in `left`: biforcazioni, rev uguali o superiori, copie di conflitto. Non si ferma al primo rifiuto.
+- **Nessuna biforcazione creata in casa.** `commitChange` controlla che il record sul disco sia come dice l'ultima operazione del registro.
+  - Se l'operazione più avanti è della stessa persona, è la sua scrittura fallita: la nuova modifica va sopra il suo rev.
+  - Altrimenti rifiuta (`diverged`).
+  - Vale per tutti gli scrittori, anche quelli senza controllo preliminare.
+- **`resolveFork`** parte dalla versione sul disco, se è una delle biforcate, altrimenti dalla versione scelta. Il rev nuovo sta sopra tutte le versioni, anche con il file troncato o mancante.
+- **Record inutilizzabili.** Troncati, di forma diversa, con nome diverso dall'id o con id doppi senza originale danno `unreadable-files` in `assessWorkspace`: mai più `writable: true` seguito da un'eccezione.
+  - Via d'uscita manuale per un record rotto: ripristinarlo dalla cronologia delle versioni di Dropbox.
+  - Una copia fatta a mano (per esempio `x - Copia.json`) va spostata fuori da `_app`.
+  - Un file con un nome diverso dal suo id va riportato al nome `<id>.json`, se non esiste già un altro file con quel nome.
+  - L'app non sposta e non cancella questi file da sola.
+- **Desktop.** `showReadOnly` mostra `readOnlyMessage` e i percorsi di ogni `reasons`. «Aggiorna i dati della cartella» chiama `raiseDataFormat`, e un test fallisce se l'aggancio sparisce. I messaggi di `FileAccessError` e `UnreadableRecordsError` non diventano più «Cartella non raggiungibile».
+- **CLI.** `NewerDataError`, `UnreadableRecordsError`, `FileAccessError` e `InconsistentRecordError` danno l'esito `rejected` (codice 1), con il motivo e i percorsi relativi.
+- **Varie.** `FileAccessError` non porta più la causa con il percorso assoluto. `TauriStore` distingue un testo non UTF-8 (file rovinato) da un file inaccessibile. L'impronta degli schemi toglie `description` solo quando è un testo; l'impronta del formato 1 è stata ricalcolata. I messaggi indicano solo azioni che esistono.
+
 ## Da agganciare (passo successivo)
 
-- **Desktop (`first-run.ts`).**
-  - `showReadOnly` deve mostrare `readOnlyMessage(r.code)` e i `paths` di ogni elemento di `assessment.reasons`. Oggi, per tutto ciò che non è `diverged` o un formato, mostra «sincronizzazione in corso».
-  - Per `forked` serve una scelta: `forkVersions`, poi `resolveFork`. Il ciclo di «Ripara» non vede le biforcazioni.
-  - Per `damaged-journal`: `damagedJournalFiles` e, se `safeToSetAside`, un pulsante «Metti da parte» che rinomina il file in `setAsideTo`, mai sopra un file esistente. Altrimenti, istruzioni per ripristinarlo dalla cronologia di Dropbox.
-  - Per `conflict-copies`: un confronto tra la copia e l'originale, con «tieni questa / tieni l'altra». La copia va poi spostata fuori da `_app`.
-  - Per `older-format`: chiedere e chiamare `raiseDataFormat`, poi valutare di nuovo.
-  - Catturare `NewerDataError`, `UnreadableRecordsError` e `FileAccessError` e mostrarne il `message`, che è in italiano e senza dati personali.
-- **Tauri/Rust.** Il plugin dei file non ha fsync: serve un comando con `sync_all` sul file temporaneo prima del rename. Per «Metti da parte» serve un rename senza sovrascrittura. I codici di errore di `TauriStore` si riconoscono dal testo «os error 5/13/32/33»: va verificato su Windows.
-- **CLI (`scripts/estratti.mjs`, non toccato).**
-  - `ripara` deve trattare il rifiuto di `repairDiverged` sulle biforcazioni e sul `rev` uguale, e mostrare `reasons`.
-  - Il test `estratti.test.mjs` «un registro non coerente rifiuta e ripara si ripara» oggi fallisce. Modifica a mano un pagamento lasciando lo stesso `rev`, e ora la riparazione lo rifiuta di proposito: è proprio il caso di G1, perché potrebbe essere la modifica di un altro computer il cui file del registro non è ancora arrivato. Il test va cambiato: il record troncato, oppure un `rev` più basso.
-  - Le eccezioni nuove vanno tradotte in esito `rejected`.
+- **Desktop.**
+  - Una scelta della versione nella finestra, al posto del comando CLI.
+  - Per `damaged-journal`, un pulsante «Metti da parte» quando `damagedJournalFiles` dice `safeToSetAside` (rename senza sovrascrittura).
+  - Per `conflict-copies`, un confronto «tieni questa / tieni l'altra».
+- **Tauri/Rust.** Il plugin dei file non ha fsync: serve un comando con `sync_all` sul file temporaneo prima del rename, e un rename senza sovrascrittura. I codici di errore di `TauriStore` si riconoscono dal testo «os error 5/13/32/33»: va verificato su Windows.
+- **CLI.** `damagedJournalFiles` non è ancora esposto.
 - **Release (`scripts/release.mjs`, non toccato).** `CORE_VERSION` resta ferma a 0.1.0 e `minAppVersion` non sale mai. La protezione ora passa da `DATA_FORMAT`. Resta da decidere se `release.mjs` debba allineare `CORE_VERSION` al tag.
 
 ## Ruling
@@ -48,6 +65,8 @@ Correzioni dei reperti della revisione 4 («modi di guasto e compatibilità»), 
 - Una biforcazione si segnala solo sul `rev` massimo. Se dopo la biforcazione qualcuno ha già scritto un `rev` più alto, la biforcazione resta nella storia e non blocca.
 - `raiseDataFormat` scrive `workspace.json` fuori dal registro, come fa `createWorkspace`. Due computer che lo alzano insieme scrivono lo stesso contenuto. Se Dropbox crea comunque una copia di conflitto, quella blocca la cartella (G2) finché non la si toglie.
 - Anche le letture (Excel, cruscotto) rifiutano con una copia di conflitto, perché fanno già il controllo `checkConsistency`.
+- Riallineamento dopo una scrittura fallita: se l'operazione più avanti del registro ha lo stesso `profileId` di chi scrive, la si considera una scrittura fallita della stessa persona. È un'ipotesi: la stessa persona su due computer non si distingue. Il caso peggiore è una copia di conflitto di Dropbox, che blocca la cartella (G2).
+- `loadAll` conosce le biforcazioni dall'ultimo `checkConsistency` fatto su quello store (scorciatoia annotata in `load.ts`). Ogni store e ogni calcolo lo chiamano per primo. Un chiamante che non lo fa può non vedere una biforcazione nata dopo.
 - La regola di iCloud (« 2.json») non tocca i nomi che l'app scrive: id e file del registro non hanno spazi.
 
 ## Arretrato
