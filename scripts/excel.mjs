@@ -46,7 +46,7 @@ import {
 
 const MESSAGES = {
   'bad-arguments':
-    'Argomenti non validi: servono --cartella, --appartamento e --periodo, oppure --cartella e --tasse <anno> (--uscita facoltativo).',
+    'Argomenti non validi: servono --cartella, --appartamento e --periodo, oppure --cartella e --tasse <anno> (--uscita facoltativo); vedere «pnpm excel --help».',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
   'bad-output':
     'Il file di uscita non è valido: serve un nome .xlsx ammesso, in una cartella che esiste.',
@@ -67,6 +67,29 @@ const MESSAGES = {
   failed: 'Operazione non riuscita: ripetere il comando.',
 };
 
+/** The options of the command line; each one has a line in OPTION_HELP (Q9). */
+export const OPTIONS = {
+  cartella: { type: 'string' },
+  appartamento: { type: 'string' },
+  periodo: { type: 'string' },
+  uscita: { type: 'string' },
+  proprietari: { type: 'boolean' },
+  tasse: { type: 'string' },
+};
+
+/** One line of help in Italian for each option (review of 18 Nov 2026, Q9). */
+export const OPTION_HELP = {
+  cartella: 'La cartella dei dati condivisa.',
+  appartamento: 'L’identificativo dell’appartamento.',
+  periodo: 'L’etichetta del periodo di conguaglio, per esempio 2025-26.',
+  uscita: 'Il file .xlsx da scrivere (facoltativo: senza, il percorso predefinito).',
+  proprietari: 'Scrive il file riservato ai proprietari invece di quello degli inquilini.',
+  tasse: 'Scrive il file per il commercialista dell’anno indicato (senza appartamento e periodo).',
+};
+
+export const USAGE =
+  'Uso: pnpm excel --cartella <dir> --appartamento <id> --periodo <etichetta> [--uscita <file.xlsx>] [--proprietari], oppure pnpm excel --cartella <dir> --tasse <anno>. Uscita: 0 scritto, 1 rifiutato, 2 argomenti non validi, 3 errore inatteso.';
+
 /**
  * Runs one command line; returns the exit code and the JSON line. `io.newId` names the temporary
  * file, `io.link` is `linkSync` (replaced only by the tests).
@@ -74,18 +97,22 @@ const MESSAGES = {
 export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
   const done = (code, body) => ({ code, output: `${JSON.stringify(body)}\n` });
   try {
+    // Q9: the options with one line each; nothing is read or written.
+    if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'aiuto') {
+      return done(0, {
+        status: 'help',
+        message: USAGE,
+        options: Object.keys(OPTIONS).map((option) => ({
+          option: `--${option}`,
+          description: OPTION_HELP[option],
+        })),
+      });
+    }
     let values;
     try {
       ({ values } = parseArgs({
         args: argv,
-        options: {
-          cartella: { type: 'string' },
-          appartamento: { type: 'string' },
-          periodo: { type: 'string' },
-          uscita: { type: 'string' },
-          proprietari: { type: 'boolean' },
-          tasse: { type: 'string' },
-        },
+        options: OPTIONS,
         allowPositionals: false,
         strict: true,
       }));

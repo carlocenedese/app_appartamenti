@@ -16,7 +16,10 @@ import {
   recordSchemas,
 } from '../packages/core/src/index.ts';
 import { ibanEndingWith } from '../packages/core/test/helpers/iban-build.ts';
-import { MESSAGES, main } from './estratti.mjs';
+import { COMMAND_HELP } from './estratti-aiuto.mjs';
+import * as excelTool from './excel.mjs';
+import * as moduliTool from './moduli.mjs';
+import { COMMAND_NAMES, MESSAGES, main } from './estratti.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PROFILE = {
@@ -563,5 +566,64 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     const u = await cli('annulla-riconciliazione', '--operazione', closed.json.operationId);
     expect(u.code, u.out).toBe(0);
     expect((await cli('conguaglio-supplementare', ...args)).json).toEqual({ status: 'open' });
+  });
+});
+
+describe('aiuto (Q9)', () => {
+  const plain = async (...argv) => {
+    const r = await main(argv, { now: () => ORA, newId });
+    return { code: r.code, json: JSON.parse(r.output) };
+  };
+  it('ogni comando accettato ha una riga di descrizione, e nessuna descrizione è di troppo', () => {
+    for (const name of COMMAND_NAMES) {
+      expect([name, typeof COMMAND_HELP[name]]).toEqual([name, 'string']);
+      expect(COMMAND_HELP[name].length, name).toBeGreaterThan(10);
+    }
+    expect(Object.keys(COMMAND_HELP).sort()).toEqual([...COMMAND_NAMES].sort());
+  });
+  it('--help elenca i comandi; <comando> --help e aiuto <comando> le opzioni, senza --cartella', async () => {
+    const all = await plain('--help');
+    expect(all.code).toBe(0);
+    expect(all.json.commands.map((c) => c.command)).toEqual(COMMAND_NAMES);
+    expect((await plain('aiuto')).json).toEqual(all.json);
+    const one = await plain('rata-condominio', '--help');
+    expect(one.code).toBe(0);
+    expect(one.json).toMatchObject({
+      status: 'help',
+      command: 'rata-condominio',
+      description: COMMAND_HELP['rata-condominio'],
+    });
+    expect(one.json.options).toEqual(
+      expect.arrayContaining(['--appartamento', '--esercizio', '--rata', '--quota-proprieta']),
+    );
+    expect(one.json.options).not.toContain('--prova');
+    expect(one.json.otherOptions).toContain('--cartella');
+    expect((await plain('aiuto', 'rata-condominio')).json).toEqual(one.json);
+  });
+  it('un comando sconosciuto o mancante suggerisce l’aiuto (codice 2)', async () => {
+    for (const argv of [['inventato'], []]) {
+      const r = await plain(...argv);
+      expect(r.code).toBe(2);
+      expect(r.json.message).toMatch(/pnpm estratti --help/);
+    }
+    expect((await plain('saldi')).json.message).toMatch(/--help/);
+  });
+});
+
+describe('aiuto di excel e moduli (Q9)', () => {
+  it('--help elenca ogni opzione con una riga; ogni opzione ha la sua descrizione', async () => {
+    for (const tool of [excelTool, moduliTool]) {
+      expect(Object.keys(tool.OPTION_HELP).sort()).toEqual(Object.keys(tool.OPTIONS).sort());
+      const r = await tool.main(['--help']);
+      expect(r.code).toBe(0);
+      const json = JSON.parse(r.output);
+      expect(json.status).toBe('help');
+      expect(json.options.map((o) => o.option)).toEqual(
+        Object.keys(tool.OPTIONS).map((o) => `--${o}`),
+      );
+      for (const o of json.options) expect(o.description.length, o.option).toBeGreaterThan(10);
+      const bad = JSON.parse((await tool.main(['--sconosciuta'])).output);
+      expect(bad.message).toMatch(/--help/);
+    }
   });
 });

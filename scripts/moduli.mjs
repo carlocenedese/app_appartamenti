@@ -36,7 +36,7 @@ import {
 } from './output-file.mjs';
 
 const MESSAGES = {
-  'bad-arguments': `Argomenti non validi: servono --cartella, --tipo, --presenza e --modello (--valori, --oggi e --uscita facoltativi), oppure --vuoto, --tipo e --uscita. Tipi: ${MODULE_KINDS.join(', ')}.`,
+  'bad-arguments': `Argomenti non validi: servono --cartella, --tipo, --presenza e --modello (--valori, --oggi e --uscita facoltativi), oppure --vuoto, --tipo e --uscita. Tipi: ${MODULE_KINDS.join(', ')}. Vedere «pnpm moduli --help».`,
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
   'bad-output':
     'Il file di uscita non è valido: serve un nome .docx ammesso, in una cartella che esiste.',
@@ -111,6 +111,33 @@ function readTemplate(path) {
   }
 }
 
+/** The options of the command line; each one has a line in OPTION_HELP (Q9). */
+export const OPTIONS = {
+  cartella: { type: 'string' },
+  tipo: { type: 'string' },
+  presenza: { type: 'string' },
+  modello: { type: 'string' },
+  valori: { type: 'string' },
+  oggi: { type: 'string' },
+  uscita: { type: 'string' },
+  vuoto: { type: 'boolean' },
+};
+
+/** One line of help in Italian for each option (review of 18 Nov 2026, Q9). */
+export const OPTION_HELP = {
+  cartella: 'La cartella dei dati condivisa.',
+  tipo: `Il tipo di modulo: ${MODULE_KINDS.join(', ')}.`,
+  presenza: 'L’identificativo della presenza dell’inquilino.',
+  modello: 'Il modello Word (.docx) con i segnaposto {{nome}}.',
+  valori: 'Un file JSON con i valori dei campi che l’app non conosce (facoltativo).',
+  oggi: 'La data del documento, AAAA-MM-GG (facoltativa: senza, oggi).',
+  uscita: 'Il file .docx da scrivere (facoltativo: senza, il percorso predefinito).',
+  vuoto: 'Scrive il modello vuoto del tipo indicato, con --uscita.',
+};
+
+export const USAGE =
+  'Uso: pnpm moduli --cartella <dir> --tipo <tipo> --presenza <id> --modello <file.docx> [--valori <file.json>] [--oggi <data>] [--uscita <file.docx>], oppure pnpm moduli --vuoto --tipo <tipo> --uscita <file.docx>. Uscita: 0 scritto, 1 rifiutato, 2 argomenti non validi, 3 errore inatteso.';
+
 /**
  * Runs one command line; returns the exit code and the JSON line. `io.newId` names the temporary
  * file, `io.link` is `linkSync`, `io.today` gives today's date when `--oggi` is absent.
@@ -121,20 +148,22 @@ export async function main(
 ) {
   const done = (code, body) => ({ code, output: `${JSON.stringify(body)}\n` });
   try {
+    // Q9: the options with one line each; nothing is read or written.
+    if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'aiuto') {
+      return done(0, {
+        status: 'help',
+        message: USAGE,
+        options: Object.keys(OPTIONS).map((option) => ({
+          option: `--${option}`,
+          description: OPTION_HELP[option],
+        })),
+      });
+    }
     let values;
     try {
       ({ values } = parseArgs({
         args: argv,
-        options: {
-          cartella: { type: 'string' },
-          tipo: { type: 'string' },
-          presenza: { type: 'string' },
-          modello: { type: 'string' },
-          valori: { type: 'string' },
-          oggi: { type: 'string' },
-          uscita: { type: 'string' },
-          vuoto: { type: 'boolean' },
-        },
+        options: OPTIONS,
         allowPositionals: false,
         strict: true,
       }));

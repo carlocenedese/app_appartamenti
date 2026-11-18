@@ -153,12 +153,15 @@ import {
   loadDashboard,
   undoBillImport,
 } from '../packages/core/src/index.ts';
+import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = 60_000;
 
 export const MESSAGES = {
-  'bad-arguments': 'Argomenti non validi: vedere l’uso di «pnpm estratti».',
+  'bad-arguments':
+    'Argomenti non validi: vedere «pnpm estratti <comando> --help» (comandi: «pnpm estratti --help»).',
+  'unknown-command': 'Comando sconosciuto: l’elenco dei comandi è in «pnpm estratti --help».',
   'annualita-not-first-day':
     'Argomenti non validi: l’annualità comincia il giorno 1 di un mese (per esempio --annualita 10-01), perché i periodi di conguaglio sono a mesi interi.',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
@@ -562,6 +565,7 @@ const OPTIONS = {
   'conguaglio-prec': { type: 'string' },
   straordinaria: { type: 'boolean' },
   'tolleranza-imu': { type: 'string' },
+  help: { type: 'boolean', short: 'h' },
 };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
@@ -3132,6 +3136,73 @@ async function command(name, values, positionals, store, who, clock, newId) {
   }
 }
 
+/** The commands `main` accepts; each one has a line in COMMAND_HELP (estratti-aiuto.mjs). */
+export const COMMAND_NAMES = [
+  'profilo',
+  'conto',
+  'importa',
+  'decidi',
+  'annulla',
+  'inquilino',
+  'riconcilia',
+  'conferma',
+  'ripara',
+  'annulla-incassi',
+  'annulla-riconciliazione',
+  'annulla-pagamento',
+  'escludi',
+  'abbina',
+  'uscita',
+  'annulla-uscita',
+  'uscita-inquilino',
+  'giroconto',
+  'giroconto-manuale',
+  'saldi',
+  'imu-atteso',
+  'imu-f24',
+  'imu',
+  'contratto',
+  'contratto-canone',
+  'contratti',
+  'affitti-anno',
+  'scadenze',
+  'scadenza-nuova',
+  'scadenza-ripeti',
+  'scadenza-pagata',
+  'appartamento',
+  'condominio-documento',
+  'condominio',
+  'condominio-stima',
+  'recupero',
+  'contatto',
+  'contatti',
+  'presenza',
+  'fine-presenza',
+  'subentro',
+  'scambio-camera',
+  'stato-contratti',
+  'caparra-restituzione',
+  'tasso-legale',
+  'tasse-stima',
+  'tasse-copia',
+  'tasse-assegna',
+  'tasse-conferma',
+  'scheda-inquilino',
+  'soglie-consumi',
+  'consumi',
+  'tasse',
+  'bolletta',
+  'annulla-bolletta',
+  'cruscotto',
+  'riferimenti',
+  'utenza',
+  'rata-condominio',
+  'impostazioni',
+  'chiudi-periodo',
+  'conguaglio-supplementare',
+  'aiuto',
+];
+
 /**
  * Runs one command line. `io.now` is the clock and `io.newId` the generator of ids (both live
  * outside the core); returns the exit code and the JSON line.
@@ -3139,74 +3210,18 @@ async function command(name, values, positionals, store, who, clock, newId) {
 export async function main(argv, io = { now: () => new Date().toISOString(), newId: randomUUID }) {
   const done = (code, body) => ({ code, output: `${JSON.stringify(body)}\n` });
   try {
-    const [name, ...rest] = argv;
-    if (
-      ![
-        'profilo',
-        'conto',
-        'importa',
-        'decidi',
-        'annulla',
-        'inquilino',
-        'riconcilia',
-        'conferma',
-        'ripara',
-        'annulla-incassi',
-        'annulla-riconciliazione',
-        'annulla-pagamento',
-        'escludi',
-        'abbina',
-        'uscita',
-        'annulla-uscita',
-        'uscita-inquilino',
-        'giroconto',
-        'giroconto-manuale',
-        'saldi',
-        'imu-atteso',
-        'imu-f24',
-        'imu',
-        'contratto',
-        'contratto-canone',
-        'contratti',
-        'affitti-anno',
-        'scadenze',
-        'scadenza-nuova',
-        'scadenza-ripeti',
-        'scadenza-pagata',
-        'appartamento',
-        'condominio-documento',
-        'condominio',
-        'condominio-stima',
-        'recupero',
-        'contatto',
-        'contatti',
-        'presenza',
-        'fine-presenza',
-        'subentro',
-        'scambio-camera',
-        'stato-contratti',
-        'caparra-restituzione',
-        'tasso-legale',
-        'tasse-stima',
-        'tasse-copia',
-        'tasse-assegna',
-        'tasse-conferma',
-        'scheda-inquilino',
-        'soglie-consumi',
-        'consumi',
-        'tasse',
-        'bolletta',
-        'annulla-bolletta',
-        'cruscotto',
-        'riferimenti',
-        'utenza',
-        'rata-condominio',
-        'impostazioni',
-        'chiudi-periodo',
-        'conguaglio-supplementare',
-      ].includes(name ?? '')
-    ) {
-      throw invalid('bad-arguments');
+    const [first, ...args] = argv;
+    // Q9: `--help` (or `aiuto`) alone lists the commands; `aiuto <comando>` is `<comando> --help`.
+    if (first === '--help' || first === '-h' || (first === 'aiuto' && args.length === 0)) {
+      return done(0, {
+        status: 'help',
+        message: USAGE,
+        commands: COMMAND_NAMES.map((command) => ({ command, description: COMMAND_HELP[command] })),
+      });
+    }
+    const [name, ...rest] = first === 'aiuto' ? [args[0], ...args.slice(1), '--help'] : argv;
+    if (!COMMAND_NAMES.includes(name ?? '')) {
+      throw invalid('bad-arguments', { message: MESSAGES['unknown-command'] });
     }
     let parsed;
     try {
@@ -3407,6 +3422,20 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       canone: ['contratto-canone'],
       acconto: ['contratto-canone'],
     };
+    if (values.help === true) {
+      // Q9: the options of the command from `only`; the others are not tied to one command.
+      const own = Object.keys(only).filter((option) => only[option].includes(name));
+      return done(0, {
+        status: 'help',
+        command: name,
+        description: COMMAND_HELP[name],
+        message: USAGE,
+        options: own.map((option) => `--${option}`),
+        otherOptions: Object.keys(OPTIONS)
+          .filter((option) => !Object.hasOwn(only, option) && option !== 'help')
+          .map((option) => `--${option}`),
+      });
+    }
     for (const [option, commands] of Object.entries(only)) {
       if (values[option] !== undefined && !commands.includes(name)) throw invalid('bad-arguments');
     }
