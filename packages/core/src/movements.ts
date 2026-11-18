@@ -5,17 +5,17 @@
 import { tenancyUndoBlockers } from './tenancy-store';
 import { imuDependents } from './imu';
 import { checkConsistency, commitChange, readJournal } from './journal';
+import type { Operation } from './journal';
 import {
   AccountSchema,
-  ApartmentSchema,
   BankTransactionSchema,
   BillMatchSchema,
   ImuYearSchema,
   MovementClassSchema,
-  PayableSchema,
   PaymentSchema,
   StatementSchema,
   TransferSchema,
+  recordSchemas,
 } from './model';
 import type {
   Account,
@@ -24,16 +24,19 @@ import type {
   ExcludeReason,
   MovementClass,
   Payment,
+  RecordKind,
   Statement,
   Transfer,
 } from './model';
-import { payablesRepeatedFrom, payablesUsing } from './payable-store';
+import { payablesUsing } from './payable-store';
 import { recoveriesUsing } from './condo-store';
 import { taxPaymentsUsing } from './tax-store';
-import { contactsUsing } from './contact-store';
+import { recordDependents } from './references';
+import type { RecordRef } from './references';
 import { parseOrThrow } from './parse';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
+import { DATA_DIR } from './store/store';
 import type { Store } from './store/store';
 import { compareText } from './text';
 
@@ -115,9 +118,48 @@ const CANCEL_KINDS = ['income.cancel-payment', 'outgoing.cancel-auto'];
  * would take away or change in group or number of rates (`imuDependents`). For any operation
  * that wrote a live class (plan 9), the live payables paid by its movement, then (plan 10) the live
  * tax payments on it; for one that created a payable, the live payables repeated from it. For one
- * that wrote tenancies (plan 11), `tenancyUndoBlockers`. For one that created an apartment (plan
- * 14), the live contacts linked to it.
+ * that wrote tenancies (plan 11), `tenancyUndoBlockers`. For one that created records, the live
+ * records on other paths that point at one of them (`undoDependents`: plan 9 the payables repeated
+ * from a payable, plan 14 the contacts of an apartment, and since the review of 18 Nov 2026 every
+ * record of an apartment, the classes of a rule, the contracts of a stay or a deposit).
  */
+/** The records `changes` creates: not live before, live after (a deleted one brought back counts). */
+function createdRecords(changes: Operation['changes']): RecordRef[] {
+  const live = (r: unknown) =>
+    typeof r === 'object' && r !== null && (r as { deleted?: unknown }).deleted !== true;
+  return changes.flatMap(({ path, before, after }) => {
+    const [kind, file] = path.startsWith(`${DATA_DIR}/`)
+      ? path.slice(DATA_DIR.length + 1).split('/')
+      : [];
+    return kind !== undefined &&
+      kind in recordSchemas &&
+      file?.endsWith('.json') === true &&
+      live(after) &&
+      !live(before)
+      ? [{ type: kind as RecordKind, id: file.slice(0, -'.json'.length) }]
+      : [];
+  });
+}
+
+/** The live records on other paths pointing at a record `operation` created (see `undoDependents`). */
+async function createdDependents(store: Store, operation: Operation): Promise<RecordRef[]> {
+  const own = new Set(operation.changes.map((c) => c.path));
+  return (await recordDependents(store, createdRecords(operation.changes))).filter(
+    (r) => !own.has(recordPath(r.type, r.id)),
+  );
+}
+
+/**
+ * The live records that point at a record the operation `operationId` created, outside the
+ * operation itself (review of 18 Nov 2026, U1): its undo would leave them dangling. By kind then
+ * id, for a message with the counts by kind (`countByType`); `undoBlockedBy` refuses on them.
+ * Empty for an unknown operation.
+ */
+export async function undoDependents(store: Store, operationId: string): Promise<RecordRef[]> {
+  const operation = (await readJournal(store)).operations.find((o) => o.id === operationId);
+  return operation === undefined ? [] : createdDependents(store, operation);
+}
+
 export async function undoBlockedBy(store: Store, operationId: string): Promise<string[]> {
   const operation = (await readJournal(store)).operations.find((o) => o.id === operationId);
   // Plan 11: an undo that would take away the only stay of a tenant with payments or recoveries.
@@ -148,28 +190,11 @@ export async function undoBlockedBy(store: Store, operationId: string): Promise<
   // Plan 17: a class whose movement a recovery from tenants recovers.
   const recovered = await recoveriesUsing(store, classed);
   if (recovered.length > 0) return recovered;
-  // Plan 9: an undo that would take away an item a live item was repeated from.
-  const created = (operation?.changes ?? []).flatMap(({ path, before, after }) => {
-    if (!path.includes('/payable/')) return [];
-    const was = PayableSchema.safeParse(before);
-    const is = PayableSchema.safeParse(after);
-    return is.success && is.data.deleted !== true && !(was.success && was.data.deleted !== true)
-      ? [is.data.id]
-      : [];
-  });
-  const successors = await payablesRepeatedFrom(store, created);
-  if (successors.length > 0) return successors;
-  // Plan 14: an undo that would take away an apartment a live contact is linked to.
-  const apartments = (operation?.changes ?? []).flatMap(({ path, before, after }) => {
-    if (!path.includes('/apartment/')) return [];
-    const was = ApartmentSchema.safeParse(before);
-    const is = ApartmentSchema.safeParse(after);
-    return is.success && is.data.deleted !== true && !(was.success && was.data.deleted !== true)
-      ? [is.data.id]
-      : [];
-  });
-  const contacts = await contactsUsing(store, apartments);
-  if (contacts.length > 0) return contacts;
+  // Plan 9, plan 14, review of 18 Nov 2026 (U1, U2, U7): a record the undo would take away that a
+  // live record on another path points at (a payable repeated from it, the contacts, contracts,
+  // stays... of an apartment, the classes of a rule, the contract of a stay or a deposit).
+  const dependents = operation === undefined ? [] : await createdDependents(store, operation);
+  if (dependents.length > 0) return dependents.map((r) => r.id).sort(compareText);
   if (operation === undefined || !CANCEL_KINDS.includes(operation.kind)) return [];
   const movements = operation.changes.flatMap(({ before }) =>
     typeof before === 'object' &&

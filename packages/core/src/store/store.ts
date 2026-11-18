@@ -60,6 +60,8 @@ export type Problem = {
    *   id is loaded, and none of them when no single file is (see `loadAll`).
    * - `diverged`: the record differs from what the last operation in the journal says (a crash
    *   between journal and record); reported by the journal checks, not by `loadAll`.
+   * - `dangling-reference`: a live record holds the id of a record that is missing or deleted
+   *   (see `referenceProblems`); the path is the one of the record holding it.
    */
   reason:
     | 'malformed-json'
@@ -68,7 +70,8 @@ export type Problem = {
     | 'conflicted-copy'
     | 'id-mismatch'
     | 'duplicate-id'
-    | 'diverged';
+    | 'diverged'
+    | 'dangling-reference';
   /** For `conflicted-copy`: the file the copy was made from, when its name can be worked out. */
   originalPath?: string;
 };

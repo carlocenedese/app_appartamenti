@@ -39,6 +39,7 @@ export * from './rent-month';
 export * from './income';
 export * from './income-store';
 export * from './movements';
+export * from './references';
 export * from './match-store';
 export * from './reconcile';
 export * from './transfers';
