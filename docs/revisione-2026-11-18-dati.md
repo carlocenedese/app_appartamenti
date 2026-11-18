@@ -71,8 +71,10 @@ Il rilevamento per `rev` massimo e le sue eccezioni sono sostituiti da un invari
 - **Teste.** Sono le versioni che nessun'altra modifica sostituisce.
   - Pulito: una testa, e il disco uguale a lei.
   - `forked`: più teste. `forkVersions` le offre tutte, una operazione per testa.
-  - `diverged`: una testa e il disco diverso. «Ripara» scrive solo se il disco è un antenato della testa (oppure manca o è troncato).
-  - Da completare: più teste mentre manca un file del registro. Succede quando le modifiche partono da più di un punto (il nulla di una creazione, o una versione che nessuna operazione presente ha lasciato) o un `supersedes` cita un'operazione assente. Vale `diverged`, perché la sincronizzazione non è finita, e non `forked`. «Ripara» e la scelta rifiutano.
+  - `diverged`: una testa e il disco diverso. «Ripara» scrive solo se il disco è un antenato della testa (oppure manca o è troncato). Gli antenati si seguono solo lungo `before` e lungo `supersedes` scritto davvero nell'operazione.
+  - Da completare: più teste mentre manca un file del registro. Succede quando le modifiche partono da più di un punto (il nulla di una creazione, o una versione che nessuna operazione presente ha lasciato) o un `supersedes` cita un'operazione assente. Non è mai `forked`: la sincronizzazione non è finita.
+    - Se il disco coincide con l'unica testa al `rev` più alto, il record non è segnalato e la cartella resta scrivibile, come su main. Lo stesso record però non si scrive, non si ripara e non si sceglie finché il file non arriva (`commitChange` lo rifiuta come `diverged`).
+    - Altrimenti vale `diverged`, e «Ripara» e la scelta rifiutano.
   - Un record più vecchio del registro ha un solo punto di partenza: una biforcazione sopra di lui è `forked` (test in `review-regressions.test.ts`).
 - **`supersedes`.** È un campo facoltativo di ogni modifica, con gli id delle operazioni il cui `after` la modifica sostituisce oltre al `before`.
   - `fork.resolve` vi elenca tutte le teste che ha fuso. Un ramo arrivato dopo la scelta (B2) resta una testa, quindi è di nuovo una biforcazione.
@@ -84,7 +86,7 @@ Il rilevamento per `rev` massimo e le sue eccezioni sono sostituiti da un invari
 ### Che cosa cambia su disco e compatibilità
 
 - **Operazioni.** Il formato cambia solo per `supersedes`, scritto soltanto da `fork.resolve` e dalla ripresa di una scrittura fallita. Le altre operazioni restano come prima.
-- **Operazioni vecchie** (senza il campo). Si leggono dalla loro forma; sono le uniche due che scrivevano sopra più del `before`:
+- **Operazioni vecchie** (senza il campo). Si leggono dalla loro forma; sono le uniche due che scrivevano sopra più del `before`. Le versioni così sostituite escono dalle teste ma non diventano antenate: «Ripara» non le sovrascrive mai (correzione dopo la revisione, vedi sotto).
   - una `fork.resolve` sostituisce tutte le versioni al `rev` sotto il suo;
   - un salto di `rev` (`after.rev` > `before.rev` + 1) sostituisce le operazioni dello stesso profilo, con lo stesso `rev` di partenza e un `rev` in mezzo.
   - Test in `review-regressions.test.ts`, «operations written before `supersedes`».
@@ -102,19 +104,31 @@ Il rilevamento per `rev` massimo e le sue eccezioni sono sostituiti da un invari
 - **Oracolo.** Non usa `journal.ts`: segue le versioni che ogni scrittura mette sul disco.
   - Dopo la sincronizzazione completa, su ogni computer, ogni operazione confermata è contenuta nel record sul disco, oppure il record è `forked` o `diverged`, e tutti i computer riportano lo stesso.
   - Dopo scelte, riparazioni e un'altra sincronizzazione tutto è pulito ovunque e nessun file del registro manca.
-  - Nelle storie in cui ogni record è modificato da un solo computer, `forked` non compare mai, a nessun passo.
-- **Esito.** Il codice di prima fallisce subito (seme 5: modifica persa; seme 1000042: falso `forked`). In CI girano 150 semi per modo, in pochi secondi; `JOURNAL_MODEL_SEEDS=<n>` e `JOURNAL_MODEL_FIRST=<seme>` servono per la corsa lunga e per ripetere un seme.
+  - Nelle storie in cui ogni record è modificato da un solo computer, `forked` non compare mai, a nessun passo. Inoltre un record il cui disco è la versione al `rev` più alto del registro locale non è mai segnalato, così un falso `diverged` non passa inosservato.
+  - In ogni storia «Ripara» non scrive mai sopra una modifica confermata che la versione scritta non contiene. Unica eccezione: il disco ha lo stesso contenuto di una scrittura che la testa sostituisce esplicitamente (una scrittura fallita, l'altra versione di una scelta), e il registro non distingue le due finché non arriva il file dell'altra operazione. Per queste il test controlla che dopo la sincronizzazione completa la modifica sia nel record o il record sia segnalato.
+  - Modo «legacy»: la prima metà della storia è scritta senza `supersedes`, come le app di prima, e il resto con il codice nuovo. Si controlla solo «Ripara», perché una vecchia scelta può già aver nascosto un ramo (limite noto).
+- **Esito.** Il codice di prima fallisce subito (seme 5: modifica persa; seme 1000042: falso `forked`). Il codice del primo giro di questo ramo fallisce nei modi nuovi (seme 1000002: record sano segnalato; seme 2000017: «Ripara» sovrascrive). In CI girano 150 semi per ciascuno dei tre modi, in pochi secondi; `JOURNAL_MODEL_SEEDS=<n>` e `JOURNAL_MODEL_FIRST=<seme>` servono per la corsa lunga e per ripetere un seme.
 
 ### Test cambiati
 
 - S2, «S2 con annullo» e B2 non sono più attesi in errore.
 - «La corsa durante una ripresa»: la modifica di A e la ripresa di B partono dallo stesso dato, quindi ora sono una biforcazione e «Ripara» la rifiuta come tale. Prima era un `diverged` con riparazione rifiutata («not a state»). Il test controlla anche `forked`.
-- `damagedJournalFiles`, «una operazione successiva parte da quella danneggiata»: senza l'operazione danneggiata il record ha due teste e un vuoto, quindi oltre a `broken-chain` c'è anche `records-differ`. `safeToSetAside` resta falso.
+- `damagedJournalFiles`, «una operazione successiva parte da quella danneggiata»: dopo la correzione del file mancante è tornato com'era su main (solo `broken-chain`).
+- Nuovi, dopo la revisione: «Ripara» dopo una vecchia scelta e dopo una vecchia ripresa (rifiuta e lascia la modifica del terzo computer); file intermedio mancante con il disco alla versione più nuova (cartella scrivibile, record bloccato); il test «in attesa» ora usa un record non ancora arrivato.
+
+### Correzioni dopo la revisione indipendente
+
+- **Alta: «Ripara» cancellava una modifica confermata.** Una vecchia `fork.resolve` (o una vecchia ripresa) era letta come se sostituisse anche la versione di un terzo computer arrivata dopo, e quella versione diventava un'antenata della testa: «Ripara» la sovrascriveva dove main rifiutava. Ora le sostituzioni dedotte nascondono soltanto, e «Ripara» rifiuta («not a state»).
+- **Media: un file del registro in ritardo bloccava tutta la cartella.** Vedi «Da completare».
+- **Bassa: costo.** Le teste si contano per versione in tempo lineare: con 3300 operazioni su un record, `checkConsistency` impiega 79 ms invece di 457 ms (main 27 ms).
+- **Bassa.** `commitChange` scrive senza controllo solo un record che nessuna operazione tocca, non un record senza teste.
 
 ## Limiti noti
 
 - **Operazioni vecchie.** Una `fork.resolve` scritta prima di `supersedes` ha fuso tutte le versioni al suo `rev - 1`, anche quelle arrivate dopo la scelta (B2 nei dati vecchi resta invisibile). Una vecchia ripresa sostituisce anche un'altra modifica dello stesso profilo che partiva dallo stesso `rev` ed è arrivata dopo.
-- **Un file del registro perso per sempre** lascia il record «da completare» (`diverged`) se ha più teste: non si sceglie finché il file non torna, per esempio dalla cronologia di Dropbox.
+- **Un file del registro perso per sempre** lascia il record «da completare»: non si scrive, non si ripara e non si sceglie finché il file non torna, per esempio dalla cronologia di Dropbox. È segnalato (`diverged`) solo se il disco non è alla versione più nuova.
+- **Vecchia scelta più terzo computer.** Dopo una vecchia `fork.resolve` la modifica di un terzo computer arrivata dopo resta nascosta: il record è `diverged` con «Ripara» rifiutato se il disco ha quella modifica, pulito se il disco ha la scelta. Come su main.
+- **`forkVersions`** offre un'operazione per testa. Se più operazioni hanno lasciato lo stesso contenuto, se ne vede una sola.
 - **Stesso contenuto, stesso `rev`.** Due computer che fanno la stessa identica modifica dallo stesso dato non sono una biforcazione, per scelta: è la stessa versione. Se lo stesso contenuto ha `rev` diversi (per esempio la stessa creazione, una volta con ripresa), è una biforcazione.
 - **Cartelle esistenti.** Una biforcazione sepolta sotto un `rev` più alto da un'app più vecchia (S2 o B2 già successi) diventa `forked` alla prima apertura con l'app nuova. È l'invariante che funziona, ma non si può misurare senza dati reali: sulle fixture, sull'intera suite e sul ciclo completo non compare nessun `forked` inatteso (strumentazione temporanea).
 - **Il modello** non simula le copie di conflitto di Dropbox (G2 le blocca a parte), i file troncati né gli errori di lettura.
