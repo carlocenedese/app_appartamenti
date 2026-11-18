@@ -299,6 +299,22 @@ describe('pnpm moduli', () => {
     ).toMatchObject({ code: 1, json: { reason: 'no-tenant-folder' } });
   });
 
+  it('refuses a folder written by a newer app, but not one whose workspace file is cut short', async () => {
+    const workspace = join(data, '_app', 'workspace.json');
+    const file = join(out, 'formato.docx');
+    try {
+      writeFileSync(workspace, JSON.stringify({ schemaVersion: 999 }));
+      expect(await generate(['--valori', values, '--uscita', file])).toMatchObject({
+        code: 1,
+        json: { status: 'rejected', reason: 'newer-data' },
+      });
+      writeFileSync(workspace, '{"schemaVersion": 9');
+      expect(await generate(['--valori', values, '--uscita', file])).toMatchObject({ code: 0 });
+    } finally {
+      rmSync(workspace);
+    }
+  });
+
   it('takes a dangling link at the output as an existing file', async () => {
     const link = join(out, 'collegamento.docx');
     symlinkSync(join(root, 'non-esiste.docx'), link);

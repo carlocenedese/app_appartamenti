@@ -28,9 +28,11 @@ import {
 import {
   Stop,
   checkDefaultFolders,
+  NEWER_DATA_MESSAGE,
   invalid,
   outputPath,
   pathExists,
+  refuseNewerData,
   rejected,
   writeNew,
 } from './output-file.mjs';
@@ -44,6 +46,7 @@ const MESSAGES = {
   'bad-values':
     'Il file dei valori non è valido: serve un oggetto JSON con un testo per ogni campo (nomi in minuscole, cifre e _).',
   'file-exists': 'Rifiutato: il file di uscita esiste già e non si sovrascrive.',
+  'newer-data': NEWER_DATA_MESSAGE,
   'bad-default-folder':
     'Rifiutato: nel percorso predefinito c’è un collegamento o un file al posto di una cartella: usare --uscita.',
   'link-unsupported':
@@ -195,6 +198,7 @@ export async function main(
     } catch {
       throw invalid('bad-folder');
     }
+    await refuseNewerData(new FsStore(values.cartella));
     let target = values.uscita === undefined ? undefined : outputPath(values.uscita, '.docx');
     if (target !== undefined && pathExists(target.file)) throw rejected('file-exists');
     const template = readTemplate(values.modello);
