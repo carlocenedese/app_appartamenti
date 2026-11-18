@@ -11,5 +11,5 @@ jsonschema==4.26.0
 cffi==2.0.0
 # OCR, macOS only (decision of 13 November 2026): the Windows wheel of tesserocr carries LGPL
 # libraries (docs/rules/ocr-licenze.md), so pip never installs these two on Windows.
-tesserocr==2.12.0 ; sys_platform == 'darwin'
+tesserocr==2.13.0 ; sys_platform == 'darwin'
 pypdfium2==5.14.0 ; sys_platform == 'darwin'
