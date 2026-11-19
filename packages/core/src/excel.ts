@@ -220,22 +220,53 @@ export interface ExcelInput extends ConguaglioInput {
 /**
  * The first row of the sheets (R171, answer 5 of user1): «Conguaglio provvisorio: voci in attesa
  * N» when the period is not closed or has items waiting; otherwise «Conguaglio chiuso il
- * GG/MM/AAAA», saying when the costs changed since the snapshot (a supplementary settlement, R5).
+ * GG/MM/AAAA», with «, inviato il GG/MM/AAAA» and «, da saldare N» or «, saldato» (F1), saying when
+ * the costs changed since the snapshot (a supplementary settlement, R5). The calculation shown is
+ * always today's (F2).
  */
 export function settlementStateText(
-  closing: { closedAt: string } | undefined,
+  closing: PeriodClose | undefined,
   waiting: number,
-  flags: { changed: boolean; dataChanged: boolean } = { changed: false, dataChanged: false },
+  flags: {
+    changed: boolean;
+    dataChanged: boolean;
+    toCheck?: boolean;
+    unsettled?: number;
+    differences?: number;
+  } = {
+    changed: false,
+    dataChanged: false,
+  },
 ): string {
   if (closing === undefined || waiting > 0) {
     return `Conguaglio provvisorio: voci in attesa ${String(waiting)}`;
   }
-  const [y, m, d] = closing.closedAt.slice(0, 10).split('-');
+  const date = (iso: string) => {
+    const [y, m, d] = iso.slice(0, 10).split('-');
+    return `${d ?? ''}/${m ?? ''}/${y ?? ''}`;
+  };
+  // F1: the steps after the closing, when user1 marked them. A tenant with only a difference left
+  // (G) is counted there, not also in «da saldare» (finding 5 of the third review).
+  const differences = flags.differences ?? 0;
+  const whole = (flags.unsettled ?? 0) - differences;
+  const steps = [
+    ...(closing.sentOn === undefined ? [] : [`inviato il ${date(closing.sentOn)}`]),
+    ...(closing.sentOn !== undefined && whole + differences === 0
+      ? ['saldato']
+      : closing.sentOn === undefined || whole === 0
+        ? []
+        : [`da saldare ${String(whole)}`]),
+    ...(differences > 0
+      ? [`saldato fino alla chiusura precedente, differenza da saldare ${String(differences)}`]
+      : []),
+  ];
   const notes = [
     ...(flags.changed ? ["dopo la chiusura c'è un conguaglio supplementare"] : []),
     ...(flags.dataChanged ? ['dati cambiati dopo la chiusura, da controllare'] : []),
+    // Answer F, fourth round A: more flat charge than was due, never a credit.
+    ...(flags.toCheck === true ? ['forfait incassato in più, da verificare'] : []),
   ];
-  return `Conguaglio chiuso il ${d ?? ''}/${m ?? ''}/${y ?? ''}${notes.length > 0 ? `: ${notes.join('; ')}` : ''}`;
+  return `Conguaglio chiuso il ${date(closing.closedAt)}${steps.map((x) => `, ${x}`).join('')}${notes.length > 0 ? `: ${notes.join('; ')}` : ''}`;
 }
 
 /**
@@ -246,25 +277,35 @@ export function settlementStateText(
 export function closingFlags(
   input: ConguaglioInput & { closing?: PeriodClose },
   result?: ConguaglioResult,
-): { changed: boolean; dataChanged: boolean } {
+): {
+  changed: boolean;
+  dataChanged: boolean;
+  toCheck: boolean;
+  unsettled: number;
+  differences: number;
+} {
   const { closing } = input;
-  if (closing === undefined) return { changed: false, dataChanged: false };
+  if (closing === undefined) {
+    return { changed: false, dataChanged: false, toCheck: false, unsettled: 0, differences: 0 };
+  }
   let current = result;
   if (current === undefined) {
     try {
       current = calcConguaglio(input);
     } catch (error) {
       if (!(error instanceof SettlementInputError)) throw error;
-      return { changed: true, dataChanged: true };
+      return { changed: true, dataChanged: true, toCheck: false, unsettled: 0, differences: 0 };
     }
   }
-  const { changed, dataChanged } = closingOf(
-    closing,
-    current,
-    input,
-    isoDate(closing.closedAt.slice(0, 10)),
-  );
-  return { changed, dataChanged };
+  // The one computation of the settlement (fifth round): the counts of the first row too.
+  const since = closingOf(closing, current, input, isoDate(closing.closedAt.slice(0, 10)));
+  return {
+    changed: since.changed,
+    dataChanged: since.dataChanged,
+    toCheck: since.toCheck,
+    unsettled: since.unsettled.length,
+    differences: since.differences.length,
+  };
 }
 
 type Span = { from: YearMonth; to: YearMonth };

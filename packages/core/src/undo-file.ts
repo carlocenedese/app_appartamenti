@@ -1,5 +1,5 @@
 /** "Undo the whole file": takes back every registration that created a record from one PDF. */
-import { readJournal, undoOperation, undoTargetOf } from './journal';
+import { readJournal, refuseClosedPeriodUndo, undoOperation, undoTargetOf } from './journal';
 import type { Operation } from './journal';
 import type { Store } from './store/store';
 
@@ -7,7 +7,7 @@ import type { Store } from './store/store';
  * Undoes, most recent first, each operation in force that created a record (a change without
  * `before`) whose `fileHash` is `fileHash`, with `undoOperation` and no cascade. Returns the undo
  * operations; an empty list when there is nothing left to undo, so it can be repeated. An error
- * of `undoOperation` (e.g. a dependent operation) is thrown and the undos already made stay: a
+ * of `undoOperation` (e.g. a dependent operation) is thrown (a closed period, F5, before any undo) and the undos already made stay: a
  * second call undoes only what is left. Operations of other files are never touched. With
  * `options.only`, only the operations that created such a record for which it is true.
  */
@@ -39,6 +39,8 @@ export async function undoFile(
     const target = undoTargetOf(operations, op);
     return target === undefined ? [] : [target];
   });
+  // F5: a closed period refuses before the first undo, so none is left half done.
+  await refuseClosedPeriodUndo(store, targets, operations);
   const undone: Operation[] = [];
   for (const op of targets.reverse()) {
     undone.push(await undoOperation(store, op.id, profileId, clock, newId));

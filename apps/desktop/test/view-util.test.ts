@@ -37,3 +37,14 @@ describe('saveErrorMessage', () => {
     expect(saveErrorMessage('boh')).toBe('Non è stato possibile salvare.');
   });
 });
+
+describe('saveErrorMessage and a closed period (third review, finding 2)', () => {
+  it('shows the Italian message of the core for a closed period or a refused undo', async () => {
+    const { ClosedPeriodError, ClosingUndoError } = await import('@bollette/core');
+    const closed = new ClosedPeriodError('_app/dati/supply/sup-1.json', 'apt', '2025-26');
+    expect(saveErrorMessage(closed)).toBe(closed.message);
+    expect(saveErrorMessage(closed)).toMatch(/riapri il periodo con il motivo/);
+    const undo = new ClosingUndoError('reopen-changed', 'apt', '2025-26');
+    expect(saveErrorMessage(undo)).toBe(undo.message);
+  });
+});

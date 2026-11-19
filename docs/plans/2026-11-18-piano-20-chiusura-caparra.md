@@ -1,0 +1,97 @@
+# Piano 20: chiusura, riapertura, invio, saldo e caparra (piano)
+
+Decisioni di user1 del 18 novembre 2026: F1, F2, F3, F5, F11, B4 e F10 (`docs/revisione-2026-11-18-funzioni.md`,
+domande 1, 2, 3, 5, 13 e 15). Ogni task: test che falliscono, codice, `pnpm lint`, `pnpm typecheck`,
+test toccati, commit. Formato dei dati da 3 a 4, autorizzato da user1 («Sì, alza a 4»): solo campi
+facoltativi nuovi in `periodClose`.
+
+1. **Schema e formato.** `PeriodCloseSchema` (`model.ts`) con i campi facoltativi `sentOn`
+   (data), `settled` (`{ tenantId, on, transactionId? }[]`), `reopened` (`{ on, reason }`) e
+   `history` (le chiusure precedenti, ciascuna con `closedAt`, `engineVersion`, `snapshot`,
+   `sentOn?`, `settled?`, `reopened`). `DATA_FORMAT = 4`, impronta 4 in `data-format.test.ts`,
+   `docs/schemas` rigenerati. Test in `model.test.ts`.
+2. **Invio, saldo e riapertura (F1, F3).** In `period-close.ts`:
+   `markPeriodSent(store, query & { on }, profileId, clock, newId)`,
+   `markTenantSettled(store, query & { tenantId, on, transactionId? }, …)`,
+   `reopenPeriod(store, query & { on, reason }, …)`; operazioni `period.send`, `period.settle`,
+   `period.reopen`. Una chiusura è viva se non è cancellata né riaperta; `closePeriod` dopo una
+   riapertura mette la chiusura precedente in `history` e scrive l'istantanea nuova.
+   `loadPeriodClosing` dà anche `reopened` (confronto con l'ultima istantanea). Test in
+   `period-close.test.ts`: «reopen keeps the old snapshot in history», «a second close takes a new
+   snapshot», «settled is per tenant and never automatic».
+3. **Scritture in un periodo chiuso (F5).** `closed-period-guard.ts`:
+   `refuseClosedPeriodChanges(store, operations, changes)` e `ClosedPeriodError`, chiamati da
+   `commitChange` (unico punto di scrittura, anche per l'annullo) e da `undoOperation` prima di
+   scrivere (nessun annullo a metà). Rifiuta la modifica, la cancellazione e l'annullo di ciò che
+   esisteva alla chiusura e tocca il periodo: presenze, contratti, bollette, rate, pagamenti,
+   abbinamenti, recuperi; un record nuovo passa (salvo presenze e contratti nuovi nel periodo).
+   Anche `undoFile` controlla prima del primo annullo. Test in `closed-period-guard.test.ts`.
+4. **Forfait nel supplementare (F11).** `closingOf` dà per inquilino `forfaitDelta` (forfait
+   incassato alla chiusura meno quello di oggi), una riga a sé; `dataChanged` non guarda più il
+   forfait. Test in `period-close.test.ts` (fatto insieme al task 2).
+5. **Caparra (B4, F10).** `loadDepositReturn` aggiunge una riga per ogni periodo chiuso con il
+   conguaglio non saldato («Conguaglio <periodo> non saldato»), per il supplementare
+   («Conguaglio supplementare <periodo>») e per il forfait («Forfait non incassato <periodo>»);
+   caparra già restituita: `already-returned` con le righe `toRequest` («da richiedere»).
+   Test in `deposit-closed.test.ts`.
+6. **Riga di comando, Excel, cruscotto.** Comandi `invia-conguaglio`, `conguaglio-saldato`,
+   `riapri-periodo`; stato in `conguaglio-supplementare`, nel cruscotto (`chiuso`, `inviato`,
+   `saldato`) e nella prima riga dell'Excel e del file dei proprietari; `ClosedPeriodError` →
+   `closed-period`. Test in `scripts/estratti-funzioni.test.mjs` e `period-close.test.ts` (Excel,
+   cruscotto e F2: l'Excel dopo la chiusura mostra il calcolo di oggi).
+7. **Registro e specifica.** Sezione 42 (R5), una riga «Ruling» per decisione in
+   `docs/progress.md`.
+
+## Seconda revisione (risposte di user1 del 18 novembre 2026, A-K, e reperti 1-11)
+
+8. **Controllo esatto.** `periodClose.inputs` (`periodInputs` in `closed-period-guard.ts`) scritto da
+   `closePeriod`; senza, confronto per orario corretto (reperti 4 e 5). Chiusura biforcata: blocca
+   solo il suo appartamento e i suoi mesi, `closeMarks` per `scegli-versione` (6). Appartamento,
+   utenze (B), movimenti e classi (J), `settlementPeriodOf` per pagamenti e recuperi (10).
+   Test in `closed-period-guard.test.ts` («second review») e `statement-import.test.ts` (11).
+9. **Chiusura.** `forfaitNonIncassato` (H), `tenantBalance` e `differenceTenants` (G),
+   `markTenantSettled({ supplementary })` (D), `refuseClosingUndo` chiamato da `undoOperation`
+   (9), conguaglio dell'anno prima nel `delta` (K). Test in `closed-period-guard.test.ts` e
+   `deposit-closed.test.ts`.
+10. **Caparra.** C, D, G, H, I e segni (8) in `closedPeriodLines`; test in `deposit-closed.test.ts`.
+11. **Riga di comando.** `--supplementare`, `toRequestLines` in euro, `marks` in
+    `scegli-versione`; test in `scripts/estratti-funzioni.test.mjs`.
+
+## Terza revisione
+
+12. Reperti 1-5 corretti con un test che fallisce prima: `tenant-balance.test.ts` (1, e K e
+    «da verificare» in `closingOf`), `closed-period-guard.test.ts` (2 e 4),
+    `apps/desktop/test/view-util.test.ts` (2), `deposit-closed.test.ts` (3, 5 e una chiusura
+    senza `inputs`).
+
+### Domande aperte per user1 (comportamento prudente mantenuto, R357)
+
+- (a) Un bonifico respinto per intero dopo una riapertura ferma ancora la chiusura: manca
+  l'affitto.
+- (b) Posti e dati dell'appartamento non hanno una data «valido dal»: cambiarli chiede di
+  riaprire ogni periodo chiuso dell'appartamento.
+- (c) Una bolletta che c'era alla chiusura fuori dal periodo e viene ridatata dentro i mesi chiusi
+  è accettata come nuova e va nel supplementare.
+- (d) La quota dei posti vuoti di un conguaglio condominiale dell'anno prima cambiato non è
+  tracciata.
+
+## Quarta revisione
+
+13. A e B: `ClosingRow.total`, `forfaitPaid`, `toCheck` calcolati una volta in `closingOf` e usati da
+    caparra, saldo del supplementare, Excel e riga di comando; tabella in `deposit-closed.test.ts`
+    («A, B: …»). C: `reopen-changed` quando il record sul disco è riaperto
+    (`closed-period-guard.test.ts`, «C: depth 3»).
+
+## Quinto giro
+
+14. Passo 1: `closing-model.property.test.ts` (libro del proprietario, sei invarianti, seme fisso,
+    riduzione). Passo 2: `settled[].amount` e `flatCollected`, un solo calcolo `tenantBalance`
+    letto da chiusura, file, cruscotto e caparra; C2, C3; rifiuto `flat-to-check`. Il test di
+    modello è il cancello (5000 semi in tre fusi orari).
+
+## Revisione finale
+
+15. Tolto il rifiuto `flat-to-check`: i saldi con forfait «da verificare» si segnano e lo lasciano
+    da verificare (R361). Test in `deposit-closed.test.ts` («final review») e invarianti 7 e 8 nel
+    test di modello. Domanda aperta per user1: come si chiude un «da verificare» (oggi correggendo
+    il pagamento).

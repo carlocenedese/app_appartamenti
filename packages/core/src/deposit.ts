@@ -7,6 +7,7 @@
 import { caparraReturn } from './caparra';
 import type { CaparraReturn } from './caparra';
 import { SettlementInputError, calcConguaglio, isPresent, settlementPeriodOf } from './conguaglio';
+import { tenantBalance } from './closing';
 import { recoverableMovements } from './condominio';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
@@ -18,6 +19,7 @@ import {
   BillMatchSchema,
   MovementClassSchema,
   ContractSchema,
+  PeriodCloseSchema,
   LegalRateSchema,
   PaymentSchema,
   TenancySchema,
@@ -188,13 +190,25 @@ export type DepositReturnResult =
       statement: CaparraReturn;
       /** Recoveries kept from the deposit once their expense is paid: not in yet (RECOVERY_WAITING). */
       recoveriesWaiting: number;
+      /**
+       * Flat charge collected beyond what was due in a closed period (answer F): «da verificare»,
+       * shown apart and never in the total.
+       */
+      toCheck: { label: string; amount: Cents }[];
     }
+  /**
+   * B4, F10, I: the deposit is already returned, so its statement does not change: the lines of
+   * the closed periods are «da richiedere», with the signs of a statement (a debt of the tenant is
+   * negative, a credit positive); the exit period's due and payments are «da verificare».
+   */
+  | { status: 'refused'; reason: 'already-returned'; toRequest: { label: string; amount: Cents }[] }
   | {
       status: 'refused';
       reason:
         | 'inconsistent-store'
         | 'no-deposit'
-        | 'already-returned'
+        /** A period of the tenant was reopened (F3): its settlement is being changed. */
+        | 'period-reopened'
         | 'partial-return'
         | 'several-stays'
         | 'no-exit'
@@ -222,8 +236,12 @@ export async function loadDepositReturn(
   store: Store,
   input: DepositReturnInput,
 ): Promise<DepositReturnResult> {
-  const refuse = (reason: Extract<DepositReturnResult, { status: 'refused' }>['reason']) =>
-    ({ status: 'refused', reason }) as const;
+  const refuse = (
+    reason: Exclude<
+      Extract<DepositReturnResult, { status: 'refused' }>['reason'],
+      'already-returned'
+    >,
+  ) => ({ status: 'refused', reason }) as const;
   if (await writesBlocked(store)) return refuse('inconsistent-store');
   const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records.filter(
     (t) => t.apartmentId === input.apartmentId,
@@ -234,26 +252,8 @@ export async function loadDepositReturn(
   }).find((c) => c.tenantId === input.tenantId);
   if (check === undefined || check.paid === 0) return refuse('no-deposit');
   const held = cents(check.paid - check.returned);
-  if (held <= 0) return refuse('already-returned');
-  // Prudent until user1 answers (R302): which deposit belongs to which stay, and what a partial
-  // return leaves, are not decided.
-  if (check.returned > 0) return refuse('partial-return');
   const stays = continuousStays(tenancies.filter((t) => t.tenantId === input.tenantId));
-  if (stays.length > 1) return refuse('several-stays');
   const stay = stays.at(-1);
-  if (stay?.to === undefined) return refuse('no-exit');
-  const exit = stay.to;
-  const rates = (await loadAll(store, 'legalRate', LegalRateSchema)).records.map((r) => ({
-    year: Number(r.year),
-    rateBp: r.rateBp,
-  }));
-  let interest: Cents;
-  try {
-    interest = legalInterest(held, rates, isoDate(`${stay.from}-01`), lastDayOfMonth(exit));
-  } catch (error) {
-    if (error instanceof RangeError) return refuse('missing-rate');
-    throw error;
-  }
 
   const apartment = (await loadAll(store, 'apartment', ApartmentSchema)).records.find(
     (a) => a.id === input.apartmentId,
@@ -269,15 +269,84 @@ export async function loadDepositReturn(
       }
     });
   const spans = [...new Map(periods.map((p) => [`${p.from}/${p.to}`, p])).values()];
+  const holding = (month: YearMonth) => spans.filter((p) => p.from <= month && month <= p.to);
+  const exitHome = stay?.to === undefined ? [] : holding(stay.to);
+  const closed = await closedPeriodLines(store, {
+    apartmentId: input.apartmentId,
+    tenantId: input.tenantId,
+    exitLabel: exitHome.length === 1 ? exitHome[0]?.label : undefined,
+    spans,
+  });
+  if (typeof closed === 'string') return refuse(closed);
+  if (held <= 0) {
+    // The statement is already made: what the closed periods add is asked apart (F10).
+    // I: the past statement is not stored, so the exit period's due at the closing and what is
+    // paid on it are listed «da verificare» for user1 to compare. Signs as in a statement (8):
+    // a debt of the tenant is negative.
+    const exit = closed.exit;
+    const toCheck: Line[] =
+      exit === undefined
+        ? []
+        : [
+            ...(exit.due === 0
+              ? []
+              : [
+                  {
+                    label: `Conguaglio ${exit.label} alla chiusura (da verificare)`,
+                    amount: exit.due,
+                  },
+                ]),
+            ...(exit.paid === 0
+              ? []
+              : [
+                  {
+                    label: `Conguaglio ${exit.label} già versato (da verificare)`,
+                    amount: cents(-exit.paid),
+                  },
+                ]),
+          ];
+    return {
+      status: 'refused',
+      reason: 'already-returned',
+      toRequest: [...toCheck, ...(exit?.lines ?? []), ...closed.lines].map((l) => ({
+        label: l.label,
+        amount: cents(-l.amount),
+      })),
+    };
+  }
+  // Prudent until user1 answers (R302): which deposit belongs to which stay, and what a partial
+  // return leaves, are not decided.
+  if (check.returned > 0) return refuse('partial-return');
+  if (stays.length > 1) return refuse('several-stays');
+  if (stay?.to === undefined) return refuse('no-exit');
+  const exit = stay.to;
+  const rates = (await loadAll(store, 'legalRate', LegalRateSchema)).records.map((r) => ({
+    year: Number(r.year),
+    rateBp: r.rateBp,
+  }));
+  let interest: Cents;
+  try {
+    interest = legalInterest(held, rates, isoDate(`${stay.from}-01`), lastDayOfMonth(exit));
+  } catch (error) {
+    if (error instanceof RangeError) return refuse('missing-rate');
+    throw error;
+  }
 
   // The conguaglio of the exit period, unless user1 typed it.
   let conguaglio = input.conguaglio;
   const settled: { label: string; amount: Cents }[] = [];
-  if (conguaglio === undefined) {
-    const holding = spans.filter((p) => p.from <= exit && exit <= p.to);
-    if (holding.length === 0) return refuse('no-period');
-    if (holding.length > 1) return refuse('ambiguous-period');
-    const period = holding[0] as (typeof holding)[number];
+  if (conguaglio === undefined && closed.exit !== undefined) {
+    // B4, F10: the exit period is closed: what was due at the closing (nothing when user1 marked
+    // it settled), what is already paid on it, then the supplementary on lines of their own.
+    conguaglio = closed.exit.due;
+    if (closed.exit.paid !== 0) {
+      settled.push({ label: 'Conguaglio già versato', amount: cents(-closed.exit.paid) });
+    }
+    settled.push(...closed.exit.lines);
+  } else if (conguaglio === undefined) {
+    if (exitHome.length === 0) return refuse('no-period');
+    if (exitHome.length > 1) return refuse('ambiguous-period');
+    const period = exitHome[0] as (typeof exitHome)[number];
     const loaded = await loadExcelInput(store, {
       apartmentId: input.apartmentId,
       periodLabel: period.label,
@@ -306,6 +375,9 @@ export async function loadDepositReturn(
     // The amount due and what is already paid on it as two lines (R302): nothing subtracted unseen.
     conguaglio = cents(due);
     if (paid !== 0) settled.push({ label: 'Conguaglio già versato', amount: cents(-paid) });
+  } else if (closed.exit !== undefined) {
+    // The conguaglio typed by user1 replaces the exit period; its supplementary stays apart.
+    settled.push(...closed.exit.lines);
   }
 
   const matches = (await loadAll(store, 'match', BillMatchSchema)).records;
@@ -338,10 +410,124 @@ export async function loadDepositReturn(
       caparra: held,
       interest,
       conguaglio,
-      extraCharges: [...settled, ...recoveries.withheld, ...input.extraCharges],
+      extraCharges: [...settled, ...closed.lines, ...recoveries.withheld, ...input.extraCharges],
     }),
     recoveriesWaiting: recoveries.waiting,
+    toCheck: closed.toCheck,
   };
+}
+
+type Line = { label: string; amount: Cents };
+
+/**
+ * B4, F10 and the answers C, D, G, H of user1 (18 Nov 2026): what the closed periods of the
+ * apartment add to the deposit statement of `tenantId`, one labelled line each (positive is a
+ * debt of the tenant, as `extraCharges`).
+ * - Every amount comes from `tenantBalance` (fifth round, R359), so the lines add up to what is
+ *   left. What is left of the closing (the whole due, or only the difference after a
+ *   closing settled before, G; nothing once marked settled): «Conguaglio <periodo> non saldato»
+ *   for a period other than the exit one, never offset by payments (C); for the exit period it is
+ *   the «Conguaglio bollette» line (`exit.due`, with what is already paid on it apart, R302).
+ * - The flat charge missing at the closing (H) and since (F11): «Forfait non incassato <periodo>».
+ * - The supplementary (costs since the snapshot, K included): «Conguaglio supplementare
+ *   <periodo>», or, once marked settled (D), only a later difference «… da saldare».
+ * A reopened period of the tenant refuses (`period-reopened`, prudent: it can be closed again,
+ * H), one that cannot be computed too.
+ */
+async function closedPeriodLines(
+  store: Store,
+  input: {
+    apartmentId: string;
+    tenantId: string;
+    exitLabel: string | undefined;
+    spans: readonly { label: string; from: YearMonth; to: YearMonth }[];
+  },
+): Promise<
+  | {
+      lines: Line[];
+      /** Flat charge collected beyond what was due, per period: «da verificare», no effect. */
+      toCheck: Line[];
+      exit?: { label: string; due: Cents; paid: Cents; lines: Line[] };
+    }
+  | 'period-reopened'
+  | 'settlement-error'
+> {
+  const closes = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records
+    .filter((c) => c.apartmentId === input.apartmentId)
+    .filter((c) => c.snapshot.tenants.some((t) => t.tenantId === input.tenantId))
+    .sort((a, b) => compareText(a.from, b.from));
+  const lines: Line[] = [];
+  const toCheck: Line[] = [];
+  let exit: { label: string; due: Cents; paid: Cents; lines: Line[] } | undefined;
+  for (const close of closes) {
+    if (close.reopened !== undefined) return 'period-reopened';
+    const loaded = await loadExcelInput(store, {
+      apartmentId: input.apartmentId,
+      periodLabel: close.periodLabel,
+    });
+    if (loaded.status !== 'ok') return 'settlement-error';
+    let today;
+    try {
+      today = calcConguaglio(loaded.input).tenants.find((t) => t.tenantId === input.tenantId);
+    } catch (error) {
+      if (error instanceof SettlementInputError) return 'settlement-error';
+      throw error;
+    }
+    const label = close.periodLabel;
+    // The one computation of the settlement (fifth round, `tenantBalance`): the lines are its
+    // parts, so they add up to `remaining`; `toCheck` is apart and never a credit (answer F).
+    const balance = tenantBalance(close, input.tenantId, {
+      due: today?.due ?? 0,
+      forfaitIncassato: today?.forfaitIncassato ?? 0,
+    });
+    if (balance.toCheck > 0) {
+      toCheck.push({
+        label: `Forfait incassato in più ${label} (da verificare)`,
+        amount: balance.toCheck,
+      });
+    }
+    const marked =
+      balance.supplementarySettled !== 0 ||
+      (close.supplementarySettled ?? []).some((s) => s.tenantId === input.tenantId);
+    const supLeft = balance.supplementary - balance.supplementarySettled;
+    const lost = marked ? 0 : Math.min(balance.lostFlat, Math.max(0, supLeft));
+    const forfait = balance.fniLeft + lost;
+    const later: Line[] = [
+      ...(forfait > 0 ? [{ label: `Forfait non incassato ${label}`, amount: cents(forfait) }] : []),
+      ...(supLeft - lost !== 0
+        ? [
+            {
+              label: marked
+                ? `Conguaglio supplementare ${label} da saldare`
+                : `Conguaglio supplementare ${label}`,
+              amount: cents(supLeft - lost),
+            },
+          ]
+        : []),
+    ];
+    const left = cents(balance.mainRemaining - balance.fniLeft);
+    if (label === input.exitLabel) {
+      const paid =
+        balance.status !== 'da-saldare' || marked
+          ? 0
+          : loaded.input.payments
+              .filter(
+                (p) =>
+                  p.deleted !== true &&
+                  p.confirmed &&
+                  p.kind === 'conguaglio' &&
+                  p.tenantId === input.tenantId &&
+                  inSettlement(p, close, loaded.input.periods ?? input.spans),
+              )
+              .reduce((sum, p) => sum + p.amount, 0);
+      exit = { label, due: left, paid: cents(paid), lines: later };
+      continue;
+    }
+    // C: the whole due until user1 marks it settled; payments do not offset it.
+    if (left !== 0) lines.push({ label: `Conguaglio ${label} non saldato`, amount: left });
+    lines.push(...later);
+  }
+  return exit === undefined ? { lines, toCheck } : { lines, toCheck, exit };
 }
 
 /**

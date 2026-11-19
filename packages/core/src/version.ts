@@ -22,7 +22,7 @@ export const CORE_VERSION = '0.1.0';
  * are allowed without a migration: an older app keeps reading the folder and goes read-only, and
  * the newer app raises the folder's number with `raiseDataFormat` before its first write.
  */
-export const DATA_FORMAT = 3;
+export const DATA_FORMAT = 4;
 
 /**
  * A plain `MAJOR.MINOR.PATCH` version: three numbers without leading zeros, digits `0-9` only

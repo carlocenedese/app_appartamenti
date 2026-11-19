@@ -59,6 +59,8 @@ export interface SettlementStatusRow {
   unassigned?: Cents;
   /** R5: the period is closed («chiuso»); absent, it is provisional. */
   closed?: true;
+  /** F1: the step of a closed period: `chiuso`, `inviato` (sent) or `saldato` (all settled). */
+  step?: 'chiuso' | 'inviato' | 'saldato';
 }
 
 export interface ApartmentDashboard {
@@ -226,21 +228,42 @@ export async function loadDashboard(
     try {
       const result = calcConguaglio(loaded.input);
       const { closing } = loaded.input;
+      // One computation of the settlement for every count (fifth round, `closingOf`).
+      const since =
+        closing === undefined ? undefined : closingOf(closing, result, loaded.input, today);
       settlements.push({
         apartmentId,
         periodLabel,
         pending: result.pending.length,
         unassigned: result.unassigned,
-        ...(closing === undefined ? {} : { closed: true as const }),
+        ...(since === undefined
+          ? {}
+          : { closed: true as const, step: since.state as 'chiuso' | 'inviato' | 'saldato' }),
       });
+      if (since !== undefined && closing !== undefined) {
+        // F1: a closed period still to send, then the tenants still to settle; a tenant with only
+        // a difference left (G) is counted apart (finding 5).
+        if (closing.sentOn === undefined) add(apartmentId, 'conguaglio:da-inviare');
+        else
+          add(
+            apartmentId,
+            'conguaglio:da-saldare',
+            since.unsettled.length - since.differences.length,
+          );
+        add(apartmentId, 'conguaglio:differenza-da-saldare', since.differences.length);
+        // C3: flat charge collected beyond what was due, «da verificare».
+        add(
+          apartmentId,
+          'conguaglio:forfait-da-verificare',
+          since.tenants.filter((t) => t.toCheck > 0).length,
+        );
+      }
       add(apartmentId, 'conguaglio:voci-in-attesa', result.pending.length);
       if (result.unassigned !== 0) add(apartmentId, 'conguaglio:posti-vuoti');
       // R5: a closed period whose costs changed since the snapshot (a late bill): a supplementary
       // settlement to make, «Da rivedere».
-      const since =
-        closing === undefined ? undefined : closingOf(closing, result, loaded.input, today);
       if (since?.changed === true) add(apartmentId, 'conguaglio:supplementare');
-      // Data of the snapshot that is not a cost (the flat charge collected...) changed: to check.
+      // The tenants of the period changed since the snapshot: to check.
       if (since?.dataChanged === true) add(apartmentId, 'conguaglio:dati-cambiati');
     } catch (error) {
       if (!(error instanceof SettlementInputError)) throw error;

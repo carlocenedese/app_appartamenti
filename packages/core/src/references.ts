@@ -131,7 +131,20 @@ const POINTERS: { [K in RecordKind]?: (r: Of<K>) => Pointer[] } = {
   ],
   taxConfirmation: (r) => at('apartmentId', 'apartment', [r.apartmentId]),
   consumptionSettings: (r) => at('apartmentId', 'apartment', [r.apartmentId]),
-  periodClose: (r) => at('apartmentId', 'apartment', [r.apartmentId]),
+  periodClose: (r) => [
+    ...at('apartmentId', 'apartment', [r.apartmentId]),
+    // F1: the tenants marked as settled and the movements that paid them.
+    ...at(
+      'settled.tenantId',
+      'tenant',
+      (r.settled ?? []).map((s) => s.tenantId),
+    ),
+    ...at(
+      'settled.transactionId',
+      'transaction',
+      (r.settled ?? []).map((s) => s.transactionId),
+    ),
+  ],
 };
 
 /**

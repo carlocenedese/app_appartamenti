@@ -9,20 +9,216 @@ import { cents } from './money';
 import type { Cents } from './money';
 import type { ISODate } from './period';
 
-/** A closed period with what changed since its snapshot. */
+/**
+ * One tenant of the supplementary settlement: the difference in costs (`delta`, last year's
+ * condominium settlement included, answer K) and, on a line of its own (F11), the flat charge
+ * collected at the closing and no longer collected (`forfaitDelta`, positive is to ask the
+ * tenant). `action` reads both; more flat charge collected than at the closing (beyond what was
+ * missing then, `forfaitNonIncassato`) is `da-verificare` (answer F).
+ */
+export interface ClosingRow extends Omit<SupplementaryRow, 'action'> {
+  /** The flat charge collected at the closing less today's (display; read `total`, `forfaitPaid`). */
+  forfaitDelta: Cents;
+  /**
+   * The supplementary settlement of the tenant, computed once (fourth round, B): the costs since the
+   * snapshot plus the flat charge collected at the closing and lost since. What is paid since on
+   * the flat charge missing at the closing is `forfaitPaid`, never here. This is what
+   * «Conguaglio supplementare» withholds and what `markTenantSettled({ supplementary })` settles.
+   */
+  total: Cents;
+  /** What is left of the tenant's settlement, main and supplementary (`tenantBalance`). */
+  remaining: Cents;
+  /** What is left of the main settlement (0 once marked on this closing). */
+  mainRemaining: Cents;
+  /** Of the flat charge missing at the closing (H), what is paid since: it reduces the main due. */
+  forfaitPaid: Cents;
+  /**
+   * Flat charge collected beyond what was due (answer F, fourth round A): «da verificare», shown
+   * with its amount and never an automatic credit.
+   */
+  toCheck: Cents;
+  action: SupplementaryRow['action'] | 'da-verificare';
+}
+
+/** A closed (or reopened, F3) period with what changed since its snapshot. */
 export interface PeriodClosed {
-  status: 'closed';
+  /** `reopened`: the period is open again; the comparison is with its last snapshot. */
+  status: 'closed' | 'reopened';
+  /** F1, F3: the step of the closing (`closeState`). */
+  state: 'chiuso' | 'inviato' | 'saldato' | 'riaperto';
   closedAt: string;
-  /** For each tenant of either calculation: the difference in costs since the closing. */
-  tenants: SupplementaryRow[];
+  /** F1: the day the settlement was sent to the tenants, when user1 marked it. */
+  sentOn?: string;
+  /** F1: the tenants whose settlement user1 marked as settled. */
+  settled: NonNullable<PeriodClose['settled']>;
+  /** F3: when and why the period was reopened. */
+  reopened?: NonNullable<PeriodClose['reopened']>;
+  /** For each tenant of either calculation: the difference since the closing. */
+  tenants: ClosingRow[];
   unassignedDelta: Cents;
-  /** Some difference is not 0: a supplementary settlement is due (R5). */
+  /** Some difference is not 0: a supplementary settlement is due (R5, F11). */
   changed: boolean;
   /**
-   * Data of the snapshot that is not a cost changed since the closing (the flat charge collected,
-   * last year's condominium settlement, the tenants of the period): to be checked by a person.
+   * The tenants of the period changed since the closing (one is new or gone), or a flat charge
+   * missing at the closing was paid since (it changes the main due): to check.
    */
   dataChanged: boolean;
+  /** Some flat charge was collected beyond what was due: «da verificare» (`ClosingRow.toCheck`). */
+  toCheck: boolean;
+  /** The tenants with something left of the main settlement (F1). */
+  unsettled: string[];
+  /** Of them, those settled on an earlier closing: only a difference is left (G). */
+  differences: string[];
+}
+
+/** A closing that holds the period closed: not deleted and not reopened (F3). */
+export const isLiveClose = (close: PeriodClose): boolean =>
+  close.deleted !== true && close.reopened === undefined;
+
+type SnapshotTenant = PeriodClose['snapshot']['tenants'][number];
+
+/**
+ * What one tenant owed at the closing: the `due` of `calcConguaglio` from the snapshot (the flat
+ * charge missing at a closing after a reopening, `forfaitNonIncassato`, is part of it: H).
+ */
+export const snapshotDue = (t: SnapshotTenant): Cents =>
+  cents(t.spese + t.rata + t.conguaglioPrec + t.commissione + t.recupero - t.forfaitIncassato);
+
+type Mark = { amount: number; flat?: number };
+
+/**
+ * The marks of one tenant on every closing of the period, oldest first (the history, then the
+ * current closing): the main mark and the supplementary mark of each, as amounts.
+ */
+function marksOf(close: PeriodClose, tenantId: string) {
+  const closings = [...(close.history ?? []), close];
+  let prior = 0;
+  return closings.map((c) => {
+    const own = c.snapshot.tenants.find((t) => t.tenantId === tenantId);
+    const entry = (c.settled ?? []).find((s) => s.tenantId === tenantId);
+    const supEntry = (c.supplementarySettled ?? []).find((s) => s.tenantId === tenantId);
+    // A main mark written before the fifth round has no amount: it declared the snapshot's due,
+    // as a level, so its amount is that due less what earlier closings declared; its flat charge is
+    // the snapshot's. Only earlier commits of this branch wrote such marks (nothing is in main).
+    const main: Mark | undefined =
+      entry === undefined
+        ? undefined
+        : {
+            amount: entry.amount ?? (own === undefined ? 0 : snapshotDue(own)) - prior,
+            ...(entry.flatCollected !== undefined
+              ? { flat: entry.flatCollected }
+              : own === undefined
+                ? {}
+                : { flat: own.forfaitIncassato }),
+          };
+    const sup = supEntry?.amount ?? 0;
+    const before = prior;
+    prior += (main?.amount ?? 0) + sup;
+    return { own, main, sup, prior: before, hasSup: supEntry !== undefined };
+  });
+}
+
+/** Where one tenant's settlement stands (`tenantBalance`); amounts in cents, positive owed. */
+export interface TenantLedger {
+  /** Main settlement: marked on this closing, only a difference after an earlier mark, or none. */
+  status: 'saldato' | 'differenza' | 'da-saldare';
+  /** Today's due (`calcConguaglio`). */
+  due: Cents;
+  /** What is left: due + toCheck − every amount marked settled (main and supplementary). */
+  remaining: Cents;
+  /** What a main mark would declare now; 0 once marked on this closing. */
+  mainRemaining: Cents;
+  /** Of `mainRemaining`, the flat charge missing at this closing still unpaid (H). */
+  fniLeft: Cents;
+  /** What a supplementary mark would declare now (the supplementary level). */
+  supplementary: Cents;
+  /** The supplementary already marked on this closing. */
+  supplementarySettled: Cents;
+  /** Flat charge collected at the closing and lost since (F11). */
+  lostFlat: Cents;
+  /** Of the flat charge missing at the closing, what is paid since (it reduces the main). */
+  forfaitPaid: Cents;
+  /** Flat charge collected after the last main mark: already settled, «da verificare» (answer F). */
+  toCheck: Cents;
+}
+
+/**
+ * The one computation of a tenant's settlement (fifth round, from the model test): each mark
+ * stores what it declared settled (`amount`) and the flat charge collected then (`flatCollected`).
+ * remaining = today's due + toCheck − the sum of the amounts, where toCheck (extra) is the flat
+ * charge collected after the last main mark: already settled, so «da verificare», never a credit
+ * and never lowering what is withheld. A main mark declares the snapshot's due (with the extra the
+ * snapshot already counts) less the missing flat charge paid since (H) and less what earlier
+ * closings declared; a supplementary mark declares the rest. A new closing changes no amount, so
+ * «settled on an earlier closing owes only the difference» (G) follows. No walk over snapshot dues.
+ */
+export function tenantBalance(
+  close: PeriodClose,
+  tenantId: string,
+  now: { due: number; forfaitIncassato: number },
+): TenantLedger {
+  const marks = marksOf(close, tenantId);
+  const current = marks.at(-1) as (typeof marks)[number];
+  const earlierMain = marks
+    .slice(0, -1)
+    .map((m) => m.main)
+    .filter((m) => m !== undefined)
+    .at(-1);
+  const anyEarlier = marks.slice(0, -1).some((m) => m.main !== undefined || m.hasSup);
+  const own = current.own;
+  const snapshot = own === undefined ? 0 : snapshotDue(own);
+  const flatThen = own?.forfaitIncassato ?? 0;
+  const fni = own?.forfaitNonIncassato ?? 0;
+  const extraInSnapshot =
+    earlierMain?.flat === undefined ? 0 : Math.max(0, flatThen - earlierMain.flat);
+  const forfaitPaid = Math.min(Math.max(0, now.forfaitIncassato - flatThen), fni);
+  const lastFlat = current.main !== undefined ? current.main.flat : earlierMain?.flat;
+  // Without any main mark, only flat charge beyond what this snapshot lacked is extra (answer F;
+  // the app's imputation caps a month at its due, so real data never gets there).
+  const toCheck =
+    lastFlat === undefined
+      ? Math.max(0, now.forfaitIncassato - flatThen - fni)
+      : Math.max(0, now.forfaitIncassato - lastFlat);
+  const remaining = now.due + toCheck - current.prior - (current.main?.amount ?? 0) - current.sup;
+  const mainRemaining =
+    current.main !== undefined ? 0 : snapshot + extraInSnapshot - forfaitPaid - current.prior;
+  // The flat charge still missing, as far as the main still holds it.
+  const fniLeft =
+    current.main !== undefined
+      ? 0
+      : Math.min(Math.max(0, fni - forfaitPaid), Math.max(0, mainRemaining));
+  return {
+    status: current.main !== undefined ? 'saldato' : anyEarlier ? 'differenza' : 'da-saldare',
+    due: cents(now.due),
+    remaining: cents(remaining),
+    mainRemaining: cents(mainRemaining),
+    fniLeft: cents(fniLeft),
+    supplementary: cents(remaining - mainRemaining + current.sup),
+    supplementarySettled: cents(current.sup),
+    lostFlat: cents(Math.max(0, flatThen - now.forfaitIncassato)),
+    forfaitPaid: cents(forfaitPaid),
+    toCheck: cents(toCheck),
+  };
+}
+
+/**
+ * The marks of a closing a person must not lose when choosing between two versions of it
+ * (finding 6, `scegli-versione`): sent, settled, supplementary settled, reopened, earlier closings.
+ */
+export function closeMarks(close: PeriodClose): {
+  sentOn?: string;
+  settled: string[];
+  supplementarySettled: string[];
+  reopenedOn?: string;
+  earlierClosings: number;
+} {
+  return {
+    ...(close.sentOn === undefined ? {} : { sentOn: close.sentOn }),
+    settled: (close.settled ?? []).map((s) => s.tenantId),
+    supplementarySettled: (close.supplementarySettled ?? []).map((s) => s.tenantId),
+    ...(close.reopened === undefined ? {} : { reopenedOn: close.reopened.on }),
+    earlierClosings: close.history?.length ?? 0,
+  };
 }
 
 export const periodCloseId = (apartmentId: string, periodLabel: string): string =>
@@ -72,20 +268,90 @@ export function closingOf(
     tenancies: input.tenancies,
     asOf,
   });
-  // Both sorted by tenant id (`calcConguaglio` sorts its rows).
-  const was = close.snapshot.tenants.map((t) => [t.tenantId, t.forfaitIncassato, t.conguaglioPrec]);
-  const is = current.tenants.map((t) => [
-    t.tenantId,
-    t.forfaitIncassato,
-    t.condominio.conguaglioPrec,
-  ]);
-  const dataChanged = JSON.stringify(was) !== JSON.stringify(is);
+  // Answer K: last year's condominium settlement changed since the closing is supplementary too.
+  const prec = (rows: readonly { tenantId: string; conguaglioPrec: number }[]) =>
+    new Map(rows.map((t) => [t.tenantId, t.conguaglioPrec]));
+  const precThen = prec(close.snapshot.tenants);
+  const precNow = prec(
+    current.tenants.map((t) => ({
+      tenantId: t.tenantId,
+      conguaglioPrec: t.condominio.conguaglioPrec,
+    })),
+  );
+  const ids = (rows: readonly { tenantId: string }[]) =>
+    JSON.stringify(rows.map((t) => t.tenantId).sort());
+  const dataChanged = ids(close.snapshot.tenants) !== ids(current.tenants);
+  const collected = (rows: readonly { tenantId: string; forfaitIncassato: number }[]) =>
+    new Map(rows.map((t) => [t.tenantId, t.forfaitIncassato]));
+  const atClose = collected(close.snapshot.tenants);
+  const nowRows = new Map(current.tenants.map((t) => [t.tenantId, t]));
+  const tenants = supplementary.tenants.map((row): ClosingRow => {
+    const delta = cents(
+      row.delta + (precNow.get(row.tenantId) ?? 0) - (precThen.get(row.tenantId) ?? 0),
+    );
+    const today = nowRows.get(row.tenantId);
+    const forfaitDelta = cents((atClose.get(row.tenantId) ?? 0) - (today?.forfaitIncassato ?? 0));
+    // The one computation of the settlement (`tenantBalance`, fifth round).
+    const ledger = tenantBalance(close, row.tenantId, {
+      due: today?.due ?? 0,
+      forfaitIncassato: today?.forfaitIncassato ?? 0,
+    });
+    const left = ledger.supplementary - ledger.supplementarySettled;
+    // C2: «da verificare» only when nothing else is left of the supplementary; otherwise the
+    // action follows the amount and `toCheck` is beside it.
+    const action =
+      left === 0
+        ? ledger.toCheck > 0
+          ? 'da-verificare'
+          : 'nessuna'
+        : left < 0
+          ? 'da-rimborsare'
+          : row.departed
+            ? 'da-trattenere-o-richiedere'
+            : 'da-pagare';
+    return {
+      ...row,
+      delta,
+      forfaitDelta,
+      total: ledger.supplementary,
+      remaining: ledger.remaining,
+      mainRemaining: ledger.mainRemaining,
+      forfaitPaid: ledger.forfaitPaid,
+      toCheck: ledger.toCheck,
+      action,
+    };
+  });
+  const unsettled = tenants.filter((t) => t.mainRemaining !== 0).map((t) => t.tenantId);
+  const differences = unsettled.filter((id) => {
+    const today = nowRows.get(id);
+    return (
+      tenantBalance(close, id, {
+        due: today?.due ?? 0,
+        forfaitIncassato: today?.forfaitIncassato ?? 0,
+      }).status === 'differenza'
+    );
+  });
   return {
-    status: 'closed',
+    status: close.reopened === undefined ? 'closed' : 'reopened',
+    state:
+      close.reopened !== undefined
+        ? 'riaperto'
+        : close.sentOn === undefined
+          ? 'chiuso'
+          : unsettled.length === 0
+            ? 'saldato'
+            : 'inviato',
     closedAt: close.closedAt,
-    ...supplementary,
-    changed:
-      supplementary.unassignedDelta !== 0 || supplementary.tenants.some((t) => t.delta !== 0),
+    ...(close.sentOn === undefined ? {} : { sentOn: close.sentOn }),
+    settled: close.settled ?? [],
+    ...(close.reopened === undefined ? {} : { reopened: close.reopened }),
+    tenants,
+    unassignedDelta: supplementary.unassignedDelta,
+    unsettled,
+    differences,
+    changed: supplementary.unassignedDelta !== 0 || tenants.some((t) => t.total !== 0),
+    // C3: a flat charge that only covers what was missing changes nothing to check.
     dataChanged,
+    toCheck: tenants.some((t) => t.toCheck !== 0),
   };
 }

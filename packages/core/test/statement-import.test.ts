@@ -9,6 +9,7 @@ import {
   BillMatchSchema,
   MovementClassSchema,
   PaymentSchema,
+  PeriodCloseSchema,
   StatementReadError,
   StatementSchema,
   TransferSchema,
@@ -25,6 +26,7 @@ import {
   saveBankProfile,
   undoImport,
   undoOperation,
+  periodInputs,
   planMatch,
 } from '../src/index';
 import type { StatementCell, StatementTable } from '../src/index';
@@ -1258,5 +1260,118 @@ describe('C1 after an undone statement (review of 18 Nov 2026, point 7)', () => 
       written: [],
     });
     expect(await live(store)).toEqual([]);
+  });
+});
+
+describe('statement import and a closed period (F5, finding 11)', () => {
+  it('a statement with new movements is imported; taking back one with a counted movement is refused, naming it', async () => {
+    const { store, accountId, newId } = await seeded();
+    const a = file(
+      [['2026-10-05', 'Fornitore luce', '-90.00']],
+      declared('01/10/2026', '31/10/2026'),
+    );
+    const first = await importStatement(
+      store,
+      { accountId, fileBytes: a.bytes, fileName: 'a.csv', table: a.table },
+      'p1',
+      clock,
+      newId,
+    );
+    if (first.status !== 'imported') throw new Error('import');
+    const [tx] = await live(store);
+    if (tx === undefined) throw new Error('tx');
+    const luce = bill('b-ott', '2026-10-01', '2026-10-31', 9000);
+    const counted = BillMatchSchema.parse({
+      id: 'm-ott',
+      v: 1,
+      rev: 1,
+      itemType: 'bill',
+      itemId: luce.id,
+      transactionId: tx.id,
+      transactionDate: tx.date,
+      amount: 9000,
+      part: 'amount',
+      confirmed: true,
+      by: 'manual',
+    });
+    for (const [kind, record] of [
+      ['bill', luce],
+      ['match', counted],
+    ] as const) {
+      await commitChange(
+        store,
+        {
+          profileId: 'p1',
+          kind: 'test.seed',
+          summary: 'x',
+          changes: [{ path: recordPath(kind, record.id), after: record }],
+        },
+        clock,
+        newId,
+      );
+    }
+    const period = { apartmentId: 'apt', periodLabel: '2026-27', from: '2026-10', to: '2027-09' };
+    const close = PeriodCloseSchema.parse({
+      id: 'chiusura-apt-2026-27',
+      v: 1,
+      rev: 1,
+      ...period,
+      closedAt: clock(),
+      engineVersion: '0.1.0',
+      snapshot: { tenants: [], emptyBeds: 0 },
+      inputs: await periodInputs(store, period),
+    });
+    expect(close.inputs).toEqual([
+      'apartment/apt',
+      'bill/b-ott',
+      'match/m-ott',
+      `transaction/${tx.id}`,
+    ]);
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [{ path: recordPath('periodClose', close.id), after: close }],
+      },
+      clock,
+      newId,
+    );
+    // Taking back the first statement would delete the counted movement: refused, named.
+    expect(await undoImport(store, first.statement.id, 'p1', clock, newId)).toMatchObject({
+      status: 'refused',
+      recordIds: expect.arrayContaining(['m-ott']) as unknown,
+    });
+    // New movements of the closed months come in.
+    const b = file(
+      [
+        ['2026-10-05', 'Fornitore luce', '-90.00'],
+        ['2026-10-20', 'Fornitore gas', '-40.00'],
+      ],
+      declared('01/10/2026', '31/10/2026'),
+    );
+    const second = await importStatement(
+      store,
+      { accountId, fileBytes: b.bytes, fileName: 'b.csv', table: b.table },
+      'p1',
+      clock,
+      newId,
+    );
+    expect(second).toMatchObject({ status: 'imported', added: 1, alreadyKnown: 1 });
+    // The movement itself, written over directly, is refused by the guard with its path.
+    await expect(
+      commitChange(
+        store,
+        {
+          profileId: 'p1',
+          kind: 'test.seed',
+          summary: 'x',
+          changes: [{ path: recordPath('transaction', tx.id), before: tx, after: undefined }],
+        },
+        clock,
+        newId,
+      ),
+    ).rejects.toThrow(new RegExp(`transaction/${tx.id}`));
   });
 });

@@ -241,6 +241,7 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
         ],
       },
       recoveriesWaiting: 0,
+      toCheck: [],
     });
     const typed = await loadDepositReturn(store, returnInput({ conguaglio: cents(4000) }));
     expect(typed.status === 'computed' && typed.statement.lines[2]?.amount).toBe(-4000);

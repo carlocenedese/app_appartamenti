@@ -4,17 +4,20 @@
  * with it (`calcConguaglioSupplementare`). One `period.close` operation, undone with the
  * reconciliation undo. No amount or name in a summary.
  */
-import { closingOf, periodCloseId, snapshotOf } from './closing';
+import { closingOf, isLiveClose, periodCloseId, snapshotOf, tenantBalance } from './closing';
+import { ClosingUndoError, periodInputs } from './closed-period-guard';
 import type { PeriodClosed } from './closing';
 import { SettlementInputError, calcConguaglio, canClosePeriod } from './conguaglio';
 import type { CloseMissing, ConguaglioResult, SettlementInputErrorCode } from './conguaglio';
 import { loadExcelInput } from './excel-store';
 import type { ExcelInput } from './excel';
 import { commitChange, writesBlocked } from './journal';
-import { PeriodCloseSchema, SupplySchema } from './model';
+import { BankTransactionSchema, PeriodCloseSchema, SupplySchema } from './model';
 import type { PeriodClose } from './model';
 import { isoDate, monthsInPeriod } from './period';
 import type { ISODate } from './period';
+import { cents } from './money';
+import type { Cents } from './money';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -50,10 +53,16 @@ async function computed(
   }
 }
 
-/** The live closing of the period, if any. */
-async function liveClose(store: Store, query: Query): Promise<PeriodClose | undefined> {
+/** The closing record of the period, not deleted, reopened or not (F3). */
+async function currentClose(store: Store, query: Query): Promise<PeriodClose | undefined> {
   const id = periodCloseId(query.apartmentId, query.periodLabel);
   return (await loadAll(store, 'periodClose', PeriodCloseSchema)).records.find((c) => c.id === id);
+}
+
+/** The live closing of the period (closed, not reopened), if any. */
+async function liveClose(store: Store, query: Query): Promise<PeriodClose | undefined> {
+  const close = await currentClose(store, query);
+  return close !== undefined && isLiveClose(close) ? close : undefined;
 }
 
 /**
@@ -91,6 +100,11 @@ export async function closePeriod(
     return { status: 'refused', reason: 'already-closed' };
   }
   const { input, result } = calc;
+  const id = periodCloseId(query.apartmentId, query.periodLabel);
+  const before = (
+    await loadAll(store, 'periodClose', PeriodCloseSchema, { includeDeleted: true })
+  ).records.find((c) => c.id === id);
+  const reopened = before !== undefined && before.deleted !== true ? before.reopened : undefined;
   const months = monthsInPeriod(
     isoDate(`${input.period.from}-01`),
     isoDate(`${input.period.to}-01`),
@@ -102,7 +116,26 @@ export async function closePeriod(
     // `calcConguaglio` lists only the items that touch the period: each one holds it open.
     pending: result.pending.map((p) => ({ itemType: p.itemType, itemId: p.itemId, months })),
   });
-  if (!check.ok) return { status: 'refused', reason: 'cannot-close', missing: check.missing };
+  // H (answer of user1, 18 Nov 2026): closing a reopened period again, the flat charge counted
+  // at the previous closing and no longer collected does not hold it open: it becomes the line
+  // «Forfait non incassato» (`forfaitNonIncassato`). Only up to what the previous snapshot had
+  // collected more than today; a period never closed keeps the refusal.
+  const allowance = new Map<string, number>();
+  if (reopened !== undefined && before !== undefined) {
+    for (const t of before.snapshot.tenants) {
+      const now = result.tenants.find((r) => r.tenantId === t.tenantId)?.forfaitIncassato ?? 0;
+      allowance.set(t.tenantId, t.forfaitIncassato + (t.forfaitNonIncassato ?? 0) - now);
+    }
+  }
+  const forfaitMissing = new Map<string, number>();
+  const missing = check.missing.filter((m) => {
+    if (m.kind !== 'forfait') return true;
+    const used = (forfaitMissing.get(m.tenantId) ?? 0) + m.amount;
+    if (used > (allowance.get(m.tenantId) ?? 0)) return true;
+    forfaitMissing.set(m.tenantId, used);
+    return false;
+  });
+  if (missing.length > 0) return { status: 'refused', reason: 'cannot-close', missing };
   // R3: an apartment with a supply of the shared TARI notice closes only after the December
   // notice inside the period is debited (a real match, not assumed), so that the September share
   // of that notice does not open the period again (F4, decided by user1 on 18 Nov 2026).
@@ -126,10 +159,24 @@ export async function closePeriod(
       return { status: 'refused', reason: 'tari-december-missing', month: missing };
     }
   }
-  const id = periodCloseId(query.apartmentId, query.periodLabel);
-  const before = (
-    await loadAll(store, 'periodClose', PeriodCloseSchema, { includeDeleted: true })
-  ).records.find((c) => c.id === id);
+  // F3: a closing after a reopening keeps the one before in `history`, never deleted.
+  const earlier =
+    before !== undefined && reopened !== undefined
+      ? [
+          ...(before.history ?? []),
+          {
+            closedAt: before.closedAt,
+            engineVersion: before.engineVersion,
+            snapshot: before.snapshot,
+            ...(before.sentOn === undefined ? {} : { sentOn: before.sentOn }),
+            ...(before.settled === undefined ? {} : { settled: before.settled }),
+            ...(before.supplementarySettled === undefined
+              ? {}
+              : { supplementarySettled: before.supplementarySettled }),
+            reopened,
+          },
+        ]
+      : (before?.history ?? []);
   const after = PeriodCloseSchema.parse({
     id,
     v: 1,
@@ -140,7 +187,21 @@ export async function closePeriod(
     to: input.period.to,
     closedAt: clock(),
     engineVersion: result.engineVersion,
-    snapshot: snapshotOf(result),
+    snapshot: {
+      ...snapshotOf(result),
+      tenants: snapshotOf(result).tenants.map((t) => {
+        const fni = forfaitMissing.get(t.tenantId);
+        return fni === undefined ? t : { ...t, forfaitNonIncassato: fni };
+      }),
+    },
+    ...(earlier.length === 0 ? {} : { history: earlier }),
+    // Finding 4: what the snapshot counted, read from the folder (F5 guard).
+    inputs: await periodInputs(store, {
+      apartmentId: query.apartmentId,
+      periodLabel: query.periodLabel,
+      from: input.period.from,
+      to: input.period.to,
+    }),
   });
   const operation = await commitChange(
     store,
@@ -175,7 +236,281 @@ export async function loadPeriodClosing(
 ): Promise<PeriodClosingResult> {
   const calc = await computed(store, query);
   if (calc.status === 'refused') return calc;
-  const close = await liveClose(store, query);
+  const close = await currentClose(store, query);
   if (close === undefined) return { status: 'open' };
   return closingOf(close, calc.result, calc.input, asOf);
+}
+
+export type MarkCloseResult =
+  | { status: 'saved'; operationId: string; closeId: string }
+  | { status: 'unchanged'; closeId: string }
+  | {
+      status: 'refused';
+      reason:
+        | 'inconsistent-store'
+        | 'not-closed'
+        | 'unknown-tenant'
+        | 'unknown-movement'
+        | 'missing-reason'
+        | 'no-supplementary'
+        | 'invalid-input';
+    }
+  /**
+   * The main settlement of this closing is already marked and a supplementary is left (`amount`,
+   * positive owed by the tenant): marking the main again would settle nothing, so it is refused.
+   */
+  | { status: 'refused'; reason: 'use-supplementary'; amount: Cents };
+
+/**
+ * One change of the live closing of the period (F1, F3), in one operation of `kind`: `change`
+ * gives the new fields, or a refusal. `not-closed` without a live closing; `unchanged` when the
+ * record would stay the same.
+ */
+async function changeClose(
+  store: Store,
+  query: Query,
+  kind: string,
+  summary: string,
+  change: (
+    close: PeriodClose,
+  ) => Promise<
+    { fields: Record<string, unknown> } | Extract<MarkCloseResult, { status: 'refused' }>
+  >,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+  reason?: string,
+): Promise<MarkCloseResult> {
+  if (await writesBlocked(store)) return { status: 'refused', reason: 'inconsistent-store' };
+  const before = await liveClose(store, query);
+  if (before === undefined) return { status: 'refused', reason: 'not-closed' };
+  const changed = await change(before);
+  if (!('fields' in changed)) return changed;
+  const parsed = PeriodCloseSchema.safeParse({ ...before, ...changed.fields });
+  if (!parsed.success) return { status: 'refused', reason: 'invalid-input' };
+  if (JSON.stringify(parsed.data) === JSON.stringify(before)) {
+    return { status: 'unchanged', closeId: before.id };
+  }
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind,
+      apartmentId: query.apartmentId,
+      summary,
+      ...(reason === undefined ? {} : { reason }),
+      changes: [{ path: recordPath('periodClose', before.id), before, after: parsed.data }],
+    },
+    clock,
+    newId,
+  );
+  return { status: 'saved', operationId: operation.id, closeId: before.id };
+}
+
+/** F1: the settlement of the closed period was sent to the tenants on `on` (user1's word). */
+export function markPeriodSent(
+  store: Store,
+  input: Query & { on: string },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<MarkCloseResult> {
+  return changeClose(
+    store,
+    input,
+    'period.send',
+    'Conguaglio segnato come inviato.',
+    () => Promise.resolve({ fields: { sentOn: input.on } }),
+    profileId,
+    clock,
+    newId,
+  );
+}
+
+/**
+ * F1: user1 marks the settlement of `tenantId` as settled on `on`, with the bank movement that
+ * paid it if he gives one. Never set by the app on its own. Refused: a tenant who is not in the
+ * snapshot (`unknown-tenant`), a movement that is not a live one (`unknown-movement`).
+ */
+export function markTenantSettled(
+  store: Store,
+  input: Query & {
+    tenantId: string;
+    on: string;
+    transactionId?: string;
+    /** D: the supplementary settlement of the tenant, as it is today, instead of the closing's. */
+    supplementary?: boolean;
+  },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<MarkCloseResult> {
+  return changeClose(
+    store,
+    input,
+    'period.settle',
+    input.supplementary === true
+      ? 'Conguaglio supplementare di un inquilino segnato come saldato.'
+      : 'Conguaglio di un inquilino segnato come saldato.',
+    async (close) => {
+      if (!close.snapshot.tenants.some((t) => t.tenantId === input.tenantId)) {
+        return { status: 'refused', reason: 'unknown-tenant' } as const;
+      }
+      if (
+        input.transactionId !== undefined &&
+        !(await loadAll(store, 'transaction', BankTransactionSchema)).records.some(
+          (t) => t.id === input.transactionId,
+        )
+      ) {
+        return { status: 'refused', reason: 'unknown-movement' } as const;
+      }
+      const entry = {
+        tenantId: input.tenantId,
+        on: input.on,
+        ...(input.transactionId === undefined ? {} : { transactionId: input.transactionId }),
+      };
+      // Fifth round: the mark stores what it declares settled (`amount`) and, for the main, the
+      // flat charge collected now (`flatCollected`), from the one computation (`tenantBalance`).
+      const calc = await computed(store, input);
+      if (calc.status === 'refused') return { status: 'refused', reason: 'invalid-input' } as const;
+      const today = calc.result.tenants.find((t) => t.tenantId === input.tenantId);
+      const now = { due: today?.due ?? 0, forfaitIncassato: today?.forfaitIncassato ?? 0 };
+      const others = (close.settled ?? []).filter((s) => s.tenantId !== input.tenantId);
+      // Flat charge «da verificare» never blocks a mark (final review) and no mark changes it: the
+      // supplementary already leaves the extra out, and a main mark keeps the flat charge of the
+      // last main mark, so the extra stays to check, never credited nor folded in.
+      const ledger = tenantBalance(close, input.tenantId, now);
+      if (input.supplementary === true) {
+        // The supplementary of today: a later difference is still due.
+        const amount = ledger.supplementary;
+        if (amount === 0) return { status: 'refused', reason: 'no-supplementary' } as const;
+        const rest = (close.supplementarySettled ?? []).filter(
+          (s) => s.tenantId !== input.tenantId,
+        );
+        return {
+          fields: {
+            supplementarySettled: [...rest, { ...entry, amount }].sort((a, b) =>
+              a.tenantId < b.tenantId ? -1 : 1,
+            ),
+          },
+        };
+      }
+      // Marked again on this closing: the date and movement change, never what it declared.
+      const again = (close.settled ?? []).find((s) => s.tenantId === input.tenantId);
+      // Marked again with something left of the supplementary: the owner would believe he settled
+      // it, but this mark changes no amount (final review): refused, pointing at --supplementare.
+      const left = ledger.supplementary - ledger.supplementarySettled;
+      if (again?.amount !== undefined && again.flatCollected !== undefined && left !== 0) {
+        return { status: 'refused', reason: 'use-supplementary', amount: cents(left) } as const;
+      }
+      const declared =
+        again?.amount !== undefined && again.flatCollected !== undefined
+          ? { amount: again.amount, flatCollected: again.flatCollected }
+          : {
+              amount: tenantBalance({ ...close, settled: others }, input.tenantId, now)
+                .mainRemaining,
+              flatCollected: cents(now.forfaitIncassato - ledger.toCheck),
+            };
+      return {
+        fields: {
+          settled: [...others, { ...entry, ...declared }].sort((a, b) =>
+            a.tenantId < b.tenantId ? -1 : 1,
+          ),
+        },
+      };
+    },
+    profileId,
+    clock,
+    newId,
+  );
+}
+
+/**
+ * F3: reopens the closed period on `on` for `reason` (not empty). The snapshot stays, with the
+ * marks of F1, and a later `closePeriod` moves it into `history`: nothing is deleted. Until then
+ * the period is open (`loadPeriodClosing` says `reopened`, compared with that snapshot).
+ */
+export function reopenPeriod(
+  store: Store,
+  input: Query & { on: string; reason: string },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<MarkCloseResult> {
+  const reason = input.reason.trim();
+  return changeClose(
+    store,
+    input,
+    'period.reopen',
+    'Periodo di conguaglio riaperto.',
+    () =>
+      Promise.resolve(
+        reason === ''
+          ? ({ status: 'refused', reason: 'missing-reason' } as const)
+          : { fields: { reopened: { on: input.on, reason } } },
+      ),
+    profileId,
+    clock,
+    newId,
+    reason,
+  );
+}
+
+/**
+ * Finding 9: an undo that would close a period without a new snapshot is refused in the core,
+ * whoever calls `undoOperation`: undoing a closing (`closing-changed`) or a reopening
+ * (`reopen-changed`) after the costs or the data of the period changed, or when the settlement
+ * cannot be computed now (`closing-unknown`). Called by `undoOperation` before it writes.
+ */
+export async function refuseClosingUndo(
+  store: Store,
+  toUndo: readonly {
+    kind: string;
+    changes: readonly { path: string; before?: unknown; after?: unknown }[];
+  }[],
+  asOf: ISODate,
+): Promise<void> {
+  for (const operation of toUndo) {
+    // Finding 4 (third review): any undo that puts back a live closing (the undo of an undo of a
+    // closing, at any depth) is checked against that closing's snapshot.
+    for (const change of operation.changes) {
+      if (!change.path.startsWith('_app/dati/periodClose/')) continue;
+      const back = PeriodCloseSchema.safeParse(change.before);
+      if (!back.success || !isLiveClose(back.data)) continue;
+      // Already closed now (the undo of a mark, sent or settled): nothing closes again.
+      const now = PeriodCloseSchema.safeParse(await store.readJson(change.path));
+      if (now.success && isLiveClose(now.data)) continue;
+      const query = { apartmentId: back.data.apartmentId, periodLabel: back.data.periodLabel };
+      const calc = await computed(store, query);
+      if (calc.status === 'refused') {
+        throw new ClosingUndoError('closing-unknown', query.apartmentId, query.periodLabel);
+      }
+      const since = closingOf(back.data, calc.result, calc.input, asOf);
+      if (since.changed || since.dataChanged) {
+        // Fourth round, C: the period is reopened now (whatever the operation): its message.
+        throw new ClosingUndoError(
+          operation.kind === 'period.reopen' || (now.success && now.data.reopened !== undefined)
+            ? 'reopen-changed'
+            : 'closing-changed',
+          query.apartmentId,
+          query.periodLabel,
+        );
+      }
+    }
+    if (operation.kind !== 'period.close' && operation.kind !== 'period.reopen') continue;
+    const parsed = PeriodCloseSchema.safeParse(operation.changes[0]?.after);
+    if (!parsed.success || parsed.data.deleted === true) continue;
+    const query = { apartmentId: parsed.data.apartmentId, periodLabel: parsed.data.periodLabel };
+    const closing = await loadPeriodClosing(store, query, asOf);
+    if (closing.status === 'refused') {
+      throw new ClosingUndoError('closing-unknown', query.apartmentId, query.periodLabel);
+    }
+    if (closing.status !== 'open' && (closing.changed || closing.dataChanged)) {
+      throw new ClosingUndoError(
+        operation.kind === 'period.reopen' ? 'reopen-changed' : 'closing-changed',
+        query.apartmentId,
+        query.periodLabel,
+      );
+    }
+  }
 }
