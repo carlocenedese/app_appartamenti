@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   DATA_FORMAT,
@@ -21,6 +21,9 @@ import { COMMAND_HELP } from './estratti-aiuto.mjs';
 import * as excelTool from './excel.mjs';
 import * as moduliTool from './moduli.mjs';
 import { COMMAND_NAMES, MESSAGES, main } from './estratti.mjs';
+
+// Each test spawns the CLI several times: Windows runners need more than the 5 s default.
+vi.setConfig({ testTimeout: 60_000 });
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PROFILE = {
