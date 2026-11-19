@@ -68,22 +68,10 @@ import {
   YearMonthSchema,
   YearSchema,
   parseEuro,
-  saveSupply,
-  saveCondoInstalment,
-  saveSettings,
-  loadSettings,
-  closePeriod,
-  loadPeriodClosing,
-  markPeriodSent,
-  markFlatChecked,
-  markRentMissing,
-  markTenantSettled,
-  reopenPeriod,
   equalShares,
   billFileMove,
   PayableKindSchema,
   DATA_FORMAT,
-  formatEuro,
   WORKSPACE_PATH,
   findWorkspace,
   raiseDataFormat,
@@ -155,6 +143,16 @@ import {
   importBillCommand,
   undoBillCommand,
   dashboardCommand,
+  saveCondoInstalmentCommand,
+  settingsCommand,
+  closePeriodCommand,
+  periodClosingCommand,
+  markPeriodSentCommand,
+  markTenantSettledCommand,
+  reopenPeriodCommand,
+  markFlatCheckedCommand,
+  markRentMissingCommand,
+  saveSupplyCommand,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
@@ -1500,7 +1498,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     );
     if (positionals.length > 0 || found === null) throw invalid('bad-arguments');
     const amountOr0 = (text) => (text === undefined ? euro('0,00') : euro(text));
-    const result = await saveCondoInstalment(
+    return saveCondoInstalmentCommand(
       store,
       {
         id: values.id,
@@ -1514,37 +1512,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         conguaglioPrec: amountOr0(values['conguaglio-prec']),
         ...(values.straordinaria === true ? { straordinaria: true } : {}),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') {
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.reason === 'esercizio-format'
-          ? {
-              documentIds: result.documentIds,
-              ...(result.documentIds.length === 0
-                ? { message: MESSAGES['instalment-esercizio-format'] }
-                : {}),
-            }
-          : result.reason === 'instalment-in-use'
-            ? { recordIds: result.recordIds }
-            : result.reason === 'id-collision'
-              ? { message: MESSAGES['instalment-id-collision'] }
-              : {},
-      );
-    }
-    return {
-      status: result.status,
-      instalmentId: result.instalmentId,
-      ...optional('operationId', result.operationId),
-      ...optional(
-        'warnings',
-        result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
-      ),
-    };
   }
 
   // I9 (review of 18 Nov 2026): the workspace settings, read, or set with --tolleranza-imu
@@ -1552,34 +1521,17 @@ async function command(name, values, positionals, store, who, clock, newId) {
   if (name === 'impostazioni') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const imu = values['tolleranza-imu'];
-    let written;
-    if (imu !== undefined) {
-      const result = await saveSettings(
-        store,
-        // 0 is no tolerance at all (the schema allows it); basisPoints starts at 0,01%.
-        {
-          imuToleranceBp:
-            imu === 'predefinita' ? null : /^0(,0{1,2})?$/.test(imu) ? 0 : basisPoints(imu),
-        },
-        who,
-        clock,
-        newId,
-      );
-      if (result.status === 'refused') throw new Stop('rejected', result.reason);
-      written = result;
-    }
-    const settings = await loadSettings(store);
-    return {
-      status: written?.status ?? 'ok',
-      ...optional('operationId', written?.operationId),
-      settings: {
-        // Basis points (100 is 1%): no amount-like text in the output.
-        imuTolerance: {
-          basisPoints: settings.imuToleranceBp.value,
-          isDefault: settings.imuToleranceBp.isDefault,
-        },
-      },
-    };
+    return settingsCommand(
+      store,
+      imu === undefined
+        ? {}
+        : // 0 is no tolerance at all (the schema allows it); basisPoints starts at 0,01%.
+          {
+            imuToleranceBp:
+              imu === 'predefinita' ? null : /^0(,0{1,2})?$/.test(imu) ? 0 : basisPoints(imu),
+          },
+      ctx,
+    );
   }
 
   // I2, R5 (review of 18 Nov 2026): the closing of a settlement period with its snapshot, and the
@@ -1589,101 +1541,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
     need(values, 'appartamento', 'periodo');
     if (positionals.length > 0) throw invalid('bad-arguments');
     const query = { apartmentId: values.appartamento, periodLabel: values.periodo };
-    const details = values.dettagli === true;
-    if (name === 'chiudi-periodo') {
-      const result = await closePeriod(store, query, who, clock, newId);
-      if (result.status === 'refused') {
-        throw new Stop(
-          'rejected',
-          result.reason,
-          result.reason === 'tari-december-missing'
-            ? { month: result.month }
-            : result.reason === 'cannot-close'
-              ? {
-                  missing: result.missing.map(({ amount, ...m }) =>
-                    details && amount !== undefined ? { ...m, amount } : m,
-                  ),
-                }
-              : result.reason === 'settlement-error'
-                ? { code: result.code, message: MESSAGES['period-settlement-error'] }
-                : result.reason === 'ambiguous-period'
-                  ? { message: MESSAGES['ambiguous-period-label'] }
-                  : {},
-        );
-      }
-      // Plan 22: the rent not collected of a reopened period closed again, as a warning.
-      if (result.rentMissing === undefined) return result;
-      return {
-        ...result,
-        rentMissing: result.rentMissing.map(({ amount, ...m }) => (details ? { ...m, amount } : m)),
-        warning: MESSAGES['rent-missing'],
-      };
-    }
-    const result = await loadPeriodClosing(store, query, day(clock().slice(0, 10)));
-    if (result.status === 'refused') {
-      const message =
-        result.reason === 'ambiguous-period'
-          ? 'ambiguous-period-label'
-          : result.reason === 'settlement-error'
-            ? 'period-settlement-error'
-            : result.reason;
-      throw new Stop('rejected', result.reason, {
-        ...optional('code', result.code),
-        message: MESSAGES[message],
-      });
-    }
-    if (result.status === 'open') return { status: 'open' };
-    const settledIds = new Set(result.settled.map((s) => s.tenantId));
-    return {
-      status: result.status,
-      // F1, F3: the step of the closing.
-      state: result.state,
-      closedAt: result.closedAt,
-      ...optional('sentOn', result.sentOn),
-      ...(result.reopened === undefined ? {} : { reopenedOn: result.reopened.on }),
-      changed: result.changed,
-      dataChanged: result.dataChanged,
-      tenants: result.tenants.map(
-        ({
-          delta,
-          forfaitDelta,
-          total,
-          remaining,
-          mainRemaining,
-          forfaitPaid,
-          toCheck,
-          rentMissing,
-          rentAsked,
-          rentLost,
-          flatCredit,
-          ...t
-        }) => ({
-          ...t,
-          settled: settledIds.has(t.tenantId),
-          // Plan 22: the row «Canone non incassato» (amount only with --dettagli).
-          ...(rentMissing === 0 ? {} : { rentMissing: details ? rentMissing : true }),
-          ...(details && rentAsked !== 0 ? { rentAsked } : {}),
-          ...(details && rentLost !== 0 ? { rentLost } : {}),
-          // F11: the flat charge no longer collected is a line of its own; fourth round A, B: the
-          // supplementary computed once (`total`) and the flat charge «da verificare» (`toCheck`).
-          ...(details
-            ? {
-                delta,
-                forfaitDelta,
-                total,
-                remaining,
-                mainRemaining,
-                forfaitPaid,
-                toCheck,
-                // Plan 22: the flat charge checked as a credit, still to check.
-                flatCredit,
-              }
-            : {}),
-        }),
-      ),
-      ...(result.toCheck ? { toCheck: true, warning: MESSAGES['forfait-to-check'] } : {}),
-      ...(details ? { unassignedDelta: result.unassignedDelta } : {}),
-    };
+    const options = { details: values.dettagli === true };
+    return name === 'chiudi-periodo'
+      ? closePeriodCommand(store, query, ctx, options)
+      : periodClosingCommand(store, query, ctx, options);
   }
 
   // F1, F3 (decided by user1 on 18 Nov 2026): sent, settled per tenant, reopened with a reason.
@@ -1692,12 +1553,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const query = { apartmentId: values.appartamento, periodLabel: values.periodo };
     const on = day(values.data);
-    let result;
-    if (name === 'invia-conguaglio') {
-      result = await markPeriodSent(store, { ...query, on }, who, clock, newId);
-    } else if (name === 'conguaglio-saldato') {
+    if (name === 'invia-conguaglio') return markPeriodSentCommand(store, { ...query, on }, ctx);
+    if (name === 'conguaglio-saldato') {
       need(values, 'inquilino');
-      result = await markTenantSettled(
+      return markTenantSettledCommand(
         store,
         {
           ...query,
@@ -1707,44 +1566,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
           // D: the supplementary settlement instead of the closing's.
           ...(values.supplementare === true ? { supplementary: true } : {}),
         },
-        who,
-        clock,
-        newId,
-      );
-    } else {
-      need(values, 'motivo');
-      result = await reopenPeriod(
-        store,
-        { ...query, on, reason: values.motivo },
-        who,
-        clock,
-        newId,
+        ctx,
       );
     }
-    if (result.status === 'refused' && result.reason === 'use-supplementary') {
-      // The main is already settled and a supplementary is left: the amount, in euro.
-      const amount = formatEuro(Math.abs(result.amount));
-      throw new Stop('rejected', result.reason, {
-        message:
-          result.amount < 0
-            ? `Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare a favore dell’inquilino di ${amount}: usa --supplementare.`
-            : `Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare di ${amount}: usa --supplementare.`,
-      });
-    }
-    if (result.status === 'refused') {
-      const message = {
-        'unknown-tenant': 'unknown-tenant-in-close',
-        'unknown-movement': 'unknown-movement-in-close',
-        'no-supplementary': 'no-supplementary',
-        'invalid-input': 'invalid-close-input',
-      }[result.reason];
-      throw new Stop(
-        'rejected',
-        result.reason,
-        message === undefined ? {} : { message: MESSAGES[message] },
-      );
-    }
-    return result;
+    need(values, 'motivo');
+    return reopenPeriodCommand(store, { ...query, on, reason: values.motivo }, ctx);
   }
 
   // Plan 22 (decision 3 and answer 2 of user1, 19 Nov 2026): the flat charge «da verificare»
@@ -1756,7 +1582,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !Object.hasOwn(outcomes, values.esito)) {
       throw invalid('bad-arguments');
     }
-    const result = await (name === 'forfait-verificato' ? markFlatChecked : markRentMissing)(
+    return (name === 'forfait-verificato' ? markFlatCheckedCommand : markRentMissingCommand)(
       store,
       {
         apartmentId: values.appartamento,
@@ -1766,25 +1592,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         outcome: outcomes[values.esito],
         ...optional('transactionId', values.movimento),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') {
-      const message = {
-        'unknown-tenant': 'unknown-tenant-in-close',
-        'unknown-movement': 'unknown-movement-in-close',
-        'nothing-to-check': 'nothing-to-check',
-        'nothing-to-mark': 'nothing-to-mark',
-        'invalid-input': 'invalid-close-input',
-      }[result.reason];
-      throw new Stop(
-        'rejected',
-        result.reason,
-        message === undefined ? {} : { message: MESSAGES[message] },
-      );
-    }
-    return result;
   }
 
   // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
@@ -1806,23 +1615,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
             if (found === null) throw invalid('bad-arguments');
             return { apartmentId: found[1], basisPoints: basisPoints(found[2]) };
           });
-    const result = await saveSupply(
+    return saveSupplyCommand(
       store,
       { label: values.etichetta.trim(), rows, note: '' },
-      who,
-      clock,
-      newId,
+      ctx,
       // Plan 22: new weights of an existing supply from a month («valido dal»).
       values.dal === undefined ? {} : { validFrom: month(values.dal) },
     );
-    if (result.status === 'refused') {
-      throw new Stop('rejected', result.reason, optional('supplyId', result.supplyId));
-    }
-    return {
-      status: result.status,
-      supplyId: result.supplyId,
-      ...optional('operationId', result.operationId),
-    };
   }
 
   // Review of 18 Nov 2026 (annullo, point 2): the live records pointing at a missing or deleted
