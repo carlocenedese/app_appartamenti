@@ -142,13 +142,17 @@ export async function saveSupply(
     return { status: 'refused', reason: 'unknown-apartment' };
   }
   const { codes } = options;
-  if (codes !== undefined) {
+  const key = foldText(draft.label);
+  const same = (await liveSupplies(store)).find((s) => foldText(s.label) === key);
+  // Without `codes` the supply keeps its own: checked against the apartments given (minor 1).
+  const checked = codes ?? same?.supplyCodes;
+  if (checked !== undefined) {
     const missing = draft.rows
       .map((r) => known.find((a) => a.id === r.apartmentId))
       .filter(
         (a) =>
           a !== undefined &&
-          !codes.every((c) => (a.supplyCodes ?? []).some((own) => sameCode(own, c))),
+          !checked.every((c) => (a.supplyCodes ?? []).some((own) => sameCode(own, c))),
       )
       .map((a) => a?.id ?? '')
       .sort();
@@ -167,8 +171,6 @@ export async function saveSupply(
           },
           'supply',
         );
-  const key = foldText(draft.label);
-  const same = (await liveSupplies(store)).find((s) => foldText(s.label) === key);
   if (same !== undefined) {
     const { apartments: rows } = checkedDraft(draft);
     if (JSON.stringify(same.apartments) === JSON.stringify(rows)) {

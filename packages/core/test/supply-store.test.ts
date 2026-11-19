@@ -16,6 +16,8 @@ import {
   recordPath,
   removeSupply,
   saveApartment,
+  undoBlockedBy,
+  yearMonth,
   saveSupply,
   updateSupply,
 } from '../src/index';
@@ -357,6 +359,45 @@ describe('saveSupply (CLI, review of 18 Nov 2026, E5)', () => {
         ids('a'),
       ),
     ).toMatchObject({ status: 'updated' });
+  });
+
+  it('F12: new apartments from a month keep the codes consistent; an undo cannot break them', async () => {
+    const store = await withApartments();
+    const added = await saveApartment(
+      store,
+      { id: 'apt-b', supplyCodes: ['COD-INVENTATO-2'] },
+      'p1',
+      clock,
+      ids('a'),
+    );
+    expect(added).toMatchObject({ status: 'updated', operationId: 'a-1' });
+    const one = {
+      label: 'Utenza Z',
+      rows: [{ apartmentId: 'apt-b', basisPoints: 10000 }],
+      note: '',
+    };
+    expect(
+      await saveSupply(store, one, 'p1', clock, ids(), { codes: ['COD-INVENTATO-2'] }),
+    ).toMatchObject({ status: 'saved', supplyId: 'id-1' });
+    // From a month, to apt-l too, without --codici: apt-l lacks the supply's code.
+    expect(
+      await saveSupply(
+        store,
+        {
+          ...one,
+          rows: [
+            { apartmentId: 'apt-b', basisPoints: 5000 },
+            { apartmentId: 'apt-l', basisPoints: 5000 },
+          ],
+        },
+        'p1',
+        clock,
+        ids('d'),
+        { validFrom: yearMonth('2026-01') },
+      ),
+    ).toEqual({ status: 'refused', reason: 'codes-not-in-apartment', apartmentIds: ['apt-l'] });
+    // Undoing the apartment's codes would leave the supply's code out.
+    expect(await undoBlockedBy(store, 'a-1')).toEqual(['id-1']);
   });
 
   it('links once; the same request again is unchanged; the same label otherwise is refused', async () => {
