@@ -215,6 +215,12 @@ export interface ExcelInput extends ConguaglioInput {
   freeDebits?: FreeDebit[];
   /** The live closing of the period (R5), when it is closed. */
   closing?: PeriodClose;
+  /**
+   * B5 (a), decided by user1 on 19 Nov 2026: rent paid in excess moved (`income.excess`) into a
+   * month of this closed period after its closing. Taken out of `payments`, it is a line of the
+   * supplementary settlement of the tenant (a credit), never the flat charge of the month.
+   */
+  excessMoved?: { paymentId: string; tenantId: string; amount: Cents }[];
 }
 
 /**

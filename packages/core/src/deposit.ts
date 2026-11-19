@@ -504,6 +504,10 @@ async function closedPeriodLines(
       due: today?.due ?? 0,
       forfaitIncassato: today?.forfaitIncassato ?? 0,
       payments: flatPaymentsOf(loaded.input.payments, input.tenantId, close.from, close.to),
+      // B5 (a): rent paid in excess moved into the closed months, in the supplementary.
+      excessMoved: (loaded.input.excessMoved ?? [])
+        .filter((m) => m.tenantId === input.tenantId)
+        .reduce((sum, m) => sum + m.amount, 0),
     });
     if (balance.toCheck > 0) {
       toCheck.push({

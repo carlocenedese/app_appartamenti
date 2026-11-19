@@ -12,6 +12,7 @@ import {
   confirmRentExcess,
   loadAll,
   loadPeriodClosing,
+  loadRentExcesses,
   planIncome,
   recordPath,
   recordSchemas,
@@ -224,6 +225,28 @@ describe('confirmRentExcess (B5)', () => {
     });
   });
 
+  it('a chain of advances keeps the total of every movement', async () => {
+    const store = await excessStore([february]);
+    await confirmRentExcess(store, 'p-eccedenza-pay-feb', 'p1', clock, ids('x'));
+    // March's own transfer arrives: March now has 40,00 more, an advance to April.
+    await write(
+      store,
+      'payment',
+      payment('t-a', '2026-03', 48000, { id: 'pay-mar', transactionId: 'tx-mar' }),
+    );
+    const next = (await planIncome(store)).result.excesses;
+    expect(next.map((e) => [e.month, e.targets])).toEqual([
+      ['2026-03', [{ month: '2026-04', amount: 4000 }]],
+    ]);
+    await confirmRentExcess(store, next[0]?.id ?? '', 'p1', clock, ids('y'));
+    const byTx = new Map<string, number>();
+    for (const p of await payments(store)) {
+      if (p.deleted === true || p.transactionId === undefined) continue;
+      byTx.set(p.transactionId, (byTx.get(p.transactionId) ?? 0) + p.amount);
+    }
+    expect(Object.fromEntries(byTx)).toEqual({ 'tx-feb': 52000, 'tx-mar': 48000 });
+  });
+
   it('moves the whole payment to the month when the excess is all of it', async () => {
     const extra = payment('t-a', '2026-02', 3000, { id: 'pay-feb-extra', date: february.date });
     const full = payment('t-a', '2026-02', 48000, { id: 'pay-feb-a', date: '2026-02-01' as never });
@@ -429,12 +452,12 @@ describe('confirmRentExcess (B5)', () => {
     const before = await row();
     const result = await confirmRentExcess(store, 'p-eccedenza-p-2026-10', 'p1', clock, ids('x'));
     expect(result).toMatchObject({ status: 'confirmed' });
-    // Observed (R391): the 10,00 now in January covers the flat charge missing at the closing
-    // (R358, H): the main due falls by 10,00; the supplementary total does not change.
-    expect(await row()).toEqual({
-      ...before,
-      forfaitPaid: (before?.forfaitPaid ?? 0) + 1000,
-      mainRemaining: (before?.mainRemaining ?? 0) - 1000,
+    // B5 (a), decided by user1 on 19 Nov 2026: the 10,00 now in January is a line of the
+    // supplementary settlement of 2025-26 (a credit), not the flat charge of the month.
+    expect(await row()).toEqual({ ...before, total: (before?.total ?? 0) - 1000 });
+    const closing = await loadPeriodClosing(store, query, isoDate('2026-12-31'));
+    expect(closing).toMatchObject({
+      tenants: [{ excessMoved: 1000, action: 'da-rimborsare' }],
     });
   });
 });
@@ -479,5 +502,25 @@ describe('B5 at the closing (c, d)', () => {
     expect(closed).not.toHaveProperty('rentExcesses');
     const closing = await loadPeriodClosing(store, query, isoDate('2026-12-31'));
     expect(closing).toMatchObject({ tenants: [{ tenantId: 't-a', rentCredit: 4000, total: 0 }] });
+  });
+
+  it('c (G2-I3): a refund recorded with uscita-inquilino closes the credit, never paid twice', async () => {
+    const store = await yearPaid(stay, '2026-09');
+    await write(
+      store,
+      'payment',
+      payment('t-a', '2026-10', -4000, {
+        id: 'refund',
+        kind: 'altro',
+        forMonth: undefined,
+        date: '2026-10-20' as never,
+      }),
+    );
+    expect(await closePeriod(store, query, 'p1', clock, ids('c'))).toMatchObject({
+      status: 'closed',
+    });
+    expect((await loadRentExcesses(store))[0]).toMatchObject({ credit: 0 });
+    const closing = await loadPeriodClosing(store, query, isoDate('2026-12-31'));
+    expect(closing).toMatchObject({ tenants: [{ tenantId: 't-a', rentCredit: 0 }] });
   });
 });

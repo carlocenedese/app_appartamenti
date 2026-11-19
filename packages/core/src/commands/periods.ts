@@ -124,10 +124,13 @@ export async function periodClosingCommand(
         rentLost,
         flatCredit,
         rentCredit,
+        excessMoved,
         ...t
       }) => ({
         ...t,
         settled: settledIds.has(t.tenantId),
+        // B5 (a): rent paid in excess moved into the closed months, a line of the supplementary.
+        ...(excessMoved === 0 ? {} : { excessMoved: details ? excessMoved : true }),
         // B5 (c): rent paid in excess that covers no month, «da rimborsare».
         ...(rentCredit === 0 ? {} : { rentCredit: details ? rentCredit : true }),
         // Plan 22: the row «Canone non incassato» (amount only with --dettagli).
