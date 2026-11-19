@@ -3,7 +3,6 @@
 // Invented data: one bed, rent 450,00 plus flat charge 30,00; no bank statement at all.
 import { describe, expect, it } from 'vitest';
 import {
-  ClosedPeriodError,
   HandConfirmationSchema,
   calcConguaglio,
   closePeriod,
@@ -119,16 +118,30 @@ describe('confirmPastYear (item 6)', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
-  it('is refused for a closed period, through the guard (F5)', async () => {
+  it('leaves out an apartment with a period closed in the year and lists it', async () => {
     const store = await pastYear([]);
     expect((await closePeriod(store, QUERY, 'p1', clock, ids('c'))).status).toBe('closed');
     // A bill of the closed months arrives after the closing (accepted, as a late bill).
     await write(store, 'bill', luce, 'late');
     const before = await snapshot(store);
-    await expect(
-      confirmPastYear(store, { year: '2024', today: TODAY }, 'p1', clock, ids('h')),
-    ).rejects.toThrow(ClosedPeriodError);
+    expect(
+      await confirmPastYear(store, { year: '2024', today: TODAY }, 'p1', clock, ids('h')),
+    ).toEqual({ status: 'refused', reason: 'nothing-to-confirm', skippedApartmentIds: ['apt'] });
     expect(await snapshot(store)).toEqual(before);
+    // Another apartment of the same year is confirmed, the closed one listed.
+    await write(store, 'apartment', apartment({ id: 'apt-2', posti: 1 }));
+    await write(
+      store,
+      'bill',
+      bill('b-gas-2', '2023-11-01', '2023-12-31', 6000, {
+        apartmentId: 'apt-2',
+        dueDate: isoDate('2024-01-20'),
+      }),
+      'other',
+    );
+    expect(
+      await confirmPastYear(store, { year: '2024', today: TODAY }, 'p1', clock, ids('h')),
+    ).toMatchObject({ status: 'confirmed', count: 1, total: 6000, skippedApartmentIds: ['apt'] });
   });
 });
 

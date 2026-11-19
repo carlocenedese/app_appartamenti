@@ -26,6 +26,7 @@ import {
   InstalmentSchema,
   MovementClassSchema,
   PayableSchema,
+  PeriodCloseSchema,
   PaymentSchema,
   StatementSchema,
   TaxPaymentSchema,
@@ -441,8 +442,16 @@ export async function confirmMatch(
 }
 
 export type ConfirmPastYearResult =
-  | { status: 'confirmed'; operationId: string; count: number; total: Cents }
-  | { status: 'refused'; reason: 'inconsistent-store' | 'not-past-year' | 'nothing-to-confirm' };
+  | {
+      status: 'confirmed';
+      operationId: string;
+      count: number;
+      total: Cents;
+      /** The apartments left out: a period of theirs closed in the year (answer of user1). */
+      skippedApartmentIds?: string[];
+    }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'not-past-year' }
+  | { status: 'refused'; reason: 'nothing-to-confirm'; skippedApartmentIds?: string[] };
 
 /**
  * Item 6 of plan 25 (decided by user1, 19 Nov 2026): every item «da verificare» (B1: no statement
@@ -450,9 +459,11 @@ export type ConfirmPastYearResult =
  * end of a bill's period) falls in `year`, a year before the one of `today`, confirmed paid by
  * hand in one `match.hand-confirm` operation that `annulla-riconciliazione` undoes: a
  * `handConfirmation` each, for the expected amount (a shared notice's share as the matching
- * splits it). Refused, writing nothing: `inconsistent-store`, `not-past-year`,
- * `nothing-to-confirm`. A closed period refuses through the guard (F5, `ClosedPeriodError`).
- * Returns the count and the sum of the expected amounts.
+ * splits it). The apartments with a live closing (not reopened) of a period with months in the
+ * year are left out and listed (`skippedApartmentIds`, answer of user1, 19 Nov 2026); the others
+ * are confirmed. Refused, writing nothing: `inconsistent-store`, `not-past-year`,
+ * `nothing-to-confirm` (with the skipped apartments). The guard (F5) still refuses an item of a
+ * closed period of another year. Returns the count and the sum of the expected amounts.
  */
 export async function confirmPastYear(
   store: Store,
@@ -482,6 +493,15 @@ export async function confirmPastYear(
     );
     return cents(-(parts.find((p) => p.itemId === i.id)?.amount ?? 0));
   };
+  const closed = new Set(
+    (await loadAll(store, 'periodClose', PeriodCloseSchema)).records
+      .filter(
+        (c) =>
+          c.reopened === undefined && c.from <= `${input.year}-12` && c.to >= `${input.year}-01`,
+      )
+      .map((c) => c.apartmentId),
+  );
+  const skipped = new Set<string>();
   const records: HandConfirmation[] = [];
   for (const ref of run.unverified) {
     const bill = ref.itemType === 'bill' ? bills.find((b) => b.id === ref.itemId) : undefined;
@@ -490,6 +510,10 @@ export async function confirmPastYear(
     const date = bill !== undefined ? (bill.dueDate ?? bill.periodEnd) : inst?.dueDate;
     const item = bill ?? inst;
     if (item === undefined || date === undefined || date.slice(0, 4) !== input.year) continue;
+    if (closed.has(item.apartmentId)) {
+      skipped.add(item.apartmentId);
+      continue;
+    }
     records.push(
       parseOrThrow(
         HandConfirmationSchema,
@@ -508,7 +532,9 @@ export async function confirmPastYear(
       ),
     );
   }
-  if (records.length === 0) return refuse('nothing-to-confirm');
+  const skippedApartmentIds = [...skipped].sort(compareText);
+  const listed = skippedApartmentIds.length === 0 ? {} : { skippedApartmentIds };
+  if (records.length === 0) return { status: 'refused', reason: 'nothing-to-confirm', ...listed };
   const operation = await commitChange(
     store,
     {
@@ -529,6 +555,7 @@ export async function confirmPastYear(
     operationId: operation.id,
     count: records.length,
     total: cents(records.reduce((sum, r) => sum + r.amount, 0)),
+    ...listed,
   };
 }
 

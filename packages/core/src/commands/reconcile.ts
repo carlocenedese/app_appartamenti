@@ -347,7 +347,12 @@ export async function confirmPastYearCommand(
   const result = await confirmPastYear(store, input, ctx.who, ctx.clock, ctx.newId);
   if (result.status === 'refused') {
     const message = MESSAGES[`hand-${result.reason}`];
-    throw new Stop('rejected', result.reason, message === undefined ? {} : { message });
+    throw new Stop('rejected', result.reason, {
+      ...(message === undefined ? {} : { message }),
+      ...('skippedApartmentIds' in result && result.skippedApartmentIds !== undefined
+        ? { skippedApartmentIds: result.skippedApartmentIds }
+        : {}),
+    });
   }
   return result;
 }
