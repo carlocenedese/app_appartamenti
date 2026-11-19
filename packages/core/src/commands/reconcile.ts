@@ -14,7 +14,7 @@ import {
   resolveFork,
   undoOperation,
 } from '../journal';
-import { confirmMatch } from '../match-store';
+import { confirmMatch, confirmPastYear } from '../match-store';
 import {
   AccountSchema,
   BankProfileSchema,
@@ -333,6 +333,23 @@ export async function confirmRentExcessCommand(
     );
   }
   return { status: 'confirmed', operationId: result.operationId, paymentIds: result.paymentIds };
+}
+
+/**
+ * `conferma-anno` (item 6 of plan 25): the items «da verificare» of a past year confirmed paid by
+ * hand in one operation; the count and the sum of their expected amounts.
+ */
+export async function confirmPastYearCommand(
+  store: Store,
+  input: { year: string; today: string },
+  ctx: CommandContext,
+) {
+  const result = await confirmPastYear(store, input, ctx.who, ctx.clock, ctx.newId);
+  if (result.status === 'refused') {
+    const message = MESSAGES[`hand-${result.reason}`];
+    throw new Stop('rejected', result.reason, message === undefined ? {} : { message });
+  }
+  return result;
 }
 
 /** `annulla-riconciliazione` (and `annulla-incassi`): one operation of `RECONCILE_KINDS`. */

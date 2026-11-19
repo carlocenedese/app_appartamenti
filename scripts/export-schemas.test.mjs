@@ -29,6 +29,7 @@ describe('writeJsonSchemas', () => {
       'contact',
       'contract',
       'extractionResult',
+      'handConfirmation',
       'imuRule',
       'imuYear',
       'instalment',

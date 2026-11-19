@@ -9,13 +9,14 @@ import type { ExcelInput } from './excel';
 import { loadFreeDebits } from './condo-store';
 import { recoverableMovements } from './condominio';
 import { writesBlocked } from './journal';
-import { planMatch } from './match-store';
+import { handMatches, planMatch } from './match-store';
 import {
   ApartmentSchema,
   BankTransactionSchema,
   MovementClassSchema,
   BillMatchSchema,
   BillSchema,
+  HandConfirmationSchema,
   ContractSchema,
   InstalmentSchema,
   PaymentSchema,
@@ -73,6 +74,8 @@ export async function loadExcelInput(
   }
 
   const matches = await records('match', BillMatchSchema);
+  // Item 6 (plan 25): the items confirmed by hand count as paid in the settlement.
+  const hand = handMatches(await records('handConfirmation', HandConfirmationSchema));
   // Every settlement period, once and in order (R177).
   const spans = [
     ...new Map(all.map((p) => [`${p.from}/${p.to}`, { from: p.from, to: p.to }])).values(),
@@ -103,7 +106,7 @@ export async function loadExcelInput(
         transactions: await records('transaction', BankTransactionSchema),
         classes: await records('movementClass', MovementClassSchema),
       }),
-      matches,
+      matches: [...matches, ...hand],
       unverified: (await planMatch(store)).run.unverified,
       freeDebits: await loadFreeDebits(store, matches),
       ...(closing === undefined ? {} : { closing }),

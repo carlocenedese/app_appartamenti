@@ -22,6 +22,7 @@ import {
   BankTransactionSchema,
   BillMatchSchema,
   BillSchema,
+  HandConfirmationSchema,
   InstalmentSchema,
   MovementClassSchema,
   PayableSchema,
@@ -31,7 +32,14 @@ import {
   TenantRecoverySchema,
   TransferSchema,
 } from './model';
-import type { BankTransaction, Bill, BillMatch, Instalment, MovementClass } from './model';
+import type {
+  BankTransaction,
+  Bill,
+  BillMatch,
+  HandConfirmation,
+  Instalment,
+  MovementClass,
+} from './model';
 import { cents } from './money';
 import type { Cents } from './money';
 import { excludedIds, legsOf } from './movements';
@@ -94,12 +102,23 @@ async function loadMatchState(store: Store) {
       p.paid?.transactionId === undefined ? [] : [p.paid.transactionId],
     ),
   ]);
+  // Item 6 (plan 25): an item confirmed by hand is paid; it is never matched or «da verificare».
+  const hand = new Set(
+    (await loadAll(store, 'handConfirmation', HandConfirmationSchema)).records.map(
+      (c) => `${c.itemType}\u0000${c.itemId}`,
+    ),
+  );
+  const notByHand = <T extends { id: string }>(type: string, list: T[]) =>
+    list.filter((r) => !hand.has(`${type}\u0000${r.id}`));
   return {
     dependents,
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
     statements: (await loadAll(store, 'statement', StatementSchema, all)).records,
-    bills: (await loadAll(store, 'bill', BillSchema, all)).records,
-    instalments: (await loadAll(store, 'instalment', InstalmentSchema, all)).records,
+    bills: notByHand('bill', (await loadAll(store, 'bill', BillSchema, all)).records),
+    instalments: notByHand(
+      'instalment',
+      (await loadAll(store, 'instalment', InstalmentSchema, all)).records,
+    ),
     transactions: (await loadAll(store, 'transaction', BankTransactionSchema, all)).records,
     matches: (await loadAll(store, 'match', BillMatchSchema, all)).records,
     classes,
@@ -419,4 +438,120 @@ export async function confirmMatch(
     matchIds: matches.map((m) => m.id),
     ...(amountDiffers.length > 0 ? { amountDiffers: amountDiffers.sort(compareText) } : {}),
   };
+}
+
+export type ConfirmPastYearResult =
+  | { status: 'confirmed'; operationId: string; count: number; total: Cents }
+  | { status: 'refused'; reason: 'inconsistent-store' | 'not-past-year' | 'nothing-to-confirm' };
+
+/**
+ * Item 6 of plan 25 (decided by user1, 19 Nov 2026): every item «da verificare» (B1: no statement
+ * of its paying account covers it and no debit was found) whose reference day (due date, else the
+ * end of a bill's period) falls in `year`, a year before the one of `today`, confirmed paid by
+ * hand in one `match.hand-confirm` operation that `annulla-riconciliazione` undoes: a
+ * `handConfirmation` each, for the expected amount (a shared notice's share as the matching
+ * splits it). Refused, writing nothing: `inconsistent-store`, `not-past-year`,
+ * `nothing-to-confirm`. A closed period refuses through the guard (F5, `ClosedPeriodError`).
+ * Returns the count and the sum of the expected amounts.
+ */
+export async function confirmPastYear(
+  store: Store,
+  input: { year: string; today: string },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<ConfirmPastYearResult> {
+  const refuse = (reason: Extract<ConfirmPastYearResult, { status: 'refused' }>['reason']) =>
+    ({ status: 'refused', reason }) as const;
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
+  if (!/^[0-9]{4}$/.test(input.year) || input.year >= input.today.slice(0, 4)) {
+    return refuse('not-past-year');
+  }
+  const { run } = await planMatch(store);
+  const bills = live((await loadAll(store, 'bill', BillSchema)).records);
+  const instalments = live((await loadAll(store, 'instalment', InstalmentSchema)).records);
+  const before = (
+    await loadAll(store, 'handConfirmation', HandConfirmationSchema, { includeDeleted: true })
+  ).records;
+  const shareOf = (i: Instalment): Cents => {
+    if (i.shared === undefined) return expectedDebit(i);
+    const group = instalments.filter((m) => m.shared?.groupId === i.shared?.groupId);
+    const parts = splitSharedDebit(
+      cents(-i.shared.groupTotal),
+      group.map((m) => ({ itemId: m.id, weight: m.shared?.weight ?? cents(0) })),
+    );
+    return cents(-(parts.find((p) => p.itemId === i.id)?.amount ?? 0));
+  };
+  const records: HandConfirmation[] = [];
+  for (const ref of run.unverified) {
+    const bill = ref.itemType === 'bill' ? bills.find((b) => b.id === ref.itemId) : undefined;
+    const inst =
+      ref.itemType === 'instalment' ? instalments.find((i) => i.id === ref.itemId) : undefined;
+    const date = bill !== undefined ? (bill.dueDate ?? bill.periodEnd) : inst?.dueDate;
+    const item = bill ?? inst;
+    if (item === undefined || date === undefined || date.slice(0, 4) !== input.year) continue;
+    records.push(
+      parseOrThrow(
+        HandConfirmationSchema,
+        {
+          id: `hc-${ref.itemType}-${ref.itemId}`,
+          v: 1,
+          rev: 1,
+          itemType: ref.itemType,
+          itemId: ref.itemId,
+          apartmentId: item.apartmentId,
+          amount: bill !== undefined ? expectedDebit(bill) : shareOf(inst as Instalment),
+          date,
+          year: input.year,
+        },
+        'handConfirmation',
+      ),
+    );
+  }
+  if (records.length === 0) return refuse('nothing-to-confirm');
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'match.hand-confirm',
+      summary: `Confermate a mano ${String(records.length)} voci da verificare del ${input.year}.`,
+      changes: records.map((r) => ({
+        path: recordPath('handConfirmation', r.id),
+        before: before.find((b) => b.id === r.id),
+        after: r,
+      })),
+    },
+    clock,
+    newId,
+  );
+  return {
+    status: 'confirmed',
+    operationId: operation.id,
+    count: records.length,
+    total: cents(records.reduce((sum, r) => sum + r.amount, 0)),
+  };
+}
+
+/**
+ * Item 6: the confirmations by hand as matches for the settlement (never written): paid on their
+ * day for the expected amount. Only the readers of «is it paid» get them, never the balances.
+ */
+export function handMatches(confirmations: readonly HandConfirmation[]): BillMatch[] {
+  return confirmations
+    .filter((c) => c.deleted !== true)
+    .map((c) =>
+      BillMatchSchema.parse({
+        id: c.id,
+        v: 1,
+        rev: 1,
+        itemType: c.itemType,
+        itemId: c.itemId,
+        transactionId: c.id,
+        transactionDate: c.date,
+        amount: c.amount,
+        part: 'amount',
+        confirmed: true,
+        by: 'manual',
+      }),
+    );
 }

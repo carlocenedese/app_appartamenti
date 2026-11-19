@@ -106,6 +106,7 @@ import {
   referencesCommand,
   cancelPaymentCommand,
   confirmRentExcessCommand,
+  confirmPastYearCommand,
   excludeMovementCommand,
   repairCommand,
   chooseVersionCommand,
@@ -1641,6 +1642,17 @@ async function command(name, values, positionals, store, who, clock, newId) {
     return cancelPaymentCommand(store, values.pagamento, ctx);
   }
 
+  if (name === 'conferma-anno') {
+    // Item 6 of plan 25: the items «da verificare» of a past year, confirmed paid by hand.
+    need(values, 'anno');
+    if (positionals.length > 0 || !/^[0-9]{4}$/.test(values.anno)) throw invalid('bad-arguments');
+    return confirmPastYearCommand(
+      store,
+      { year: values.anno, today: day(values.oggi ?? clock().slice(0, 10)) },
+      ctx,
+    );
+  }
+
   if (name === 'eccedenza-canone') {
     // B5: confirms the month a rent paid in excess covers, as `riconcilia` proposes it.
     need(values, 'proposta');
@@ -1696,6 +1708,7 @@ export const COMMAND_NAMES = [
   'annulla-riconciliazione',
   'annulla-pagamento',
   'eccedenza-canone',
+  'conferma-anno',
   'escludi',
   'abbina',
   'uscita',
@@ -1925,6 +1938,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       esercizio: ['condominio-documento', 'condominio', 'condominio-stima', 'rata-condominio'],
       'quota-conduttore': ['condominio-documento'],
       anno: [
+        'conferma-anno',
         'tasso-legale',
         'tasse-conferma',
         'imu-atteso',
@@ -1967,7 +1981,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'riapri-periodo',
       ],
       entro: ['scadenze', 'cruscotto'],
-      oggi: ['scadenze', 'tasse', 'cruscotto'],
+      oggi: ['scadenze', 'tasse', 'cruscotto', 'conferma-anno'],
       lettura: ['bolletta'],
       'soglia-consumi': ['bolletta'],
       codici: ['bolletta', 'appartamento', 'utenza'],

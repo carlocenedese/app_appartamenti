@@ -119,6 +119,8 @@ export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {
   'invalid-close-input': 'Rifiutato: data non valida.',
   'period-reopened':
     'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
+  'hand-not-past-year': 'Rifiutato: si confermano a mano solo le voci di un anno passato (--anno).',
+  'hand-nothing-to-confirm': 'Nessuna voce da verificare in quell’anno.',
   'codes-not-in-apartment':
     'Rifiutato: un codice dell’utenza non è tra i codici dell’appartamento («apartmentIds»): aggiungerlo prima con «appartamento --codici».',
   'codes-in-use':
@@ -331,6 +333,7 @@ export const RECONCILE_KINDS: readonly string[] = [
   'movement.exclude',
   'match.reconcile',
   'match.confirm',
+  'match.hand-confirm',
   'outgoing.reconcile',
   'outgoing.confirm',
   'outgoing.cancel-auto',

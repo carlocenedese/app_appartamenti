@@ -102,12 +102,13 @@ const GUARDED: readonly string[] = [
   'tenantRecovery',
   'transaction',
   'movementClass',
+  'handConfirmation',
 ];
 /**
  * Refused even when the record is new: they change the presences or rents. A new supply is always
  * accepted (finding 2 of the third review: linking the code of a new bill is routine).
  */
-const NEW_REFUSED = new Set(['apartment', 'tenancy', 'contract']);
+const NEW_REFUSED = new Set(['apartment', 'tenancy', 'contract', 'handConfirmation']);
 
 const kindOf = (path: string): string | undefined =>
   /^_app\/dati\/([^/]+)\/[^/]+\.json$/.exec(path)?.[1];
@@ -353,6 +354,22 @@ async function viewIn(
         'confirmed',
         'by',
       ]);
+      break;
+    }
+    case 'handConfirmation': {
+      // Item 6 (plan 25): an item confirmed by hand is paid; refused even when new in a closed
+      // period (`NEW_REFUSED`), as the command that writes them.
+      const item = await readRaw(
+        ctx.store,
+        `_app/dati/${str(value.itemType)}/${str(value.itemId)}.json`,
+      );
+      if (!isLive(item) || item.apartmentId !== close.apartmentId) break;
+      const [start, end] =
+        value.itemType === 'bill'
+          ? [str(item.periodStart).slice(0, 7), str(item.periodEnd).slice(0, 7)]
+          : [str(item.coversFrom), str(item.coversTo)];
+      if (!overlaps(start, end)) break;
+      view = pick(value, ['itemType', 'itemId', 'amount', 'date']);
       break;
     }
     case 'tenantRecovery': {

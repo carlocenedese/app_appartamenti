@@ -21,6 +21,8 @@ export const COMMAND_HELP = {
   'annulla-riconciliazione':
     'Annulla un’operazione del registro (--operazione), se nulla dipende da essa.',
   'annulla-pagamento': 'Annulla un pagamento automatico: il movimento torna da rivedere.',
+  'conferma-anno':
+    'Conferma pagate a mano tutte le voci da verificare di un anno passato (--anno), in un’operazione annullabile.',
   'eccedenza-canone':
     'Assegna un canone versato in più al mese che manca, come lo propone riconcilia (--proposta).',
   escludi: 'Esclude un movimento (doppione, non contabilizzato, non reale, privato).',
