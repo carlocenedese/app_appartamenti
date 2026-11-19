@@ -47,7 +47,7 @@ import { esercizioRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } 
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
 import { bedsAt } from './valid-from';
-import { CALC_VERSION, PER_BED_CALC_VERSION } from './version';
+import { CALC_VERSION, OPEN_STAY_CALC_VERSIONS, PER_BED_CALC_VERSION } from './version';
 
 /** The cost categories of a settlement row: the bill categories, the TARI and the condominium. */
 export type CostCategory = Bill['category'] | Instalment['kind'];
@@ -119,6 +119,18 @@ export interface ConguaglioInput {
 export const splitOfClosing = (
   closing: { engineVersion: string } | undefined,
 ): 'present' | 'beds' => (closing?.engineVersion === PER_BED_CALC_VERSION ? 'beds' : 'present');
+
+/**
+ * F9 a (decided by user1 on 19 Nov 2026): a period with a live closing computed before F9 a keeps
+ * its stays as written (`raw`); an open or reopened period and a later snapshot end a stay without
+ * end with the tenant's contract (`contract`, `withContractEnds`), as R363 does for empty beds.
+ */
+export const stayEndsOfClosing = (
+  closing: { engineVersion: string } | undefined,
+): 'raw' | 'contract' =>
+  closing !== undefined && OPEN_STAY_CALC_VERSIONS.includes(closing.engineVersion)
+    ? 'raw'
+    : 'contract';
 
 type Span = { from: YearMonth; to: YearMonth };
 

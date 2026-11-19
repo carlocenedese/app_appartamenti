@@ -144,7 +144,6 @@ describe('loadDashboard', () => {
             'caparra:mancante': 1,
             // The same instalment in both lists: the two families are not to be summed (R264).
             'condominio:da-verificare': 1,
-            'contratto:tenancy-outside-contract': 1,
             'contratto:unknown-tenancy': 1,
             'movimento-senza-uso': 1,
             'scadenza-controllo:periodo-senza-estratto': 1,

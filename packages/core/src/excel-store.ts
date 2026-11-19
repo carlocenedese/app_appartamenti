@@ -25,7 +25,7 @@ import {
   TenantSchema,
 } from './model';
 import { isLiveClose, periodCloseId } from './closing';
-import { splitOfClosing } from './conguaglio';
+import { splitOfClosing, stayEndsOfClosing } from './conguaglio';
 import { withContractEnds } from './contract';
 import { settlementPeriods } from './period';
 import { loadAll } from './store/load';
@@ -81,6 +81,7 @@ export async function loadExcelInput(
   const closing = (await records('periodClose', PeriodCloseSchema)).find(
     (c) => c.id === periodCloseId(apartment.id, period.label) && isLiveClose(c),
   );
+  const tenancies = own(await records('tenancy', TenancySchema));
   return {
     status: 'ok',
     input: {
@@ -88,8 +89,10 @@ export async function loadExcelInput(
       period: { label: period.label, from: period.from, to: period.to },
       periods: spans,
       tenants: await records('tenant', TenantSchema),
-      // F9 a: a stay without end lasts until the end of its contract.
-      tenancies: withContractEnds(own(await records('tenancy', TenancySchema)), contracts),
+      // F9 a: a stay without end lasts until the end of the tenant's latest contract, except in a
+      // period closed before F9 a (`stayEndsOfClosing`).
+      tenancies:
+        stayEndsOfClosing(closing) === 'raw' ? tenancies : withContractEnds(tenancies, contracts),
       bills: own(await records('bill', BillSchema)),
       instalments: own(await records('instalment', InstalmentSchema)),
       payments: own(await records('payment', PaymentSchema)),

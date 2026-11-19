@@ -125,11 +125,34 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
   it.each([
     ['starts before', { from: '2025-09' }],
     ['ends after', { to: '2027-10' }],
-    ['has no end', { to: undefined }],
   ])('tenancy-outside-contract: %s', (_name, extra) => {
     expect(checks([linked(['tcy-a'])], [makeTenancy('tcy-a', extra)])).toEqual([
       { code: 'tenancy-outside-contract', contractId: 'ctr-app-a', tenancyId: 'tcy-a' },
     ]);
+  });
+
+  it('F9 a: a stay without end ends with its contract, no check', () => {
+    expect(checks([linked(['tcy-a'])], [makeTenancy('tcy-a', { to: undefined })])).toEqual([]);
+  });
+
+  it('F9 a, renewal as a new contract: the stay goes on in it, no payment is left out', () => {
+    // The stay is linked only to the first contract; the renewal follows on and links nothing.
+    const first = linked(['tcy-a'], { end: '2026-09' });
+    const renewal = makeContract('ctr-2', { start: '2026-10', end: '2027-09' });
+    const stay = makeTenancy('tcy-a', { to: undefined });
+    const pay = makePayment('pay-1', {
+      kind: 'canone',
+      amount: 38000,
+      forMonth: '2027-03',
+      date: '2027-03-05',
+    });
+    const found = checks([first, renewal], [stay], [pay]);
+    // The stay is past the first contract (link it to the renewal); no payment after its end.
+    expect(found).toEqual([
+      { code: 'tenancy-outside-contract', contractId: 'ctr-app-a', tenancyId: 'tcy-a' },
+    ]);
+    // Without the renewal the stay ends in 2026-09: the March 2027 rent is after its end.
+    expect(checks([first], [stay], [pay]).map((c) => c.code)).toEqual(['payment-after-end']);
   });
 
   it('tenancy-linked-twice: one entry per contract', () => {
@@ -522,21 +545,48 @@ describe('withContractEnds (F9 a)', () => {
       monthlyForfait: 3000,
       ...extra,
     });
-  const linking = (id: string, end: string, tenancyIds: string[], extra = {}): Contract =>
-    ContractSchema.parse({ ...contract, id, end, rent: undefined, tenancyIds, ...extra });
+  const ctr = (
+    id: string,
+    start: string,
+    end: string,
+    tenancyIds: string[],
+    extra = {},
+  ): Contract =>
+    ContractSchema.parse({ ...contract, id, start, end, rent: undefined, tenancyIds, ...extra });
 
-  it('ends a stay without end with the latest live contract that links it; leaves the rest', () => {
+  it('ends a stay without end with the latest contract of the tenant; leaves the rest', () => {
     const open = stay('open');
     const ended = stay('ended', { to: yearMonth('2026-03') });
-    const free = stay('free');
     const result = withContractEnds(
-      [open, ended, free],
+      [open, ended],
       [
-        linking('c-1', '2026-09', ['open', 'ended']),
-        linking('c-2', '2027-09', ['open']),
-        linking('c-3', '2029-09', ['open'], { deleted: true }),
+        ctr('c-1', '2025-10', '2026-09', ['open', 'ended']),
+        ctr('c-3', '2026-10', '2029-09', ['open'], { deleted: true }),
       ],
     );
-    expect(result).toEqual([{ ...open, to: '2027-09' }, ended, free]);
+    expect(result).toEqual([{ ...open, to: '2026-09' }, ended]);
+  });
+
+  it('follows a renewal written as a new contract, even when it does not link the stay', () => {
+    const open = stay('open', { from: yearMonth('2025-04') });
+    const result = withContractEnds(
+      [open],
+      [
+        ctr('c-0', '2025-04', '2025-09', ['open']),
+        ctr('c-1', '2025-10', '2026-09', []),
+        ctr('c-2', '2026-10', '2027-09', []),
+        // Not a renewal: a gap of a month.
+        ctr('c-4', '2027-11', '2028-09', []),
+      ],
+    );
+    expect(result[0]?.to).toBe('2027-09');
+  });
+
+  it('without links takes the contract in force at the start; with no contract stays open', () => {
+    const open = stay('open', { from: yearMonth('2026-01') });
+    expect(withContractEnds([open], [ctr('c-1', '2025-10', '2026-09', [])])[0]?.to).toBe('2026-09');
+    expect(withContractEnds([open], [])[0]).toEqual(open);
+    // A contract that ends before the stay starts gives no end.
+    expect(withContractEnds([open], [ctr('c-0', '2025-01', '2025-09', ['open'])])[0]).toEqual(open);
   });
 });

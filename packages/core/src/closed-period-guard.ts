@@ -16,10 +16,11 @@
  * record existed at the closing is read from the closing's `inputs` (`periodInputs`), not from the
  * clocks. Imports nothing that imports `journal.ts`: `journal.ts` calls it.
  */
-import { settlementPeriodOf } from './conguaglio';
+import { settlementPeriodOf, stayEndsOfClosing } from './conguaglio';
+import { withContractEnds } from './contract';
 import type { Operation } from './journal';
 import { ApartmentSchema, ContractSchema, PeriodCloseSchema } from './model';
-import type { Apartment, PeriodClose, Supply } from './model';
+import type { Apartment, Contract, PeriodClose, Supply, Tenancy } from './model';
 import { settlementPeriods } from './period';
 import type { YearMonth } from './period';
 import { loadAll } from './store/load';
@@ -84,7 +85,7 @@ export class ClosingUndoError extends Error {
 type Json = Record<string, unknown>;
 type Change = { path: string; before?: unknown; after?: unknown };
 type Close = { apartmentId: string; periodLabel: string; from: string; to: string } & Partial<
-  Pick<PeriodClose, 'closedAt' | 'inputs'>
+  Pick<PeriodClose, 'closedAt' | 'inputs' | 'engineVersion'>
 >;
 type Span = { from: YearMonth; to: YearMonth };
 
@@ -159,6 +160,17 @@ class Context {
       });
     this.spans.set(apartmentId, spans);
     return spans;
+  }
+
+  private stays?: { tenancies: Json[]; contracts: Json[] };
+
+  /** The live tenancies and contracts as on disk, for the end of a stay without one (F9 a). */
+  async staysAndContracts(): Promise<{ tenancies: Json[]; contracts: Json[] }> {
+    this.stays ??= {
+      tenancies: await liveRaw(this.store, 'tenancy'),
+      contracts: await liveRaw(this.store, 'contract'),
+    };
+    return this.stays;
   }
 
   /** The live instalments, for the supplies they are linked to (finding 2). */
@@ -239,7 +251,17 @@ async function viewIn(
     }
     case 'tenancy': {
       if (value.apartmentId !== close.apartmentId) break;
-      const end = str(value.to) || '9999-12';
+      // F9 a (I1): the end the period reads, the tenant's latest contract for one without end.
+      let derived = value;
+      if (value.to === undefined && stayEndsOfClosing(engineOf(close)) === 'contract') {
+        const { tenancies, contracts } = await ctx.staysAndContracts();
+        const others = tenancies.filter((t) => t.id !== value.id);
+        derived = withContractEnds(
+          [value, ...others] as unknown as Tenancy[],
+          contracts as unknown as Contract[],
+        )[0] as unknown as Json;
+      }
+      const end = str(derived.to) || '9999-12';
       if (!overlaps(str(value.from), end)) break;
       view = {
         ...pick(value, ['tenantId', 'room', 'monthlyRent', 'monthlyForfait']),
@@ -380,6 +402,29 @@ async function viewIn(
   return view === undefined ? undefined : JSON.stringify(view);
 }
 
+/** The calculation version of a closing (a blocking one without it reads as the current one). */
+const engineOf = (close: Close) =>
+  close.engineVersion === undefined ? undefined : { engineVersion: close.engineVersion };
+
+/**
+ * F9 a (I1): the months of the closed period in which each stay without end of the apartment is
+ * present, with `contracts` as the live contracts; a JSON text to compare. A contract change that
+ * links, unlinks, moves or removes a contract changes it when it moves the end of such a stay.
+ */
+async function openStaysIn(ctx: Context, close: Close, contracts: Json[]): Promise<string> {
+  const { tenancies } = await ctx.staysAndContracts();
+  const open = tenancies.filter((t) => t.apartmentId === close.apartmentId && t.to === undefined);
+  const ended = withContractEnds(
+    tenancies as unknown as Tenancy[],
+    contracts as unknown as Contract[],
+  ).filter((t) => open.some((o) => o.id === t.id));
+  return JSON.stringify(
+    ended
+      .map((t) => [t.id, max(t.from, close.from), min(t.to ?? '9999-12', close.to)])
+      .filter(([, a, b]) => (a as string) <= (b as string)),
+  );
+}
+
 /**
  * The records a closing counts, as sorted `<kind>/<id>` (stored as `periodClose.inputs`): every
  * live record of a guarded kind that the period sees. A record is in it exactly when it was in the
@@ -489,6 +534,19 @@ export async function refuseClosedPeriodChanges(
         continue;
       }
       refusing.push(close);
+    }
+    // F9 a (I1): a contract change that moves the end of a stay without end in a closed period.
+    if (kind === 'contract') {
+      const { contracts } = await ctx.staysAndContracts();
+      const id = idOf(change.path);
+      const rest = contracts.filter((c) => c.id !== id);
+      const withSide = (side: unknown) => (isLive(side) ? [...rest, side] : rest);
+      for (const close of closes) {
+        if (refusing.includes(close) || stayEndsOfClosing(engineOf(close)) === 'raw') continue;
+        const was = await openStaysIn(ctx, close, withSide(change.before));
+        const will = await openStaysIn(ctx, close, withSide(change.after));
+        if (was !== will) refusing.push(close);
+      }
     }
     const [first, ...others] = refusing.sort((a, b) => compareText(a.from, b.from));
     if (first !== undefined) {
