@@ -1439,7 +1439,8 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
       { label: 'Interessi legali', amount: 450 },
       { label: 'Conguaglio bollette', amount: 11060 - 3789 },
     ]);
-    expect(shared.caparraB.json.statement.total).toBe(50000 + 650 + 50000 - 4248);
+    // B's tenant bears the empty bed too (plan 21): credit 500,00 − 40,00 − 84,96.
+    expect(shared.caparraB.json.statement.total).toBe(50000 + 650 + 50000 - 4000 - 8496);
   });
 
   it('modulo Word scritto nella cartella dell’inquilino con i valori della scheda', () => {
