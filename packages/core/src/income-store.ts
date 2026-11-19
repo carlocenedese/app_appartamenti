@@ -25,7 +25,6 @@ import {
   TransferSchema,
 } from './model';
 import type { Payment, TenantCard } from './model';
-import { cents } from './money';
 import type { Cents } from './money';
 import { movementUses } from './movements';
 import { parseOrThrow } from './parse';
@@ -34,7 +33,6 @@ import type { YearMonth } from './period';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
-import { compareText } from './text';
 
 /**
  * Creates the tenant `draft.id`, or writes a new `rev` of it (a deleted one comes back). The same
@@ -242,32 +240,16 @@ export async function planIncome(store: Store, alsoUsed?: ReadonlySet<string>) {
 }
 
 /**
- * `rentExcesses` on the state, with (B5 c, decided by user1 on 19 Nov 2026) the credits less what
- * was given back: the tenant's live outgoing payments of kind `altro` in the apartment
- * (`uscita-inquilino`, a refund), taken from the credits oldest month first.
+ * `rentExcesses` on the state. B5 (c), decided by user1 on 19 Nov 2026: only a refund registered
+ * as such closes a credit (`uscita-inquilino --rimborso-canone`, a negative `canone` of the month),
+ * and it does so by lowering what the month was paid; another outgoing to the tenant never does.
  */
-const excessesOf = (state: Awaited<ReturnType<typeof loadIncomeState>>) => {
-  const found = rentExcesses({
+const excessesOf = (state: Awaited<ReturnType<typeof loadIncomeState>>) =>
+  rentExcesses({
     tenancies: state.tenancies,
     payments: state.payments,
     covered: (apartmentId) => coveredMonths(state, apartmentId),
   });
-  const refunded = new Map<string, number>();
-  for (const p of state.payments) {
-    if (p.deleted === true || !p.confirmed || p.kind !== 'altro' || p.amount >= 0) continue;
-    const key = `${p.apartmentId}\u0000${p.tenantId}`;
-    refunded.set(key, (refunded.get(key) ?? 0) - p.amount);
-  }
-  return [...found]
-    .sort((a, b) => compareText(a.month, b.month) || compareText(a.id, b.id))
-    .map((e) => {
-      const key = `${e.apartmentId}\u0000${e.tenantId}`;
-      const back = Math.min(e.credit, refunded.get(key) ?? 0);
-      refunded.set(key, (refunded.get(key) ?? 0) - back);
-      return back === 0 ? e : { ...e, credit: cents(e.credit - back) };
-    })
-    .sort((a, b) => compareText(a.id, b.id));
-};
 
 export type ConfirmRentExcessResult =
   | { status: 'confirmed'; operationId: string; paymentIds: string[] }

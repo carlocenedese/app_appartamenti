@@ -504,22 +504,30 @@ describe('B5 at the closing (c, d)', () => {
     expect(closing).toMatchObject({ tenants: [{ tenantId: 't-a', rentCredit: 4000, total: 0 }] });
   });
 
-  it('c (G2-I3): a refund recorded with uscita-inquilino closes the credit, never paid twice', async () => {
+  it('c: only a refund registered as such (--rimborso-canone) closes the credit', async () => {
     const store = await yearPaid(stay, '2026-09');
+    // Another outgoing to the tenant («altro», a repair) does not touch it.
     await write(
       store,
       'payment',
       payment('t-a', '2026-10', -4000, {
-        id: 'refund',
+        id: 'repair',
         kind: 'altro',
         forMonth: undefined,
         date: '2026-10-20' as never,
       }),
     );
+    expect((await loadRentExcesses(store))[0]).toMatchObject({ credit: 4000 });
+    // The refund of the rent paid in excess: a negative «canone» of September.
+    await write(
+      store,
+      'payment',
+      payment('t-a', '2026-09', -4000, { id: 'refund', date: '2026-10-25' as never }),
+    );
+    expect(await loadRentExcesses(store)).toEqual([]);
     expect(await closePeriod(store, query, 'p1', clock, ids('c'))).toMatchObject({
       status: 'closed',
     });
-    expect((await loadRentExcesses(store))[0]).toMatchObject({ credit: 0 });
     const closing = await loadPeriodClosing(store, query, isoDate('2026-12-31'));
     expect(closing).toMatchObject({ tenants: [{ tenantId: 't-a', rentCredit: 0 }] });
   });

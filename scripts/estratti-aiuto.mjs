@@ -29,7 +29,8 @@ export const COMMAND_HELP = {
   abbina: 'Abbina a mano bollette e rate a un addebito (--parte).',
   uscita: 'Classifica un’uscita (utenze, tasse, condominio, altro).',
   'annulla-uscita': 'Annulla la classificazione di un’uscita.',
-  'uscita-inquilino': 'Registra un’uscita verso un inquilino (caparra, conguaglio, altro).',
+  'uscita-inquilino':
+    'Registra un’uscita verso un inquilino (caparra, conguaglio, altro; --rimborso-canone per il canone versato in più del mese).',
   giroconto: 'Conferma un giroconto tra due conti dalle proposte.',
   'giroconto-manuale': 'Registra a mano un movimento tra due conti.',
   saldi: 'Mostra il saldo tra i conti degli appartamenti.',

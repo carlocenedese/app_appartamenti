@@ -217,6 +217,7 @@ const OPTIONS = {
   categoria: { type: 'string' },
   f24: { type: 'boolean' },
   tipo: { type: 'string' },
+  'rimborso-canone': { type: 'boolean' },
   mese: { type: 'string' },
   scopo: { type: 'string' },
   'altra-gamba': { type: 'string' },
@@ -678,10 +679,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
   }
 
   if (name === 'uscita-inquilino') {
-    need(values, 'proposta', 'inquilino', 'tipo', 'mese');
+    // B5 (c): --rimborso-canone, the refund of rent paid in excess in --mese, without --tipo.
+    const refund = values['rimborso-canone'] === true;
+    need(values, 'proposta', 'inquilino', 'mese', ...(refund ? [] : ['tipo']));
     if (
       positionals.length > 0 ||
-      !TENANT_KINDS.includes(values.tipo) ||
+      (refund ? values.tipo !== undefined : !TENANT_KINDS.includes(values.tipo)) ||
       !YearMonthSchema.safeParse(values.mese).success
     ) {
       throw invalid('bad-arguments');
@@ -691,8 +694,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
       {
         proposalId: values.proposta,
         tenantId: values.inquilino,
-        kind: values.tipo,
+        kind: refund ? 'altro' : values.tipo,
         forMonth: values.mese,
+        ...(refund ? { rentRefund: true } : {}),
       },
       ctx,
     );
@@ -1956,6 +1960,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino', 'contratto', 'scadenze', 'scadenza-nuova', 'condominio-documento'],
+      'rimborso-canone': ['uscita-inquilino'],
       mese: ['uscita-inquilino', 'fine-presenza', 'subentro', 'scambio-camera'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],

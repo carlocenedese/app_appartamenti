@@ -947,6 +947,28 @@ describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
     ).toEqual({ status: 'refused', reason: 'has-dependents', recordIds: ['pay-x-1'] });
   });
 
+  it('B5 (c): --rimborso-canone writes a negative canone of the month', async () => {
+    const store = await withTenants(tx('x', '2027-03-25', -4000));
+    expect(
+      await confirmTenantOutgoing(
+        store,
+        {
+          proposalId: 'p-uscita-x',
+          tenantId: 't1',
+          kind: 'altro',
+          forMonth: '2027-03' as YearMonth,
+          rentRefund: true,
+        },
+        'p1',
+        clock,
+        ids('t'),
+      ),
+    ).toMatchObject({ status: 'confirmed', paymentId: 'pay-x-1' });
+    expect(await payments(store)).toMatchObject([
+      { id: 'pay-x-1', amount: -4000, kind: 'canone', forMonth: '2027-03' },
+    ]);
+  });
+
   it('refusals write nothing: tenant without presence or deleted, unknown proposal, F24, income', async () => {
     const store = await withTenants(
       tx('x', '2027-03-05', -53840),

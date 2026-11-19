@@ -333,6 +333,12 @@ export interface ConfirmTenantOutgoingInput {
   /** Never `canone`: the rent is an income. */
   kind: 'caparra' | 'conguaglio' | 'altro';
   forMonth: YearMonth;
+  /**
+   * B5 (c), decided by user1 on 19 Nov 2026: the refund of rent paid in excess in `forMonth`
+   * (`uscita-inquilino --rimborso-canone`): written as a negative `canone` of that month, so it
+   * takes the excess, and with it the credit «da rimborsare», away. `kind` is then not used.
+   */
+  rentRefund?: boolean;
 }
 
 export type ConfirmTenantOutgoingResult =
@@ -351,7 +357,9 @@ const TenantOutgoingKindSchema = z.enum(['caparra', 'conguaglio', 'altro']);
  * the negative amount of the movement, the apartment of its account, `confirmed` and `source`
  * `csv`, in one `outgoing.tenant` operation. Always by hand, never from a rule, and no rule is
  * saved. The tenant must be live with a presence in that apartment (`tenant-not-allowed`); a
- * `kind` outside `caparra`, `conguaglio`, `altro` is `invalid-kind`.
+ * `kind` outside `caparra`, `conguaglio`, `altro` is `invalid-kind`. With `rentRefund` (B5 c) the
+ * payment is a negative `canone` of `forMonth`: the only outgoing that closes a credit of rent paid
+ * in excess.
  */
 export async function confirmTenantOutgoing(
   store: Store,
@@ -389,7 +397,7 @@ export async function confirmTenantOutgoing(
       date: tx.date,
       amount: tx.amount,
       confirmed: true,
-      kind: input.kind,
+      kind: input.rentRefund === true ? 'canone' : input.kind,
       forMonth: input.forMonth,
       source: 'csv',
       transactionId: tx.id,
