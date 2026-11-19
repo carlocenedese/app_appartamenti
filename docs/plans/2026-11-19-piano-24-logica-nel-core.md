@@ -21,6 +21,11 @@ riscriverla. Ramo `refactor/logica-nel-core`, da `feat/canone-valido-forfait` (P
 - Le funzioni del core prendono lo `Store`, l'input già tipato, il contesto `{ who, clock, newId }`
   e le opzioni (`details`); restituiscono il corpo JSON oppure lanciano `CommandStop` (stato,
   motivo, campi in più): la stessa `Stop` di prima, spostata, così le righe `throw` restano uguali.
+- Le schermate passano valori già tipati: la trasformazione del testo delle opzioni resta nello
+  script (risposta del coordinatore, 19 novembre 2026).
+- R387: i testi `message` sono quelli della riga di comando (alcuni nominano opzioni e comandi);
+  le schermate mappano i codici dei motivi e i campi (anche gli importi) sui propri testi e non
+  mostrano mai `message`. I messaggi non si riscrivono: l'uscita della riga di comando resta uguale.
 - L'ordine dei rifiuti non cambia: un controllo che oggi sta prima o dopo una lettura dello `Store`
   o di un file resta da quel lato.
 
@@ -74,7 +79,7 @@ core la chiamata, i rifiuti e il risultato. «Solo Node» indica la parte che re
 | `appartamento`, `condominio-documento`, `recupero`        | `saveApartmentCommand`, `saveCondoDocumentCommand`, `saveRecoveryCommand` | |
 | `condominio`, `condominio-stima`, `contatto`, `contatti`  | `condoCommand`, `condoEstimateCommand`, `saveContactCommand`, `contactsCommand` | |
 | `rata-condominio`, `utenza`, `impostazioni`               | `saveCondoInstalmentCommand`, `saveSupplyCommand`, `settingsCommand` | |
-| `bolletta`                                                | `billReadingOf`, `registeredBillId`, `importBillCommand`       | lettura dei file, percorso dentro la cartella, spostamento del PDF |
+| `bolletta`                                                | `billReadingOf`, `refuseRegisteredBill`, `importBillCommand`       | lettura dei file, percorso dentro la cartella, spostamento del PDF |
 | `annulla-bolletta`                                        | `undoBillCommand`                                              | lettura del file, confronto del percorso, spostamento del PDF   |
 | `cruscotto`                                               | `dashboardCommand`                                             |                                                                 |
 | `chiudi-periodo`, `conguaglio-supplementare`              | `closePeriodCommand`, `periodClosingCommand`                   |                                                                 |
@@ -100,3 +105,11 @@ core la chiamata, i rifiuti e il risultato. «Solo Node» indica la parte che re
 Dopo ogni commit: `scripts/estratti.test.mjs`, `scripts/estratti-funzioni.test.mjs`,
 `scripts/ciclo-completo.test.mjs` senza cambiare le attese. Alla fine `pnpm lint`,
 `pnpm typecheck`, `pnpm test`, `TZ=Pacific/Auckland pnpm test`, `node scripts/check-personal-data.mjs`.
+
+## Lasciato com'è (revisione)
+
+- Gli alias locali (`const Stop = CommandStop` in `statements.ts`, `import { CommandStop as Stop }`
+  negli altri) e l'`optional` dello script accanto a quello del core: solo stile.
+- `saveBankProfileCommand` e `saveTenantCardCommand` prendono il testo JSON del file della riga di
+  comando (chiavi italiane della scheda). Una schermata dovrà serializzare i valori in quel formato,
+  o si aggiungerà una variante tipata quando la schermata ci sarà.

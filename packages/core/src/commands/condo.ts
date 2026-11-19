@@ -8,12 +8,11 @@ import {
   saveTenantRecovery,
 } from '../condo-store';
 import { loadContacts, saveContact } from '../contact-store';
-import { ISODateSchema } from '../model';
 import type { Store } from '../store/store';
 import { COMMAND_MESSAGES as MESSAGES } from './messages';
 import { CommandStop as Stop } from './stop';
 import type { CommandContext } from './stop';
-import { optional } from './util';
+import { clockDay, optional } from './util';
 
 /**
  * `appartamento`: creates (every field and the condominium difference, the question at creation)
@@ -102,7 +101,7 @@ export async function condoCommand(
   options: { details: boolean },
 ) {
   const result = await loadCondo(store, {
-    asOf: ISODateSchema.parse(ctx.clock().slice(0, 10)),
+    asOf: clockDay(ctx.clock),
     ...optional('apartmentId', input.apartmentId),
     ...optional('esercizio', input.esercizio),
   });

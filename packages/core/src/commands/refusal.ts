@@ -10,10 +10,7 @@ import type { Store } from '../store/store';
 import { COMMAND_MESSAGES } from './messages';
 import { CommandStop } from './stop';
 
-/**
- * The output of a command stopped by a `CommandStop`: status, reason, message and its fields.
- * The command line exits with 2 for `invalid`, 1 otherwise.
- */
+/** The output of a command stopped by a `CommandStop`: status, reason, message and its fields. */
 export function stopBody(stop: CommandStop): Record<string, unknown> {
   return {
     status: stop.status,

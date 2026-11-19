@@ -11,16 +11,15 @@ import {
 } from '../contract-store';
 import { loadDepositReturn, saveLegalRate } from '../deposit';
 import { formatEuro } from '../money';
-import { YearMonthSchema } from '../model';
 import type { Store } from '../store/store';
 import { endTenancy, recordRoomSwap, recordTakeover, saveTenancy } from '../tenancy-store';
 import { COMMAND_MESSAGES as MESSAGES, SWAP_MESSAGES } from './messages';
 import { CommandStop as Stop, invalidCommand as invalid } from './stop';
 import type { CommandContext } from './stop';
-import { optional } from './util';
+import { clockMonth, optional } from './util';
 
 /** The month of the clock: later months have no tenancies written yet. */
-const monthOf = (clock: () => string) => YearMonthSchema.parse(clock().slice(0, 7));
+const monthOf = clockMonth;
 
 /**
  * `contratto`: replaces every field of the contract (rent history aside). An id the store refuses

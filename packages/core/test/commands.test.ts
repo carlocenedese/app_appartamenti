@@ -7,8 +7,18 @@ import {
   changedClosedPeriods,
   chooseVersionCommand,
   closedPeriodStates,
+  balancesCommand,
+  cancelPaymentCommand,
   commandRefusal,
+  condoCommand,
+  confirmIncomeCommand,
   confirmMatchCommand,
+  confirmOutgoingCommand,
+  confirmTransferCommand,
+  excludeMovementCommand,
+  manualTransferCommand,
+  referencesCommand,
+  undoOperationCommand,
   importTargetOf,
   reconcileCommand,
   refuseRegisteredBill,
@@ -145,5 +155,78 @@ describe('commands of the core', () => {
       closedPeriods: [query],
     });
     expect((await closedPeriodStates(new MemoryStore(), '2026-11-19' as never)).size).toBe(0);
+  });
+
+  it('refuses the reconciliation commands on what is not there', async () => {
+    const store = new MemoryStore();
+    expect(await stopOf(undoOperationCommand(store, 'none', ctx))).toEqual({
+      status: 'rejected',
+      reason: 'unknown-operation',
+    });
+    expect(await stopOf(cancelPaymentCommand(store, 'none', ctx))).toMatchObject({
+      status: 'rejected',
+    });
+    expect(
+      await stopOf(
+        excludeMovementCommand(store, { transactionId: 'none', reason: 'doppione' }, ctx),
+      ),
+    ).toMatchObject({ status: 'rejected' });
+    expect(
+      await stopOf(
+        confirmIncomeCommand(
+          store,
+          { proposalId: 'none', tenantId: 't', parts: [], rememberPayer: false },
+          ctx,
+        ),
+      ),
+    ).toMatchObject({ status: 'rejected' });
+    expect(
+      await stopOf(
+        confirmOutgoingCommand(
+          store,
+          { proposalId: 'none', kind: 'altro', apartmentId: 'a', rememberRule: false, f24: false },
+          ctx,
+        ),
+      ),
+    ).toMatchObject({ status: 'rejected' });
+    expect(
+      await stopOf(
+        confirmTransferCommand(
+          store,
+          { proposalId: 'none', purpose: 'altro', rememberPair: false, legIds: [] },
+          ctx,
+        ),
+      ),
+    ).toMatchObject({ status: 'rejected' });
+    expect(
+      await stopOf(
+        manualTransferCommand(
+          store,
+          {
+            fromAccountId: 'a',
+            toAccountId: 'b',
+            amount: 100 as never,
+            date: '2026-11-19' as never,
+            purpose: 'altro',
+          },
+          ctx,
+        ),
+      ),
+    ).toMatchObject({ status: 'rejected' });
+  });
+
+  it('gives balances and references of an empty folder', async () => {
+    const store = new MemoryStore();
+    expect(await balancesCommand(store, { details: false })).toMatchObject({ status: 'ok' });
+    expect(await balancesCommand(store, { details: true })).toMatchObject({ status: 'ok' });
+    expect(await referencesCommand(store)).toMatchObject({ status: 'ok', problems: [] });
+  });
+
+  it('refuses a clock that is no timestamp as invalid input', async () => {
+    const bad = { ...ctx, clock: () => 'adesso' };
+    expect(await stopOf(condoCommand(new MemoryStore(), {}, bad, { details: false }))).toEqual({
+      status: 'invalid',
+      reason: 'bad-arguments',
+    });
   });
 });

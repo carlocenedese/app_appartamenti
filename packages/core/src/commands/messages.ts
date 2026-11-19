@@ -1,5 +1,7 @@
 // The Italian messages of the commands (plan 24, R386): moved from scripts/estratti.mjs, where
-// the command line prints them; the screens of the app show the same ones.
+// the command line prints them. R387: they are the command line's wording (some name its options
+// and commands); the screens of the app map the reason codes and the fields to their own text and
+// never show `message`.
 
 /** The message of each refusal reason or warning code, by code. */
 export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {

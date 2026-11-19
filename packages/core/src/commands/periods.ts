@@ -3,7 +3,6 @@
 // `riapri-periodo`, `forfait-verificato`, `canone-non-incassato`, `utenza`, `rata-condominio`,
 // `impostazioni`.
 import { saveCondoInstalment } from '../condo-store';
-import { ISODateSchema } from '../model';
 import type { CloseMissing } from '../conguaglio';
 import { formatEuro } from '../money';
 import type { Cents } from '../money';
@@ -22,7 +21,7 @@ import { saveSupply } from '../supply-store';
 import { COMMAND_MESSAGES as MESSAGES } from './messages';
 import { CommandStop as Stop } from './stop';
 import type { CommandContext } from './stop';
-import { optional } from './util';
+import { clockDay, optional } from './util';
 
 type PeriodQuery = { apartmentId: string; periodLabel: string };
 
@@ -79,11 +78,7 @@ export async function periodClosingCommand(
   options: { details: boolean },
 ) {
   const details = options.details;
-  const result = await loadPeriodClosing(
-    store,
-    query,
-    ISODateSchema.parse(ctx.clock().slice(0, 10)),
-  );
+  const result = await loadPeriodClosing(store, query, clockDay(ctx.clock));
   if (result.status === 'refused') {
     const message =
       result.reason === 'ambiguous-period'
@@ -172,10 +167,11 @@ function settleOutcome<R extends { status: string }>(result: R): R {
   const refused = result as unknown as { status: string; reason: string; amount?: Cents };
   if (refused.status === 'refused' && refused.reason === 'use-supplementary') {
     // The main is already settled and a supplementary is left: the amount, in euro.
-    const amount = formatEuro(Math.abs(refused.amount ?? 0) as Cents);
+    if (refused.amount === undefined) throw new Error('use-supplementary without an amount');
+    const amount = formatEuro(Math.abs(refused.amount) as Cents);
     throw new Stop('rejected', refused.reason, {
       message:
-        (refused.amount ?? 0) < 0
+        refused.amount < 0
           ? `Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare a favore dell’inquilino di ${amount}: usa --supplementare.`
           : `Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare di ${amount}: usa --supplementare.`,
     });

@@ -9,8 +9,8 @@ export interface CommandContext {
 }
 
 /**
- * Thrown to stop a command with a status: `invalid` (arguments or a file not valid: exit 2 on the
- * command line), `rejected` or `already-imported` (exit 1). `extra` goes into the output as is.
+ * Thrown to stop a command with a status: `invalid` (input or a file's content not valid),
+ * `rejected` or `already-imported`. `extra` goes into the output as is.
  */
 export class CommandStop extends Error {
   constructor(
