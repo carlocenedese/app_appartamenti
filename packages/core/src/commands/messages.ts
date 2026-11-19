@@ -122,7 +122,7 @@ export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {
   'no-month-to-cover':
     'Rifiutato: il canone versato in più non ha un mese precedente che manca: resta segnalato in «riconcilia».',
   'instalment-esercizio-format':
-    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27, oppure 2026 se l’esercizio del condominio inizia il 1° gennaio.',
+    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 oppure 2026 (l’esercizio che inizia nel 2026).',
   'tari-december-missing':
     'Rifiutato: l’appartamento è nell’avviso TARI comune e il periodo si chiude solo dopo l’addebito dell’avviso TARI del dicembre che sta dentro il periodo («month», R3): registrarlo e abbinarlo, poi chiudere.',
   'closed-period-changed':

@@ -365,7 +365,7 @@ describe('rata-condominio (I3, E4)', () => {
       '--appartamento',
       'apt-x',
       '--esercizio',
-      '2025',
+      '25',
       '--rata',
       '1/5',
       '--scadenza',

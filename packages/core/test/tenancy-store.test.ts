@@ -718,6 +718,11 @@ describe('recordRoomSwap (plan 18)', () => {
     const store = await swapStore();
     const notes = async () =>
       (await loadAll(store, 'note', NoteSchema, { includeDeleted: true })).records;
+    // A refused swap writes no note.
+    expect(
+      await recordRoomSwap(store, swap({ month: yearMonth('2025-10') }), 'p1', clock, ids('v')),
+    ).toMatchObject({ status: 'refused' });
+    expect(await notes()).toEqual([]);
     await recordRoomSwap(store, swap(), 'p1', clock, ids('w'));
     expect(await notes()).toEqual([
       {
