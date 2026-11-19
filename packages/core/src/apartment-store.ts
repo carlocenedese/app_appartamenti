@@ -12,6 +12,7 @@ import { addMonths } from './period';
 import type { YearMonth } from './period';
 import { isSafePath, loadAll } from './store/load';
 import { recordPath } from './store/records';
+import { liveSupplies, sameCode } from './supply-store';
 import type { Store } from './store/store';
 import { compareText } from './text';
 import { bedsAt, datedChange } from './valid-from';
@@ -38,7 +39,9 @@ export type SaveApartmentResult =
         /** Plan 22: `bedsValidFrom` before the month of the last change (undo that first). */
         | 'valid-from-order';
     }
-  | ({ status: 'refused' } & BedsConflict);
+  | ({ status: 'refused' } & BedsConflict)
+  /** F12: a live supply of the apartment has a code the new codes leave out (its ids). */
+  | { status: 'refused'; reason: 'codes-in-use'; supplyIds: string[] };
 
 /**
  * Why the live stays no longer fit an apartment whose beds changed (review of 18 Nov 2026, U13):
@@ -198,6 +201,19 @@ export async function saveApartment(
   }
   if (live && JSON.stringify({ ...after, rev: before.rev }) === JSON.stringify(before)) {
     return { status: 'unchanged', apartmentId: input.id };
+  }
+  // F12 (plan 25): the codes of a live supply of the apartment stay among the apartment's codes.
+  if (live && JSON.stringify(after.supplyCodes) !== JSON.stringify(before.supplyCodes)) {
+    const used = (await liveSupplies(store))
+      .filter((s) => s.apartments.some((a) => a.apartmentId === input.id))
+      .filter((s) =>
+        (s.supplyCodes ?? []).some(
+          (c) => !(after.supplyCodes ?? []).some((own) => sameCode(own, c)),
+        ),
+      )
+      .map((s) => s.id)
+      .sort();
+    if (used.length > 0) return { status: 'refused', reason: 'codes-in-use', supplyIds: used };
   }
   const operation = await commitChange(
     store,

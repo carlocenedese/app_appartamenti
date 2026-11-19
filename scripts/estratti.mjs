@@ -1618,13 +1618,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
             if (found === null) throw invalid('bad-arguments');
             return { apartmentId: found[1], basisPoints: basisPoints(found[2]) };
           });
-    return saveSupplyCommand(
-      store,
-      { label: values.etichetta.trim(), rows, note: '' },
-      ctx,
+    return saveSupplyCommand(store, { label: values.etichetta.trim(), rows, note: '' }, ctx, {
       // Plan 22: new weights of an existing supply from a month («valido dal»).
-      values.dal === undefined ? {} : { validFrom: month(values.dal) },
-    );
+      ...(values.dal === undefined ? {} : { validFrom: month(values.dal) }),
+      // F12: POD, PDR or customer codes of the supply (empty: none).
+      ...(values.codici === undefined
+        ? {}
+        : { codes: values.codici.split(',').filter((c) => c !== '') }),
+    });
   }
 
   // Review of 18 Nov 2026 (annullo, point 2): the live records pointing at a missing or deleted
@@ -1969,7 +1970,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       oggi: ['scadenze', 'tasse', 'cruscotto'],
       lettura: ['bolletta'],
       'soglia-consumi': ['bolletta'],
-      codici: ['bolletta', 'appartamento'],
+      codici: ['bolletta', 'appartamento', 'utenza'],
       conferma: ['bolletta'],
       'periodo-conguaglio': ['cruscotto'],
       ripartizione: ['utenza'],

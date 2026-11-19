@@ -119,6 +119,10 @@ export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {
   'invalid-close-input': 'Rifiutato: data non valida.',
   'period-reopened':
     'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
+  'codes-not-in-apartment':
+    'Rifiutato: un codice dell’utenza non è tra i codici dell’appartamento («apartmentIds»): aggiungerlo prima con «appartamento --codici».',
+  'codes-in-use':
+    'Rifiutato: un’utenza dell’appartamento usa un codice che si toglierebbe («supplyIds»): toglierlo prima dall’utenza («utenza --codici»).',
   'no-month-to-cover':
     'Rifiutato: il canone versato in più non copre nessun mese: è un credito dell’inquilino da rimborsare.',
   'rent-excess-open':

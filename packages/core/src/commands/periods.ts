@@ -266,7 +266,9 @@ export async function saveSupplyCommand(
     throw new Stop(
       'rejected',
       result.reason,
-      optional('supplyId', 'supplyId' in result ? result.supplyId : undefined),
+      result.reason === 'codes-not-in-apartment'
+        ? { apartmentIds: result.apartmentIds, message: MESSAGES['codes-not-in-apartment'] }
+        : optional('supplyId', 'supplyId' in result ? result.supplyId : undefined),
     );
   }
   return {

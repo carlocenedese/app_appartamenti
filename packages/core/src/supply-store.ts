@@ -32,10 +32,18 @@ export async function linkSupply(
   profileId: string,
   clock: () => string,
   newId: () => string,
+  /** F12: the POD, PDR or customer codes of the supply. */
+  codes: string[] = [],
 ): Promise<Supply> {
   const supply = parseOrThrow(
     SupplySchema,
-    { ...checkedDraft(draft), id: newId(), v: 1, rev: 1 },
+    {
+      ...checkedDraft(draft),
+      id: newId(),
+      v: 1,
+      rev: 1,
+      ...(codes.length === 0 ? {} : { supplyCodes: codes }),
+    },
     'supply',
   );
   const key = foldText(supply.label);
@@ -94,7 +102,13 @@ export type SaveSupplyResult =
         | 'valid-from-order';
     }
   /** A live supply has the label with other apartments or weights (its id). */
-  | { status: 'refused'; reason: 'label-in-use'; supplyId: string };
+  | { status: 'refused'; reason: 'label-in-use'; supplyId: string }
+  /** F12: a code of the supply is not among the codes of these apartments (`appartamento --codici`). */
+  | { status: 'refused'; reason: 'codes-not-in-apartment'; apartmentIds: string[] };
+
+/** POD, PDR and customer codes compared without spaces and case (as the bill import, R261). */
+export const sameCode = (a: string, b: string): boolean =>
+  a.replace(/\s+/g, '').toUpperCase() === b.replace(/\s+/g, '').toUpperCase();
 
 /**
  * `linkSupply` for the command line (review of 18 Nov 2026, E5): nothing written while
@@ -102,7 +116,11 @@ export type SaveSupplyResult =
  * refuses (or an empty label) is `invalid-supply`. A live supply with the same label (folded) and
  * the same apartments and weights is `unchanged`, with others `label-in-use`, unless
  * `options.validFrom` is given (plan 22): then the new apartments and weights hold from that
- * month and the old ones before it (`earlierApartments`), one `supply.update`.
+ * month and the old ones before it (`earlierApartments`), one `supply.update`. F12 (plan 25):
+ * `options.codes` are the POD, PDR or customer codes of the supply (they replace the old ones);
+ * each must be among the `supplyCodes` of every apartment of the supply
+ * (`codes-not-in-apartment`), so the two stay consistent and the bill import, which reads the
+ * apartment's codes, is unchanged.
  */
 export async function saveSupply(
   store: Store,
@@ -110,7 +128,7 @@ export async function saveSupply(
   profileId: string,
   clock: () => string,
   newId: () => string,
-  options: { validFrom?: YearMonth } = {},
+  options: { validFrom?: YearMonth; codes?: string[] } = {},
 ): Promise<SaveSupplyResult> {
   if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
@@ -118,18 +136,58 @@ export async function saveSupply(
   if (draft.label.trim() === '' || draftProblem(draft) !== undefined) {
     return { status: 'refused', reason: 'invalid-supply' };
   }
-  const apartments = new Set(
-    (await loadAll(store, 'apartment', ApartmentSchema)).records.map((a) => a.id),
-  );
+  const known = (await loadAll(store, 'apartment', ApartmentSchema)).records;
+  const apartments = new Set(known.map((a) => a.id));
   if (draft.rows.some((r) => !apartments.has(r.apartmentId))) {
     return { status: 'refused', reason: 'unknown-apartment' };
   }
+  const { codes } = options;
+  if (codes !== undefined) {
+    const missing = draft.rows
+      .map((r) => known.find((a) => a.id === r.apartmentId))
+      .filter(
+        (a) =>
+          a !== undefined &&
+          !codes.every((c) => (a.supplyCodes ?? []).some((own) => sameCode(own, c))),
+      )
+      .map((a) => a?.id ?? '')
+      .sort();
+    if (missing.length > 0) {
+      return { status: 'refused', reason: 'codes-not-in-apartment', apartmentIds: missing };
+    }
+  }
+  const withCodes = (supply: Supply): Supply =>
+    codes === undefined
+      ? supply
+      : parseOrThrow(
+          SupplySchema,
+          {
+            ...Object.fromEntries(Object.entries(supply).filter(([k]) => k !== 'supplyCodes')),
+            ...(codes.length === 0 ? {} : { supplyCodes: codes }),
+          },
+          'supply',
+        );
   const key = foldText(draft.label);
   const same = (await liveSupplies(store)).find((s) => foldText(s.label) === key);
   if (same !== undefined) {
     const { apartments: rows } = checkedDraft(draft);
     if (JSON.stringify(same.apartments) === JSON.stringify(rows)) {
-      return { status: 'unchanged', supplyId: same.id };
+      const coded = withCodes(same);
+      if (JSON.stringify(coded) === JSON.stringify(same)) {
+        return { status: 'unchanged', supplyId: same.id };
+      }
+      const operation = await commitChange(
+        store,
+        {
+          profileId,
+          kind: 'supply.update',
+          summary: `Modificata l'utenza ${same.label}`,
+          changes: [{ path: recordPath('supply', same.id), before: same, after: coded }],
+        },
+        clock,
+        newId,
+      );
+      return { status: 'saved', operationId: operation.id, supplyId: same.id };
     }
     if (options.validFrom === undefined) {
       return { status: 'refused', reason: 'label-in-use', supplyId: same.id };
@@ -138,10 +196,8 @@ export async function saveSupply(
       apartments: same.apartments,
     });
     if (earlierApartments === undefined) return { status: 'refused', reason: 'valid-from-order' };
-    const after = parseOrThrow(
-      SupplySchema,
-      { ...same, apartments: rows, earlierApartments },
-      'supply',
+    const after = withCodes(
+      parseOrThrow(SupplySchema, { ...same, apartments: rows, earlierApartments }, 'supply'),
     );
     const operation = await commitChange(
       store,
@@ -156,7 +212,7 @@ export async function saveSupply(
     );
     return { status: 'saved', operationId: operation.id, supplyId: same.id };
   }
-  const supply = await linkSupply(store, draft, profileId, clock, newId);
+  const supply = await linkSupply(store, draft, profileId, clock, newId, codes);
   // The operation that wrote this supply (the last one by order may be another with the same time).
   const path = recordPath('supply', supply.id);
   const operation = (await readJournal(store)).operations.find(

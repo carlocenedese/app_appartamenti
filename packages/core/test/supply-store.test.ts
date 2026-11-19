@@ -15,6 +15,7 @@ import {
   readJournal,
   recordPath,
   removeSupply,
+  saveApartment,
   saveSupply,
   updateSupply,
 } from '../src/index';
@@ -313,6 +314,49 @@ describe('saveSupply (CLI, review of 18 Nov 2026, E5)', () => {
     }
     return store;
   }
+  it('F12: codes of a supply, each among the codes of its apartments; kept consistent', async () => {
+    const store = new MemoryStore();
+    await store.writeJsonAtomic(recordPath('apartment', 'apt-b'), {
+      ...apt('apt-b'),
+      supplyCodes: ['IT001E00000001', 'PDR-0001'],
+    });
+    await store.writeJsonAtomic(recordPath('apartment', 'apt-l'), {
+      ...apt('apt-l'),
+      supplyCodes: ['it001e 00000001'],
+    });
+    // A code of one apartment only: refused, naming the other.
+    expect(await saveSupply(store, draft(), 'p1', clock, ids(), { codes: ['PDR-0001'] })).toEqual({
+      status: 'refused',
+      reason: 'codes-not-in-apartment',
+      apartmentIds: ['apt-l'],
+    });
+    // Compared without spaces and case, as the bill import.
+    const saved = await saveSupply(store, draft(), 'p1', clock, ids(), {
+      codes: ['IT001E00000001'],
+    });
+    expect(saved).toMatchObject({ status: 'saved', supplyId: 'id-1' });
+    expect((await liveSupplies(store))[0]?.supplyCodes).toEqual(['IT001E00000001']);
+    // The same supply with no codes: written, the codes go.
+    expect(await saveSupply(store, draft(), 'p1', clock, ids('y'), { codes: [] })).toMatchObject({
+      status: 'saved',
+    });
+    expect((await liveSupplies(store))[0]?.supplyCodes).toBeUndefined();
+    await saveSupply(store, draft(), 'p1', clock, ids('z'), { codes: ['IT001E00000001'] });
+    // The apartment cannot drop a code its supply uses.
+    expect(
+      await saveApartment(store, { id: 'apt-l', supplyCodes: [] }, 'p1', clock, ids('a')),
+    ).toEqual({ status: 'refused', reason: 'codes-in-use', supplyIds: ['id-1'] });
+    expect(
+      await saveApartment(
+        store,
+        { id: 'apt-b', supplyCodes: ['IT001E00000001'] },
+        'p1',
+        clock,
+        ids('a'),
+      ),
+    ).toMatchObject({ status: 'updated' });
+  });
+
   it('links once; the same request again is unchanged; the same label otherwise is refused', async () => {
     const store = await withApartments();
     const first = await saveSupply(store, draft(), 'p1', clock, ids());
