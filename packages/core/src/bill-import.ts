@@ -38,7 +38,7 @@ import {
 import type { Apartment, PendingDocument } from './model';
 import { apartmentFolder } from './accounts';
 import { parseOrThrow } from './parse';
-import { proposalFromExtraction, tariFilePath } from './proposal';
+import { proposalFromExtraction, tariNoticePath } from './proposal';
 import type { Proposal, ProposalCheck } from './proposal';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -241,25 +241,11 @@ export async function importBill(
   // its PDF is filed, on the instalments of this apartment (the folder the file goes to).
   const original = OriginalFileNameSchema.safeParse(result.fileName.normalize('NFC'));
   const named = original.success ? { originalName: original.data } : {};
-  // One path per notice, from all the months of this apartment's instalments (a notice split
-  // into stretches, R369, has several: giro 3).
-  const ownRates =
-    proposal.kind === 'tari'
-      ? proposal.instalments.filter((i) => i.apartmentId === apartmentId)
-      : [];
-  const [firstRate] = ownRates;
+  // One path per notice, from all the months of this apartment's instalments (R369, round 3).
   const noticePath =
-    firstRate === undefined
-      ? undefined
-      : tariFilePath({
-          ...firstRate,
-          coversFrom: ownRates.map((i) => i.coversFrom).sort()[0] ?? firstRate.coversFrom,
-          coversTo:
-            ownRates
-              .map((i) => i.coversTo)
-              .sort()
-              .at(-1) ?? firstRate.coversTo,
-        });
+    proposal.kind === 'tari'
+      ? tariNoticePath(proposal.instalments.filter((i) => i.apartmentId === apartmentId))
+      : undefined;
   const filed: Proposal =
     proposal.kind === 'bill'
       ? { ...proposal, bill: { ...proposal.bill, ...named } }

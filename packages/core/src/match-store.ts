@@ -459,8 +459,8 @@ export type ConfirmPastYearResult =
  * end of a bill's period) falls in `year`, a year before the one of `today`, confirmed paid by
  * hand in one `match.hand-confirm` operation that `annulla-riconciliazione` undoes: a
  * `handConfirmation` each, for the expected amount (a shared notice's share as the matching
- * splits it). The apartments with a live closing (not reopened) of a period with months in the
- * year are left out and listed (`skippedApartmentIds`, answer of user1, 19 Nov 2026); the others
+ * splits it). An item whose months touch a live closing (not reopened) of its apartment is left
+ * out and its apartment listed (`skippedApartmentIds`, answer of user1, 19 Nov 2026); the others
  * are confirmed. Refused, writing nothing: `inconsistent-store`, `not-past-year`,
  * `nothing-to-confirm` (with the skipped apartments). The guard (F5) still refuses an item of a
  * closed period of another year. Returns the count and the sum of the expected amounts.
@@ -493,14 +493,13 @@ export async function confirmPastYear(
     );
     return cents(-(parts.find((p) => p.itemId === i.id)?.amount ?? 0));
   };
-  const closed = new Set(
-    (await loadAll(store, 'periodClose', PeriodCloseSchema)).records
-      .filter(
-        (c) =>
-          c.reopened === undefined && c.from <= `${input.year}-12` && c.to >= `${input.year}-01`,
-      )
-      .map((c) => c.apartmentId),
+  // Round 4 of the review: an item is left out when its months touch a closed period of its
+  // apartment (what the guard checks), whatever the year of that period.
+  const closings = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records.filter(
+    (c) => c.reopened === undefined,
   );
+  const inClosed = (apartmentId: string, from: string, to: string) =>
+    closings.some((c) => c.apartmentId === apartmentId && c.from <= to && c.to >= from);
   const skipped = new Set<string>();
   const records: HandConfirmation[] = [];
   for (const ref of run.unverified) {
@@ -510,7 +509,11 @@ export async function confirmPastYear(
     const date = bill !== undefined ? (bill.dueDate ?? bill.periodEnd) : inst?.dueDate;
     const item = bill ?? inst;
     if (item === undefined || date === undefined || date.slice(0, 4) !== input.year) continue;
-    if (closed.has(item.apartmentId)) {
+    const [from, to] =
+      bill !== undefined
+        ? [bill.periodStart.slice(0, 7), bill.periodEnd.slice(0, 7)]
+        : [inst?.coversFrom ?? '', inst?.coversTo ?? ''];
+    if (inClosed(item.apartmentId, from, to)) {
       skipped.add(item.apartmentId);
       continue;
     }

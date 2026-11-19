@@ -185,6 +185,11 @@ export interface DepositReturnInput {
   /** The tenant's conguaglio typed by user1 (positive is a debt), instead of the computed one. */
   conguaglio?: Cents;
   extraCharges: readonly { label: string; amount: Cents }[];
+  /**
+   * F9 a (round 4): today. The end of the tenant's contract is the exit of a stay without end only
+   * once that month is over; without `today` it never is (`no-exit`, as before).
+   */
+  today?: ISODate;
 }
 
 export type DepositReturnResult =
@@ -247,11 +252,20 @@ export async function loadDepositReturn(
   ) => ({ status: 'refused', reason }) as const;
   if (await writesBlocked(store)) return refuse('inconsistent-store');
   // F9 a (decided by user1 on 19 Nov 2026): a stay without end ends with the tenant's latest
-  // contract, and that end is the exit of the deposit.
+  // contract, and that end is the exit of the deposit once it is over (round 4: a contract still
+  // running is no exit yet).
+  const written = (await loadAll(store, 'tenancy', TenancySchema)).records;
+  const now = input.today?.slice(0, 7);
   const tenancies = withContractEnds(
-    (await loadAll(store, 'tenancy', TenancySchema)).records,
+    written,
     (await loadAll(store, 'contract', ContractSchema)).records,
-  ).filter((t) => t.apartmentId === input.apartmentId);
+  )
+    .map((t, i) =>
+      written[i]?.to === undefined && t.to !== undefined && (now === undefined || t.to >= now)
+        ? (written[i] as Tenancy)
+        : t,
+    )
+    .filter((t) => t.apartmentId === input.apartmentId);
   const check = depositChecks({
     tenancies,
     payments: (await loadAll(store, 'payment', PaymentSchema)).records,

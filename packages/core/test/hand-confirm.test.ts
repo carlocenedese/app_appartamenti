@@ -143,6 +143,20 @@ describe('confirmPastYear (item 6)', () => {
       await confirmPastYear(store, { year: '2024', today: TODAY }, 'p1', clock, ids('h')),
     ).toMatchObject({ status: 'confirmed', count: 1, total: 6000, skippedApartmentIds: ['apt'] });
   });
+
+  it('a late bill of a period closed the year before is left out, the rest of the year confirmed', async () => {
+    const store = await pastYear([]);
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('c'))).status).toBe('closed');
+    // Due in 2025, for August–September 2024 (the closed 2023-24), registered late.
+    const late = bill('b-late', '2024-08-01', '2024-09-30', 2000, {
+      dueDate: isoDate('2025-01-15'),
+    });
+    await write(store, 'bill', late, 'late');
+    await write(store, 'bill', later, 'after');
+    expect(
+      await confirmPastYear(store, { year: '2025', today: TODAY }, 'p1', clock, ids('h')),
+    ).toMatchObject({ status: 'confirmed', count: 1, total: 3000, skippedApartmentIds: ['apt'] });
+  });
 });
 
 describe('G2-I2: every reader of «is it paid» counts the confirmations by hand', () => {

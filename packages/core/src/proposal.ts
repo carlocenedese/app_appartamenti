@@ -590,6 +590,23 @@ export function tariFilePath(
   });
 }
 
+/**
+ * F9 c (round 3): one path for the PDF of a notice, from all the months of the given instalments
+ * (a notice split into stretches, R369, has several of one apartment); `undefined` without any.
+ */
+export function tariNoticePath(
+  rates: readonly Pick<Instalment, 'issueDate' | 'dueDate' | 'coversFrom' | 'coversTo'>[],
+): string | undefined {
+  const [first] = rates;
+  if (first === undefined) return undefined;
+  const sorted = (key: 'coversFrom' | 'coversTo') => rates.map((r) => r[key]).sort();
+  return tariFilePath({
+    ...first,
+    coversFrom: sorted('coversFrom')[0] ?? first.coversFrom,
+    coversTo: sorted('coversTo').at(-1) ?? first.coversTo,
+  });
+}
+
 export function suggestedFilePath(input: {
   category: string;
   supplier: string;

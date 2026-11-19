@@ -9,6 +9,8 @@ import {
   sharedGroupProblem,
   splitSharedDebit,
   suggestedFilePath,
+  tariNoticePath,
+  isoDate,
   yearMonth,
 } from '../src/index';
 import type {
@@ -1090,5 +1092,20 @@ describe('suggestedFilePath', () => {
     expect(suggestedFilePath({ ...input, issueDate: '2026-01-01' as ISODate })).toBe(
       'Bollette/Gas/2026/2026-01-01_Gas_L-Energia-Piu-Servizi_20260301-20260331.pdf',
     );
+  });
+});
+
+describe('tariNoticePath (F9 c, round 3)', () => {
+  it('gives a notice in stretches one path, from all its months', () => {
+    const rate = (coversFrom: string, coversTo: string) => ({
+      issueDate: isoDate('2026-02-15'),
+      dueDate: isoDate('2026-03-16'),
+      coversFrom: yearMonth(coversFrom),
+      coversTo: yearMonth(coversTo),
+    });
+    const whole = tariNoticePath([rate('2026-01', '2026-04')]);
+    expect(whole).toBe('Bollette/Rifiuti/2026/2026-02-15_Rifiuti_TARI_20260101-20260430.pdf');
+    expect(tariNoticePath([rate('2026-03', '2026-04'), rate('2026-01', '2026-02')])).toBe(whole);
+    expect(tariNoticePath([])).toBeUndefined();
   });
 });

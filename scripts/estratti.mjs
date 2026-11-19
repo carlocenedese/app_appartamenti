@@ -1256,6 +1256,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       {
         apartmentId: values.appartamento,
         tenantId: values.inquilino,
+        // F9 a: the contract end is the exit once it is over, by the clock.
+        today: day(clock().slice(0, 10)),
         ...(values.conguaglio === undefined ? {} : { conguaglio: euro(values.conguaglio) }),
         extraCharges,
       },
