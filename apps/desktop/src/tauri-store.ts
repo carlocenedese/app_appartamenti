@@ -15,6 +15,7 @@ import {
   readFile,
   readTextFile,
   rename,
+  writeFile,
   writeTextFile,
 } from '@tauri-apps/plugin-fs';
 import {
@@ -36,6 +37,8 @@ export interface FsBackend {
   /** Creates the folder and its missing parents. */
   mkdir(path: string): Promise<void>;
   exists(path: string): Promise<boolean>;
+  /** Creates the file with these bytes; fails, writing nothing, when anything is at `path`. */
+  writeNew(path: string, bytes: Uint8Array): Promise<void>;
 }
 
 /** The real backend: the Tauri file plugin. */
@@ -47,6 +50,8 @@ export const tauriFsBackend: FsBackend = {
   readBytes: (path) => readFile(path),
   mkdir: (path) => mkdir(path, { recursive: true }),
   exists: (path) => exists(path),
+  // R403: opened with `create_new` (O_EXCL), never over an existing file.
+  writeNew: (path, bytes) => writeFile(path, bytes, { createNew: true }),
 };
 
 /**
@@ -195,6 +200,65 @@ export class TauriStore implements Store {
   async readBytes(path: string): Promise<Uint8Array> {
     const { file } = await this.locate(path);
     return this.fs.readBytes(file);
+  }
+
+  /**
+   * Plan 26 (R406): why a new file cannot go at `path`, or nothing. `file-exists` for anything at
+   * the path, in either spelling (NFC or NFD), a dangling link included; `bad-default-folder` for a
+   * link or a file in place of one of its folders (`readDir` does not follow links).
+   */
+  async newFileProblem(path: string): Promise<'file-exists' | 'bad-default-folder' | undefined> {
+    const segments = path.normalize('NFC').split('/');
+    assertSafeRelPath(segments.join('/'));
+    let current = this.root;
+    for (const [index, segment] of segments.entries()) {
+      let entries;
+      try {
+        entries = await this.fs.readDir(current);
+      } catch {
+        return undefined; // A missing folder; a folder out of reach fails at the write.
+      }
+      const entry = entries
+        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+        .find((e) => e.name.normalize('NFC') === segment);
+      if (entry === undefined) return undefined;
+      if (index === segments.length - 1) return 'file-exists';
+      if (!entry.isDirectory) return 'bad-default-folder';
+      current = `${current}${this.sep}${entry.name}`;
+    }
+    return undefined;
+  }
+
+  /**
+   * Plan 26 (R403): writes `bytes` to the new file `path`, creating its folders; never over
+   * anything already there. `file-exists` only for the plugin's EEXIST (`os error 17`, or 80 and
+   * 183 on Windows); a write that failed after creating the file is `write-interrupted`: the
+   * partial file stays (the app cannot delete) and the user must remove it.
+   * shortcut: no temporary file (the plugin has no hard links and its rename replaces).
+   */
+  async writeNewFile(
+    path: string,
+    bytes: Uint8Array,
+  ): Promise<'written' | 'file-exists' | 'bad-default-folder' | 'write-interrupted'> {
+    const problem = await this.newFileProblem(path);
+    if (problem !== undefined) return problem;
+    const { rel, file } = await this.locate(path);
+    try {
+      await this.fs.mkdir(file.slice(0, file.lastIndexOf(this.sep)));
+    } catch (error) {
+      if ((await this.newFileProblem(path)) === 'bad-default-folder') return 'bad-default-folder';
+      // No `cause`: the plugin's message has the absolute path.
+      throw new FileAccessError(rel, accessCode(error));
+    }
+    try {
+      await this.fs.writeNew(file, bytes);
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (code === 'EEXIST' || /os error (?:17|80|183)\b/.test(String(error))) return 'file-exists';
+      if ((await this.newFileProblem(path)) === 'file-exists') return 'write-interrupted';
+      throw new FileAccessError(rel, accessCode(error));
+    }
+    return 'written';
   }
 
   /** As `FsStore.locate`: existing names in whatever spelling, then the rest as requested. */

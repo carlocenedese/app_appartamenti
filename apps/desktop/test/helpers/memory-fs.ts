@@ -79,4 +79,11 @@ export class MemoryFs implements FsBackend {
   async exists(path: string): Promise<boolean> {
     return this.files.has(path) || this.dirs.has(path);
   }
+
+  async writeNew(path: string, bytes: Uint8Array): Promise<void> {
+    if (!this.dirs.has(this.parent(path)) || (await this.exists(path))) {
+      throw new Error(`failed to open file at path: ${path}: File exists (os error 17)`);
+    }
+    this.files.set(path, bytes);
+  }
 }

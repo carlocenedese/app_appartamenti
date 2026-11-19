@@ -20,10 +20,9 @@ import {
   DOCX_LIMITS,
   ISODateSchema,
   MODULE_KINDS,
-  generateModule,
-  loadModuleData,
-  moduleFilePath,
+  moduleCommand,
   starterDocx,
+  suppliedValues,
 } from '../packages/core/src/index.ts';
 import {
   Stop,
@@ -88,14 +87,7 @@ function readValues(path) {
   } catch {
     throw invalid('bad-values');
   }
-  const ok =
-    typeof values === 'object' &&
-    values !== null &&
-    !Array.isArray(values) &&
-    // A key that is not a field name could be a value put in its place: never echoed back.
-    Object.entries(values).every(([k, v]) => /^[a-z0-9_]+$/.test(k) && typeof v === 'string');
-  if (!ok) throw invalid('bad-values');
-  return values;
+  return suppliedValues(values);
 }
 
 function readTemplate(path) {
@@ -204,31 +196,17 @@ export async function main(
     const template = readTemplate(values.modello);
     const supplied = readValues(values.valori);
 
-    const loaded = await loadModuleData(new FsStore(values.cartella), {
-      tenancyId: values.presenza,
-    });
-    if (loaded.status !== 'ok') throw rejected(loaded.reason);
-    const result = generateModule({
+    const result = await moduleCommand(new FsStore(values.cartella), {
       kind,
+      tenancyId: values.presenza,
       template,
-      data: loaded.data,
       supplied,
       today,
       inflateRaw,
     });
-    if (result.status !== 'ok') {
-      throw rejected(
-        result.reason,
-        result.reason === 'unknown-values'
-          ? { count: result.count }
-          : 'fields' in result
-            ? { fields: result.fields }
-            : {},
-      );
-    }
 
     if (target === undefined) {
-      const path = moduleFilePath(loaded.data.apartment, loaded.data.tenant, kind, today);
+      const { path } = result;
       if (path === undefined) throw rejected('no-tenant-folder');
       const file = join(values.cartella, ...path.split('/'));
       target = { file, folder: dirname(file) };
@@ -237,14 +215,7 @@ export async function main(
       mkdirSync(target.folder, { recursive: true });
     }
     writeNew(target.file, target.folder, result.bytes, io);
-    return done(0, {
-      status: 'written',
-      kind,
-      tenancyId: loaded.data.tenancy.id,
-      fields: result.fields,
-      appFields: result.appFields,
-      askedFields: result.askedFields,
-    });
+    return done(0, result.body);
   } catch (error) {
     if (error instanceof Stop) {
       return done(error.status === 'invalid' ? 2 : 1, {
