@@ -63,10 +63,8 @@ import {
   BillSchema,
   InstalmentSchema,
   BankProfileSchema,
-  CsvError,
   ExcludeReasonSchema,
   ISODateSchema,
-  StatementReadError,
   StatementTableSchema,
   BankTransactionSchema,
   OutgoingKindSchema,
@@ -88,7 +86,6 @@ import {
   confirmTenantOutgoing,
   confirmTransfer,
   excludeMovement,
-  importStatement,
   loadContractChecks,
   loadRentYears,
   loadAccountBalances,
@@ -97,15 +94,11 @@ import {
   loadCondoEstimate,
   loadContacts,
   loadAll,
-  parseCsv,
   parseEuro,
   readJournal,
   recordManualTransfer,
   repairDiverged,
-  resolveHeld,
   runReconciliation,
-  saveAccount,
-  saveBankProfile,
   saveApartment,
   saveCondoDocument,
   saveContact,
@@ -132,11 +125,9 @@ import {
   loadDepositReturn,
   saveLegalRate,
   confirmTaxDiscrepancy,
-  saveTenantCard,
   saveConsumptionSettings,
   billFileMove,
   loadConsumption,
-  saveTenant,
   setImuYear,
   setRentYear,
   assignImuF24,
@@ -153,7 +144,6 @@ import {
   undoDependents,
   countByType,
   referenceProblems,
-  undoImport,
   undoOperation,
   ExtractionResultSchema,
   hashBytes,
@@ -176,6 +166,15 @@ import {
   FAILED_BODY,
   closedPeriodStates,
   changedClosedPeriods,
+  saveBankProfileCommand,
+  saveAccountCommand,
+  importTargetOf,
+  statementCsvTable,
+  importStatementCommand,
+  resolveHeldCommand,
+  undoImportCommand,
+  saveTenantCommand,
+  saveTenantCardCommand,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
@@ -528,40 +527,16 @@ function xlsxTable(file) {
   }
 }
 
-function csvTable(bytes, separator) {
-  let text;
-  try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    throw invalid('unreadable-statement');
-  }
-  try {
-    return parseCsv(text, separator);
-  } catch (error) {
-    if (error instanceof CsvError) {
-      throw invalid('unreadable-statement', { code: error.code, row: error.row });
-    }
-    throw error;
-  }
-}
-
 async function command(name, values, positionals, store, who, clock, newId) {
+  const ctx = { who, clock, newId };
   if (name === 'profilo') {
     if (positionals.length !== 1) throw invalid('bad-arguments');
-    let profile;
-    try {
-      profile = BankProfileSchema.parse(JSON.parse(readBytes(positionals[0]).toString('utf8')));
-    } catch (error) {
-      throw error instanceof Stop ? error : invalid('bad-profile');
-    }
-    const operation = await saveBankProfile(store, profile, who, clock, newId);
-    if (operation === undefined) return { status: 'unchanged', id: profile.id };
-    return { status: 'saved', id: profile.id, operationId: operation.id };
+    return saveBankProfileCommand(store, readBytes(positionals[0]).toString('utf8'), ctx);
   }
 
   if (name === 'conto') {
     need(values, 'appartamento', 'profilo', 'etichetta');
-    const result = await saveAccount(
+    return saveAccountCommand(
       store,
       {
         apartmentId: values.appartamento,
@@ -569,13 +544,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         bankProfileId: values.profilo,
         ...(values.iban === undefined ? {} : { iban: values.iban }),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'rejected') throw new Stop('rejected', result.reason);
-    if (result.status === 'unchanged') return { status: 'unchanged', id: result.account.id };
-    return { status: 'saved', id: result.account.id, operationId: result.operationId };
   }
 
   if (name === 'importa') {
@@ -590,15 +560,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (period !== undefined && !(period.from.success && period.to.success)) {
       throw invalid('bad-arguments');
     }
-    const account = (await loadAll(store, 'account', AccountSchema)).records.find(
-      (a) => a.id === values.conto,
-    );
-    const profile = (await loadAll(store, 'bankProfile', BankProfileSchema)).records.find(
-      (p) => p.id === account?.bankProfileId,
-    );
-    if (account === undefined || profile === undefined) {
-      throw new Stop('rejected', account === undefined ? 'unknown-account' : 'wrong-profile');
-    }
+    const { account, profile } = await importTargetOf(store, values.conto);
     const file = positionals[0];
     const bytes = readBytes(file);
     let table;
@@ -607,65 +569,21 @@ async function command(name, values, positionals, store, who, clock, newId) {
       // Python reads the file itself: if it changed since `bytes` (the hash), the table is not the file's.
       if (!readBytes(file).equals(bytes)) throw invalid('unreadable-statement');
     } else {
-      table = csvTable(bytes, profile.csvSeparator ?? ';');
+      table = statementCsvTable(bytes, profile.csvSeparator ?? ';');
     }
-    let result;
-    try {
-      result = await importStatement(
-        store,
-        {
-          accountId: account.id,
-          fileBytes: new Uint8Array(bytes),
-          // The name goes into the statement record (the data folder), never into the output.
-          fileName: file.split(/[\\/]/).at(-1) ?? 'estratto',
-          table,
-          ...(period === undefined
-            ? {}
-            : { period: { from: period.from.data, to: period.to.data } }),
-        },
-        who,
-        clock,
-        newId,
-      );
-    } catch (error) {
-      if (error instanceof StatementReadError) {
-        throw invalid('unreadable-statement', {
-          code: error.code,
-          row: error.row,
-          ...(error.column === undefined ? {} : { column: error.column }),
-        });
-      }
-      throw error;
-    }
-    if (result.status === 'already-imported') {
-      throw new Stop('already-imported', 'already-imported', { statementId: result.statementId });
-    }
-    if (result.status === 'rejected') {
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.row === undefined ? {} : { row: result.row },
-      );
-    }
-    const waiting = result.statement.held.filter((h) => h.decision === undefined);
-    return {
-      status: 'imported',
-      statementId: result.statement.id,
-      added: result.added,
-      alreadyKnown: result.alreadyKnown,
-      held: result.held,
-      heldRows: waiting.map((h) => h.row),
-      ...(values.dettagli === true
-        ? {
-            details: waiting.map((h) => ({
-              row: h.row,
-              date: h.transaction.date,
-              amount: h.transaction.amount,
-              description: h.transaction.description,
-            })),
-          }
-        : {}),
-    };
+    return importStatementCommand(
+      store,
+      {
+        accountId: account.id,
+        fileBytes: new Uint8Array(bytes),
+        // The name goes into the statement record (the data folder), never into the output.
+        fileName: file.split(/[\\/]/).at(-1) ?? 'estratto',
+        table,
+        ...(period === undefined ? {} : { period: { from: period.from.data, to: period.to.data } }),
+      },
+      ctx,
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'decidi') {
@@ -677,13 +595,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-arguments');
     }
     const decision = values.tieni === true ? 'keep' : 'exclude';
-    try {
-      await resolveHeld(store, values.estratto, Number(values.riga), decision, who, clock, newId);
-    } catch (error) {
-      if (error instanceof RangeError) throw new Stop('rejected', 'not-decidable');
-      throw error;
-    }
-    return { status: 'decided', statementId: values.estratto, row: Number(values.riga), decision };
+    return resolveHeldCommand(
+      store,
+      { statementId: values.estratto, row: Number(values.riga), decision },
+      ctx,
+    );
   }
 
   if (name === 'soglie-consumi') {
@@ -737,75 +653,16 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'scheda-inquilino') {
     // Plan 17, R311: the reserved card of a tenant, from a JSON file (never personal data as
-    // arguments, never echoed). Keys: codice_fiscale, luogo_nascita, data_nascita, residenza,
-    // documento_numero, documento_ente, documento_rilascio, documento_scadenza. Replaces the card.
+    // arguments, never echoed); the core checks the keys.
     need(values, 'inquilino', 'valori');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    let given;
+    let valuesJson;
     try {
-      given = JSON.parse(readBytes(values.valori).toString('utf8'));
+      valuesJson = readBytes(values.valori).toString('utf8');
     } catch {
       throw invalid('bad-values');
     }
-    const keys = [
-      'codice_fiscale',
-      'luogo_nascita',
-      'data_nascita',
-      'residenza',
-      'documento_numero',
-      'documento_ente',
-      'documento_rilascio',
-      'documento_scadenza',
-    ];
-    if (
-      typeof given !== 'object' ||
-      given === null ||
-      Array.isArray(given) ||
-      Object.entries(given).some(([k, v]) => !keys.includes(k) || typeof v !== 'string')
-    ) {
-      throw invalid('bad-values');
-    }
-    if (
-      given.documento_numero === undefined &&
-      Object.keys(given).some((k) => k.startsWith('documento_'))
-    ) {
-      throw invalid('bad-values');
-    }
-    const date = (text) => (ISODateSchema.safeParse(text).success ? text : null);
-    const card = {
-      ...optional('taxCode', given.codice_fiscale),
-      ...optional('birthPlace', given.luogo_nascita),
-      ...optional(
-        'birthDate',
-        given.data_nascita === undefined ? undefined : date(given.data_nascita),
-      ),
-      ...optional('residence', given.residenza),
-      ...(given.documento_numero === undefined
-        ? {}
-        : {
-            idDocument: {
-              number: given.documento_numero,
-              ...optional('issuer', given.documento_ente),
-              ...optional(
-                'issuedOn',
-                given.documento_rilascio === undefined ? undefined : date(given.documento_rilascio),
-              ),
-              ...optional(
-                'expiresOn',
-                given.documento_scadenza === undefined ? undefined : date(given.documento_scadenza),
-              ),
-            },
-          }),
-    };
-    const result = await saveTenantCard(
-      store,
-      { tenantId: values.inquilino, card },
-      who,
-      clock,
-      newId,
-    );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return result;
+    return saveTenantCardCommand(store, { tenantId: values.inquilino, valuesJson }, ctx);
   }
 
   if (name === 'inquilino') {
@@ -817,26 +674,15 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    let operation;
-    try {
-      operation = await saveTenant(
-        store,
-        {
-          id: values.id,
-          name: values.nome,
-          ...(values.lingua === undefined ? {} : { language: values.lingua }),
-        },
-        who,
-        clock,
-        newId,
-      );
-    } catch (error) {
-      // An id the store refuses (a name reserved on Windows, a bad segment) is a bad argument.
-      if (error instanceof RangeError) throw invalid('bad-arguments');
-      throw error;
-    }
-    if (operation === undefined) return { status: 'unchanged', id: values.id };
-    return { status: 'saved', id: values.id, operationId: operation.id };
+    return saveTenantCommand(
+      store,
+      {
+        id: values.id,
+        name: values.nome,
+        ...(values.lingua === undefined ? {} : { language: values.lingua }),
+      },
+      ctx,
+    );
   }
 
   if (name === 'riconcilia') {
@@ -3063,29 +2909,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   // annulla
   need(values, 'estratto');
-  try {
-    const result = await undoImport(store, values.estratto, who, clock, newId);
-    if (result.status === 'refused') {
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.reason === 'dependent-payments'
-          ? { paymentIds: result.paymentIds }
-          : result.reason === 'dependent-records'
-            ? { recordIds: result.recordIds }
-            : {},
-      );
-    }
-    return { status: 'undone', statementId: values.estratto, operationId: result.operation.id };
-  } catch (error) {
-    if (error instanceof Stop) throw error;
-    if (error instanceof RangeError) throw new Stop('rejected', 'no-import');
-    // refuseIfDiverged (journal.ts): the folder is not as the journal leaves it (R106, N2).
-    if (error instanceof Error && error.message.startsWith('Cannot undo:')) {
-      throw new Stop('rejected', 'journal-not-aligned');
-    }
-    throw error;
-  }
+  return undoImportCommand(store, values.estratto, ctx);
 }
 
 /** The commands `main` accepts; each one has a line in COMMAND_HELP (estratti-aiuto.mjs). */
