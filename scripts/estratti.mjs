@@ -70,15 +70,8 @@ import {
   TimestampSchema,
   YearMonthSchema,
   YearSchema,
-  loadCondo,
-  loadCondoEstimate,
-  loadContacts,
   loadAll,
   parseEuro,
-  saveApartment,
-  saveCondoDocument,
-  saveContact,
-  saveTenantRecovery,
   saveSupply,
   saveCondoInstalment,
   saveSettings,
@@ -159,6 +152,13 @@ import {
   contractStatusCommand,
   saveLegalRateCommand,
   depositReturnCommand,
+  saveApartmentCommand,
+  saveCondoDocumentCommand,
+  saveRecoveryCommand,
+  condoCommand,
+  condoEstimateCommand,
+  saveContactCommand,
+  contactsCommand,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
@@ -847,7 +847,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await saveApartment(
+    return saveApartmentCommand(
       store,
       {
         id: v.id,
@@ -877,34 +877,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
         // Plan 22: new beds from a month («valido dal»), the old ones before it.
         ...optional('bedsValidFrom', v.dal === undefined ? undefined : month(v.dal)),
       },
-      who,
-      clock,
-      newId,
+      ctx,
       { confirmed: v.modifica === true },
     );
-    if (result.status === 'refused' && result.reason === 'rooms-in-use') {
-      throw new Stop('rejected', result.reason, {
-        rooms: result.rooms,
-        tenancyIds: result.tenancyIds,
-      });
-    }
-    if (result.status === 'refused' && result.reason === 'beds-conflict') {
-      throw new Stop('rejected', result.reason, {
-        message:
-          MESSAGES[
-            result.code === 'unknown-room' ? 'apartment-unknown-room' : 'apartment-beds-conflict'
-          ],
-        code: result.code,
-        ...optional('month', result.month),
-        tenancyIds: result.tenancyIds,
-      });
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      apartmentId: result.apartmentId,
-      ...(result.status === 'unchanged' ? {} : { operationId: result.operationId }),
-    };
   }
 
   if (name === 'condominio-documento') {
@@ -913,7 +888,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-arguments');
     }
     const quota = values['quota-conduttore'];
-    const result = await saveCondoDocument(
+    return saveCondoDocumentCommand(
       store,
       {
         apartmentId: values.appartamento,
@@ -922,23 +897,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         total: euro(values.totale),
         ...optional('quotaConduttore', quota === undefined ? undefined : euro(quota)),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') {
-      // R310: which documents have the other form (ids only).
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.reason === 'esercizio-format' ? { documentIds: result.documentIds } : {},
-      );
-    }
-    return {
-      status: result.status,
-      documentId: result.documentId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   // recupero: the part of an extraordinary expense to recover from tenants chosen by user1, with
@@ -959,7 +919,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const amount = euro(values.importo);
     const quotes = values.quote?.split(';').map(euro);
     if (quotes !== undefined && quotes.length !== tenants.length) throw invalid('bad-arguments');
-    const result = await saveTenantRecovery(
+    return saveRecoveryCommand(
       store,
       {
         id: values.id,
@@ -975,73 +935,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
         status: stato,
         ...optional('periodLabel', values.periodo),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      recoveryId: result.recoveryId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   // The owners' check of the condominium expenses (section 12) and the differences consuntivo −
   // preventivo; amounts and dates only with --dettagli (R107, R194).
   if (name === 'condominio') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadCondo(store, {
-      asOf: day(clock().slice(0, 10)),
-      ...optional('apartmentId', values.appartamento),
-      ...optional('esercizio', values.esercizio),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const details = values.dettagli === true;
-    const rates = result.rates.map((r) => ({
-      instalmentId: r.instalmentId,
-      apartmentId: r.apartmentId,
-      esercizio: r.esercizio,
-      rateIndex: r.rateIndex,
-      rateCount: r.rateCount,
-      straordinaria: r.straordinaria,
-      status: r.status,
-      ...(details
-        ? { expected: r.expected, debited: r.debited, dueDate: r.dueDate, debitDates: r.debitDates }
-        : {}),
-    }));
-    return {
-      status: 'ok',
-      rates,
-      anomalies: rates.filter((r) =>
-        ['senza-addebito', 'importo-diverso', 'duplicato'].includes(r.status),
-      ).length,
-      differences: result.differences.map((d) => ({
-        apartmentId: d.apartmentId,
-        esercizio: d.esercizio,
-        to: d.to,
-        conduttore: d.conduttore === undefined ? 0 : 1,
-        ...(details
-          ? {
-              preventivo: d.preventivo,
-              consuntivo: d.consuntivo,
-              difference: d.difference,
-              ...optional('conduttoreDetails', d.conduttore),
-            }
-          : {}),
-      })),
-      recoveries: result.recoveries.map((r) => ({
-        recoveryId: r.id,
-        apartmentId: r.apartmentId,
-        ...optional('instalmentId', r.instalmentId),
-        ...optional('transactionId', r.transactionId),
-        status: r.status,
-        ...optional('periodLabel', r.periodLabel),
-        tenants: r.shares.length,
-        ...(details ? { amount: r.amount, shares: r.shares } : {}),
-      })),
-      warnings: result.warnings.map((w) => ({ ...w, message: MESSAGES[w.code] })),
-    };
+    return condoCommand(
+      store,
+      {
+        ...optional('apartmentId', values.appartamento),
+        ...optional('esercizio', values.esercizio),
+      },
+      ctx,
+      { details: values.dettagli === true },
+    );
   }
 
   // The estimate of a fiscal year (plan 14, R250): source always, amounts only with --dettagli.
@@ -1051,27 +961,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !/^[A-Za-z0-9_-]{1,32}$/.test(values.esercizio)) {
       throw invalid('bad-arguments');
     }
-    const result = await loadCondoEstimate(store, {
-      apartmentId: values.appartamento,
-      esercizio: values.esercizio,
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const e = result.estimate;
-    if (e === undefined) return { status: 'ok' };
-    return {
-      status: 'ok',
-      estimate: {
-        apartmentId: e.apartmentId,
-        esercizio: e.esercizio,
-        source: e.source,
-        fromEsercizio: e.fromEsercizio,
-        fromKind: e.fromKind,
-        ...(e.source === 'copiata' ? { message: MESSAGES['condo-estimate-copied'] } : {}),
-        ...(values.dettagli === true
-          ? { total: e.total, quotaConduttore: e.quotaConduttore, lines: e.lines }
-          : {}),
-      },
-    };
+    return condoEstimateCommand(
+      store,
+      { apartmentId: values.appartamento, esercizio: values.esercizio },
+      { details: values.dettagli === true },
+    );
   }
 
   // The address book (plan 14, R253): every field replaced, a field left out is removed.
@@ -1080,7 +974,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !CONTACT_ROLES.includes(values.ruolo)) {
       throw invalid('bad-arguments');
     }
-    const result = await saveContact(
+    return saveContactCommand(
       store,
       {
         id: values.id,
@@ -1093,16 +987,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...optional('supplyIds', idList(values.utenze)),
         ...optional('categories', idList(values.categorie)),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      contactId: result.contactId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   // Ids, role and links; the name and the contacts only with --dettagli (R107).
@@ -1113,28 +999,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await loadContacts(store, {
-      ...optional('apartmentId', values.appartamento),
-      ...optional('role', values.ruolo),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: 'ok',
-      contacts: result.contacts.map((c) => ({
-        contactId: c.id,
-        role: c.role,
-        apartmentIds: c.apartmentIds,
-        supplyIds: c.supplyIds ?? [],
-        categories: c.categories ?? [],
-        ...(values.dettagli === true
-          ? { name: c.name, phone: c.phone, email: c.email, notes: c.notes }
-          : {
-              phone: c.phone === undefined ? 0 : 1,
-              email: c.email === undefined ? 0 : 1,
-              notes: c.notes === undefined ? 0 : 1,
-            }),
-      })),
-    };
+    return contactsCommand(
+      store,
+      { ...optional('apartmentId', values.appartamento), ...optional('role', values.ruolo) },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'imu') {
