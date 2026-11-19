@@ -567,6 +567,41 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
       }),
     );
     expect(await closePeriod(leaves, QUERY, 'p1', clock, ids('l'))).toEqual(refused);
+    // Review I3: leaves from November 2025, before the December of the period: nothing waited for.
+    const early = await setUp();
+    await put(
+      early,
+      'supply',
+      supply({
+        apartments: [{ apartmentId: 'apt-2', weight: 10000 }],
+        earlierApartments: [
+          {
+            to: '2025-10',
+            apartments: [
+              { apartmentId: 'apt', weight: 5000 },
+              { apartmentId: 'apt-2', weight: 5000 },
+            ],
+          },
+        ],
+      }),
+    );
+    expect((await closePeriod(early, QUERY, 'p1', clock, ids('e'))).status).toBe('closed');
+    // Joins in December 2025: that December is waited for.
+    const december = await setUp();
+    await put(
+      december,
+      'supply',
+      supply({
+        apartments: [
+          { apartmentId: 'apt', weight: 5000 },
+          { apartmentId: 'apt-2', weight: 5000 },
+        ],
+        earlierApartments: [
+          { to: '2025-11', apartments: [{ apartmentId: 'apt-2', weight: 10000 }] },
+        ],
+      }),
+    );
+    expect(await closePeriod(december, QUERY, 'p1', clock, ids('d'))).toEqual(refused);
   });
 });
 

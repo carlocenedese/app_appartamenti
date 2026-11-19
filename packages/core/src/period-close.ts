@@ -28,7 +28,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
-import { weightsOver } from './valid-from';
+import { weightsAt } from './valid-from';
 import type { Store } from './store/store';
 
 type Query = { apartmentId: string; periodLabel: string };
@@ -165,19 +165,21 @@ export async function closePeriod(
   // R3: an apartment with a supply of the shared TARI notice closes only after the December
   // notice inside the period is debited (a real match, not assumed), so that the September share
   // of that notice does not open the period again (F4, decided by user1 on 18 Nov 2026).
-  // Plan 22: the weights in force in the months of the period («valido dal»), not today's.
-  const shared = (await loadAll(store, 'supply', SupplySchema)).records.some((supply) =>
-    weightsOver(supply, input.period.from, input.period.to).some((s) =>
-      s.value.some((a) => a.apartmentId === query.apartmentId),
-    ),
-  );
-  if (shared) {
+  // Plan 22 (review I3): each December of the period is waited for only when the apartment is in
+  // a shared supply in that December («valido dal»), so leaving before it never blocks.
+  const supplies = (await loadAll(store, 'supply', SupplySchema)).records;
+  const sharedIn = (december: string) =>
+    supplies.some((supply) =>
+      weightsAt(supply, december).some((a) => a.apartmentId === query.apartmentId),
+    );
+  const decembers = tariDecembers(input.period.from, input.period.to).filter(sharedIn);
+  if (decembers.length > 0) {
     const debited = new Set(
       input.matches
         .filter((m) => m.itemType === 'instalment' && m.part === 'amount' && m.by !== 'assumed')
         .map((m) => m.itemId),
     );
-    const missing = tariDecembers(input.period.from, input.period.to).find(
+    const missing = decembers.find(
       (december) =>
         !input.instalments.some(
           (i) =>
