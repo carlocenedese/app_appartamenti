@@ -32,7 +32,7 @@ describe.each(goldenFiles())('golden settlement %s', (name) => {
     },
   );
 
-  it('leaves the approved amount to the empty beds and the approved items pending', () => {
+  it('leaves the approved amount to the owner (months without tenants) and the approved items pending', () => {
     expect(result.unassigned).toBe(fixture.expectedUnassigned);
     expect(result.pending.map((item) => item.itemId).sort()).toEqual(
       [...fixture.expectedPending].sort(),

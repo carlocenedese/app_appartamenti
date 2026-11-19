@@ -1429,7 +1429,10 @@ export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
 
 // --- Closing of a settlement period (review of 18 Nov 2026, I2, R5) ----------------------------
 
-/** The costs of each tenant and of the empty beds at a closing (R5). */
+/**
+ * The costs of each tenant and of the owner at a closing (R5): the months with no tenant present
+ * (plan 21), or the empty beds for a snapshot of `engineVersion` 0.1.0 (R363).
+ */
 const PeriodSnapshotSchema = z.object({
   /** Bills and TARI, condominium rata and commission of each tenant (`spese`, `rata`, ...). */
   tenants: z.array(
@@ -1489,7 +1492,7 @@ const PeriodReopenedSchema = z.object({ on: ISODateSchema, reason: NonEmptyStrin
 
 /**
  * The closing of one settlement period of an apartment (R5), `chiusura-<apartmentId>-<periodLabel>`,
- * with the snapshot of the costs of each tenant and of the empty beds that the supplementary
+ * with the snapshot of the costs of each tenant and of the owner that the supplementary
  * settlement compares with (`calcConguaglioSupplementare`). Written only when every rent and flat
  * charge is collected and no item is waiting. F1: `sentOn` (sent to the tenants) and `settled` (per
  * tenant) are marked by user1; F3: `reopened` opens the period again, keeping this snapshot, and a
@@ -1501,7 +1504,7 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
   from: YearMonthSchema,
   to: YearMonthSchema,
   closedAt: TimestampSchema,
-  /** `CORE_VERSION` of the calculation of the snapshot. */
+  /** `CALC_VERSION` of the calculation of the snapshot; 0.1.0 is the split over the beds (R363). */
   engineVersion: NonEmptyString,
   snapshot: PeriodSnapshotSchema,
   /** The day the settlement was sent to the tenants (F1). */

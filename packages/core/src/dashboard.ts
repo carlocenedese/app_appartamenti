@@ -120,7 +120,8 @@ async function currentSettlements(
  * and for each settlement period given (else the one in course of each apartment, R316)
  * `conguaglio:voci-in-attesa` (the pending items),
  * `conguaglio:mesi-senza-inquilini` (1 when months with no tenant present carry a cost, left to the
- * owner, plan 21) or `conguaglio:non-calcolabile`,
+ * owner, plan 21; on a period closed before plan 21, recomputed over the beds, R363, it holds the
+ * empty-bed shares) or `conguaglio:non-calcolabile`,
  * `conguaglio:supplementare` (a closed period whose costs changed since its snapshot, R5),
  * `conguaglio:dati-cambiati` (other data of its snapshot changed, such as the flat charge),
  * and `consumi:giallo` / `consumi:rosso` (the last live bill of each apartment and kind by its

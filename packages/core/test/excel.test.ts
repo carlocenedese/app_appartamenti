@@ -597,7 +597,7 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     expect(settlementStatus(cents(10000), [csv(-2000)])).toBe('parziale');
   });
 
-  it('sums paid and residual in the total, and leaves the empty beds blank', () => {
+  it('sums paid and residual in the total, and leaves the months without tenants blank', () => {
     const rows = rowsOf(sheets().get('Conguagli'));
     const tenants = rows.slice(2, -2);
     const totale = rows.at(-1);

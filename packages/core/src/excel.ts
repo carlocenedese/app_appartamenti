@@ -632,7 +632,8 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
   const empty = result.unassignedByBucket;
   const emptyBeds = [empty.spese + empty.commissione, empty.rata + empty.conguaglioPrec];
   conguagli.push([
-    text('Mesi senza inquilini'),
+    // A period closed before plan 21 still splits over the beds (R363): its row is the empty beds.
+    text(input.split === 'beds' ? 'Posti vuoti (proprietà)' : 'Mesi senza inquilini'),
     null,
     null,
     null,

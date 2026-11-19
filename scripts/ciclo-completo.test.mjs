@@ -1264,7 +1264,7 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     ]);
   });
 
-  it('cruscotto del periodo = conguaglio: voci in attesa e posti vuoti', () => {
+  it('cruscotto del periodo = conguaglio: voci in attesa e mesi senza inquilini', () => {
     const rows = Object.fromEntries(
       shared.cruscottoPeriodo.json.settlements.map((r) => [r.apartmentId, r]),
     );

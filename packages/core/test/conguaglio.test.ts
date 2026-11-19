@@ -1030,7 +1030,7 @@ describe('Step 3d: supplementary settlement (R5)', () => {
     expect(result.unassignedDelta).toBe(0);
   });
 
-  it('ignores the flat charge and last year condominium settlement, and reports empty beds', () => {
+  it('ignores the flat charge and last year condominium settlement, and reports the owner'''s share', () => {
     const empty = calcConguaglio({ ...base, tenancies: [], bills: [], matches: [] });
     const withOnlyCosts = {
       ...empty,

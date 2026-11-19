@@ -127,7 +127,7 @@ export function goldenReport(fixtureName, fixture) {
     '',
     '## Totali',
     '',
-    `- App: ${formatEuro(appTotal)}; posti vuoti: ${formatEuro(result.unassigned)}.`,
+    `- App: ${formatEuro(appTotal)}; mesi senza inquilini: ${formatEuro(result.unassigned)}.`,
   );
   if (fixture.excel !== undefined) {
     lines.push(

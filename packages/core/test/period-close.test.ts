@@ -5,6 +5,8 @@ import {
   buildConguaglioWorkbook,
   buildOwnersWorkbook,
   loadDashboard,
+  loadDepositReturn,
+  saveLegalRate,
   loadExcelInput,
   closePeriod,
   commitChange,
@@ -471,6 +473,16 @@ describe('R363: a period closed before plan 21 keeps the split over the beds', (
     await put(store, 'match', match(july, 9000));
     for (const m of MONTHS) await put(store, 'payment', payment('t-a', m, 48000));
     for (const m of MONTHS.slice(0, 11)) await put(store, 'payment', payment('t-b', m, 48000));
+    await put(store, 'payment', {
+      ...payment('t-b', '2025-09', 50000),
+      id: 'dep-b',
+      kind: 'caparra',
+      forMonth: undefined,
+      source: 'manual',
+    });
+    for (const year of ['2025', '2026']) {
+      await saveLegalRate(store, { year, rateBp: 200 }, 'p1', clock, ids(`rate-${year}`));
+    }
     return store;
   }
   const spese = (record: { snapshot: { tenants: { spese: number }[]; emptyBeds: number } }) => [
@@ -518,6 +530,46 @@ describe('R363: a period closed before plan 21 keeps the split over the beds', (
         { tenantId: 't-b', delta: 0, departed: true, action: 'nessuna' },
       ],
     });
+  });
+
+  it('the deposit of the tenant who left keeps the old due, 30,00 of the bill', async () => {
+    const store = await closedBeforePlan21();
+    const result = await loadDepositReturn(store, {
+      apartmentId: 'apt',
+      tenantId: 't-b',
+      extraCharges: [],
+    });
+    // B's due by the old split: 30,00 − 330,00 of flat charge = 300,00 back (by the new split it
+    // would be 285,00); 500,00 at 2% for 11 months = 9,17.
+    expect(result).toEqual({
+      status: 'computed',
+      statement: {
+        total: 50000 + 917 + 30000,
+        lines: [
+          { label: 'Caparra', amount: 50000 },
+          { label: 'Interessi legali', amount: 917 },
+          { label: 'Conguaglio bollette', amount: 30000 },
+        ],
+      },
+      recoveriesWaiting: 0,
+      toCheck: [],
+    });
+  });
+
+  it('the Excel of an old closing shows 30,00 each and the row of the empty beds', async () => {
+    const store = await closedBeforePlan21();
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    const sheet = buildConguaglioWorkbook(loaded.input).sheets.find((x) => x.name === 'Conguagli');
+    const rows = (sheet?.rows ?? [])
+      .slice(2)
+      .map((r) => [(r[0] ?? r[1]) as { value: unknown } | null, r[4] as { value: unknown } | null]);
+    expect(rows.map(([who, spese]) => [who?.value, spese?.value])).toEqual([
+      ['Nome Inventato', 3000],
+      ['Altro Nome Inventato', 3000],
+      ['Posti vuoti (proprietà)', 3000],
+      ['Totale', 9000],
+    ]);
   });
 
   it('reopened and closed again, the period uses the split among the tenants present: 45/45', async () => {
