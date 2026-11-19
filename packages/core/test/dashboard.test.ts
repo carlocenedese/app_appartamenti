@@ -287,12 +287,13 @@ describe('loadDashboard on the Excel fixture', () => {
     });
     if (result.status !== 'computed') throw new Error(result.reason);
     expect(result.settlements).toEqual([
-      { apartmentId: 'apt-nord', periodLabel: '2026-27', pending: 2, unassigned: 8891 },
+      // Plan 21: every month of the period has a tenant, so the owner bears nothing.
+      { apartmentId: 'apt-nord', periodLabel: '2026-27', pending: 2, unassigned: 0 },
     ]);
     expect(result.apartments).toEqual([
       {
         apartmentId: 'apt-nord',
-        counts: { 'conguaglio:posti-vuoti': 1, 'conguaglio:voci-in-attesa': 2 },
+        counts: { 'conguaglio:voci-in-attesa': 2 },
         consumptionThresholds: false,
       },
       { apartmentId: 'apt-sud', counts: {}, consumptionThresholds: false },
@@ -303,5 +304,28 @@ describe('loadDashboard on the Excel fixture', () => {
     expect(current.settlements.map((r) => [r.apartmentId, r.periodLabel])).toEqual([
       ['apt-nord', '2026-27'],
     ]);
+  });
+
+  it('counts the months with no tenant present, left to the owner (plan 21)', async () => {
+    const s = new MemoryStore();
+    const records = fixtureRecords();
+    // Only C (from March) and D (from January): October–December have nobody.
+    records.tenancy = (records.tenancy ?? []).filter((t) => ['tcy-c', 'tcy-d'].includes(t.id));
+    for (const [kind, list] of Object.entries(records) as [
+      RecordKind,
+      StoreRecords[RecordKind],
+    ][]) {
+      for (const record of list ?? []) {
+        await writeRecord(s, recordPath(kind, record.id), record, { expectedRev: null });
+      }
+    }
+    const result = await loadDashboard(s, {
+      today: isoDate('2027-10-15'),
+      soonDays: 30,
+      settlements: [{ apartmentId: 'apt-nord', periodLabel: '2026-27' }],
+    });
+    if (result.status !== 'computed') throw new Error(result.reason);
+    expect(result.settlements[0]?.unassigned).toBeGreaterThan(0);
+    expect(result.apartments[0]?.counts['conguaglio:mesi-senza-inquilini']).toBe(1);
   });
 });

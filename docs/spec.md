@@ -145,7 +145,7 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 
 - Ripartizione tra gli inquilini a mesi interi di presenza, anche per le bollette a cavallo tra due annualità; l'importo della bolletta si divide però tra i mesi in proporzione ai giorni (sezione 42, R1, decisione del 18 novembre 2026). Una bolletta si registra una sola volta e si ripartisce in automatico.
 - Commissione bancaria : l'app legge l'importo reale dalla riga "Commissioni e spese" del CSV, legata all'addebito (sezione 42, R7); nessuna opzione per appartamento.
-- Divisore dei conguagli = numero di posti: Appartamento A: 5, Appartamento B: 4, Appartamento C: 4. È un parametro dell'appartamento, non una formula.
+- ~~Divisore dei conguagli = numero di posti: Appartamento A: 5, Appartamento B: 4, Appartamento C: 4. È un parametro dell'appartamento, non una formula.~~ Superata dalla sezione 42, R1 (deciso da user1 il 19 novembre 2026): le spese di un mese si dividono tra gli inquilini presenti in quel mese; i posti restano un dato dell'appartamento (quanti inquilini possono stare insieme e l'ordine dei centesimi).
 - Canone TV, tassa consortile Bachiglione e TARI sono a carico degli inquilini.
 - TARI (corretta il 18 novembre 2026, decisione di user1): l'addebito di un avviso comune a due appartamenti si divide tra le utenze in proporzione ai totali per utenza indicati nell'avviso, con i centesimi che avanzano ai resti maggiori (sezione 42, R3). Dalle quote non si sottrae quanto già addebitato nell'anno per la stessa utenza. Esempio: secondo avviso di 250,00 €, totali dell'anno per utenza 200,00 € e 250,00 €: quote 111,11 € e 138,89 €.
 - Condominio: agli inquilini si addebitano le quote del conduttore indicate dall'amministratore (manutenzione parti comuni, riscaldamento, consumo ripartitori, ascensore, scale, acqua). Restano al proprietario "Generali proprietà" (assicurazione, amministrazione, adempimenti fiscali, spese postali, cancelleria, spese bancarie, straordinarie impreviste), "Proprietà appartamenti", spese personali, saldi degli esercizi precedenti e saldi straordinari. Si parte dal preventivo e si corregge a consuntivo. L'art. 4 del contratto non si considera.
@@ -180,7 +180,7 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 | Parametro | Appartamento A | Appartamento B | Appartamento C |
 | --- | --- | --- | --- |
 | Locatore | user1 | user1 | user2 (adempimenti fiscali a suo nome) |
-| Posti / divisore | 5 | 4 | 4 |
+| Posti (divisore fino al 19 novembre 2026, poi sezione 42, R1) | 5 | 4 | 4 |
 | Forfait mensile a persona | 30 € | 40 € | 30 € |
 | Annualità | 1 ottobre – 30 settembre | conguagli a richiesta; condominio 1 maggio – 30 aprile | conguagli a richiesta |
 | Condominio | preventivo meno "Generali Proprietà" | quote conduttore del bilancio Facciolati | riparto inquilini fornito dall'amministratore, con rate e scadenze |
@@ -215,7 +215,7 @@ L'app è progettata a moduli, in modo che nuove funzioni si aggiungano senza rif
 | Problema | Dove | Regola dell'app |
 | --- | --- | --- |
 | Intervalli SUM scritti a mano | tutti gli appartamenti | allocazione automatica per mese |
-| Divisore 5 con 4 inquilini | Appartamento B, foglio Conguagli | divisore = posti dell'appartamento |
+| Divisore 5 con 4 inquilini | Appartamento B, foglio Conguagli | ~~divisore = posti dell'appartamento~~ superata: divisore = inquilini presenti nel mese (sezione 42, R1, 19 novembre 2026) |
 | Regole condominiali diverse da un anno all'altro | Appartamento B | regola unica (sezione 15) |
 | Importo preso dal bilancio di un altro anno | Appartamento B, riga 17 | l'importo viene dal PDF e dal suo esercizio |
 | Link al PDF sbagliato | Appartamento B, N17 | il PDF è collegato al record in automatico |
@@ -483,11 +483,11 @@ Queste 8 regole sono le uniche regole di calcolo in vigore. Prevalgono sulle sez
 
 ### R1. Competenza e riparto
 
-- Ogni costo ha dei mesi di competenza. L'importo si divide per i mesi, poi per i posti dell'appartamento (divisore), tra gli inquilini presenti in quel mese. I posti vuoti restano a carico della proprietà.
+- Ogni costo ha dei mesi di competenza. L'importo si divide per i mesi, poi in ogni mese tra gli inquilini presenti in quel mese (deciso da user1 il 19 novembre 2026, sostituisce il divisore uguale ai posti): i posti vuoti non hanno quota. Vale per tutte le spese divise per posto (bollette, TARI propria e comune, rate di condominio e conguaglio dell'anno prima quando vanno agli inquilini, commissioni) e per tutti i periodi non chiusi, anche passati; un periodo già chiuso con la regola di prima la tiene (posti vuoti alla proprietà, nessun conguaglio supplementare per questo), e un periodo riaperto, che è di nuovo aperto, alla chiusura successiva usa la regola nuova (risposta di user1 del 19 novembre 2026). Solo un mese senza nessun inquilino presente resta a carico della proprietà; nell'Excel è la riga «Mesi senza inquilini». La presenza resta a mesi interi. Esempio: bolletta di 90,00 € di un mese, 3 posti, 2 inquilini presenti tutto il mese: 45,00 € ciascuno, 0 € alla proprietà (prima 30,00 € a testa e 30,00 € alla proprietà).
 - Bolletta (deciso da user1 il 18 novembre 2026): l'importo si divide tra i mesi del suo periodo in proporzione ai giorni del periodo che cadono in ciascun mese, anche quando il periodo copre solo mesi interi (un mese di 31 giorni pesa più di uno di 30). Esempio: bolletta dal 30 settembre al 29 novembre, 90,00 €: settembre 1 giorno, ottobre 31, novembre 29, in tutto 61; settembre 1,48 €, ottobre 45,74 €, novembre 42,78 €. Le voci a rata (R3) restano divise in parti uguali tra i mesi che coprono.
 - Periodo di conguaglio: dipende dal contratto. Transitori da 12 mesi rinnovabili (Appartamento A, Appartamento C): un periodo per annualità (ottobre–settembre). Contratto 3+2 di Appartamento B (aprile 2024 – marzo 2029): un solo periodo per tutta la durata, con i subentri al suo interno. Alla creazione di un appartamento e alla chiusura di un periodo o di un contratto l'app chiede durata e tipo del contratto successivo (1+1 o 3+2).
 - Mesi di competenza: per una bolletta, i mesi del suo periodo; per una voce a rata, i mesi coperti dalla rata (R3); per il conguaglio condominiale dell'anno prima, i 12 mesi dell'esercizio corrente.
-- Arrotondamento: la somma delle quote è sempre uguale all'importo; ogni mese riceve la parte intera in centesimi della sua quota, e i centesimi che avanzano vanno uno per mese ai primi mesi.
+- Arrotondamento: la somma delle quote è sempre uguale all'importo; ogni mese riceve la parte intera in centesimi della sua quota, e i centesimi che avanzano vanno uno per mese ai primi mesi. Nel mese i centesimi che avanzano vanno ai primi inquilini presenti nell'ordine dei posti.
 
 ### R2. Un costo conta solo se è nel CSV
 
@@ -558,7 +558,7 @@ Queste 8 regole sono le uniche regole di calcolo in vigore. Prevalgono sulle sez
 
 La 2ª rata (agosto–ottobre, 144,00 € al netto) compare nel CSV: A, B, C e D aggiungono 36,00 € ciascuno, E nulla.
 
-**Bolletta tardiva.** Appartamento A, annualità 1 ottobre – 30 settembre, 5 posti. Una bolletta della luce dal 1° luglio al 30 settembre, 90,00 €, arriva ed è pagata a novembre, dopo la chiusura. A, B, C ed E c'erano tutti e tre i mesi, D è partito a fine agosto, F è arrivato a settembre. Quote dei mesi in proporzione ai giorni (31, 31 e 30 su 92): luglio 30,33 €, agosto 30,33 €, settembre 29,34 €; ogni mese si divide per 5 posti, con i centesimi in più ai primi posti. Conguaglio supplementare: A, B e C 18,01 € ciascuno, E 17,99 €, D 12,12 €, F 5,86 €. I 12,12 € di D si trattengono dalla caparra se è ancora in mano.
+**Bolletta tardiva.** Appartamento A, annualità 1 ottobre – 30 settembre, 5 posti. Una bolletta della luce dal 1° luglio al 30 settembre, 90,00 €, arriva ed è pagata a novembre, dopo la chiusura. A, B, C ed E c'erano tutti e tre i mesi, D è partito a fine agosto, F è arrivato a settembre. Quote dei mesi in proporzione ai giorni (31, 31 e 30 su 92): luglio 30,33 €, agosto 30,33 €, settembre 29,34 €; ogni mese si divide tra i 5 inquilini presenti, con i centesimi in più ai primi posti. Conguaglio supplementare: A, B e C 18,01 € ciascuno, E 17,99 €, D 12,12 €, F 5,86 €. I 12,12 € di D si trattengono dalla caparra se è ancora in mano.
 
 ### Da confermare
 

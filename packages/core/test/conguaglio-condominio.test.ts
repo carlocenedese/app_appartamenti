@@ -118,11 +118,32 @@ describe('Step 3: condominium instalments (R3)', () => {
     expect(after.pending).toEqual([]);
   });
 
-  it('sends the share of an empty bed to unassigned', () => {
+  it('shares an empty bed among the tenants present (plan 21)', () => {
     const withoutD = TENANCIES.filter((t) => t.tenantId !== 'd');
     const result = calc([first, second], [match(first, 19800), match(second, 15000)], withoutD);
-    // Last year: 1,00 € a bed for August-April; second instalment: 12,00 € a bed for 3 months.
-    expect(result.unassigned).toBe(900 + 3600);
+    // August-April: A, B and C only. Last year: 4,00 € a month over 3 (1,34 € to A, the first);
+    // second instalment: 48,00 € a month, 16,00 € each for 3 months.
+    expect(view(result)).toEqual([
+      ['a', 3600 + 4800, 300 + 9 * 134, 8400 + 1506],
+      ['b', 3600 + 4800, 300 + 9 * 133, 8400 + 1497],
+      ['c', 3600 + 4800, 300 + 9 * 133, 8400 + 1497],
+      ['e', 3600, 300, 3900],
+    ]);
+    expect(result.unassigned).toBe(0);
+    expect(shared(result) + 1200).toBe(19800 + 15000);
+  });
+
+  it('sends a month with nobody present to unassigned', () => {
+    const onlyE = TENANCIES.filter((t) => t.tenantId === 'e');
+    const result = calc([first, second], [match(first, 19800), match(second, 15000)], onlyE);
+    // August-April nobody: last year 4,00 € a month for 9 months, the second instalment in full.
+    expect(result.unassigned).toBe(9 * 400 + 14400);
+    expect(result.unassignedByBucket).toEqual({
+      spese: 0,
+      rata: 14400,
+      conguaglioPrec: 3600,
+      commissione: 0,
+    });
     expect(shared(result) + 1200).toBe(19800 + 15000);
   });
 

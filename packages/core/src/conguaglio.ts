@@ -7,17 +7,17 @@
  *   conguaglioPrec`, otherwise it stays pending with the reason `importo diverso`.
  * - Every item is split over its months (a bill over its period, an instalment over the months it
  *   covers, last year's condominium settlement over the 12 months of the current fiscal year),
- *   leftover cents to the first months. Each month's share is then split over the beds of the
- *   apartment, leftover cents to the first beds in the order of `apartment.rooms`; a bed goes to
- *   the tenant in that room that month, an empty bed to the owner (`unassigned`). Without `rooms`
- *   the beds are the tenants present that month sorted by id, then the empty beds.
+ *   leftover cents to the first months. Each month's share is then split over the tenants present
+ *   that month, not over the beds (plan 21, decided by user1 on 19 Nov 2026), leftover cents to
+ *   the first of them in the order of `apartment.rooms` (without `rooms`, sorted by id). A month
+ *   with nobody present goes to the owner (`unassigned`).
  * - Only the months inside the period count: the others belong to another period's settlement.
  * - The owner's yearly condominium share (`quotaProprieta`) comes off the instalments in equal
  *   parts, only from records with a non-zero `rata` (a record that only carries last year's
  *   settlement has no owner share). An instalment whose owner share exceeds its `rata` stays
  *   pending (`parte della proprietà maggiore della rata`) rather than giving the tenants a credit.
  *   An extraordinary instalment is the owner's alone and never reaches the tenants.
- * - A commission row matched to an item follows the item: same months, same beds (R7).
+ * - A commission row matched to an item follows the item: same months, same tenants (R7).
  * - The amount due is the tenant's share of the costs minus the flat charge actually collected
  *   (R4), with each month's rent payments going to the rent first.
  *
@@ -46,7 +46,7 @@ import type { Cents } from './money';
 import { annualitaRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
-import { CORE_VERSION } from './version';
+import { CALC_VERSION, PER_BED_CALC_VERSION } from './version';
 
 /** The cost categories of a settlement row: the bill categories, the TARI and the condominium. */
 export type CostCategory = Bill['category'] | Instalment['kind'];
@@ -102,7 +102,22 @@ export interface ConguaglioInput {
    * An `assumed` match stored before B1 is never paid either and gives the same reason.
    */
   unverified?: readonly { itemType: BillMatch['itemType']; itemId: string }[];
+  /**
+   * How a month's costs are split (plan 21, R363): `present` (default) among the tenants present;
+   * `beds` over the beds, empty ones to the owner, only to recompute a period closed before plan
+   * 21 (`splitOfClosing`).
+   */
+  split?: 'present' | 'beds';
 }
+
+/**
+ * The split of a period with this live closing (R363, decided by user1 on 19 Nov 2026): a snapshot
+ * of the calculation before plan 21 keeps the split over the beds; an open or reopened period
+ * (no live closing) and a later snapshot use the split among the tenants present.
+ */
+export const splitOfClosing = (
+  closing: { engineVersion: string } | undefined,
+): 'present' | 'beds' => (closing?.engineVersion === PER_BED_CALC_VERSION ? 'beds' : 'present');
 
 type Span = { from: YearMonth; to: YearMonth };
 
@@ -158,11 +173,11 @@ export interface ConguaglioWarning {
 }
 
 export interface ConguaglioResult {
-  /** `CORE_VERSION`, so that a snapshot taken at closing can be reproduced later. */
+  /** `CALC_VERSION` (`PER_BED_CALC_VERSION` with `split: 'beds'`), so a snapshot can be reproduced. */
   engineVersion: string;
   /** Every tenant present in the period, sorted by id. */
   tenants: TenantSettlement[];
-  /** The shares of empty beds, left to the owner. */
+  /** The months with no tenant present, left to the owner (plan 21: empty beds have no share). */
   unassigned: Cents;
   /** `unassigned` by kind of cost, like the tenant rows (bills and TARI are `spese`). */
   unassignedByBucket: { spese: Cents; rata: Cents; conguaglioPrec: Cents; commissione: Cents };
@@ -603,17 +618,26 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     conguaglioPrec: 0,
     commissione: 0,
   };
-  // A month's amount over the beds; months outside the period belong to another settlement.
+  // A month's amount over the tenants present, in the order of the beds (plan 21); a month with
+  // nobody present stays with the owner. Months outside the period belong to another settlement.
+  const perBed = input.split === 'beds';
   const share = (month: YearMonth, amount: number, bucket: Bucket, category?: CostCategory) => {
     const occupants = beds.get(month);
     if (occupants === undefined || amount === 0) return;
-    equalSplit(cents(amount), occupants.length).forEach((part, bed) => {
-      const tenantId = occupants[bed];
-      const tally = tenantId === undefined ? undefined : tallies.get(tenantId);
-      if (tally === undefined) {
+    // Per bed (before plan 21): every bed has a part, an empty one goes to the owner.
+    const parts = perBed ? occupants : occupants.filter((tenantId) => tenantId !== undefined);
+    if (parts.length === 0) {
+      unassigned[bucket] += amount;
+      return;
+    }
+    equalSplit(cents(amount), parts.length).forEach((part, i) => {
+      const tenantId = parts[i];
+      if (tenantId === undefined) {
         unassigned[bucket] += part;
         return;
       }
+      // Every tenant present has a tally: `tallies` holds all the tenancies of the period.
+      const tally = tallies.get(tenantId) as Tally;
       tally[bucket] += part;
       if (category !== undefined) {
         tally.byCategory.set(category, (tally.byCategory.get(category) ?? 0) + part);
@@ -817,7 +841,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   });
 
   return {
-    engineVersion: CORE_VERSION,
+    engineVersion: perBed ? PER_BED_CALC_VERSION : CALC_VERSION,
     tenants,
     unassigned: cents(
       unassigned.spese + unassigned.rata + unassigned.conguaglioPrec + unassigned.commissione,
@@ -902,7 +926,8 @@ export interface SettlementCosts {
  * difference in costs (`spese + condominio.rata + commissione + recupero`) between `current` and the
  * `snapshot` taken at closing. The flat charge is left out (a period closes only when all of it
  * is collected) and so is last year's condominium settlement (it belongs to the next fiscal year).
- * `unassignedDelta` is the same difference for the empty beds, so the deltas and `unassignedDelta`
+ * `unassignedDelta` is the same difference for the owner (the months with no tenant present, plan
+ * 21), so the deltas and `unassignedDelta`
  * add up to the net cost of the late items. A tenant with no tenancy in `tenancies` counts as
  * departed (R-C10).
  */

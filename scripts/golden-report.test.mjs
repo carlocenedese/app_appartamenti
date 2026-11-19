@@ -41,7 +41,7 @@ describe('golden report', () => {
     const report = goldenReport('app-a-2024-25.json', fixture);
     expect(report).toContain('| ten-a | Luce | € 74,20 | € 73,92 | - € 0,28 |');
     expect(report).toContain('| ten-a | **Totale** | € 159,83 | € 150,26 | - € 9,57 |');
-    expect(report).toContain('- App: € 1.229,25; posti vuoti: € 0,00.');
+    expect(report).toContain('- App: € 1.229,25; mesi senza inquilini: € 0,00.');
     expect(report).toContain('- Excel: € 1.265,81.');
     expect(report).toContain('| ten-c | **Totale** | € 229,43 | € 233,83 | + € 4,40 |');
     expect(report).toContain('| ten-b | Internet | € 29,95 | € 29,95 | € 0,00 |');

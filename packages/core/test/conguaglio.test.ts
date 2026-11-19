@@ -3,7 +3,7 @@
 // (conguaglio-condominio.test.ts) and the golden fixtures theirs (conguaglio-golden.test.ts).
 import { describe, expect, it } from 'vitest';
 import {
-  CORE_VERSION,
+  CALC_VERSION,
   ContractSchema,
   InstalmentSchema,
   SettlementInputError,
@@ -19,6 +19,7 @@ import {
   isoDate,
   rateCoverage,
   settlementPeriods,
+  splitOfClosing,
   yearMonth,
 } from '../src/index';
 import type { Bill, BillMatch, Instalment, Payment, Tenancy } from '../src/index';
@@ -107,7 +108,7 @@ describe('Step 1: values of the specification', () => {
       ['d', 9845, 9845],
     ]);
     expect(result.unassigned).toBe(0);
-    expect(result.engineVersion).toBe(CORE_VERSION);
+    expect(result.engineVersion).toBe(CALC_VERSION);
     expect(row(result, 'a').byCategory).toEqual({ elettricita: 9847 });
   });
 
@@ -264,10 +265,11 @@ describe('Step 2: review focus', () => {
       matches: [match(luce, 20000)],
       tenancies: [tenancy('a', '2026-11', undefined)],
     });
-    // By days (B2): October 101,64 € to the owner; November 98,36 €, 24,59 € to A, the rest to
-    // the empty beds.
-    expect(row(result, 'a').spese).toBe(2459);
-    expect(result.unassigned).toBe(17541);
+    // By days (B2): October (31 of 61 days, the odd cent) 101,64 € to the owner, nobody present;
+    // November 98,36 € all to A, the only tenant present (plan 21).
+    expect(row(result, 'a').spese).toBe(9836);
+    expect(result.unassigned).toBe(10164);
+    expect(row(result, 'a').spese + result.unassigned).toBe(20000);
     expect(Number.isNaN(result.unassigned)).toBe(false);
   });
 
@@ -385,7 +387,7 @@ describe('Step 2: review focus', () => {
     ]);
   });
 
-  it('without rooms gives the leftover cents to the tenants sorted by id, then empty beds', () => {
+  it('without rooms gives the leftover cents to the tenants sorted by id, none to empty beds', () => {
     const luce = bill('luce', '2026-10-01', '2026-10-31', 103);
     const result = calc({
       bills: [luce],
@@ -393,10 +395,99 @@ describe('Step 2: review focus', () => {
       tenancies: [tenancy('b', '2026-10', undefined), tenancy('a', '2026-10', undefined)],
     });
     expect(result.tenants.map((t) => [t.tenantId, t.spese])).toEqual([
-      ['a', 26],
-      ['b', 26],
+      ['a', 52],
+      ['b', 51],
     ]);
-    expect(result.unassigned).toBe(51);
+    expect(result.unassigned).toBe(0);
+  });
+
+  describe('plan 21: the costs go to the tenants present, decided by user1 on 19 Nov 2026', () => {
+    it('90,00 € of one month, 3 beds, 2 tenants present: 45,00 € each, nothing to the owner', () => {
+      const luce = bill('luce', '2026-10-01', '2026-10-31', 9000);
+      const result = calc({
+        apartment: apartment({ posti: 3 }),
+        bills: [luce],
+        matches: [match(luce, 9000)],
+        tenancies: [tenancy('a', '2026-10', undefined), tenancy('b', '2026-10', undefined)],
+      });
+      expect(result.tenants.map((t) => [t.tenantId, t.spese])).toEqual([
+        ['a', 4500],
+        ['b', 4500],
+      ]);
+      expect(result.unassigned).toBe(0);
+      expect(result.engineVersion).toBe(CALC_VERSION);
+    });
+
+    it('R363: with split beds (a period closed before plan 21) 30,00 each and 30,00 to the owner', () => {
+      const luce = bill('luce', '2026-10-01', '2026-10-31', 9000);
+      const result = calc({
+        apartment: apartment({ posti: 3 }),
+        bills: [luce],
+        matches: [match(luce, 9000)],
+        tenancies: [tenancy('a', '2026-10', undefined), tenancy('b', '2026-10', undefined)],
+        split: splitOfClosing({ engineVersion: '0.1.0' }),
+      });
+      expect(result.tenants.map((t) => t.spese)).toEqual([3000, 3000]);
+      expect(result.unassigned).toBe(3000);
+      expect(result.engineVersion).toBe('0.1.0');
+      expect(splitOfClosing({ engineVersion: CALC_VERSION })).toBe('present');
+      expect(splitOfClosing(undefined)).toBe('present');
+    });
+
+    it('gives the leftover cents to the first tenants present in the order of the rooms', () => {
+      const luce = bill('luce', '2026-10-01', '2026-10-31', 101);
+      const result = calc({
+        apartment: apartment({ posti: 3, rooms: ['Uno', 'Due', 'Tre'] }),
+        bills: [luce],
+        matches: [match(luce, 101)],
+        tenancies: [
+          tenancy('a', '2026-10', undefined, { room: 'Tre' }),
+          tenancy('b', '2026-10', undefined, { room: 'Uno' }),
+        ],
+      });
+      expect(result.tenants.map((t) => [t.tenantId, t.spese])).toEqual([
+        ['a', 50],
+        ['b', 51],
+      ]);
+      expect(result.unassigned).toBe(0);
+    });
+
+    it('a bill over a month with tenants and a month without: the owner bears only the empty one', () => {
+      // 61 days, 31 in October (6000 × 31/61 = 3049,2 → 3050 with the odd cent) and 30 in
+      // November (2950). October: a and b present, 15,25 € each; November: nobody, to the owner.
+      const gas = bill('gas', '2026-10-01', '2026-11-30', 6000, { category: 'gas' });
+      const result = calc({
+        apartment: apartment({ posti: 3 }),
+        bills: [gas],
+        matches: [match(gas, 6000)],
+        tenancies: [tenancy('a', '2026-10', '2026-10'), tenancy('b', '2026-10', '2026-10')],
+      });
+      expect(result.tenants.map((t) => [t.tenantId, t.spese])).toEqual([
+        ['a', 1525],
+        ['b', 1525],
+      ]);
+      expect(result.unassigned).toBe(2950);
+      expect(result.unassignedByBucket.spese).toBe(2950);
+    });
+
+    it('splits the TARI among the tenants present too', () => {
+      const rate = instalment('tari-1', {
+        kind: 'tari',
+        esercizio: '2026',
+        rateCount: 1,
+        rata: cents(900),
+        coversFrom: yearMonth('2026-10'),
+        coversTo: yearMonth('2026-10'),
+      });
+      const result = calc({
+        apartment: apartment({ posti: 3 }),
+        instalments: [rate],
+        matches: [match(rate, 900)],
+        tenancies: [tenancy('a', '2026-10', undefined), tenancy('b', '2026-10', undefined)],
+      });
+      expect(result.tenants.map((t) => t.byCategory.tari)).toEqual([450, 450]);
+      expect(result.unassigned).toBe(0);
+    });
   });
 
   describe('input that cannot be settled (R-C9)', () => {
@@ -939,7 +1030,7 @@ describe('Step 3d: supplementary settlement (R5)', () => {
     expect(result.unassignedDelta).toBe(0);
   });
 
-  it('ignores the flat charge and last year condominium settlement, and reports empty beds', () => {
+  it('ignores the flat charge and last year condominium settlement, and reports the share of the owner', () => {
     const empty = calcConguaglio({ ...base, tenancies: [], bills: [], matches: [] });
     const withOnlyCosts = {
       ...empty,
@@ -990,14 +1081,10 @@ describe('Step 3d: supplementary settlement (R5)', () => {
   });
 
   it('adds up to the net cost of a late condominium instalment, last year settlement left out', () => {
-    // 4 beds, one empty from August; condominium year October-September like the lease year.
+    // 4 beds, all empty from August (plan 21: only a month with nobody present reaches the owner);
+    // condominium year October-September like the lease year.
     const apt = apartment({ posti: 4, condominioStart: { month: 10, day: 1 } });
-    const people = [
-      tenancy('a', '2024-10', undefined),
-      tenancy('b', '2024-10', undefined),
-      tenancy('c', '2024-10', undefined),
-      tenancy('d', '2024-10', '2025-07'),
-    ];
+    const people = ['a', 'b', 'c', 'd'].map((id) => tenancy(id, '2024-10', '2025-07'));
     const rata = instalment('cond-3', {
       esercizio: '2024-25',
       rateIndex: 3,

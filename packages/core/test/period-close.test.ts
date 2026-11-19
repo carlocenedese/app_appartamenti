@@ -5,6 +5,8 @@ import {
   buildConguaglioWorkbook,
   buildOwnersWorkbook,
   loadDashboard,
+  loadDepositReturn,
+  saveLegalRate,
   loadExcelInput,
   closePeriod,
   commitChange,
@@ -451,6 +453,144 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     expect((await closePeriod(store, QUERY, 'p1', clock, ids('e'))).status).toBe('refused');
     await put(store, 'match', match(december, 3000, { transactionDate: isoDate('2025-12-16') }));
     expect((await closePeriod(store, QUERY, 'p1', clock, ids('f'))).status).toBe('closed');
+  });
+});
+
+describe('R363: a period closed before plan 21 keeps the split over the beds', () => {
+  // Invented: 3 beds, A all year, B until August (departed), a bill of 90,00 for July only.
+  const july = bill('b-luglio', '2026-07-01', '2026-07-31', 9000, {
+    dueDate: isoDate('2026-08-10'),
+  });
+  async function twoOfThree() {
+    const store = new MemoryStore();
+    await put(store, 'apartment', apartment({ posti: 3 }));
+    await put(store, 'contract', contract);
+    await put(store, 'tenancy', tenancy('t-a', '2025-10', undefined));
+    await put(store, 'tenancy', tenancy('t-b', '2025-10', '2026-08'));
+    await put(store, 'tenant', { id: 't-a', v: 1, rev: 1, name: 'Nome Inventato' });
+    await put(store, 'tenant', { id: 't-b', v: 1, rev: 1, name: 'Altro Nome Inventato' });
+    await put(store, 'bill', july);
+    await put(store, 'match', match(july, 9000));
+    for (const m of MONTHS) await put(store, 'payment', payment('t-a', m, 48000));
+    for (const m of MONTHS.slice(0, 11)) await put(store, 'payment', payment('t-b', m, 48000));
+    await put(store, 'payment', {
+      ...payment('t-b', '2025-09', 50000),
+      id: 'dep-b',
+      kind: 'caparra',
+      forMonth: undefined,
+      source: 'manual',
+    });
+    for (const year of ['2025', '2026']) {
+      await saveLegalRate(store, { year, rateBp: 200 }, 'p1', clock, ids(`rate-${year}`));
+    }
+    return store;
+  }
+  const spese = (record: { snapshot: { tenants: { spese: number }[]; emptyBeds: number } }) => [
+    ...record.snapshot.tenants.map((t) => t.spese),
+    record.snapshot.emptyBeds,
+  ];
+  /** The closing as an app before plan 21 wrote it: 30,00 each and 30,00 to the empty bed. */
+  async function closedBeforePlan21() {
+    const store = await twoOfThree();
+    await closePeriod(store, QUERY, 'p1', clock, ids('c'));
+    const [now] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    if (now === undefined) throw new Error('not closed');
+    expect([now.engineVersion, ...spese(now)]).toEqual(['0.2.0', 4500, 4500, 0]);
+    const old = {
+      ...now,
+      engineVersion: '0.1.0',
+      snapshot: {
+        ...now.snapshot,
+        tenants: now.snapshot.tenants.map((t) => ({ ...t, spese: cents(3000) })),
+        emptyBeds: cents(3000),
+      },
+    };
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [{ path: recordPath('periodClose', now.id), before: now, after: old }],
+      },
+      clock,
+      ids('old'),
+    );
+    return store;
+  }
+
+  it('an old snapshot 30/30/30 shows no supplementary and no action for the tenant who left', async () => {
+    const store = await closedBeforePlan21();
+    expect(await loadPeriodClosing(store, QUERY, isoDate('2026-11-18'))).toMatchObject({
+      status: 'closed',
+      changed: false,
+      unassignedDelta: 0,
+      tenants: [
+        { tenantId: 't-a', delta: 0, departed: false },
+        { tenantId: 't-b', delta: 0, departed: true, action: 'nessuna' },
+      ],
+    });
+  });
+
+  it('the deposit of the tenant who left keeps the old due, 30,00 of the bill', async () => {
+    const store = await closedBeforePlan21();
+    const result = await loadDepositReturn(store, {
+      apartmentId: 'apt',
+      tenantId: 't-b',
+      extraCharges: [],
+    });
+    // B's due by the old split: 30,00 − 330,00 of flat charge = 300,00 back (by the new split it
+    // would be 285,00); 500,00 at 2% for 11 months = 9,17.
+    expect(result).toEqual({
+      status: 'computed',
+      statement: {
+        total: 50000 + 917 + 30000,
+        lines: [
+          { label: 'Caparra', amount: 50000 },
+          { label: 'Interessi legali', amount: 917 },
+          { label: 'Conguaglio bollette', amount: 30000 },
+        ],
+      },
+      recoveriesWaiting: 0,
+      toCheck: [],
+    });
+  });
+
+  it('the Excel of an old closing shows 30,00 each and the row of the empty beds', async () => {
+    const store = await closedBeforePlan21();
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    const sheet = buildConguaglioWorkbook(loaded.input).sheets.find((x) => x.name === 'Conguagli');
+    const rows = (sheet?.rows ?? [])
+      .slice(2)
+      .map((r) => [(r[0] ?? r[1]) as { value: unknown } | null, r[4] as { value: unknown } | null]);
+    expect(rows.map(([who, spese]) => [who?.value, spese?.value])).toEqual([
+      ['Nome Inventato', 3000],
+      ['Altro Nome Inventato', 3000],
+      ['Posti vuoti (proprietà)', 3000],
+      ['Totale', 9000],
+    ]);
+  });
+
+  it('reopened and closed again, the period uses the split among the tenants present: 45/45', async () => {
+    const store = await closedBeforePlan21();
+    const reopen = { ...QUERY, on: '2026-11-25', reason: 'Correzione inventata' };
+    expect((await reopenPeriod(store, reopen, 'p1', clock, ids('r'))).status).toBe('saved');
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('c2'))).status).toBe('closed');
+    const [record] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    if (record === undefined) throw new Error('not closed');
+    expect([record.engineVersion, ...spese(record)]).toEqual(['0.2.0', 4500, 4500, 0]);
+    expect(record.history?.map((h) => [h.engineVersion, h.snapshot.emptyBeds])).toEqual([
+      ['0.1.0', 3000],
+    ]);
+    expect(await loadPeriodClosing(store, QUERY, isoDate('2026-11-26'))).toMatchObject({
+      status: 'closed',
+      changed: false,
+      tenants: [
+        { tenantId: 't-a', delta: 0 },
+        { tenantId: 't-b', delta: 0 },
+      ],
+    });
   });
 });
 
