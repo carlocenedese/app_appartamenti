@@ -318,30 +318,32 @@ describe('saveSupply (CLI, review of 18 Nov 2026, E5)', () => {
     const store = new MemoryStore();
     await store.writeJsonAtomic(recordPath('apartment', 'apt-b'), {
       ...apt('apt-b'),
-      supplyCodes: ['IT001E00000001', 'PDR-0001'],
+      supplyCodes: ['COD-INVENTATO-1', 'PDR-INVENTATO'],
     });
     await store.writeJsonAtomic(recordPath('apartment', 'apt-l'), {
       ...apt('apt-l'),
-      supplyCodes: ['it001e 00000001'],
+      supplyCodes: ['cod-inventato -1'],
     });
     // A code of one apartment only: refused, naming the other.
-    expect(await saveSupply(store, draft(), 'p1', clock, ids(), { codes: ['PDR-0001'] })).toEqual({
+    expect(
+      await saveSupply(store, draft(), 'p1', clock, ids(), { codes: ['PDR-INVENTATO'] }),
+    ).toEqual({
       status: 'refused',
       reason: 'codes-not-in-apartment',
       apartmentIds: ['apt-l'],
     });
     // Compared without spaces and case, as the bill import.
     const saved = await saveSupply(store, draft(), 'p1', clock, ids(), {
-      codes: ['IT001E00000001'],
+      codes: ['COD-INVENTATO-1'],
     });
     expect(saved).toMatchObject({ status: 'saved', supplyId: 'id-1' });
-    expect((await liveSupplies(store))[0]?.supplyCodes).toEqual(['IT001E00000001']);
+    expect((await liveSupplies(store))[0]?.supplyCodes).toEqual(['COD-INVENTATO-1']);
     // The same supply with no codes: written, the codes go.
     expect(await saveSupply(store, draft(), 'p1', clock, ids('y'), { codes: [] })).toMatchObject({
       status: 'saved',
     });
     expect((await liveSupplies(store))[0]?.supplyCodes).toBeUndefined();
-    await saveSupply(store, draft(), 'p1', clock, ids('z'), { codes: ['IT001E00000001'] });
+    await saveSupply(store, draft(), 'p1', clock, ids('z'), { codes: ['COD-INVENTATO-1'] });
     // The apartment cannot drop a code its supply uses.
     expect(
       await saveApartment(store, { id: 'apt-l', supplyCodes: [] }, 'p1', clock, ids('a')),
@@ -349,7 +351,7 @@ describe('saveSupply (CLI, review of 18 Nov 2026, E5)', () => {
     expect(
       await saveApartment(
         store,
-        { id: 'apt-b', supplyCodes: ['IT001E00000001'] },
+        { id: 'apt-b', supplyCodes: ['COD-INVENTATO-1'] },
         'p1',
         clock,
         ids('a'),
