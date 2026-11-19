@@ -4,8 +4,9 @@
  * `checkConsistency` reports a problem (R106, R107). Summaries carry counts only.
  */
 import { isPresent } from './conguaglio';
-import { reconcileIncome, rentArrears } from './income';
-import type { IncomeProposal, RentArrear } from './income';
+import { withContractEnds } from './contract';
+import { coveredMonths, reconcileIncome, rentArrears, rentExcesses } from './income';
+import type { IncomeProposal, RentArrear, RentExcess } from './income';
 import { commitChange, latestOperationByPath, readJournal, writesBlocked } from './journal';
 import type { Operation } from './journal';
 import {
@@ -13,6 +14,7 @@ import {
   ApartmentSchema,
   BankTransactionSchema,
   BillMatchSchema,
+  ContractSchema,
   MovementClassSchema,
   PayerSchema,
   PaymentSchema,
@@ -140,7 +142,11 @@ async function loadIncomeState(store: Store, alsoUsed: ReadonlySet<string> = new
   return {
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
     apartments: (await loadAll(store, 'apartment', ApartmentSchema, all)).records,
-    tenancies: (await loadAll(store, 'tenancy', TenancySchema, all)).records,
+    // F9 a: a stay without end lasts until the end of its contract (arrears, months to pay).
+    tenancies: withContractEnds(
+      (await loadAll(store, 'tenancy', TenancySchema, all)).records,
+      (await loadAll(store, 'contract', ContractSchema)).records,
+    ),
     tenants: (await loadAll(store, 'tenant', TenantSchema, all)).records,
     payers: (await loadAll(store, 'payer', PayerSchema, all)).records,
     payments,
@@ -168,6 +174,8 @@ export type ReconcileRunResult =
       skipped: number;
       /** The arrears (`rentArrears`) with the automatic payments of the run counted as paid. */
       arrears: RentArrear[];
+      /** B5: rent paid in excess, with the month it would cover (`rentExcesses`). */
+      excesses: RentExcess[];
       operationId?: string;
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
@@ -219,17 +227,113 @@ export async function runReconcile(
 export async function planIncome(store: Store, alsoUsed?: ReadonlySet<string>) {
   const state = await loadIncomeState(store, alsoUsed);
   const { payments, proposals, skipped } = reconcileIncome(state);
+  const withRun = [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))];
   const result = {
     status: 'reconciled' as const,
     written: payments.length,
     proposals,
     skipped: skipped.length,
-    arrears: rentArrears({
-      ...state,
-      payments: [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
-    }),
+    arrears: rentArrears({ ...state, payments: withRun }),
+    excesses: excessesOf({ ...state, payments: withRun }),
   };
   return { state, payments, result };
+}
+
+/**
+ * `rentExcesses` on the state. B5 (c), decided by user1 on 19 Nov 2026: only a refund registered
+ * as such closes a credit (`uscita-inquilino --rimborso-canone`, a negative `canone` of the month),
+ * and it does so by lowering what the month was paid; another outgoing to the tenant never does.
+ */
+const excessesOf = (state: Awaited<ReturnType<typeof loadIncomeState>>) =>
+  rentExcesses({
+    tenancies: state.tenancies,
+    payments: state.payments,
+    covered: (apartmentId) => coveredMonths(state, apartmentId),
+  });
+
+export type ConfirmRentExcessResult =
+  | { status: 'confirmed'; operationId: string; paymentIds: string[] }
+  | {
+      status: 'refused';
+      reason: 'inconsistent-store' | 'unknown-proposal' | 'no-month-to-cover';
+    };
+
+/**
+ * B5 (decided by user1 on 18 and 19 Nov 2026): the excesses of the live records (`rentExcesses`),
+ * with the stays ending with the tenant's contract and the months the statements cover.
+ */
+export async function loadRentExcesses(store: Store): Promise<RentExcess[]> {
+  return excessesOf(await loadIncomeState(store));
+}
+
+/**
+ * B5: confirms the excess `proposalId` (`p-eccedenza-<paymentId>`) as recomputed now, in one
+ * `income.excess` operation that `annulla-riconciliazione` undoes. The payment gives each target
+ * month its amount: a payment `<paymentId>-<month>` of the same tenant, date, source and movement
+ * per month, or, when one is already live (a second confirmation, C1 of the review), that payment
+ * grows by the amount. The payment keeps what is left; when the targets take all of it, the
+ * payment itself goes to the first month. The movement's total never changes. Refused, writing
+ * nothing: `inconsistent-store`, `unknown-proposal` (no such excess now), `no-month-to-cover` (no
+ * month to cover: the excess is a credit to give back). A target month of a closed period is
+ * accepted (F5: a new payment after the closing); a change to a payment of a closed period is not.
+ */
+export async function confirmRentExcess(
+  store: Store,
+  proposalId: string,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<ConfirmRentExcessResult> {
+  const refuse = (reason: Extract<ConfirmRentExcessResult, { status: 'refused' }>['reason']) =>
+    ({ status: 'refused', reason }) as const;
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
+  const state = await loadIncomeState(store);
+  const excess = excessesOf(state).find((e) => e.id === proposalId);
+  const payment = state.payments.find((p) => p.id === excess?.paymentId);
+  if (excess === undefined || payment === undefined) return refuse('unknown-proposal');
+  const [first, ...rest] = excess.targets;
+  if (first === undefined) return refuse('no-month-to-cover');
+  const moved = excess.targets.reduce((sum, t) => sum + t.amount, 0);
+  const whole = moved === payment.amount;
+  const kept = parseOrThrow(
+    PaymentSchema,
+    whole
+      ? { ...payment, forMonth: first.month, amount: first.amount }
+      : { ...payment, amount: payment.amount - moved },
+    'payment',
+  );
+  const splits = (whole ? rest : excess.targets).map((t) => {
+    const id = `${payment.id}-${t.month}`;
+    const before = state.payments.find((p) => p.id === id);
+    const after = parseOrThrow(
+      PaymentSchema,
+      before !== undefined && before.deleted !== true
+        ? { ...before, amount: before.amount + t.amount }
+        : { ...payment, id, rev: 1, amount: t.amount, forMonth: t.month },
+      'payment',
+    );
+    return { path: recordPath('payment', id), before, after };
+  });
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'income.excess',
+      apartmentId: payment.apartmentId,
+      summary: 'Assegnato un canone versato in più ai mesi che mancavano.',
+      changes: [
+        { path: recordPath('payment', payment.id), before: payment, after: kept },
+        ...splits,
+      ],
+    },
+    clock,
+    newId,
+  );
+  return {
+    status: 'confirmed',
+    operationId: operation.id,
+    paymentIds: [payment.id, ...splits.map((c) => c.after.id)],
+  };
 }
 
 export interface ConfirmIncomeInput {

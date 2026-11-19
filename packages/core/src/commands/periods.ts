@@ -58,12 +58,20 @@ export async function closePeriodCommand(
               : {},
     );
   }
-  // Plan 22: the rent not collected of a reopened period closed again, as a warning.
-  if (result.rentMissing === undefined) return result;
+  // Plan 22: the rent not collected of a reopened period closed again, as a warning; B5 (d): the
+  // open proposals of rent paid in excess, as a warning too.
+  const { rentMissing, rentExcesses, ...closed } = result;
   return {
-    ...result,
-    rentMissing: result.rentMissing.map(({ amount, ...m }) => (details ? { ...m, amount } : m)),
-    warning: MESSAGES['rent-missing'],
+    ...closed,
+    ...(rentMissing === undefined
+      ? {}
+      : {
+          rentMissing: rentMissing.map(({ amount, ...m }) => (details ? { ...m, amount } : m)),
+          warning: MESSAGES['rent-missing'],
+        }),
+    ...(rentExcesses === undefined
+      ? {}
+      : { rentExcesses, excessWarning: MESSAGES['rent-excess-open'] }),
   };
 }
 
@@ -115,10 +123,16 @@ export async function periodClosingCommand(
         rentAsked,
         rentLost,
         flatCredit,
+        rentCredit,
+        excessMoved,
         ...t
       }) => ({
         ...t,
         settled: settledIds.has(t.tenantId),
+        // B5 (a): rent paid in excess moved into the closed months, a line of the supplementary.
+        ...(excessMoved === 0 ? {} : { excessMoved: details ? excessMoved : true }),
+        // B5 (c): rent paid in excess that covers no month, «da rimborsare».
+        ...(rentCredit === 0 ? {} : { rentCredit: details ? rentCredit : true }),
         // Plan 22: the row «Canone non incassato» (amount only with --dettagli).
         ...(rentMissing === 0 ? {} : { rentMissing: details ? rentMissing : true }),
         ...(details && rentAsked !== 0 ? { rentAsked } : {}),
@@ -255,7 +269,9 @@ export async function saveSupplyCommand(
     throw new Stop(
       'rejected',
       result.reason,
-      optional('supplyId', 'supplyId' in result ? result.supplyId : undefined),
+      result.reason === 'codes-not-in-apartment'
+        ? { apartmentIds: result.apartmentIds, message: MESSAGES['codes-not-in-apartment'] }
+        : optional('supplyId', 'supplyId' in result ? result.supplyId : undefined),
     );
   }
   return {

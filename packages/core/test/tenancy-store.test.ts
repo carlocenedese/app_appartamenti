@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ContractSchema,
+  NoteSchema,
   TenancySchema,
+  notesFor,
   checkBeds,
   commitChange,
   endTenancy,
@@ -710,6 +712,36 @@ describe('recordRoomSwap (plan 18)', () => {
       warnings: ['swap-rent-unchanged', 'swap-forfait-unchanged'],
     });
     expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('H5: writes a note in the history of the contract, once, and the undo takes it back', async () => {
+    const store = await swapStore();
+    const notes = async () =>
+      (await loadAll(store, 'note', NoteSchema, { includeDeleted: true })).records;
+    // A refused swap writes no note.
+    expect(
+      await recordRoomSwap(store, swap({ month: yearMonth('2025-10') }), 'p1', clock, ids('v')),
+    ).toMatchObject({ status: 'refused' });
+    expect(await notes()).toEqual([]);
+    await recordRoomSwap(store, swap(), 'p1', clock, ids('w'));
+    expect(await notes()).toEqual([
+      {
+        ...base,
+        id: 'note-tcy-anna-2026-03',
+        targetType: 'contract',
+        targetId: 'ctr-app-c',
+        text: 'Scambio di posto dal 2026-03: ten-anna dal posto A al posto B, ten-bruno dal posto B al posto A.',
+        profileId: 'p1',
+        at: clock(),
+        visibleToTenants: false,
+      },
+    ]);
+    expect(await notesFor(store, 'contract', 'ctr-app-c')).toHaveLength(1);
+    // The same request again writes nothing, no second note.
+    await recordRoomSwap(store, swap(), 'p1', clock, ids('x'));
+    expect(await notes()).toHaveLength(1);
+    await undoOperation(store, 'w-1', 'p1', clock, ids('u'));
+    expect(await notesFor(store, 'contract', 'ctr-app-c')).toEqual([]);
   });
 
   it('takes the rents given from the month of the swap, without the rent warning', async () => {

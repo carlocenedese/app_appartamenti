@@ -4802,10 +4802,11 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     const confirmed = await run(['bolletta', ...args, '--soglia-consumi', '30', '--conferma']);
     expect(confirmed.json).toMatchObject({ status: 'confermata', file: 'moved' });
     // Plan 17, R315: the PDF is now in the Bollette folder of the apartment.
-    const { filePath } = JSON.parse(
+    const { filePath, originalName } = JSON.parse(
       readFileSync(join(dir, '_app', 'dati', 'bill', `${confirmed.json.ids[0]}.json`), 'utf8'),
     );
-    const plan = billFileMove(apartment({ id: 'app-c' }), filePath);
+    // F9 c (plan 25): the undo gives the PDF back its original name.
+    const plan = billFileMove(apartment({ id: 'app-c' }), filePath, originalName);
     const moved = join(dir, ...plan.filed.split('/'));
     expect([existsSync(pdf), existsSync(moved)]).toEqual([false, true]);
     const movedArgs = args.map((a) => (a === pdf ? moved : a));
@@ -4813,12 +4814,23 @@ describe('pnpm estratti bolletta, annulla-bolletta e cruscotto (piano 15)', () =
     expect(duplicate.code).toBe(1);
     expect(duplicate.json).toMatchObject({ reason: 'duplicate-bill' });
 
+    // Back to Da_smistare, never over another file: a file with that name there stops the move,
+    // and the same command again, once it is gone, moves the PDF only (F9 c, giro 3).
+    const inbox = join(dir, ...plan.inbox.split('/'));
+    mkdirSync(dirname(inbox), { recursive: true });
+    writeFileSync(inbox, 'altro');
     const undone = await run(['annulla-bolletta', ...common, moved]);
     expect(undone.json.status).toBe('undone');
-    // Back to Da_smistare, never over another file.
-    expect(undone.json.file).toBe('moved');
-    const inbox = join(dir, ...plan.inbox.split('/'));
+    expect(undone.json.file).toBe('target-exists');
+    rmSync(inbox);
+    const retried = await run(['annulla-bolletta', ...common, moved]);
+    expect([retried.json.status, retried.json.records, retried.json.file]).toEqual([
+      'undone',
+      0,
+      'moved',
+    ]);
     expect([existsSync(moved), existsSync(inbox)]).toEqual([false, true]);
+    expect(inbox.split(/[\\/]/).pop()).toBe(originalName);
     expect(undone.json.operationIds).toHaveLength(2);
     expect(undone.json.records).toBe(2);
     expect((await run(['annulla-bolletta', ...common, '--pagine', '2-1', pdf])).code).toBe(2);

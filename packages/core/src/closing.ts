@@ -51,6 +51,14 @@ export interface ClosingRow extends Omit<SupplementaryRow, 'action'> {
   rentAsked: Cents;
   /** What user1 marked `non-recuperabile`: left with the owner (R5). */
   rentLost: Cents;
+  /**
+   * B5 (c), decided by user1 on 19 Nov 2026: rent paid in excess in the months of the period that
+   * covers no month (`RentExcess.credit`), a credit of the tenant to give back, «da rimborsare».
+   * Like the rent not collected, outside `total`, `remaining` and every mark.
+   */
+  rentCredit: Cents;
+  /** B5 (a): of `total`, the rent paid in excess moved into the closed months (a credit). */
+  excessMoved: Cents;
 }
 
 /** A closed (or reopened, F3) period with what changed since its snapshot. */
@@ -209,6 +217,11 @@ export function tenantBalance(
     forfaitIncassato: number;
     /** The tenant's flat-charge payments today (`flatPaymentsOf`); without them every check holds. */
     payments?: readonly FlatPayment[];
+    /**
+     * B5 (a), decided by user1 on 19 Nov 2026: rent paid in excess moved into the closed months
+     * after the closing (`ExcelInput.excessMoved`): a credit of the supplementary settlement.
+     */
+    excessMoved?: number;
   },
 ): TenantLedger {
   const marks = marksOf(close, tenantId);
@@ -252,7 +265,7 @@ export function tenantBalance(
     // Answer 5: a credit goes into the supplementary settlement.
     if (f.outcome === 'credito') flatCredit += take;
   }
-  const remaining = owed - flatCredit;
+  const remaining = owed - flatCredit - (now.excessMoved ?? 0);
   const mainRemaining =
     current.main !== undefined ? 0 : snapshot + extraInSnapshot - forfaitPaid - current.prior;
   // The flat charge still missing, as far as the main still holds it.
@@ -338,16 +351,27 @@ function snapshotCosts(snapshot: PeriodClose['snapshot']): SettlementCosts {
 export function closingOf(
   close: PeriodClose,
   current: ConguaglioResult,
-  input: { tenancies: Tenancy[]; payments?: Payment[] },
+  input: {
+    tenancies: Tenancy[];
+    payments?: Payment[];
+    excessMoved?: readonly { tenantId: string; amount: number }[];
+  },
   asOf: ISODate,
+  /** B5 (c): the credit of each tenant to give back (`rentCredits`); none without it. */
+  credits: ReadonlyMap<string, number> = new Map(),
 ): PeriodClosed {
   const nowRows = new Map(current.tenants.map((t) => [t.tenantId, t]));
   const rent = rentOf(close, input);
+  const movedOf = (id: string) =>
+    (input.excessMoved ?? [])
+      .filter((m) => m.tenantId === id)
+      .reduce((sum, m) => sum + m.amount, 0);
   const ledgerOf = (id: string) => {
     const today = nowRows.get(id);
     return tenantBalance(close, id, {
       due: today?.due ?? 0,
       forfaitIncassato: today?.forfaitIncassato ?? 0,
+      excessMoved: movedOf(id),
       ...(input.payments === undefined
         ? {}
         : { payments: flatPaymentsOf(input.payments, id, close.from, close.to) }),
@@ -411,6 +435,8 @@ export function closingOf(
       rentMissing: ownRent?.open ?? cents(0),
       rentAsked: ownRent?.asked ?? cents(0),
       rentLost: ownRent?.lost ?? cents(0),
+      rentCredit: cents(credits.get(row.tenantId) ?? 0),
+      excessMoved: cents(movedOf(row.tenantId)),
     };
   });
   const unsettled = tenants.filter((t) => t.mainRemaining !== 0).map((t) => t.tenantId);

@@ -4,6 +4,7 @@ import {
   addMonths,
   annualitaOf,
   annualitaRange,
+  esercizioRange,
   daysBetween,
   isoDate,
   monthsInPeriod,
@@ -287,6 +288,21 @@ describe('annualitaOf', () => {
     [{ month: 10, day: Number.NaN }, 'NaN day'],
   ])('throws for the invalid start %j (%s)', (start) => {
     expect(() => annualitaOf(isoDate('2026-10-01'), start)).toThrow(RangeError);
+  });
+});
+
+describe('esercizioRange (F7)', () => {
+  it('reads the cross-year form as annualitaRange and the calendar year as the year from its start', () => {
+    expect(esercizioRange('2026-27', OCTOBER)).toEqual(annualitaRange('2026-27', OCTOBER));
+    const january = { month: 1, day: 1 };
+    expect(esercizioRange('2026', january)).toEqual({ from: '2026-01-01', to: '2026-12-31' });
+    expect(esercizioRange('2026', OCTOBER)).toEqual(annualitaRange('2026-27', OCTOBER));
+  });
+
+  it('throws for any other form', () => {
+    for (const label of ['26', '2026-28', '2026/27', '20260', '']) {
+      expect(() => esercizioRange(label, OCTOBER)).toThrow(RangeError);
+    }
   });
 });
 

@@ -92,7 +92,7 @@ export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {
   'missing-condominio-start':
     'Rifiutato: l’appartamento non ha l’inizio dell’esercizio del condominio dal giorno 1 (appartamento --esercizio-condominio MM-01).',
   'invalid-instalment':
-    'Rifiutato: rata non valida: esercizio AAAA-AA, rata n/N con N divisore di 12, importi e scadenza.',
+    'Rifiutato: rata non valida: esercizio AAAA-AA o AAAA, rata n/N con N divisore di 12, importi e scadenza.',
   'instalment-in-use':
     'Rifiutato: la rata ha abbinamenti o recuperi («recordIds»): annullarli prima di cambiarla.',
   'instalment-id-collision':
@@ -119,8 +119,18 @@ export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {
   'invalid-close-input': 'Rifiutato: data non valida.',
   'period-reopened':
     'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
+  'hand-not-past-year': 'Rifiutato: si confermano a mano solo le voci di un anno passato (--anno).',
+  'hand-nothing-to-confirm': 'Nessuna voce da verificare in quell’anno.',
+  'codes-not-in-apartment':
+    'Rifiutato: un codice dell’utenza non è tra i codici dell’appartamento («apartmentIds»): aggiungerlo prima con «appartamento --codici».',
+  'codes-in-use':
+    'Rifiutato: un’utenza dell’appartamento usa un codice che si toglierebbe («supplyIds»): toglierlo prima dall’utenza («utenza --codici»).',
+  'no-month-to-cover':
+    'Rifiutato: il canone versato in più non copre nessun mese: è un credito dell’inquilino da rimborsare.',
+  'rent-excess-open':
+    'Attenzione: ci sono canoni versati in più con una proposta aperta su mesi di questo periodo («rentExcesses»): confermarli con «eccedenza-canone».',
   'instalment-esercizio-format':
-    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 (il conguaglio divide solo questa forma).',
+    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 oppure 2026 (l’esercizio che inizia nel 2026).',
   'tari-december-missing':
     'Rifiutato: l’appartamento è nell’avviso TARI comune e il periodo si chiude solo dopo l’addebito dell’avviso TARI del dicembre che sta dentro il periodo («month», R3): registrarlo e abbinarlo, poi chiudere.',
   'closed-period-changed':
@@ -319,9 +329,11 @@ export const RECONCILE_KINDS: readonly string[] = [
   'income.reconcile',
   'income.confirm',
   'income.cancel-payment',
+  'income.excess',
   'movement.exclude',
   'match.reconcile',
   'match.confirm',
+  'match.hand-confirm',
   'outgoing.reconcile',
   'outgoing.confirm',
   'outgoing.cancel-auto',

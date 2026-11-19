@@ -31,7 +31,7 @@ import type {
 } from './model';
 import { cents, formatEuro, splitCents } from './money';
 import type { Cents } from './money';
-import { annualitaRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
+import { esercizioRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { MONTH_NAMES, monthRangeLabel } from './tari-note';
 import { compareText } from './text';
@@ -176,7 +176,7 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
 
   const esercizioOf = (instalment: Instalment) =>
     instalment.kind === 'condominio' && apartment.condominioStart !== undefined
-      ? annualitaRange(instalment.esercizio, apartment.condominioStart)
+      ? esercizioRange(instalment.esercizio, apartment.condominioStart)
       : undefined;
 
   const bills = own(input.bills).filter(
@@ -215,6 +215,12 @@ export interface ExcelInput extends ConguaglioInput {
   freeDebits?: FreeDebit[];
   /** The live closing of the period (R5), when it is closed. */
   closing?: PeriodClose;
+  /**
+   * B5 (a), decided by user1 on 19 Nov 2026: rent paid in excess moved (`income.excess`) into a
+   * month of this closed period after its closing. Taken out of `payments`, it is a line of the
+   * supplementary settlement of the tenant (a credit), never the flat charge of the month.
+   */
+  excessMoved?: { paymentId: string; tenantId: string; amount: Cents }[];
 }
 
 /**

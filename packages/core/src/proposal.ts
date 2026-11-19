@@ -574,6 +574,39 @@ export function safeWord(text: string, fallback: string, maxLength: number): str
  * the date strings alone, so it is the same in every time zone. No segment is a name Windows
  * reserves (CON, NUL, COM1...): the file name starts with a date, the folders are fixed words.
  */
+/**
+ * F9 c (plan 25): where the PDF of a TARI notice is filed, as a bill of category `tari`
+ * (`Bollette/Rifiuti/<anno>/…`), from its issue date (else the due date) and the months it covers.
+ */
+export function tariFilePath(
+  instalment: Pick<Instalment, 'issueDate' | 'dueDate' | 'coversFrom' | 'coversTo'>,
+): string {
+  return suggestedFilePath({
+    category: 'tari',
+    supplier: 'TARI',
+    issueDate: instalment.issueDate ?? instalment.dueDate,
+    periodStart: `${instalment.coversFrom}-01` as ISODate,
+    periodEnd: lastDayOfMonth(instalment.coversTo),
+  });
+}
+
+/**
+ * F9 c (round 3): one path for the PDF of a notice, from all the months of the given instalments
+ * (a notice split into stretches, R369, has several of one apartment); `undefined` without any.
+ */
+export function tariNoticePath(
+  rates: readonly Pick<Instalment, 'issueDate' | 'dueDate' | 'coversFrom' | 'coversTo'>[],
+): string | undefined {
+  const [first] = rates;
+  if (first === undefined) return undefined;
+  const sorted = (key: 'coversFrom' | 'coversTo') => rates.map((r) => r[key]).sort();
+  return tariFilePath({
+    ...first,
+    coversFrom: sorted('coversFrom')[0] ?? first.coversFrom,
+    coversTo: sorted('coversTo').at(-1) ?? first.coversTo,
+  });
+}
+
 export function suggestedFilePath(input: {
   category: string;
   supplier: string;

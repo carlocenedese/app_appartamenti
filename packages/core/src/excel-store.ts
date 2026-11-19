@@ -8,14 +8,15 @@ import type { ZodType } from 'zod';
 import type { ExcelInput } from './excel';
 import { loadFreeDebits } from './condo-store';
 import { recoverableMovements } from './condominio';
-import { writesBlocked } from './journal';
-import { planMatch } from './match-store';
+import { latestOperationByPath, readJournal, writesBlocked } from './journal';
+import { handMatches, planMatch } from './match-store';
 import {
   ApartmentSchema,
   BankTransactionSchema,
   MovementClassSchema,
   BillMatchSchema,
   BillSchema,
+  HandConfirmationSchema,
   ContractSchema,
   InstalmentSchema,
   PaymentSchema,
@@ -25,9 +26,13 @@ import {
   TenantSchema,
 } from './model';
 import { isLiveClose, periodCloseId } from './closing';
-import { splitOfClosing } from './conguaglio';
+import { splitOfClosing, stayEndsOfClosing } from './conguaglio';
+import { withContractEnds } from './contract';
 import { settlementPeriods } from './period';
+import type { Payment } from './model';
+import type { Cents } from './money';
 import { loadAll } from './store/load';
+import { recordPath } from './store/records';
 import type { Store } from './store/store';
 import { compareText } from './text';
 
@@ -72,6 +77,8 @@ export async function loadExcelInput(
   }
 
   const matches = await records('match', BillMatchSchema);
+  // Item 6 (plan 25): the items confirmed by hand count as paid in the settlement.
+  const hand = handMatches(await records('handConfirmation', HandConfirmationSchema));
   // Every settlement period, once and in order (R177).
   const spans = [
     ...new Map(all.map((p) => [`${p.from}/${p.to}`, { from: p.from, to: p.to }])).values(),
@@ -80,6 +87,14 @@ export async function loadExcelInput(
   const closing = (await records('periodClose', PeriodCloseSchema)).find(
     (c) => c.id === periodCloseId(apartment.id, period.label) && isLiveClose(c),
   );
+  const tenancies = own(await records('tenancy', TenancySchema));
+  // B5 (a): payments moved into the closed months by `income.excess` after the closing.
+  const payments = own(await records('payment', PaymentSchema));
+  const moved =
+    closing?.inputs === undefined
+      ? []
+      : await excessMovedInto(store, payments, closing as typeof closing & { inputs: string[] });
+  const movedIds = new Set(moved.map((m) => m.paymentId));
   return {
     status: 'ok',
     input: {
@@ -87,10 +102,14 @@ export async function loadExcelInput(
       period: { label: period.label, from: period.from, to: period.to },
       periods: spans,
       tenants: await records('tenant', TenantSchema),
-      tenancies: own(await records('tenancy', TenancySchema)),
+      // F9 a: a stay without end lasts until the end of the tenant's latest contract, except in a
+      // period closed before F9 a (`stayEndsOfClosing`).
+      tenancies:
+        stayEndsOfClosing(closing) === 'raw' ? tenancies : withContractEnds(tenancies, contracts),
       bills: own(await records('bill', BillSchema)),
       instalments: own(await records('instalment', InstalmentSchema)),
-      payments: own(await records('payment', PaymentSchema)),
+      payments: payments.filter((p) => !movedIds.has(p.id)),
+      ...(moved.length === 0 ? {} : { excessMoved: moved }),
       contracts,
       recoveries: own(await records('tenantRecovery', TenantRecoverySchema)),
       recoverableMovements: recoverableMovements({
@@ -98,7 +117,7 @@ export async function loadExcelInput(
         transactions: await records('transaction', BankTransactionSchema),
         classes: await records('movementClass', MovementClassSchema),
       }),
-      matches,
+      matches: [...matches, ...hand],
       unverified: (await planMatch(store)).run.unverified,
       freeDebits: await loadFreeDebits(store, matches),
       ...(closing === undefined ? {} : { closing }),
@@ -106,4 +125,29 @@ export async function loadExcelInput(
       split: splitOfClosing(closing),
     },
   };
+}
+
+/**
+ * B5 (a): the live `canone` payments of the closed months whose latest change is an
+ * `income.excess` and that the closing did not count (`inputs`): rent paid in excess moved there
+ * after the closing.
+ */
+async function excessMovedInto(
+  store: Store,
+  payments: readonly Payment[],
+  closing: { from: string; to: string; inputs: string[] },
+): Promise<{ paymentId: string; tenantId: string; amount: Cents }[]> {
+  const inside = payments.filter(
+    (p) =>
+      p.kind === 'canone' &&
+      p.forMonth !== undefined &&
+      closing.from <= p.forMonth &&
+      p.forMonth <= closing.to &&
+      !closing.inputs.includes(`payment/${p.id}`),
+  );
+  if (inside.length === 0) return [];
+  const latest = latestOperationByPath((await readJournal(store)).operations);
+  return inside
+    .filter((p) => latest.get(recordPath('payment', p.id))?.kind === 'income.excess')
+    .map((p) => ({ paymentId: p.id, tenantId: p.tenantId, amount: p.amount }));
 }

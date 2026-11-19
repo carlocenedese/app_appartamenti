@@ -13,10 +13,16 @@ export const CORE_VERSION = '0.1.0';
  * Version of the settlement calculation, written as `engineVersion` of a `ConguaglioResult` and
  * of a closing snapshot. Separate from `CORE_VERSION`, which also becomes `minAppVersion` of a new
  * workspace and stays at 0.1.0 (docs/revisione-2026-11-18-dati.md, R363). `PER_BED_CALC_VERSION`
- * is the calculation before plan 21, which split each month over the beds.
+ * is the calculation before plan 21, which split each month over the beds; 0.2.0 read a stay
+ * without end as open (before F9 a).
  */
-export const CALC_VERSION = '0.2.0';
+export const CALC_VERSION = '0.3.0';
 export const PER_BED_CALC_VERSION = '0.1.0';
+/**
+ * The calculations before F9 a (plan 25, R390), which read a stay without end as open: a snapshot
+ * of one of them keeps its stays as written (`stayEndsOfClosing`).
+ */
+export const OPEN_STAY_CALC_VERSIONS: readonly string[] = ['0.1.0', '0.2.0'];
 
 /**
  * The format of the data this core reads and writes: the shape of every record, of the operations
@@ -32,7 +38,9 @@ export const PER_BED_CALC_VERSION = '0.1.0';
  * the newer app raises the folder's number with `raiseDataFormat` before its first write.
  */
 // 5: plan 22, dated beds and weights («valido dal») and the flat charge checked (user1, 19 Nov 2026).
-export const DATA_FORMAT = 5;
+// 6: plan 25 (authorised by user1, 19 Nov 2026): excludeReason `privato`, supplyCodes of a supply,
+// filePath and originalName of a TARI instalment and originalName of a bill, handConfirmation.
+export const DATA_FORMAT = 6;
 
 /**
  * A plain `MAJOR.MINOR.PATCH` version: three numbers without leading zeros, digits `0-9` only

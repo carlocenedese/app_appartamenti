@@ -31,6 +31,7 @@ import { recoveriesUsing } from './condo-store';
 import { taxPaymentsUsing } from './tax-store';
 import { isPayerIban, outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
 import type { MovementClassDraft, OutgoingProposal } from './outgoing';
+import { loadRentExcesses } from './income-store';
 import { parseOrThrow } from './parse';
 import { firstPresenceDay } from './payers';
 import { addDays } from './period';
@@ -333,6 +334,12 @@ export interface ConfirmTenantOutgoingInput {
   /** Never `canone`: the rent is an income. */
   kind: 'caparra' | 'conguaglio' | 'altro';
   forMonth: YearMonth;
+  /**
+   * B5 (c), decided by user1 on 19 Nov 2026: the refund of rent paid in excess in `forMonth`
+   * (`uscita-inquilino --rimborso-canone`): written as a negative `canone` of that month, so it
+   * takes the excess, and with it the credit «da rimborsare», away. `kind` is then not used.
+   */
+  rentRefund?: boolean;
 }
 
 export type ConfirmTenantOutgoingResult =
@@ -340,7 +347,12 @@ export type ConfirmTenantOutgoingResult =
   | {
       status: 'refused';
       reason: 'inconsistent-store' | 'invalid-kind' | 'unknown-proposal' | 'tenant-not-allowed';
-    };
+    }
+  /**
+   * G4-I1: a rent refund (`rentRefund`) for a month with no open credit of the tenant there;
+   * `months` are the months that have one (empty when none).
+   */
+  | { status: 'refused'; reason: 'no-rent-credit'; months: YearMonth[] };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
 const TenantOutgoingKindSchema = z.enum(['caparra', 'conguaglio', 'altro']);
@@ -351,7 +363,9 @@ const TenantOutgoingKindSchema = z.enum(['caparra', 'conguaglio', 'altro']);
  * the negative amount of the movement, the apartment of its account, `confirmed` and `source`
  * `csv`, in one `outgoing.tenant` operation. Always by hand, never from a rule, and no rule is
  * saved. The tenant must be live with a presence in that apartment (`tenant-not-allowed`); a
- * `kind` outside `caparra`, `conguaglio`, `altro` is `invalid-kind`.
+ * `kind` outside `caparra`, `conguaglio`, `altro` is `invalid-kind`. With `rentRefund` (B5 c) the
+ * payment is a negative `canone` of `forMonth`: the only outgoing that closes a credit of rent paid
+ * in excess.
  */
 export async function confirmTenantOutgoing(
   store: Store,
@@ -360,8 +374,12 @@ export async function confirmTenantOutgoing(
   clock: () => string,
   newId: () => string,
 ): Promise<ConfirmTenantOutgoingResult> {
-  const refuse = (reason: Extract<ConfirmTenantOutgoingResult, { status: 'refused' }>['reason']) =>
-    ({ status: 'refused', reason }) as const;
+  const refuse = (
+    reason: Exclude<
+      Extract<ConfirmTenantOutgoingResult, { status: 'refused' }>['reason'],
+      'no-rent-credit'
+    >,
+  ) => ({ status: 'refused', reason }) as const;
   if (await writesBlocked(store)) return refuse('inconsistent-store');
   // The type says it already; a caller in plain JavaScript could still pass `canone`.
   if (!TenantOutgoingKindSchema.safeParse(input.kind).success) return refuse('invalid-kind');
@@ -378,6 +396,17 @@ export async function confirmTenantOutgoing(
   if (!live || firstPresenceDay(tenancies, input.tenantId, apartmentId) === undefined) {
     return refuse('tenant-not-allowed');
   }
+  if (input.rentRefund === true) {
+    // G4-I1: a refund is the one of an open credit, in its month; otherwise it would count nowhere
+    // and the deposit would pay the credit again.
+    const months = (await loadRentExcesses(store))
+      .filter((e) => e.apartmentId === apartmentId && e.tenantId === input.tenantId && e.credit > 0)
+      .map((e) => e.month)
+      .sort();
+    if (!months.includes(input.forMonth)) {
+      return { status: 'refused', reason: 'no-rent-credit', months: [...new Set(months)] };
+    }
+  }
   const payment = parseOrThrow(
     PaymentSchema,
     {
@@ -389,7 +418,7 @@ export async function confirmTenantOutgoing(
       date: tx.date,
       amount: tx.amount,
       confirmed: true,
-      kind: input.kind,
+      kind: input.rentRefund === true ? 'canone' : input.kind,
       forMonth: input.forMonth,
       source: 'csv',
       transactionId: tx.id,

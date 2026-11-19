@@ -902,12 +902,27 @@ describe('deposit statement and closed periods (B4, F10)', () => {
     [false, 0, 'nessuna', 0, [{ label: 'Forfait non incassato 2025-26', amount: -3000 }], 0],
     [false, 1500, 'nessuna', 0, [{ label: 'Forfait non incassato 2025-26', amount: -1500 }], 0],
     [false, 3000, 'nessuna', 0, [], 0],
-    // Only 30,00 of a 40,00 payment is flat charge (the month's due): as 30,00.
-    [false, 4000, 'nessuna', 0, [], 0],
+    // Only 30,00 of a 40,00 payment is flat charge (the month's due): as 30,00; the other 10,00
+    // cover no month and are a credit to give back (B5 c).
+    [
+      false,
+      4000,
+      'nessuna',
+      0,
+      [{ label: 'Canone versato in più 2025-26 (da rimborsare)', amount: 1000 }],
+      0,
+    ],
     [true, 0, 'nessuna', 0, [], 0],
     [true, 1500, 'da-verificare', 1500, [], 1500],
     [true, 3000, 'da-verificare', 3000, [], 3000],
-    [true, 4000, 'da-verificare', 3000, [], 3000],
+    [
+      true,
+      4000,
+      'da-verificare',
+      3000,
+      [{ label: 'Canone versato in più 2025-26 (da rimborsare)', amount: 1000 }],
+      3000,
+    ],
   ];
   for (const [settledMain, paid, action, toCheck, lines, depositToCheck] of matrix) {
     it(`A, B: main ${settledMain ? 'settled' : 'not settled'}, ${String(paid / 100)} paid after: closing and deposit agree`, async () => {

@@ -9,14 +9,16 @@ import type { CaparraReturn } from './caparra';
 import { SettlementInputError, calcConguaglio, isPresent, settlementPeriodOf } from './conguaglio';
 import { flatPaymentsOf, rentOf, tenantBalance } from './closing';
 import { recoverableMovements } from './condominio';
+import { withContractEnds } from './contract';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
+import { rentCredits } from './income';
+import { loadRentExcesses } from './income-store';
 import { legalInterest } from './interest';
 import { commitChange, writesBlocked } from './journal';
 import {
   ApartmentSchema,
   BankTransactionSchema,
-  BillMatchSchema,
   MovementClassSchema,
   ContractSchema,
   PeriodCloseSchema,
@@ -30,6 +32,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import { addMonths, isoDate, lastDayOfMonth, monthsInPeriod, settlementPeriods } from './period';
 import type { ISODate, YearMonth } from './period';
+import { loadPaidMatches } from './match-store';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -182,6 +185,11 @@ export interface DepositReturnInput {
   /** The tenant's conguaglio typed by user1 (positive is a debt), instead of the computed one. */
   conguaglio?: Cents;
   extraCharges: readonly { label: string; amount: Cents }[];
+  /**
+   * F9 a (round 4): today. The end of the tenant's contract is the exit of a stay without end only
+   * once that month is over; without `today` it never is (`no-exit`, as before).
+   */
+  today?: ISODate;
 }
 
 export type DepositReturnResult =
@@ -243,9 +251,21 @@ export async function loadDepositReturn(
     >,
   ) => ({ status: 'refused', reason }) as const;
   if (await writesBlocked(store)) return refuse('inconsistent-store');
-  const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records.filter(
-    (t) => t.apartmentId === input.apartmentId,
-  );
+  // F9 a (decided by user1 on 19 Nov 2026): a stay without end ends with the tenant's latest
+  // contract, and that end is the exit of the deposit once it is over (round 4: a contract still
+  // running is no exit yet).
+  const written = (await loadAll(store, 'tenancy', TenancySchema)).records;
+  const now = input.today?.slice(0, 7);
+  const tenancies = withContractEnds(
+    written,
+    (await loadAll(store, 'contract', ContractSchema)).records,
+  )
+    .map((t, i) =>
+      written[i]?.to === undefined && t.to !== undefined && (now === undefined || t.to >= now)
+        ? (written[i] as Tenancy)
+        : t,
+    )
+    .filter((t) => t.apartmentId === input.apartmentId);
   const check = depositChecks({
     tenancies,
     payments: (await loadAll(store, 'payment', PaymentSchema)).records,
@@ -278,6 +298,15 @@ export async function loadDepositReturn(
     spans,
   });
   if (typeof closed === 'string') return refuse(closed);
+  // B5 (c), decided by user1 on 19 Nov 2026: rent paid in excess that covers no month is a credit
+  // to give back, one line per period (negative: a credit of the tenant).
+  const excesses = await loadRentExcesses(store);
+  const credits: Line[] = spans.flatMap((p) => {
+    const credit = rentCredits(excesses, input.apartmentId, p.from, p.to).get(input.tenantId) ?? 0;
+    return credit > 0
+      ? [{ label: `Canone versato in più ${p.label} (da rimborsare)`, amount: cents(-credit) }]
+      : [];
+  });
   if (held <= 0) {
     // The statement is already made: what the closed periods add is asked apart (F10).
     // I: the past statement is not stored, so the exit period's due at the closing and what is
@@ -308,7 +337,7 @@ export async function loadDepositReturn(
     return {
       status: 'refused',
       reason: 'already-returned',
-      toRequest: [...toCheck, ...(exit?.lines ?? []), ...closed.lines].map((l) => ({
+      toRequest: [...toCheck, ...(exit?.lines ?? []), ...closed.lines, ...credits].map((l) => ({
         label: l.label,
         amount: cents(-l.amount),
       })),
@@ -380,7 +409,8 @@ export async function loadDepositReturn(
     settled.push(...closed.exit.lines);
   }
 
-  const matches = (await loadAll(store, 'match', BillMatchSchema)).records;
+  // Item 6 (G2-I2): the items confirmed by hand are paid.
+  const matches = await loadPaidMatches(store);
   const transactions = (await loadAll(store, 'transaction', BankTransactionSchema)).records;
   const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
   const recoveries = withheldRecoveries({
@@ -410,7 +440,13 @@ export async function loadDepositReturn(
       caparra: held,
       interest,
       conguaglio,
-      extraCharges: [...settled, ...closed.lines, ...recoveries.withheld, ...input.extraCharges],
+      extraCharges: [
+        ...settled,
+        ...closed.lines,
+        ...credits,
+        ...recoveries.withheld,
+        ...input.extraCharges,
+      ],
     }),
     recoveriesWaiting: recoveries.waiting,
     toCheck: closed.toCheck,
@@ -482,6 +518,10 @@ async function closedPeriodLines(
       due: today?.due ?? 0,
       forfaitIncassato: today?.forfaitIncassato ?? 0,
       payments: flatPaymentsOf(loaded.input.payments, input.tenantId, close.from, close.to),
+      // B5 (a): rent paid in excess moved into the closed months, in the supplementary.
+      excessMoved: (loaded.input.excessMoved ?? [])
+        .filter((m) => m.tenantId === input.tenantId)
+        .reduce((sum, m) => sum + m.amount, 0),
     });
     if (balance.toCheck > 0) {
       toCheck.push({

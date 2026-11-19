@@ -5,7 +5,7 @@
 import { loadAccountBalances } from '../balances';
 import { closeMarks } from '../closing';
 import { ClosingUndoError } from '../closed-period-guard';
-import { cancelAutomaticPayment, confirmIncome } from '../income-store';
+import { cancelAutomaticPayment, confirmIncome, confirmRentExcess } from '../income-store';
 import {
   checkConsistency,
   forkVersions,
@@ -14,7 +14,7 @@ import {
   resolveFork,
   undoOperation,
 } from '../journal';
-import { confirmMatch } from '../match-store';
+import { confirmMatch, confirmPastYear } from '../match-store';
 import {
   AccountSchema,
   BankProfileSchema,
@@ -112,6 +112,18 @@ export async function reconcileCommand(
       apartmentId: a.apartmentId,
       ...arrearExtra(a),
     })),
+    // B5: rent paid in excess, the months it would cover and whether a credit is left to give
+    // back («da rimborsare»); amounts and the tenant only with --dettagli.
+    excesses: result.excesses.map((e) => ({
+      id: e.id,
+      apartmentId: e.apartmentId,
+      month: e.month,
+      months: e.targets.map((t) => t.month),
+      ...(e.credit > 0 ? { refund: true } : {}),
+      ...(options.details
+        ? { ...arrearExtra(e), excess: e.excess, targets: e.targets, credit: e.credit }
+        : {}),
+    })),
     ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
     // Ids, reasons and counts only (R107, R126).
     match: {
@@ -202,6 +214,16 @@ export async function confirmTenantOutgoingCommand(
   ctx: CommandContext,
 ) {
   const result = await confirmTenantOutgoing(store, input, ctx.who, ctx.clock, ctx.newId);
+  if (result.status === 'refused' && result.reason === 'no-rent-credit') {
+    // G4-I1: the message names the months with an open credit (none: «nessuno»).
+    throw new Stop('rejected', result.reason, {
+      months: result.months,
+      message:
+        `Rifiutato: l’inquilino non ha un credito di canone versato in più nel mese ` +
+        `${input.forMonth}. Mesi con un credito aperto: ` +
+        `${result.months.length === 0 ? 'nessuno' : result.months.join(', ')}.`,
+    });
+  }
   if (result.status === 'refused') throw new Stop('rejected', result.reason);
   return { status: 'confirmed', operationId: result.operationId, paymentId: result.paymentId };
 }
@@ -304,6 +326,45 @@ export async function confirmIncomeCommand(
       result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
     ),
   };
+}
+
+/** `eccedenza-canone` (B5): confirms one proposal of `excesses`; ids only. */
+export async function confirmRentExcessCommand(
+  store: Store,
+  proposalId: string,
+  ctx: CommandContext,
+) {
+  const result = await confirmRentExcess(store, proposalId, ctx.who, ctx.clock, ctx.newId);
+  if (result.status === 'refused') {
+    throw new Stop(
+      'rejected',
+      result.reason,
+      result.reason === 'no-month-to-cover' ? { message: MESSAGES['no-month-to-cover'] } : {},
+    );
+  }
+  return { status: 'confirmed', operationId: result.operationId, paymentIds: result.paymentIds };
+}
+
+/**
+ * `conferma-anno` (item 6 of plan 25): the items «da verificare» of a past year confirmed paid by
+ * hand in one operation; the count and the sum of their expected amounts.
+ */
+export async function confirmPastYearCommand(
+  store: Store,
+  input: { year: string; today: string },
+  ctx: CommandContext,
+) {
+  const result = await confirmPastYear(store, input, ctx.who, ctx.clock, ctx.newId);
+  if (result.status === 'refused') {
+    const message = MESSAGES[`hand-${result.reason}`];
+    throw new Stop('rejected', result.reason, {
+      ...(message === undefined ? {} : { message }),
+      ...('skippedApartmentIds' in result && result.skippedApartmentIds !== undefined
+        ? { skippedApartmentIds: result.skippedApartmentIds }
+        : {}),
+    });
+  }
+  return result;
 }
 
 /** `annulla-riconciliazione` (and `annulla-incassi`): one operation of `RECONCILE_KINDS`. */

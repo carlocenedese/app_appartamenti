@@ -144,7 +144,6 @@ describe('loadDashboard', () => {
             'caparra:mancante': 1,
             // The same instalment in both lists: the two families are not to be summed (R264).
             'condominio:da-verificare': 1,
-            'contratto:tenancy-outside-contract': 1,
             'contratto:unknown-tenancy': 1,
             'movimento-senza-uso': 1,
             'scadenza-controllo:periodo-senza-estratto': 1,
@@ -293,7 +292,8 @@ describe('loadDashboard on the Excel fixture', () => {
     expect(result.apartments).toEqual([
       {
         apartmentId: 'apt-nord',
-        counts: { 'conguaglio:voci-in-attesa': 2 },
+        // F9 a: the fixture's stays have no end and no contract links them (user1, round 3).
+        counts: { 'conguaglio:voci-in-attesa': 2, 'presenza:oltre-il-contratto': 3 },
         consumptionThresholds: false,
       },
       { apartmentId: 'apt-sud', counts: {}, consumptionThresholds: false },
@@ -327,5 +327,64 @@ describe('loadDashboard on the Excel fixture', () => {
     if (result.status !== 'computed') throw new Error(result.reason);
     expect(result.settlements[0]?.unassigned).toBeGreaterThan(0);
     expect(result.apartments[0]?.counts['conguaglio:mesi-senza-inquilini']).toBe(1);
+  });
+});
+
+describe('F9 a: a stay without end past its contract (user1, 19 Nov 2026)', () => {
+  it('counts presenza:oltre-il-contratto until a renewal or the exit is written', async () => {
+    const store = new MemoryStore();
+    const put = async (kind: RecordKind, record: { id: string } & Record<string, unknown>) =>
+      writeRecord(
+        store,
+        recordPath(kind, record.id),
+        { v: 1, rev: 1, ...record },
+        {
+          expectedRev: null,
+        },
+      );
+    await put('apartment', {
+      id: 'apt-z',
+      name: 'Appartamento Z',
+      locatore: 'L',
+      posti: 1,
+      annualitaStart: { month: 10, day: 1 },
+    });
+    await put('tenancy', {
+      id: 'tcy-z',
+      apartmentId: 'apt-z',
+      tenantId: 't-z',
+      from: '2025-10',
+      monthlyRent: 45000,
+      monthlyForfait: 3000,
+    });
+    await put('contract', {
+      id: 'ctr-z',
+      apartmentId: 'apt-z',
+      type: '1+1',
+      start: '2025-10',
+      end: '2026-09',
+      settlement: 'annuale',
+      tenancyIds: ['tcy-z'],
+    });
+    const count = async (today: string) => {
+      const r = await loadDashboard(store, { today: isoDate(today), settlements: [] });
+      if (r.status !== 'computed') throw new Error(r.status);
+      return r.apartments.find((a) => a.apartmentId === 'apt-z')?.counts[
+        'presenza:oltre-il-contratto'
+      ];
+    };
+    expect(await count('2026-09-15')).toBeUndefined();
+    expect(await count('2026-11-19')).toBe(1);
+    // A stay without end and with no contract of the tenant at all is counted too.
+    await put('tenancy', {
+      id: 'tcy-y',
+      apartmentId: 'apt-z',
+      tenantId: 't-y',
+      room: undefined,
+      from: '2026-03',
+      monthlyRent: 45000,
+      monthlyForfait: 3000,
+    });
+    expect(await count('2026-09-15')).toBe(1);
   });
 });

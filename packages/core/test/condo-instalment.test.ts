@@ -119,7 +119,7 @@ describe('saveCondoInstalment', () => {
     const refused = async (input: SaveCondoInstalmentInput, reason: string) =>
       expect(await save(store, input)).toMatchObject({ status: 'refused', reason });
     await refused({ ...first, apartmentId: 'apt-x' }, 'unknown-apartment');
-    await refused({ ...first, esercizio: '2025' }, 'esercizio-format');
+    await refused({ ...first, esercizio: '25' }, 'esercizio-format');
     await refused({ ...first, esercizio: '2025-27' }, 'invalid-instalment');
     await refused({ ...first, rateIndex: 4 }, 'invalid-instalment');
     await refused({ ...first, rateCount: 5 }, 'invalid-instalment');
@@ -135,6 +135,25 @@ describe('saveCondoInstalment', () => {
       status: 'refused',
       reason: 'missing-condominio-start',
     });
+  });
+
+  it('F7: takes the form «2026», here the calendar year (fiscal year from 1 January)', async () => {
+    const store = await withApartment({ month: 1, day: 1 });
+    const year = { ...first, esercizio: '2026', dueDate: isoDate('2026-01-10') };
+    expect(await save(store, year)).toMatchObject({ status: 'saved' });
+    const [saved] = (await loadAll(store, 'instalment', InstalmentSchema)).records;
+    expect(saved).toMatchObject({ esercizio: '2026', coversFrom: '2026-01', coversTo: '2026-04' });
+    // One form per apartment (R310): the cross-year form is refused next to it.
+    expect(
+      await save(store, { ...first, id: 'rata-a-2', rateIndex: 2, esercizio: '2026-27' }),
+    ).toEqual({ status: 'refused', reason: 'esercizio-format', documentIds: ['rata-a-1'] });
+  });
+
+  it('F7: «2025» with a fiscal year from October is the one that starts in October 2025', async () => {
+    const store = await withApartment();
+    expect(await save(store, { ...first, esercizio: '2025' })).toMatchObject({ status: 'saved' });
+    const [saved] = (await loadAll(store, 'instalment', InstalmentSchema)).records;
+    expect(saved).toMatchObject({ esercizio: '2025', coversFrom: '2025-10', coversTo: '2026-01' });
   });
 
   it('refuses an esercizio of another form than the documents of the apartment (R310)', async () => {

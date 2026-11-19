@@ -45,6 +45,9 @@ const FINGERPRINTS: Record<number, string> = {
   // of a supply («valido dal»), flatChecked and rentMarks of a periodClose (recomputed after the
   // answers of user1, 19 Nov 2026; format 5 not released yet).
   5: 'e3e769abede37dbfcd1a7cab7277ca2fb6a83a6a547ec9cf92ee38ec4d8cebee',
+  // Plan 25 (authorised by user1, 19 Nov 2026): excludeReason `privato`, supplyCodes of a supply,
+  // filePath and originalName of a TARI instalment, originalName of a bill, handConfirmation.
+  6: 'ea88be79c9aa0d591a7af596fbf3603e68b364abcb31e8f96fd6748b9f5a9ebd',
 };
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));

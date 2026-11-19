@@ -7,6 +7,7 @@ import {
   cedolareRateForYear,
   cents,
   contractChecks,
+  withContractEnds,
   rentForMonth,
   yearMonth,
 } from '../src/index';
@@ -124,10 +125,43 @@ describe('contractChecks: tenancies and deposits (plan 7, task 3)', () => {
   it.each([
     ['starts before', { from: '2025-09' }],
     ['ends after', { to: '2027-10' }],
-    ['has no end', { to: undefined }],
   ])('tenancy-outside-contract: %s', (_name, extra) => {
     expect(checks([linked(['tcy-a'])], [makeTenancy('tcy-a', extra)])).toEqual([
       { code: 'tenancy-outside-contract', contractId: 'ctr-app-a', tenancyId: 'tcy-a' },
+    ]);
+  });
+
+  it('F9 a: a stay without end ends with its contract, no check', () => {
+    expect(checks([linked(['tcy-a'])], [makeTenancy('tcy-a', { to: undefined })])).toEqual([]);
+  });
+
+  it('F9 a, renewal as a new contract: once it links the stay, no payment is left out', () => {
+    const first = linked(['tcy-a'], { end: '2026-09' });
+    const stay = makeTenancy('tcy-a', { to: undefined });
+    const pay = makePayment('pay-1', {
+      kind: 'canone',
+      amount: 38000,
+      forMonth: '2027-03',
+      date: '2027-03-05',
+    });
+    // A renewal that links nobody is nobody's (user1): the stay ends in 2026-09 and the March
+    // 2027 rent is after its end.
+    const unlinked = makeContract('ctr-2', { start: '2026-10', end: '2027-09' });
+    expect(checks([first, unlinked], [stay], [pay]).map((c) => c.code)).toEqual([
+      'payment-after-end',
+    ]);
+    // Linked to the tenant, the renewal carries the stay on: nothing left out. The first
+    // contract says the stay goes past it.
+    const renewal = makeContract('ctr-2', {
+      start: '2026-10',
+      end: '2027-09',
+      tenancyIds: ['tcy-a'],
+    });
+    expect(checks([first, renewal], [stay], [pay]).map((c) => [c.code, c.contractId])).toEqual([
+      ['tenancy-linked-twice', 'ctr-2'],
+      ['tenancy-outside-contract', 'ctr-2'],
+      ['tenancy-linked-twice', 'ctr-app-a'],
+      ['tenancy-outside-contract', 'ctr-app-a'],
     ]);
   });
 
@@ -505,5 +539,105 @@ describe('contractChecks: takeovers and rents after the end (plan 11, review)', 
       ['payment-after-end', 't-a', '2026-04'], // sorted by paymentId: p-for, then p-late
       ['payment-after-end', 't-a', '2026-03'],
     ]);
+  });
+});
+
+describe('withContractEnds (F9 a)', () => {
+  const stay = (id: string, extra: Partial<Tenancy> = {}): Tenancy =>
+    TenancySchema.parse({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'app-a',
+      tenantId: `ten-${id}`,
+      from: '2025-10',
+      monthlyRent: 30000,
+      monthlyForfait: 3000,
+      ...extra,
+    });
+  const ctr = (
+    id: string,
+    start: string,
+    end: string,
+    tenancyIds: string[],
+    extra = {},
+  ): Contract =>
+    ContractSchema.parse({ ...contract, id, start, end, rent: undefined, tenancyIds, ...extra });
+
+  it('ends a stay without end with the latest contract of the tenant; leaves the rest', () => {
+    const open = stay('open');
+    const ended = stay('ended', { to: yearMonth('2026-03') });
+    const result = withContractEnds(
+      [open, ended],
+      [
+        ctr('c-1', '2025-10', '2026-09', ['open', 'ended']),
+        ctr('c-3', '2026-10', '2029-09', ['open'], { deleted: true }),
+      ],
+    );
+    expect(result).toEqual([{ ...open, to: '2026-09' }, ended]);
+  });
+
+  it('takes the latest contract that links a stay of the tenant; an unlinked one is nobody’s', () => {
+    const open = stay('open', { from: yearMonth('2025-04') });
+    const later = stay('later', {
+      tenantId: 'ten-open',
+      from: yearMonth('2026-10'),
+      to: yearMonth('2027-09'),
+    });
+    expect(
+      withContractEnds(
+        [open, later],
+        [
+          ctr('c-0', '2025-04', '2025-09', ['open']),
+          ctr('c-1', '2025-10', '2026-09', []),
+          // A contract of the same tenant (another stay of theirs): its end counts.
+          ctr('c-2', '2026-10', '2027-09', ['later']),
+        ],
+      )[0]?.to,
+    ).toBe('2027-09');
+    expect(
+      withContractEnds(
+        [open],
+        [ctr('c-0', '2025-04', '2025-09', ['open']), ctr('c-1', '2025-10', '2026-09', [])],
+      )[0]?.to,
+    ).toBe('2025-09');
+  });
+
+  it('G2-I1: a contract of another tenant never carries the stay on', () => {
+    const a = stay('a');
+    const b = stay('b', { to: yearMonth('2027-09') });
+    const result = withContractEnds(
+      [a, b],
+      [ctr('cA', '2025-10', '2026-09', ['a']), ctr('cB', '2025-10', '2027-09', ['b'])],
+    );
+    expect(result.map((t) => [t.id, t.to])).toEqual([
+      ['a', '2026-09'],
+      ['b', '2027-09'],
+    ]);
+    // Nor a later contract of another tenant that follows on.
+    expect(
+      withContractEnds(
+        [a],
+        [ctr('cA', '2025-10', '2026-09', ['a']), ctr('cC', '2026-10', '2027-09', ['c'])],
+      )[0]?.to,
+    ).toBe('2026-09');
+  });
+
+  it('a returning tenant: an old contract ending before the new stay is not its end', () => {
+    const old = stay('old', { from: yearMonth('2023-10'), to: yearMonth('2024-09') });
+    const back = stay('back', { tenantId: 'ten-old', from: yearMonth('2025-10') });
+    const contracts = [
+      ctr('c-old', '2023-10', '2024-09', ['old']),
+      ctr('c-new', '2025-10', '2026-09', ['back']),
+    ];
+    expect(withContractEnds([old, back], contracts)[1]?.to).toBe('2026-09');
+    // Without the new contract the stay stays open, never ended by the old one.
+    expect(withContractEnds([old, back], contracts.slice(0, 1))[1]?.to).toBeUndefined();
+  });
+
+  it('with no contract of the tenant the stay stays open', () => {
+    const open = stay('open', { from: yearMonth('2026-01') });
+    expect(withContractEnds([open], [ctr('c-1', '2025-10', '2026-09', [])])[0]).toEqual(open);
+    expect(withContractEnds([open], [])[0]).toEqual(open);
   });
 });

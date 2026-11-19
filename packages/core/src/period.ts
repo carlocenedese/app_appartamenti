@@ -236,6 +236,20 @@ export function annualitaRange(
 }
 
 /**
+ * The first and last day of a condominium fiscal year (F7, user1, 19 Nov 2026): the cross-year
+ * form `2026-27` as `annualitaRange`, or the calendar-year form `2026`, the fiscal year that starts
+ * in 2026 (with a start on 1 January, the calendar year). Throws a `RangeError` for another form.
+ */
+export function esercizioRange(
+  label: string,
+  start: AnnualitaStart,
+): { from: ISODate; to: ISODate } {
+  if (!/^\d{4}$/.test(label)) return annualitaRange(label, start);
+  const year = Number(label);
+  return annualitaRange(leaseYearLabel(year, year + 1), start);
+}
+
+/**
  * The settlement periods (periodi di conguaglio) of a contract, in whole months.
  *
  * - `'annuale'`: one period per lease year, labelled like `annualitaOf` labels its first day

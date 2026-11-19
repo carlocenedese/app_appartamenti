@@ -345,6 +345,26 @@ describe('assignImuF24 (plan 3d, task 2)', () => {
     expect(await snapshot(store)).toEqual(after);
   });
 
+  it('F9 b: a personal movement is excluded as «privato»; the undo takes it back', async () => {
+    const store = await f24Store();
+    const done = await excludeMovement(
+      store,
+      { transactionId: 'g', reason: 'privato' },
+      'p1',
+      clock,
+      ids('x'),
+    );
+    expect(done).toMatchObject({ status: 'excluded' });
+    const cls = async () =>
+      (
+        await loadAll(store, 'movementClass', MovementClassSchema, { includeDeleted: true })
+      ).records.find((c) => c.id === 'mc-g');
+    expect(await cls()).toMatchObject({ kind: 'escluso', excludeReason: 'privato' });
+    expect(await assign(store, { transactionId: 'g' })).toEqual(refused('not-imu-candidate'));
+    await undoOperation(store, 'x-1', 'p1', clock, ids('u'));
+    expect(await cls()).toMatchObject({ deleted: true });
+  });
+
   it('an excluded movement is no candidate; an assigned one is not excluded', async () => {
     const store = await f24Store();
     await excludeMovement(store, { transactionId: 'g', reason: 'doppione' }, 'p1', clock, ids('x'));

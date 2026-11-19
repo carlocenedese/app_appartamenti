@@ -15,7 +15,7 @@ import { closingFlags, settlementStateText } from './excel';
 import { safeWord } from './proposal';
 import { cents } from './money';
 import type { Cents } from './money';
-import { annualitaRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
+import { esercizioRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
 import type { XlsxCell, XlsxWorkbook } from './xlsx-write';
@@ -129,7 +129,7 @@ export function ownersItems(input: ConguaglioInput & { freeDebits?: FreeDebit[] 
   );
   const esercizioMonths = (instalment: Instalment): YearMonth[] => {
     if (instalment.conguaglioPrec === 0 || apartment.condominioStart === undefined) return [];
-    const range = annualitaRange(instalment.esercizio, apartment.condominioStart);
+    const range = esercizioRange(instalment.esercizio, apartment.condominioStart);
     return monthsInPeriod(range.from, range.to);
   };
 

@@ -42,6 +42,12 @@ export async function saveApartmentCommand(
       tenancyIds: result.tenancyIds,
     });
   }
+  if (result.status === 'refused' && result.reason === 'codes-in-use') {
+    throw new Stop('rejected', result.reason, {
+      supplyIds: result.supplyIds,
+      message: MESSAGES['codes-in-use'],
+    });
+  }
   if (result.status === 'refused') throw new Stop('rejected', result.reason);
   return {
     status: result.status,

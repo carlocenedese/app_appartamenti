@@ -137,6 +137,8 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
 
   it('a late bill after the closing gives the supplementary settlement of the tenant still there', async () => {
     const store = await setUp();
+    // F9 a: the contract is renewed, so the stay without end goes on after September 2026.
+    await put(store, 'contract', { ...contract, id: 'ctr-2', start: '2026-10', end: '2027-09' });
     await closePeriod(store, QUERY, 'p1', clock, ids('c'));
     // The bill of the spec example, 90,00 for July–September, arrives and is paid in November.
     const late = bill('b-tardiva', '2026-07-01', '2026-09-30', 9000, {
@@ -237,6 +239,8 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
 
   it('F11: after a reopening a flat charge cancelled is asked in the supplementary as its own line', async () => {
     const store = await setUp();
+    // F9 a: the contract is renewed, so the stay without end goes on after September 2026.
+    await put(store, 'contract', { ...contract, id: 'ctr-2', start: '2026-10', end: '2027-09' });
     await closePeriod(store, QUERY, 'p1', clock, ids('c'));
     await reopenPeriod(
       store,
@@ -644,7 +648,7 @@ describe('R363: a period closed before plan 21 keeps the split over the beds', (
     await closePeriod(store, QUERY, 'p1', clock, ids('c'));
     const [now] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
     if (now === undefined) throw new Error('not closed');
-    expect([now.engineVersion, ...spese(now)]).toEqual(['0.2.0', 4500, 4500, 0]);
+    expect([now.engineVersion, ...spese(now)]).toEqual(['0.3.0', 4500, 4500, 0]);
     const old = {
       ...now,
       engineVersion: '0.1.0',
@@ -728,7 +732,7 @@ describe('R363: a period closed before plan 21 keeps the split over the beds', (
     expect((await closePeriod(store, QUERY, 'p1', clock, ids('c2'))).status).toBe('closed');
     const [record] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
     if (record === undefined) throw new Error('not closed');
-    expect([record.engineVersion, ...spese(record)]).toEqual(['0.2.0', 4500, 4500, 0]);
+    expect([record.engineVersion, ...spese(record)]).toEqual(['0.3.0', 4500, 4500, 0]);
     expect(record.history?.map((h) => [h.engineVersion, h.snapshot.emptyBeds])).toEqual([
       ['0.1.0', 3000],
     ]);
@@ -754,5 +758,72 @@ describe('tariDecembers (F4)', () => {
   it('without a December inside, no TARI debit is required (answer of user1, 18 Nov 2026)', () => {
     expect(tariDecembers('2026-01', '2026-06')).toEqual([]);
     expect(tariDecembers('2026-02', '2026-07')).toEqual([]);
+  });
+});
+
+describe('F9 a: a period closed before F9 a keeps its stays as written', () => {
+  // Invented: two beds. A's stay has no end and is linked only to an older contract ending in
+  // August 2025 (a month's gap, no renewal); B's stay is of the contract 2025-26. By F9 a A has
+  // left by then; the old calculation counted A in all of 2025-26.
+  async function gapStore() {
+    const store = new MemoryStore();
+    const a = tenancy('t-a', '2024-10', undefined);
+    const b = tenancy('t-b', '2025-10', '2026-09');
+    await put(store, 'apartment', apartment({ posti: 2 }));
+    await put(store, 'contract', {
+      ...contract,
+      id: 'ctr-0',
+      start: '2024-10',
+      end: '2025-08',
+      tenancyIds: [a.id],
+    });
+    await put(store, 'contract', { ...contract, tenancyIds: [b.id] });
+    await put(store, 'tenancy', a);
+    await put(store, 'tenancy', b);
+    for (const id of ['t-a', 't-b']) {
+      await put(store, 'tenant', { id, v: 1, rev: 1, name: `Nome ${id}` });
+    }
+    await put(store, 'bill', luglio);
+    await put(store, 'match', match(luglio, 9000));
+    for (const m of MONTHS) await put(store, 'payment', payment('t-b', m, 48000));
+    return store;
+  }
+  const present = async (store: MemoryStore) => {
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    return loaded.input.tenancies.map((t) => [t.tenantId, t.to]);
+  };
+
+  it('an open period ends the stay with its contract; a 0.2.0 closing keeps it open', async () => {
+    const store = await gapStore();
+    expect(await present(store)).toEqual([
+      ['t-a', '2025-08'],
+      ['t-b', '2026-09'],
+    ]);
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('c'))).status).toBe('closed');
+    const [now] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    if (now === undefined) throw new Error('not closed');
+    expect(now.engineVersion).toBe('0.3.0');
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('periodClose', now.id),
+            before: now,
+            after: { ...now, engineVersion: '0.2.0' },
+          },
+        ],
+      },
+      clock,
+      ids('old'),
+    );
+    expect(await present(store)).toEqual([
+      ['t-a', undefined],
+      ['t-b', '2026-09'],
+    ]);
   });
 });

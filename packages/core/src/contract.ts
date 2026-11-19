@@ -43,6 +43,47 @@ export function cedolareRateForYear(
   return others.length === 0 ? rate : undefined;
 }
 
+/**
+ * F9 a (decided by user1 on 19 Nov 2026): a stay without `to` lasts until the end of the tenant's
+ * latest contract in that apartment, renewals written as new contracts included. A contract is the
+ * tenant's when it links a stay of the tenant there (`tenancyIds`): a renewal counts once it links
+ * the tenant (answer of user1 to round 3: a contract that links no stay is nobody's renewal); a
+ * contract ending before this stay starts is not taken (a returning tenant). With no contract of
+ * the tenant the stay stays open, and the Home says so (`presenza:oltre-il-contratto`). Only for
+ * reading what to calculate: a write never stores the derived `to`.
+ */
+export function withContractEnds(tenancies: Tenancy[], contracts: readonly Contract[]): Tenancy[] {
+  const live = contracts.filter((c) => c.deleted !== true);
+  return tenancies.map((t) => {
+    if (t.to !== undefined || t.deleted === true) return t;
+    const end = contractEndOf(t, tenancies, live);
+    return end === undefined || end < t.from ? t : { ...t, to: end };
+  });
+}
+
+/** The end `withContractEnds` gives a stay without `to`, `undefined` when none. */
+export function contractEndOf(
+  stay: Tenancy,
+  tenancies: readonly Tenancy[],
+  contracts: readonly Contract[],
+): YearMonth | undefined {
+  const mine = new Set(
+    tenancies
+      .filter(
+        (t) =>
+          t.deleted !== true && t.tenantId === stay.tenantId && t.apartmentId === stay.apartmentId,
+      )
+      .map((t) => t.id),
+  );
+  let end: YearMonth | undefined;
+  for (const c of contracts) {
+    if (c.deleted === true || c.apartmentId !== stay.apartmentId || c.end < stay.from) continue;
+    if (!(c.tenancyIds ?? []).some((id) => mine.has(id))) continue;
+    if (end === undefined || c.end > end) end = c.end;
+  }
+  return end;
+}
+
 /** The entry of `rent` with the largest `from` not after `month`; none before the first entry. */
 export function rentForMonth(
   contract: Pick<Contract, 'rent'>,
@@ -98,8 +139,12 @@ export function contractChecks(input: {
   asOf: YearMonth;
 }): ContractCheck[] {
   const contracts = input.contracts.filter((c) => c.deleted !== true);
+  // F9 a (I2): a stay without end ends with the tenant's latest contract, as the settlement reads it.
   const tenancies = new Map(
-    input.tenancies.filter((t) => t.deleted !== true).map((t) => [t.id, t]),
+    withContractEnds(
+      input.tenancies.filter((t) => t.deleted !== true),
+      contracts,
+    ).map((t) => [t.id, t]),
   );
   const payments = new Map(input.payments.filter((p) => p.deleted !== true).map((p) => [p.id, p]));
   const linkCount = new Map<string, number>();

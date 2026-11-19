@@ -105,6 +105,8 @@ import {
   undoOperationCommand,
   referencesCommand,
   cancelPaymentCommand,
+  confirmRentExcessCommand,
+  confirmPastYearCommand,
   excludeMovementCommand,
   repairCommand,
   chooseVersionCommand,
@@ -215,6 +217,7 @@ const OPTIONS = {
   categoria: { type: 'string' },
   f24: { type: 'boolean' },
   tipo: { type: 'string' },
+  'rimborso-canone': { type: 'boolean' },
   mese: { type: 'string' },
   scopo: { type: 'string' },
   'altra-gamba': { type: 'string' },
@@ -676,10 +679,12 @@ async function command(name, values, positionals, store, who, clock, newId) {
   }
 
   if (name === 'uscita-inquilino') {
-    need(values, 'proposta', 'inquilino', 'tipo', 'mese');
+    // B5 (c): --rimborso-canone, the refund of rent paid in excess in --mese, without --tipo.
+    const refund = values['rimborso-canone'] === true;
+    need(values, 'proposta', 'inquilino', 'mese', ...(refund ? [] : ['tipo']));
     if (
       positionals.length > 0 ||
-      !TENANT_KINDS.includes(values.tipo) ||
+      (refund ? values.tipo !== undefined : !TENANT_KINDS.includes(values.tipo)) ||
       !YearMonthSchema.safeParse(values.mese).success
     ) {
       throw invalid('bad-arguments');
@@ -689,8 +694,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
       {
         proposalId: values.proposta,
         tenantId: values.inquilino,
-        kind: values.tipo,
+        kind: refund ? 'altro' : values.tipo,
         forMonth: values.mese,
+        ...(refund ? { rentRefund: true } : {}),
       },
       ctx,
     );
@@ -1250,6 +1256,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       {
         apartmentId: values.appartamento,
         tenantId: values.inquilino,
+        // F9 a: the contract end is the exit once it is over, by the clock.
+        today: day(clock().slice(0, 10)),
         ...(values.conguaglio === undefined ? {} : { conguaglio: euro(values.conguaglio) }),
         extraCharges,
       },
@@ -1617,13 +1625,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
             if (found === null) throw invalid('bad-arguments');
             return { apartmentId: found[1], basisPoints: basisPoints(found[2]) };
           });
-    return saveSupplyCommand(
-      store,
-      { label: values.etichetta.trim(), rows, note: '' },
-      ctx,
+    return saveSupplyCommand(store, { label: values.etichetta.trim(), rows, note: '' }, ctx, {
       // Plan 22: new weights of an existing supply from a month («valido dal»).
-      values.dal === undefined ? {} : { validFrom: month(values.dal) },
-    );
+      ...(values.dal === undefined ? {} : { validFrom: month(values.dal) }),
+      // F12: POD, PDR or customer codes of the supply (empty: none).
+      ...(values.codici === undefined
+        ? {}
+        : { codes: values.codici.split(',').filter((c) => c !== '') }),
+    });
   }
 
   // Review of 18 Nov 2026 (annullo, point 2): the live records pointing at a missing or deleted
@@ -1637,6 +1646,24 @@ async function command(name, values, positionals, store, who, clock, newId) {
     need(values, 'pagamento');
     if (positionals.length > 0) throw invalid('bad-arguments');
     return cancelPaymentCommand(store, values.pagamento, ctx);
+  }
+
+  if (name === 'conferma-anno') {
+    // Item 6 of plan 25: the items «da verificare» of a past year, confirmed paid by hand.
+    need(values, 'anno');
+    if (positionals.length > 0 || !/^[0-9]{4}$/.test(values.anno)) throw invalid('bad-arguments');
+    return confirmPastYearCommand(
+      store,
+      { year: values.anno, today: day(values.oggi ?? clock().slice(0, 10)) },
+      ctx,
+    );
+  }
+
+  if (name === 'eccedenza-canone') {
+    // B5: confirms the month a rent paid in excess covers, as `riconcilia` proposes it.
+    need(values, 'proposta');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    return confirmRentExcessCommand(store, values.proposta, ctx);
   }
 
   if (name === 'escludi') {
@@ -1686,6 +1713,8 @@ export const COMMAND_NAMES = [
   'annulla-incassi',
   'annulla-riconciliazione',
   'annulla-pagamento',
+  'eccedenza-canone',
+  'conferma-anno',
   'escludi',
   'abbina',
   'uscita',
@@ -1841,7 +1870,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       motivo: ['escludi', 'riapri-periodo'],
       supplementare: ['conguaglio-saldato'],
       esito: ['forfait-verificato', 'canone-non-incassato'],
-      proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
+      proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto', 'eccedenza-canone'],
       inquilino: [
         'conferma',
         'uscita-inquilino',
@@ -1915,6 +1944,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       esercizio: ['condominio-documento', 'condominio', 'condominio-stima', 'rata-condominio'],
       'quota-conduttore': ['condominio-documento'],
       anno: [
+        'conferma-anno',
         'tasso-legale',
         'tasse-conferma',
         'imu-atteso',
@@ -1932,6 +1962,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       categoria: ['uscita'],
       f24: ['uscita'],
       tipo: ['uscita-inquilino', 'contratto', 'scadenze', 'scadenza-nuova', 'condominio-documento'],
+      'rimborso-canone': ['uscita-inquilino'],
       mese: ['uscita-inquilino', 'fine-presenza', 'subentro', 'scambio-camera'],
       scopo: ['giroconto', 'giroconto-manuale'],
       'altra-gamba': ['giroconto'],
@@ -1957,10 +1988,10 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'riapri-periodo',
       ],
       entro: ['scadenze', 'cruscotto'],
-      oggi: ['scadenze', 'tasse', 'cruscotto'],
+      oggi: ['scadenze', 'tasse', 'cruscotto', 'conferma-anno'],
       lettura: ['bolletta'],
       'soglia-consumi': ['bolletta'],
-      codici: ['bolletta', 'appartamento'],
+      codici: ['bolletta', 'appartamento', 'utenza'],
       conferma: ['bolletta'],
       'periodo-conguaglio': ['cruscotto'],
       ripartizione: ['utenza'],

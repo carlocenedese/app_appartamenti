@@ -148,8 +148,12 @@ export async function importBillCommand(
       },
     };
   }
-  const bills = (await loadAll(store, 'bill', BillSchema)).records;
-  const bill = bills.find((b) => result.ids.includes(b.id));
+  // The bill, or (F9 c) the TARI instalment of this apartment, that tells where the PDF goes.
+  const bill =
+    (await loadAll(store, 'bill', BillSchema)).records.find((b) => result.ids.includes(b.id)) ??
+    (await loadAll(store, 'instalment', InstalmentSchema)).records.find(
+      (i) => result.ids.includes(i.id) && i.filePath !== undefined,
+    );
   const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
   const apartment = apartments.find((a) => a.id === input.apartmentId);
   const [first, last] = input.result.pageRange ?? [1, input.result.pages];
@@ -162,7 +166,10 @@ export async function importBillCommand(
       ...consumptionOf(result.consumption),
     },
     file:
-      bill !== undefined && apartment !== undefined && first === 1 && last === input.result.pages
+      bill?.filePath !== undefined &&
+      apartment !== undefined &&
+      first === 1 &&
+      last === input.result.pages
         ? { apartment, filePath: bill.filePath }
         : 'not-moved',
   };
@@ -181,10 +188,20 @@ export async function undoBillCommand(
   options: { details: boolean },
 ) {
   const fileHash = await hashBytes(input.bytes);
-  // Read before the undo: the bill tells where the file is and which Da_smistare it goes to.
-  const filed = (await loadAll(store, 'bill', BillSchema)).records.find(
-    (b) => b.fileHash === fileHash,
-  );
+  // Read before the undo: the bill (or, F9 c, the TARI instalment filed) tells where the file is,
+  // which Da_smistare it goes to and the name it had.
+  // A record already undone (deleted) still tells it: an undo whose move failed or found the
+  // name taken can be run again on the filed PDF, and moves it only (F9 c, giro 3).
+  const all = { includeDeleted: true };
+  const byLife = <T extends { deleted?: boolean }>(list: T[]) =>
+    [...list].sort((a, b) => Number(a.deleted === true) - Number(b.deleted === true));
+  const filed =
+    byLife((await loadAll(store, 'bill', BillSchema, all)).records).find(
+      (b) => b.fileHash === fileHash,
+    ) ??
+    byLife((await loadAll(store, 'instalment', InstalmentSchema, all)).records).find(
+      (i) => i.fileHash === fileHash && i.filePath !== undefined,
+    );
   let result;
   try {
     result = await undoBillImport(
@@ -214,9 +231,10 @@ export async function undoBillCommand(
     }
     throw new Stop('rejected', result.reason);
   }
-  const left = (await loadAll(store, 'bill', BillSchema)).records.some(
-    (b) => b.fileHash === fileHash,
-  );
+  const left = [
+    ...(await loadAll(store, 'bill', BillSchema)).records,
+    ...(await loadAll(store, 'instalment', InstalmentSchema)).records,
+  ].some((b) => b.fileHash === fileHash);
   const apartment =
     filed === undefined
       ? undefined
@@ -224,8 +242,8 @@ export async function undoBillCommand(
           (a) => a.id === filed.apartmentId,
         );
   let move: { from: string; to: string } | undefined;
-  if (filed !== undefined && apartment !== undefined && !left) {
-    const plan = billFileMove(apartment, filed.filePath);
+  if (filed?.filePath !== undefined && apartment !== undefined && !left) {
+    const plan = billFileMove(apartment, filed.filePath, filed.originalName);
     move = { from: plan.filed, to: plan.inbox };
   }
   return {

@@ -590,3 +590,69 @@ describe('closed period guard, second review', () => {
     });
   });
 });
+
+describe('closed period guard and F9 a (I1)', () => {
+  // Invented: two beds. A's stay has no end and is linked only to an older contract ending in
+  // August 2025 (a month's gap): by F9 a A is not in 2025-26. B is the tenant of 2025-26.
+  async function gap() {
+    const store = new MemoryStore();
+    const a = tenancy('t-a', '2024-10', undefined);
+    const b = tenancy('t-b', '2025-10', '2026-09');
+    await write(store, 'apartment', apartment({ posti: 2 }));
+    const base = { v: 1, rev: 1, apartmentId: 'apt', type: '1+1', settlement: 'annuale' };
+    await write(store, 'contract', {
+      ...base,
+      id: 'c0',
+      start: '2024-10',
+      end: '2025-08',
+      tenancyIds: [a.id],
+    });
+    await write(store, 'contract', {
+      ...base,
+      id: 'ctr',
+      start: '2025-10',
+      end: '2026-09',
+      tenancyIds: [b.id],
+    });
+    await write(store, 'tenancy', a);
+    await write(store, 'tenancy', b);
+    for (const id of ['t-a', 't-b']) {
+      await write(store, 'tenant', { id, v: 1, rev: 1, name: 'Nome Inventato' });
+    }
+    for (const m of MONTHS) await write(store, 'payment', payment('t-b', m, 48000));
+    expect((await closePeriod(store, QUERY, 'p1', clock, ids('c'))).status).toBe('closed');
+    return { store, a };
+  }
+  const contractOf = async (store: MemoryStore, id: string) =>
+    (await loadAll(store, 'contract', ContractSchema)).records.find((c) => c.id === id) as
+      (Record<string, unknown> & { id: string; rev: number; tenancyIds?: string[] }) | undefined;
+
+  it('refuses to link a stay without end to the contract of the closed period', async () => {
+    const { store, a } = await gap();
+    const ctr = await contractOf(store, 'ctr');
+    if (ctr === undefined) throw new Error('contract');
+    await expect(
+      write(
+        store,
+        'contract',
+        { ...ctr, tenancyIds: [...(ctr.tenancyIds ?? []), a.id] },
+        ctr,
+        later,
+        'link',
+      ),
+    ).rejects.toThrow(ClosedPeriodError);
+  });
+
+  it('refuses to delete or unlink the contract that ends the stay; another change passes', async () => {
+    const { store } = await gap();
+    const c0 = await contractOf(store, 'c0');
+    if (c0 === undefined) throw new Error('contract');
+    // Unlinked, the stay would take the contract in force at its start: none from 2024-10
+    // without c0, so it would be open and in 2025-26.
+    await expect(write(store, 'contract', undefined, c0, later, 'del')).rejects.toThrow(
+      ClosedPeriodError,
+    );
+    // Moving the end of c0 inside the months before the period changes nothing in 2025-26.
+    await write(store, 'contract', { ...c0, end: '2025-07' }, c0, later, 'move');
+  });
+});

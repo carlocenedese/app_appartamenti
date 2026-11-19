@@ -15,6 +15,7 @@ import {
   registerProposal,
 } from './confirmation';
 import { compareConsumption, worstLevel } from './consumption';
+import { withContractEnds } from './contract';
 import type { ConsumptionComparison, ConsumptionMetric } from './consumption';
 import { consumptionThresholdsFor } from './consumption-store';
 import { hashBytes, samePages } from './dedupe';
@@ -26,7 +27,9 @@ import {
   BillMatchSchema,
   BillSchema,
   ConsumptionSettingsSchema,
+  ContractSchema,
   InstalmentSchema,
+  OriginalFileNameSchema,
   PendingDocumentSchema,
   SupplySchema,
   TenancySchema,
@@ -35,8 +38,8 @@ import {
 import type { Apartment, PendingDocument } from './model';
 import { apartmentFolder } from './accounts';
 import { parseOrThrow } from './parse';
-import { proposalFromExtraction } from './proposal';
-import type { ProposalCheck } from './proposal';
+import { proposalFromExtraction, tariNoticePath } from './proposal';
+import type { Proposal, ProposalCheck } from './proposal';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -81,9 +84,11 @@ export type ImportBillResult =
 export function billFileMove(
   apartment: Pick<Apartment, 'name'>,
   filePath: string,
+  /** F9 c (plan 25): the name the PDF had before; the undo gives it back. */
+  originalName?: string,
 ): { filed: string; inbox: string } {
   const folder = apartmentFolder(apartment.name);
-  const name = filePath.split('/').pop() ?? filePath;
+  const name = originalName ?? filePath.split('/').pop() ?? filePath;
   return { filed: `${folder}/${filePath}`, inbox: `${folder}/Da_smistare/${name}` };
 }
 
@@ -203,7 +208,11 @@ export async function importBill(
       apartment: { id: apartmentId, knownCodes },
       bills,
       instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
-      tenancies: (await loadAll(store, 'tenancy', TenancySchema)).records,
+      // F9 a: a stay without end lasts until the end of its contract (`period-tenancies`).
+      tenancies: withContractEnds(
+        (await loadAll(store, 'tenancy', TenancySchema)).records,
+        (await loadAll(store, 'contract', ContractSchema)).records,
+      ),
       supplies: (await loadAll(store, 'supply', SupplySchema)).records,
       ...(legacy === undefined ? {} : { thresholds: legacy }),
     },
@@ -228,10 +237,32 @@ export async function importBill(
   }
   const withAlarm = consumption === undefined ? {} : { consumption };
   const { checks } = proposal;
+  // F9 c (plan 25): the name the PDF had (a bare safe name only) and, for a TARI notice, where
+  // its PDF is filed, on the instalments of this apartment (the folder the file goes to).
+  const original = OriginalFileNameSchema.safeParse(result.fileName.normalize('NFC'));
+  const named = original.success ? { originalName: original.data } : {};
+  // One path per notice, from all the months of this apartment's instalments (R369, round 3).
+  const noticePath =
+    proposal.kind === 'tari'
+      ? tariNoticePath(proposal.instalments.filter((i) => i.apartmentId === apartmentId))
+      : undefined;
+  const filed: Proposal =
+    proposal.kind === 'bill'
+      ? { ...proposal, bill: { ...proposal.bill, ...named } }
+      : proposal.kind === 'tari'
+        ? {
+            ...proposal,
+            instalments: proposal.instalments.map((i) =>
+              i.apartmentId === apartmentId && noticePath !== undefined
+                ? { ...i, filePath: noticePath, ...named }
+                : i,
+            ),
+          }
+        : proposal;
   const register = async (how: 'auto' | 'manual'): Promise<ImportBillResult> => {
     const written = await registerProposal(
       store,
-      { proposal, result, bytes, profileId, mode: how },
+      { proposal: filed, result, bytes, profileId, mode: how },
       clock,
     );
     if (written.status === 'rejected') return { ...written, checks };

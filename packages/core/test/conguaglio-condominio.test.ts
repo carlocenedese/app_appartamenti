@@ -351,3 +351,34 @@ describe('condoDifferenceTo: who bears last year settlement (plan 8, task 4, R19
     expect(() => calcWith('tenants', false)).toThrow(SettlementInputError);
   });
 });
+
+describe('F7: the calendar-year form of the fiscal year', () => {
+  it('splits last year’s settlement of «2026» as that of «2026-27» for a year from 1 January', () => {
+    const january = { month: 1, day: 1 };
+    const coverage = rateCoverage(yearMonth('2026-01'), 4, 1);
+    const run = (esercizio: string) => {
+      const rate = instalment('cond-1', {
+        esercizio,
+        rateIndex: 1,
+        rateCount: 4,
+        rata: cents(15000),
+        quotaProprieta: cents(2400),
+        conguaglioPrec: cents(4800),
+        coversFrom: coverage.from,
+        coversTo: coverage.to,
+      });
+      return calcConguaglio({
+        apartment: apartment({ posti: 4, condominioStart: january }),
+        period: period('2026-01', '2026-12', '2026-27'),
+        bills: [],
+        instalments: [rate],
+        matches: [match(rate, 19800)],
+        tenancies: [tenancy('a', '2026-01', undefined)],
+        payments: [],
+      });
+    };
+    const calendar = run('2026');
+    expect(calendar.tenants[0]?.condominio).toEqual(run('2026-27').tenants[0]?.condominio);
+    expect(calendar.tenants[0]?.condominio.conguaglioPrec).toBe(4800);
+  });
+});

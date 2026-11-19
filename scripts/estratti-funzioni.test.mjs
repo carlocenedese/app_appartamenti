@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
 import {
   DATA_FORMAT,
@@ -21,6 +21,9 @@ import { COMMAND_HELP } from './estratti-aiuto.mjs';
 import * as excelTool from './excel.mjs';
 import * as moduliTool from './moduli.mjs';
 import { COMMAND_NAMES, MESSAGES, main } from './estratti.mjs';
+
+// Each test spawns the CLI several times: Windows runners need more than the 5 s default.
+vi.setConfig({ testTimeout: 60_000 });
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PROFILE = {
@@ -365,7 +368,7 @@ describe('rata-condominio (I3, E4)', () => {
       '--appartamento',
       'apt-x',
       '--esercizio',
-      '2025',
+      '25',
       '--rata',
       '1/5',
       '--scadenza',
@@ -486,6 +489,20 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
           type: '1+1',
           start: '2025-10',
           end: '2026-09',
+          settlement: 'annuale',
+        },
+      ],
+      // F9 a: the contract is renewed, so the stay without end goes on after September 2026.
+      [
+        'contract',
+        {
+          id: 'ctr-x-2',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-x',
+          type: '1+1',
+          start: '2026-10',
+          end: '2027-09',
           settlement: 'annuale',
         },
       ],
@@ -1044,5 +1061,73 @@ describe('formato dei dati della cartella (revisione dei dati, G3)', () => {
     expect(r.json.message).toMatch(/aggiornare l’app/);
     expect(declared()).toBe(DATA_FORMAT + 1);
     expect(existsSync(join(dir, '_app', 'dati', 'tenant'))).toBe(false);
+  });
+});
+
+describe('eccedenza-canone (B5)', () => {
+  it('riconcilia propone il mese, eccedenza-canone lo conferma; senza mese è un credito', async () => {
+    expect((await apartment()).code).toBe(0);
+    const store = new FsStore(dir);
+    const seed = async (kind, record) =>
+      commitChange(
+        store,
+        {
+          profileId: 'p1',
+          kind: 'test.seed',
+          summary: 'x',
+          changes: [
+            { path: recordPath(kind, record.id), after: recordSchemas[kind].parse(record) },
+          ],
+        },
+        () => ORA,
+        newId,
+      );
+    const base = { v: 1, rev: 1, apartmentId: 'apt-x', tenantId: 't-x' };
+    await seed('tenant', { id: 't-x', v: 1, rev: 1, name: 'Nome Inventato' });
+    await seed('tenancy', {
+      ...base,
+      id: 'tcy-x',
+      room: undefined,
+      from: '2025-10',
+      to: '2026-02',
+      monthlyRent: 45000,
+      monthlyForfait: 3000,
+    });
+    const pay = (id, month, amount) => ({
+      ...base,
+      id,
+      date: `${month}-05`,
+      amount,
+      confirmed: true,
+      kind: 'canone',
+      forMonth: month,
+      source: 'manual',
+    });
+    await seed('payment', pay('pay-jan', '2026-01', 44000));
+    await seed('payment', pay('pay-feb', '2026-02', 60000));
+    const run = await cli('riconcilia');
+    expect(run.json.excesses).toEqual([
+      {
+        id: 'p-eccedenza-pay-feb',
+        apartmentId: 'apt-x',
+        month: '2026-02',
+        months: ['2026-01'],
+        refund: true,
+      },
+    ]);
+    expect((await cli('eccedenza-canone')).code).toBe(2);
+    const done = await cli('eccedenza-canone', '--proposta', 'p-eccedenza-pay-feb');
+    expect([done.code, done.json.status, done.json.paymentIds]).toEqual([
+      0,
+      'confirmed',
+      ['pay-feb', 'pay-feb-2026-01'],
+    ]);
+    // The other 80,00 cover no month: a credit to give back.
+    const left = await cli('eccedenza-canone', '--proposta', 'p-eccedenza-pay-feb');
+    expect([left.code, left.json.reason, left.json.message]).toEqual([
+      1,
+      'no-month-to-cover',
+      MESSAGES['no-month-to-cover'],
+    ]);
   });
 });

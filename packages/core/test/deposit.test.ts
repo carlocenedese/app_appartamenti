@@ -12,9 +12,11 @@ import {
   saveLegalRate,
   withheldRecoveries,
   yearMonth,
+  confirmPastYear,
 } from '../src/index';
 import type { DepositReturnInput, RecordKind } from '../src/index';
 import { cents } from '../src/money';
+import { isoDate } from '../src/period';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
@@ -355,6 +357,13 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
     // rec-6: its instalment is to verify (B1); rec-7: the movement is no expense of the apartment.
     expect(result.status === 'computed' && result.statement.lines).toHaveLength(6);
     expect(result.status === 'computed' && result.recoveriesWaiting).toBe(1); // rec-6 waits for its debit
+    // Item 6 (G2-I2): the instalment confirmed paid by hand, its recovery is kept as the others.
+    await confirmPastYear(store, { year: '2026', today: '2027-11-20' }, 'p1', clock, ids('h'));
+    const after = await loadDepositReturn(store, returnInput({ conguaglio: cents(0) }));
+    expect(after.status === 'computed' && after.recoveriesWaiting).toBe(0);
+    expect(after.status === 'computed' && after.statement.lines.map((l) => l.label)).toContain(
+      'Recupero rec-6',
+    );
   });
 
   it('refusals', async () => {
@@ -387,6 +396,43 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
       returnInput({ tenantId: 'ten-dario', conguaglio: cents(0) }),
     );
     expect(typed.status).toBe('computed');
+  });
+
+  it('F9 a: a stay without end linked to a contract leaves at its end, no «no-exit»', async () => {
+    const store = new MemoryStore();
+    await seed(store, [
+      ['apartment', apartmentRecord],
+      ['contract', contractRecord('ctr-1', '2025-10', '2026-09', ['t-carla'])],
+      [
+        'tenancy',
+        tenancy('t-carla', { tenantId: 'ten-carla', room: 'B', from: '2026-03', to: undefined }),
+      ],
+      ['payment', payment('p-carla', { tenantId: 'ten-carla' })],
+      ['legalRate', rate('2026')],
+    ]);
+    // While the contract runs it is no exit yet; without today neither.
+    for (const today of [undefined, '2026-09-30']) {
+      expect(
+        await loadDepositReturn(
+          store,
+          returnInput({
+            tenantId: 'ten-carla',
+            extraCharges: [],
+            ...(today === undefined ? {} : { today: isoDate(today) }),
+          }),
+        ),
+      ).toEqual({ status: 'refused', reason: 'no-exit' });
+    }
+    const result = await loadDepositReturn(
+      store,
+      returnInput({ tenantId: 'ten-carla', extraCharges: [], today: isoDate('2026-10-01') }),
+    );
+    expect(result.status).toBe('computed');
+    // 500,00 at 2% from March to September 2026 (7 months).
+    expect(result.status === 'computed' && result.statement.lines[1]).toEqual({
+      label: 'Interessi legali',
+      amount: 583,
+    });
   });
 });
 

@@ -574,9 +574,10 @@ describe.sequential('ciclo completo con la CLI vera', () => {
       shared.tari = t;
       if (t.code === 0) {
         const inst = records('instalment').filter((i) => t.json.ids.includes(i.id));
+        // F9 c: the PDF of the notice is filed as a bill, where the instalment of apt-a says.
         const filed = billFileMove(
           { name: 'Appartamento A' },
-          inst[0].fileDocument?.filePath ?? '',
+          inst.find((i) => i.filePath !== undefined)?.filePath ?? '',
         );
         shared.tariFile = t.json.file === 'moved' ? join(dir, ...filed.filed.split('/')) : tari.pdf;
         undoHow.set(t.json.operationId, { how: 'bolletta', file: shared.tariFile });
@@ -1465,15 +1466,16 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     // statement.resolve (decidi) goes with its statement (`annulla --estratto`).
     expect([...new Set(failed)].sort()).toEqual(['statement.resolve']);
     expect(shared.initial).toEqual([]);
-    // The PDFs are back in Da_smistare, under the name the registration gave them (E13).
+    // The PDFs are back in Da_smistare under their original name (F9 c, plan 25; before, E13,
+    // under the name the registration gave them), the TARI notice too.
     const inbox = (folder) => readdirSync(join(dir, folder, 'Da_smistare')).sort();
     expect(inbox('Appartamento-A')).toEqual([
-      '2025-11-28_Gas_Gas-Inventato_20251101-20251231.pdf',
-      '2026-02-28_Elettricita_Luce-Inventata_20260201-20260331.pdf',
-      '2026-06-28_Acqua_Acqua-Inventata_20260601-20260731.pdf',
+      'acqua-a.pdf',
+      'gas-a.pdf',
+      'luce-a.pdf',
       'tari-2026-1.pdf',
     ]);
-    expect(inbox('Appartamento-B')).toEqual(['2025-12-28_Gas_Gas-Inventato_20251201-20260131.pdf']);
+    expect(inbox('Appartamento-B')).toEqual(['gas-b.pdf']);
   });
 
   it('impostazioni al predefinito e nessun riferimento pendente a fine ciclo', () => {
@@ -1671,7 +1673,13 @@ describe('sonde fuori dal ciclo', () => {
     const registration = operations.find((o) =>
       o.changes.some((c) => c.path.includes('/instalment/')),
     );
-    expect((await cli('annulla-bolletta', pdf)).code).toBe(0);
+    // F9 c: the PDF of the notice was filed; the undo takes it from there back to its old name.
+    const filePath = registration.changes.find((c) => c.after?.filePath !== undefined).after
+      .filePath;
+    const moved = join(probe, ...billFileMove({ name: 'X' }, filePath).filed.split('/'));
+    expect(existsSync(moved)).toBe(true);
+    expect((await cli('annulla-bolletta', moved)).json.file).toBe('moved');
+    expect(existsSync(pdf)).toBe(true);
     const y = registration.changes.find((c) => c.after?.apartmentId === 'y').after;
     expect(y.paidFromApartmentId).toBe('x');
     await commitChange(

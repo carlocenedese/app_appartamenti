@@ -10,6 +10,7 @@ import { bedsConflictOf } from './apartment-store';
 import {
   AccountSchema,
   ApartmentSchema,
+  SupplySchema,
   BankTransactionSchema,
   BillMatchSchema,
   ImuYearSchema,
@@ -154,6 +155,41 @@ async function bedsUndoBlockers(store: Store, changes: Operation['changes']): Pr
     .sort(compareText);
 }
 
+/**
+ * F12 (plan 25, minor of the second review): the live supplies whose code an undo of `changes`
+ * would leave out of the codes of one of their apartments (an apartment's codes put back without
+ * it, or a supply's codes put back with one its apartments lack). Sorted supply ids.
+ */
+async function codesUndoBlockers(store: Store, changes: Operation['changes']): Promise<string[]> {
+  const restored = new Map<string, unknown>();
+  for (const { path, before } of changes) {
+    if (path.includes('/apartment/') || path.includes('/supply/')) restored.set(path, before);
+  }
+  if (restored.size === 0) return [];
+  const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records.map((a) => {
+    const back = restored.get(recordPath('apartment', a.id));
+    const parsed = back === undefined ? undefined : ApartmentSchema.safeParse(back);
+    return parsed?.success === true ? parsed.data : a;
+  });
+  const supplies = (await loadAll(store, 'supply', SupplySchema)).records.map((x) => {
+    const back = restored.get(recordPath('supply', x.id));
+    const parsed = back === undefined ? undefined : SupplySchema.safeParse(back);
+    return parsed?.success === true ? parsed.data : x;
+  });
+  const fold = (c: string) => c.replace(/\s+/g, '').toUpperCase();
+  return supplies
+    .filter((x) => x.deleted !== true)
+    .filter((x) =>
+      x.apartments.some((row) => {
+        const own = apartments.find((a) => a.id === row.apartmentId);
+        const codes = new Set((own?.supplyCodes ?? []).map(fold));
+        return (x.supplyCodes ?? []).some((c) => !codes.has(fold(c)));
+      }),
+    )
+    .map((x) => x.id)
+    .sort(compareText);
+}
+
 /** The records `changes` creates: not live before, live after (a deleted one brought back counts). */
 function createdRecords(changes: Operation['changes']): RecordRef[] {
   const live = (r: unknown) =>
@@ -196,6 +232,9 @@ export async function undoBlockedBy(store: Store, operationId: string): Promise<
   // Plan 11: an undo that would take away the only stay of a tenant with payments or recoveries.
   const stays = await tenancyUndoBlockers(store, operation?.changes ?? []);
   if (stays.length > 0) return stays;
+  // F12: an undo that would break the codes of a supply against its apartments.
+  const codes = await codesUndoBlockers(store, operation?.changes ?? []);
+  if (codes.length > 0) return codes;
   // Review of 18 Nov 2026 (U13): an undo that puts back beds the live stays no longer fit.
   const beds = await bedsUndoBlockers(store, operation?.changes ?? []);
   if (beds.length > 0) return beds;

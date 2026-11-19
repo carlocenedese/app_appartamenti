@@ -19,7 +19,7 @@ import {
   YearMonthSchema,
 } from './model';
 import type { Instalment } from './model';
-import { annualitaRange, yearMonth } from './period';
+import { esercizioRange, yearMonth } from './period';
 import { compareText } from './text';
 
 export const GoldenFixtureSchema = z.strictObject({
@@ -115,7 +115,7 @@ export function condominioYearChecks(
       if (start === undefined) {
         throw new RangeError('The apartment has condominium instalments but no condominioStart');
       }
-      const range = annualitaRange(esercizio, start);
+      const range = esercizioRange(esercizio, start);
       const settled = calcConguaglio({
         apartment: input.apartment,
         period: {

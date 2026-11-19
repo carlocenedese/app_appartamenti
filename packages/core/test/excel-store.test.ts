@@ -48,6 +48,22 @@ describe('loadExcelInput', () => {
     expect(await snapshot(store)).toEqual(before);
   });
 
+  it('F9 a: a stay without end lasts until the end of the contract that links it', async () => {
+    const records = fixtureRecords();
+    const [first] = records.tenancy ?? [];
+    if (first === undefined) throw new Error('no tenancy');
+    const open = { ...first, to: undefined };
+    const contracts = (records.contract ?? []).map((c) => ({ ...c, tenancyIds: [first.id] }));
+    const store = await fixtureStore({
+      tenancy: [open, ...(records.tenancy ?? []).slice(1)],
+      contract: contracts,
+    });
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    // The fixture's contract goes on until September 2028.
+    expect(loaded.input.tenancies.find((t) => t.id === first.id)?.to).toBe('2028-09');
+  });
+
   it('gives every settlement period of the apartment (R177)', async () => {
     const store = await fixtureStore();
     const first = await loadExcelInput(store, QUERY);
