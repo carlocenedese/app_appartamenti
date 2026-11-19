@@ -393,7 +393,9 @@ class Run {
     );
     // Plan 22: the rent not collected is outside the settlement, compared apart (invariant 9).
     const isRent = (l: { label: string }) => l.label.startsWith('Canone non incassato');
-    const lines = all.filter((l) => !isRent(l));
+    // B5 (c): rent paid beyond a month's due is a credit outside the settlement, like the rent.
+    const isExcess = (l: { label: string }) => l.label.startsWith('Canone versato in più');
+    const lines = all.filter((l) => !isRent(l) && !isExcess(l));
     const rent = -all.filter(isRent).reduce((s, l) => s + l.amount, 0);
     const closing = await loadPeriodClosing(this.store, QUERY, isoDate('2026-12-31'));
     const rowOf = (id: Tenant) =>

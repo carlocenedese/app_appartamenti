@@ -51,6 +51,12 @@ export interface ClosingRow extends Omit<SupplementaryRow, 'action'> {
   rentAsked: Cents;
   /** What user1 marked `non-recuperabile`: left with the owner (R5). */
   rentLost: Cents;
+  /**
+   * B5 (c), decided by user1 on 19 Nov 2026: rent paid in excess in the months of the period that
+   * covers no month (`RentExcess.credit`), a credit of the tenant to give back, «da rimborsare».
+   * Like the rent not collected, outside `total`, `remaining` and every mark.
+   */
+  rentCredit: Cents;
 }
 
 /** A closed (or reopened, F3) period with what changed since its snapshot. */
@@ -340,6 +346,8 @@ export function closingOf(
   current: ConguaglioResult,
   input: { tenancies: Tenancy[]; payments?: Payment[] },
   asOf: ISODate,
+  /** B5 (c): the credit of each tenant to give back (`rentCredits`); none without it. */
+  credits: ReadonlyMap<string, number> = new Map(),
 ): PeriodClosed {
   const nowRows = new Map(current.tenants.map((t) => [t.tenantId, t]));
   const rent = rentOf(close, input);
@@ -411,6 +419,7 @@ export function closingOf(
       rentMissing: ownRent?.open ?? cents(0),
       rentAsked: ownRent?.asked ?? cents(0),
       rentLost: ownRent?.lost ?? cents(0),
+      rentCredit: cents(credits.get(row.tenantId) ?? 0),
     };
   });
   const unsettled = tenants.filter((t) => t.mainRemaining !== 0).map((t) => t.tenantId);

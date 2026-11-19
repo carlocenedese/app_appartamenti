@@ -11,6 +11,8 @@ import { flatPaymentsOf, rentOf, tenantBalance } from './closing';
 import { recoverableMovements } from './condominio';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
+import { rentCredits } from './income';
+import { loadRentExcesses } from './income-store';
 import { legalInterest } from './interest';
 import { commitChange, writesBlocked } from './journal';
 import {
@@ -279,6 +281,15 @@ export async function loadDepositReturn(
     spans,
   });
   if (typeof closed === 'string') return refuse(closed);
+  // B5 (c), decided by user1 on 19 Nov 2026: rent paid in excess that covers no month is a credit
+  // to give back, one line per period (negative: a credit of the tenant).
+  const excesses = await loadRentExcesses(store);
+  const credits: Line[] = spans.flatMap((p) => {
+    const credit = rentCredits(excesses, input.apartmentId, p.from, p.to).get(input.tenantId) ?? 0;
+    return credit > 0
+      ? [{ label: `Canone versato in più ${p.label} (da rimborsare)`, amount: cents(-credit) }]
+      : [];
+  });
   if (held <= 0) {
     // The statement is already made: what the closed periods add is asked apart (F10).
     // I: the past statement is not stored, so the exit period's due at the closing and what is
@@ -309,7 +320,7 @@ export async function loadDepositReturn(
     return {
       status: 'refused',
       reason: 'already-returned',
-      toRequest: [...toCheck, ...(exit?.lines ?? []), ...closed.lines].map((l) => ({
+      toRequest: [...toCheck, ...(exit?.lines ?? []), ...closed.lines, ...credits].map((l) => ({
         label: l.label,
         amount: cents(-l.amount),
       })),
@@ -411,7 +422,13 @@ export async function loadDepositReturn(
       caparra: held,
       interest,
       conguaglio,
-      extraCharges: [...settled, ...closed.lines, ...recoveries.withheld, ...input.extraCharges],
+      extraCharges: [
+        ...settled,
+        ...closed.lines,
+        ...credits,
+        ...recoveries.withheld,
+        ...input.extraCharges,
+      ],
     }),
     recoveriesWaiting: recoveries.waiting,
     toCheck: closed.toCheck,

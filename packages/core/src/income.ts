@@ -450,14 +450,17 @@ export function reconcileIncome(
 }
 
 /**
- * B5 (user1, 18 Nov 2026): rent paid in excess. For each tenant and apartment, a month whose
- * confirmed `canone` payments (`forMonth`, else the month of the date) add up to more than the
- * rent plus flat charge of the stay present that month is flagged, on its latest payment (by date,
- * then id). It proposes the oldest earlier month of a stay of the tenant there that is short: paid
- * less than due, and either paid in part or covered in full by the statements (`covered`, an
- * arrear). `amount` is what would move: the excess, at most the shortfall and the payment. Without
- * such a month the excess is flagged with no `proposedMonth`. Nothing moves until a person
- * confirms it (`confirmRentExcess`). Sorted by id; `tenancies` with their contract ends.
+ * B5 (decided by user1 on 18 and 19 Nov 2026): rent paid in excess. For each tenant and apartment,
+ * a month whose confirmed `canone` payments (`forMonth`, else the month of the date) add up to
+ * more than the rent plus flat charge of the stay present that month is flagged, on its latest
+ * payment of a positive amount (by date, then id). It proposes the months it would cover
+ * (`targets`), as long as the excess and that payment last: first the earlier months of a stay of
+ * the tenant there that are short (paid less than due, and either paid in part or covered in full
+ * by the statements, `covered`), oldest first; then the later months (an advance) that are short,
+ * from the next one, up to 12 months after. What no month takes is a credit of the tenant to give
+ * back (`credit`, «da rimborsare»). Months are taken in order of the excess months, so two
+ * excesses never propose the same shortfall. Nothing moves until a person confirms it
+ * (`confirmRentExcess`). Sorted by id; `tenancies` with their contract ends (F9 a).
  */
 export interface RentExcess {
   /** `p-eccedenza-<paymentId>`. */
@@ -467,9 +470,14 @@ export interface RentExcess {
   paymentId: string;
   month: YearMonth;
   excess: Cents;
-  proposedMonth?: YearMonth;
-  amount?: Cents;
+  /** The months it would cover, in order, with the amount each one takes. */
+  targets: { month: YearMonth; amount: Cents }[];
+  /** What no month takes: a credit of the tenant, to give back. */
+  credit: Cents;
 }
+
+/** shortcut: an advance looks 12 months ahead at most; a longer advance is a credit until then. */
+const ADVANCE_MONTHS = 12;
 
 export function rentExcesses(input: {
   tenancies: Tenancy[];
@@ -497,25 +505,35 @@ export function rentExcesses(input: {
     for (const p of payments) paid.set(monthOf(p), (paid.get(monthOf(p)) ?? 0) + p.amount);
     const covered = input.covered(apartmentId);
     const earliest = stays.map((t) => t.from).sort(compareText)[0];
+    if (earliest === undefined) continue;
     for (const month of [...paid.keys()].sort(compareText)) {
       const owed = due(month);
-      if (owed === undefined || earliest === undefined) continue;
+      if (owed === undefined) continue;
       const excess = (paid.get(month) ?? 0) - owed;
       if (excess <= 0) continue;
       const [latest] = payments
-        .filter((p) => monthOf(p) === month)
-        .sort((a, b) => compareText(b.date, a.date) || compareText(b.id, a.id)) as [Payment];
-      let proposed: { month: YearMonth; amount: number } | undefined;
-      for (let m = earliest; m < month && proposed === undefined; m = addMonths(m, 1)) {
+        .filter((p) => monthOf(p) === month && p.amount > 0)
+        .sort((a, b) => compareText(b.date, a.date) || compareText(b.id, a.id));
+      if (latest === undefined) continue;
+      let left = Math.min(excess, latest.amount);
+      const targets: RentExcess['targets'] = [];
+      const take = (m: YearMonth, short: number) => {
+        const amount = Math.min(short, left);
+        if (amount <= 0) return;
+        targets.push({ month: m, amount: cents(amount) });
+        paid.set(m, (paid.get(m) ?? 0) + amount);
+        left -= amount;
+      };
+      for (let m = earliest; m < month && left > 0; m = addMonths(m, 1)) {
         const short = (due(m) ?? 0) - (paid.get(m) ?? 0);
-        if (short > 0 && ((paid.get(m) ?? 0) > 0 || covered.has(m))) {
-          proposed = { month: m, amount: Math.min(excess, short, latest.amount) };
-        }
+        if ((paid.get(m) ?? 0) > 0 || covered.has(m)) take(m, short);
       }
-      if (proposed !== undefined) {
-        // A later excess of the same tenant does not propose the same shortfall again.
-        paid.set(proposed.month, (paid.get(proposed.month) ?? 0) + proposed.amount);
+      for (let i = 1; i <= ADVANCE_MONTHS && left > 0; i++) {
+        const m = addMonths(month, i);
+        const owedThen = due(m);
+        if (owedThen !== undefined) take(m, owedThen - (paid.get(m) ?? 0));
       }
+      const moved = targets.reduce((sum, t) => sum + t.amount, 0);
       out.push({
         id: `p-eccedenza-${latest.id}`,
         apartmentId,
@@ -523,11 +541,28 @@ export function rentExcesses(input: {
         paymentId: latest.id,
         month,
         excess: cents(excess),
-        ...(proposed === undefined
-          ? {}
-          : { proposedMonth: proposed.month, amount: cents(proposed.amount) }),
+        targets,
+        credit: cents(excess - moved),
       });
     }
   }
   return out.sort((a, b) => compareText(a.id, b.id));
+}
+
+/**
+ * B5 (c): the credit to give back of each tenant of `apartmentId` for the excesses of the months
+ * `from..to` (`RentExcess.credit` by the month of the excess).
+ */
+export function rentCredits(
+  excesses: readonly RentExcess[],
+  apartmentId: string,
+  from: string,
+  to: string,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const e of excesses) {
+    if (e.apartmentId !== apartmentId || e.credit <= 0 || e.month < from || e.month > to) continue;
+    out.set(e.tenantId, (out.get(e.tenantId) ?? 0) + e.credit);
+  }
+  return out;
 }

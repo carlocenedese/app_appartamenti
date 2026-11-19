@@ -120,7 +120,9 @@ export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {
   'period-reopened':
     'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
   'no-month-to-cover':
-    'Rifiutato: il canone versato in più non ha un mese precedente che manca: resta segnalato in «riconcilia».',
+    'Rifiutato: il canone versato in più non copre nessun mese: è un credito dell’inquilino da rimborsare.',
+  'rent-excess-open':
+    'Attenzione: ci sono canoni versati in più con una proposta aperta su mesi di questo periodo («rentExcesses»): confermarli con «eccedenza-canone».',
   'instalment-esercizio-format':
     'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 oppure 2026 (l’esercizio che inizia nel 2026).',
   'tari-december-missing':

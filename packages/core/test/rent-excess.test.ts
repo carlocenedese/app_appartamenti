@@ -11,6 +11,7 @@ import {
   commitChange,
   confirmRentExcess,
   loadAll,
+  loadPeriodClosing,
   planIncome,
   recordPath,
   recordSchemas,
@@ -18,6 +19,7 @@ import {
   reopenPeriod,
   undoOperationCommand,
   UnreadableRecordsError,
+  isoDate,
   yearMonth,
 } from '../src/index';
 import type { Payment, RecordKind } from '../src/index';
@@ -68,40 +70,115 @@ describe('rentExcesses (B5)', () => {
         paymentId: 'pay-feb',
         month: '2026-02',
         excess: 4000,
-        proposedMonth: '2026-01',
-        amount: 4000,
+        targets: [{ month: '2026-01', amount: 4000 }],
+        credit: 0,
       },
     ]);
   });
 
-  it('flags an excess with no month to cover; a month never paid counts only if covered', () => {
+  it('a month never paid before counts only if covered; else the next month (an advance)', () => {
     const only = [february];
-    expect(rentExcesses({ tenancies: [stay], payments: only, covered: noCover })).toEqual([
-      expect.not.objectContaining({ proposedMonth: expect.anything() }),
-    ]);
+    expect(
+      rentExcesses({ tenancies: [stay], payments: only, covered: noCover })[0]?.targets,
+    ).toEqual([{ month: '2026-03', amount: 4000 }]);
     const covered = () => new Set([yearMonth('2025-11')]);
-    expect(rentExcesses({ tenancies: [stay], payments: only, covered })).toEqual([
-      expect.objectContaining({ proposedMonth: '2025-11', amount: 4000 }),
+    expect(rentExcesses({ tenancies: [stay], payments: only, covered })[0]?.targets).toEqual([
+      { month: '2025-11', amount: 4000 },
     ]);
   });
 
-  it('moves at most the shortfall, never the same shortfall twice, never a later month', () => {
+  it('several months at once, earlier first then later; never the same shortfall twice', () => {
     const small = payment('t-a', '2026-01', 47000, { id: 'pay-jan-small' });
+    const big = payment('t-a', '2026-02', 60000, { id: 'pay-feb-big' });
     const march = payment('t-a', '2026-03', 50000, { id: 'pay-mar' });
     const april = payment('t-a', '2026-04', 40000, { id: 'pay-apr' });
     const found = rentExcesses({
       tenancies: [stay],
-      payments: [small, february, march, april],
+      payments: [small, big, march, april],
       covered: noCover,
     });
-    expect(found.map((e) => [e.paymentId, e.excess, e.proposedMonth, e.amount])).toEqual([
-      ['pay-feb', 4000, '2026-01', 1000],
-      ['pay-mar', 2000, undefined, undefined],
+    expect(found.map((e) => [e.paymentId, e.excess, e.targets, e.credit])).toEqual([
+      [
+        'pay-feb-big',
+        12000,
+        [
+          { month: '2026-01', amount: 1000 },
+          { month: '2026-04', amount: 8000 },
+          { month: '2026-05', amount: 3000 },
+        ],
+        0,
+      ],
+      ['pay-mar', 2000, [{ month: '2026-05', amount: 2000 }], 0],
+    ]);
+  });
+
+  it('an excess in the last month with nothing short is a credit to give back', () => {
+    const last = payment('t-a', '2026-09', 52000, { id: 'pay-sep' });
+    expect(rentExcesses({ tenancies: [stay], payments: [last], covered: noCover })).toEqual([
+      expect.objectContaining({ excess: 4000, targets: [], credit: 4000 }),
+    ]);
+  });
+
+  it('takes the latest payment of a positive amount, at most its amount', () => {
+    const fix = payment('t-a', '2026-02', -1000, { id: 'pay-z-fix', date: '2026-02-28' as never });
+    const two = payment('t-a', '2026-02', 3000, { id: 'pay-feb-2', date: '2026-02-20' as never });
+    const found = rentExcesses({
+      tenancies: [stay],
+      payments: [january, payment('t-a', '2026-02', 52000, { id: 'pay-feb-1' }), two, fix],
+      covered: noCover,
+    });
+    // 520 + 30 − 10 = 540 against 480: 60 of excess, at most the 30 of pay-feb-2.
+    expect(found.map((e) => [e.paymentId, e.excess, e.targets, e.credit])).toEqual([
+      ['pay-feb-2', 6000, [{ month: '2026-01', amount: 3000 }], 3000],
     ]);
   });
 });
 
 describe('confirmRentExcess (B5)', () => {
+  it('C1: a second confirmation for the same payment and month adds to it, no money lost', async () => {
+    // The stay ends in February: no later month to take the rest.
+    const store = await excessStore([], tenancy('t-a', '2025-10', '2026-02'));
+    const jan = payment('t-a', '2026-01', 44000, { id: 'pay-jan', transactionId: 'tx-jan' });
+    const feb = payment('t-a', '2026-02', 60000, { id: 'pay-feb', transactionId: 'tx-feb' });
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'income.confirm',
+        summary: 'x',
+        changes: [{ path: recordPath('payment', jan.id), after: recordSchemas.payment.parse(jan) }],
+      },
+      clock,
+      ids('cj'),
+    );
+    await write(store, 'payment', feb);
+    const ofFeb = async () =>
+      (await payments(store))
+        .filter((p) => p.deleted !== true && p.transactionId === 'tx-feb')
+        .map((p) => [p.id, p.amount, p.forMonth]);
+    // 120,00 more in February: 40,00 to January, 80,00 left as a credit.
+    await confirmRentExcess(store, 'p-eccedenza-pay-feb', 'p1', clock, ids('x'));
+    expect(await ofFeb()).toEqual([
+      ['pay-feb', 56000, '2026-02'],
+      ['pay-feb-2026-01', 4000, '2026-01'],
+    ]);
+    // January's own payment is undone: January is short again and the 80,00 go to it too.
+    await undoOperationCommand(store, 'cj-1', { who: 'p1', clock, newId: ids('u') });
+    expect((await planIncome(store)).result.excesses.map((e) => e.targets)).toEqual([
+      [{ month: '2026-01', amount: 8000 }],
+    ]);
+    await confirmRentExcess(store, 'p-eccedenza-pay-feb', 'p1', clock, ids('y'));
+    // The movement still holds 600,00 (the review's case lost 40,00 here).
+    expect(await ofFeb()).toEqual([
+      ['pay-feb', 48000, '2026-02'],
+      ['pay-feb-2026-01', 12000, '2026-01'],
+    ]);
+    // Undoing the first confirmation while the second stands is refused: the second builds on it.
+    await expect(
+      undoOperationCommand(store, 'x-1', { who: 'p1', clock, newId: ids('v') }),
+    ).rejects.toMatchObject({ reason: 'has-dependents' });
+  });
+
   it('splits the payment: the movement total stays, January is paid in full; undo puts it back', async () => {
     const store = await excessStore();
     const plan = await planIncome(store);
@@ -161,19 +238,21 @@ describe('confirmRentExcess (B5)', () => {
   });
 
   it('refuses, writing nothing, an unknown proposal and an excess with no month to cover', async () => {
-    const store = await excessStore([february]);
+    const store = await excessStore([payment('t-a', '2026-09', 52000, { id: 'pay-sep' })]);
     const before = await snapshot(store);
     expect(await confirmRentExcess(store, 'p-eccedenza-nessuno', 'p1', clock, ids('x'))).toEqual({
       status: 'refused',
       reason: 'unknown-proposal',
     });
-    expect(await confirmRentExcess(store, 'p-eccedenza-pay-feb', 'p1', clock, ids('x'))).toEqual({
+    expect(await confirmRentExcess(store, 'p-eccedenza-pay-sep', 'p1', clock, ids('x'))).toEqual({
       status: 'refused',
       reason: 'no-month-to-cover',
     });
     expect(await snapshot(store)).toEqual(before);
-    // Not confirmed: still flagged.
-    expect((await planIncome(store)).result.excesses).toHaveLength(1);
+    // Not confirmed: still flagged, as a credit.
+    expect((await planIncome(store)).result.excesses).toEqual([
+      expect.objectContaining({ targets: [], credit: 4000 }),
+    ]);
   });
 
   it('a fork (confirmed here, the payment changed on another computer) blocks the writes', async () => {
@@ -332,9 +411,73 @@ describe('confirmRentExcess (B5)', () => {
     // October 2026 (open period 2026-27) paid 10,00 more: it proposes January 2026 (closed).
     await write(store, 'payment', payment('t-a', '2026-10', 49000, { id: 'p-2026-10' }));
     expect((await planIncome(store)).result.excesses).toEqual([
-      expect.objectContaining({ proposedMonth: '2026-01', amount: 1000 }),
+      expect.objectContaining({ targets: [{ month: '2026-01', amount: 1000 }], credit: 0 }),
     ]);
+    const row = async () => {
+      const closing = await loadPeriodClosing(store, query, isoDate('2026-12-31'));
+      if (closing.status !== 'closed') throw new Error(closing.status);
+      const [t] = closing.tenants;
+      return t === undefined
+        ? undefined
+        : {
+            forfaitPaid: t.forfaitPaid,
+            toCheck: t.toCheck,
+            total: t.total,
+            mainRemaining: t.mainRemaining,
+          };
+    };
+    const before = await row();
     const result = await confirmRentExcess(store, 'p-eccedenza-p-2026-10', 'p1', clock, ids('x'));
     expect(result).toMatchObject({ status: 'confirmed' });
+    // Observed (R391): the 10,00 now in January covers the flat charge missing at the closing
+    // (R358, H): the main due falls by 10,00; the supplementary total does not change.
+    expect(await row()).toEqual({
+      ...before,
+      forfaitPaid: (before?.forfaitPaid ?? 0) + 1000,
+      mainRemaining: (before?.mainRemaining ?? 0) - 1000,
+    });
+  });
+});
+
+describe('B5 at the closing (c, d)', () => {
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const n = 2025 * 12 + 9 + i;
+    return `${String(Math.floor(n / 12))}-${String((n % 12) + 1).padStart(2, '0')}`;
+  });
+  const query = { apartmentId: 'apt', periodLabel: '2025-26' };
+  async function yearPaid(presence: ReturnType<typeof tenancy>, end: string) {
+    const store = await excessStore(
+      months.map((m) => payment('t-a', m, m === '2026-09' ? 52000 : 48000, { id: `p-${m}` })),
+      presence,
+    );
+    await write(store, 'contract', {
+      id: 'ctr',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt',
+      type: '1+1',
+      start: '2025-10',
+      end,
+      settlement: 'annuale',
+      tenancyIds: [presence.id],
+    } as never);
+    return store;
+  }
+
+  it('d: an open proposal does not block the closing, it gives a warning', async () => {
+    const store = await yearPaid(tenancy('t-a', '2025-10', '2027-09'), '2027-09');
+    expect(await closePeriod(store, query, 'p1', clock, ids('c'))).toMatchObject({
+      status: 'closed',
+      rentExcesses: ['p-eccedenza-p-2026-09'],
+    });
+  });
+
+  it('c: an excess that covers no month is a credit to give back on the closing row', async () => {
+    const store = await yearPaid(stay, '2026-09');
+    const closed = await closePeriod(store, query, 'p1', clock, ids('c'));
+    expect(closed).toMatchObject({ status: 'closed' });
+    expect(closed).not.toHaveProperty('rentExcesses');
+    const closing = await loadPeriodClosing(store, query, isoDate('2026-12-31'));
+    expect(closing).toMatchObject({ tenants: [{ tenantId: 't-a', rentCredit: 4000, total: 0 }] });
   });
 });

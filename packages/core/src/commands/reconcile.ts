@@ -112,14 +112,16 @@ export async function reconcileCommand(
       apartmentId: a.apartmentId,
       ...arrearExtra(a),
     })),
-    // B5: rent paid in excess, with the month it would cover; amounts only with --dettagli.
+    // B5: rent paid in excess, the months it would cover and whether a credit is left to give
+    // back («da rimborsare»); amounts and the tenant only with --dettagli.
     excesses: result.excesses.map((e) => ({
       id: e.id,
       apartmentId: e.apartmentId,
       month: e.month,
-      ...optional('proposedMonth', e.proposedMonth),
+      months: e.targets.map((t) => t.month),
+      ...(e.credit > 0 ? { refund: true } : {}),
       ...(options.details
-        ? { ...arrearExtra(e), excess: e.excess, ...optional('amount', e.amount) }
+        ? { ...arrearExtra(e), excess: e.excess, targets: e.targets, credit: e.credit }
         : {}),
     })),
     ...(result.operationId === undefined ? {} : { operationId: result.operationId }),

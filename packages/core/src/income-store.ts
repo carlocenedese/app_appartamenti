@@ -254,14 +254,23 @@ export type ConfirmRentExcessResult =
     };
 
 /**
- * B5 (user1, 18 Nov 2026): confirms the excess `proposalId` (`p-eccedenza-<paymentId>`) as
- * recomputed now, in one `income.excess` operation that `annulla-riconciliazione` undoes. The
- * payment keeps its amount less `amount`, and a payment `<paymentId>-<proposedMonth>` of the same
- * tenant, date, source and movement takes `amount` for `proposedMonth`; when `amount` is the whole
- * payment, the payment itself moves to `proposedMonth`. The movement total does not change.
- * Refused, writing nothing: `inconsistent-store`, `unknown-proposal` (no such excess now),
- * `no-month-to-cover` (an excess with no short month before it: it stays flagged). Not confirming
- * leaves the excess flagged; the closed-period guard of `commitChange` applies (F5).
+ * B5 (decided by user1 on 18 and 19 Nov 2026): the excesses of the live records (`rentExcesses`),
+ * with the stays ending with the tenant's contract and the months the statements cover.
+ */
+export async function loadRentExcesses(store: Store): Promise<RentExcess[]> {
+  return excessesOf(await loadIncomeState(store));
+}
+
+/**
+ * B5: confirms the excess `proposalId` (`p-eccedenza-<paymentId>`) as recomputed now, in one
+ * `income.excess` operation that `annulla-riconciliazione` undoes. The payment gives each target
+ * month its amount: a payment `<paymentId>-<month>` of the same tenant, date, source and movement
+ * per month, or, when one is already live (a second confirmation, C1 of the review), that payment
+ * grows by the amount. The payment keeps what is left; when the targets take all of it, the
+ * payment itself goes to the first month. The movement's total never changes. Refused, writing
+ * nothing: `inconsistent-store`, `unknown-proposal` (no such excess now), `no-month-to-cover` (no
+ * month to cover: the excess is a credit to give back). A target month of a closed period is
+ * accepted (F5: a new payment after the closing); a change to a payment of a closed period is not.
  */
 export async function confirmRentExcess(
   store: Store,
@@ -277,44 +286,39 @@ export async function confirmRentExcess(
   const excess = excessesOf(state).find((e) => e.id === proposalId);
   const payment = state.payments.find((p) => p.id === excess?.paymentId);
   if (excess === undefined || payment === undefined) return refuse('unknown-proposal');
-  if (excess.proposedMonth === undefined || excess.amount === undefined) {
-    return refuse('no-month-to-cover');
-  }
-  const { proposedMonth, amount } = excess;
-  const whole = amount === payment.amount;
-  const moved = parseOrThrow(
+  const [first, ...rest] = excess.targets;
+  if (first === undefined) return refuse('no-month-to-cover');
+  const moved = excess.targets.reduce((sum, t) => sum + t.amount, 0);
+  const whole = moved === payment.amount;
+  const kept = parseOrThrow(
     PaymentSchema,
     whole
-      ? { ...payment, forMonth: proposedMonth }
-      : { ...payment, amount: payment.amount - amount },
+      ? { ...payment, forMonth: first.month, amount: first.amount }
+      : { ...payment, amount: payment.amount - moved },
     'payment',
   );
-  const splitId = `${payment.id}-${proposedMonth}`;
-  const split = whole
-    ? undefined
-    : parseOrThrow(
-        PaymentSchema,
-        { ...payment, id: splitId, rev: 1, amount, forMonth: proposedMonth },
-        'payment',
-      );
+  const splits = (whole ? rest : excess.targets).map((t) => {
+    const id = `${payment.id}-${t.month}`;
+    const before = state.payments.find((p) => p.id === id);
+    const after = parseOrThrow(
+      PaymentSchema,
+      before !== undefined && before.deleted !== true
+        ? { ...before, amount: before.amount + t.amount }
+        : { ...payment, id, rev: 1, amount: t.amount, forMonth: t.month },
+      'payment',
+    );
+    return { path: recordPath('payment', id), before, after };
+  });
   const operation = await commitChange(
     store,
     {
       profileId,
       kind: 'income.excess',
       apartmentId: payment.apartmentId,
-      summary: 'Assegnato un canone versato in più a un mese che mancava.',
+      summary: 'Assegnato un canone versato in più ai mesi che mancavano.',
       changes: [
-        { path: recordPath('payment', payment.id), before: payment, after: moved },
-        ...(split === undefined
-          ? []
-          : [
-              {
-                path: recordPath('payment', split.id),
-                before: state.payments.find((p) => p.id === split.id),
-                after: split,
-              },
-            ]),
+        { path: recordPath('payment', payment.id), before: payment, after: kept },
+        ...splits,
       ],
     },
     clock,
@@ -323,7 +327,7 @@ export async function confirmRentExcess(
   return {
     status: 'confirmed',
     operationId: operation.id,
-    paymentIds: split === undefined ? [payment.id] : [payment.id, split.id],
+    paymentIds: [payment.id, ...splits.map((c) => c.after.id)],
   };
 }
 

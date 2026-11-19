@@ -18,6 +18,8 @@ import type { PeriodClosed } from './closing';
 import { SettlementInputError, calcConguaglio, canClosePeriod } from './conguaglio';
 import type { CloseMissing, ConguaglioResult, SettlementInputErrorCode } from './conguaglio';
 import { loadExcelInput } from './excel-store';
+import { rentCredits } from './income';
+import { loadRentExcesses } from './income-store';
 import type { ExcelInput } from './excel';
 import { commitChange, writesBlocked } from './journal';
 import { BankTransactionSchema, PeriodCloseSchema, SupplySchema } from './model';
@@ -45,6 +47,11 @@ export type ClosePeriodResult =
       closeId: string;
       /** The warning: rents not collected, each a row «Canone non incassato» (plan 22). */
       rentMissing?: RentMissing[];
+      /**
+       * B5 (d), decided by user1 on 19 Nov 2026: a warning, never a block: the open proposals of
+       * rent paid in excess (`p-eccedenza-…`) whose month or a month they would cover is here.
+       */
+      rentExcesses?: string[];
     }
   | { status: 'refused'; reason: LoadRefusal | 'already-closed' }
   /** R3: the December TARI notice (`month`) of an apartment of the shared notice is not debited. */
@@ -248,11 +255,22 @@ export async function closePeriod(
     clock,
     newId,
   );
+  const open = (await loadRentExcesses(store))
+    .filter(
+      (e) =>
+        e.apartmentId === query.apartmentId &&
+        e.targets.length > 0 &&
+        [e.month, ...e.targets.map((t) => t.month)].some(
+          (m) => input.period.from <= m && m <= input.period.to,
+        ),
+    )
+    .map((e) => e.id);
   return {
     status: 'closed',
     operationId: operation.id,
     closeId: id,
     ...(rentMissing.length === 0 ? {} : { rentMissing }),
+    ...(open.length === 0 ? {} : { rentExcesses: open }),
   };
 }
 
@@ -276,7 +294,13 @@ export async function loadPeriodClosing(
   if (calc.status === 'refused') return calc;
   const close = await currentClose(store, query);
   if (close === undefined) return { status: 'open' };
-  return closingOf(close, calc.result, calc.input, asOf);
+  const credits = rentCredits(
+    await loadRentExcesses(store),
+    query.apartmentId,
+    close.from,
+    close.to,
+  );
+  return closingOf(close, calc.result, calc.input, asOf, credits);
 }
 
 export type MarkCloseResult =
