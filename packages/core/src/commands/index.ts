@@ -5,3 +5,4 @@ export * from './refusal';
 export * from './statements';
 export * from './reconcile';
 export * from './taxes';
+export * from './contracts';

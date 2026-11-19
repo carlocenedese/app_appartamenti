@@ -70,8 +70,6 @@ import {
   TimestampSchema,
   YearMonthSchema,
   YearSchema,
-  loadContractChecks,
-  loadRentYears,
   loadCondo,
   loadCondoEstimate,
   loadContacts,
@@ -93,19 +91,9 @@ import {
   markTenantSettled,
   reopenPeriod,
   equalShares,
-  saveContract,
-  setContractRent,
-  saveTenancy,
-  endTenancy,
-  recordRoomSwap,
-  recordTakeover,
-  loadContractStatus,
-  loadDepositReturn,
-  saveLegalRate,
   saveConsumptionSettings,
   billFileMove,
   loadConsumption,
-  setRentYear,
   PayableKindSchema,
   ExtractionResultSchema,
   hashBytes,
@@ -119,7 +107,6 @@ import {
   raiseDataFormat,
   CommandStop,
   COMMAND_MESSAGES,
-  SWAP_MESSAGES,
   stopBody,
   commandRefusal,
   FAILED_BODY,
@@ -161,6 +148,17 @@ import {
   savePayableCommand,
   repeatPayableCommand,
   payablePaidCommand,
+  saveContractCommand,
+  setContractRentCommand,
+  setRentYearCommand,
+  contractsCommand,
+  saveTenancyCommand,
+  endTenancyCommand,
+  takeoverCommand,
+  roomSwapCommand,
+  contractStatusCommand,
+  saveLegalRateCommand,
+  depositReturnCommand,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
@@ -1195,20 +1193,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ...optional('tenancyIds', idList(v.presenze)),
       ...optional('depositPaymentIds', idList(v.caparre)),
     };
-    let result;
-    try {
-      result = await saveContract(store, input, who, clock, newId);
-    } catch (error) {
-      // An id the store refuses (a name reserved on Windows, a bad segment) is a bad argument.
-      if (error instanceof RangeError) throw invalid('bad-arguments');
-      throw error;
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      contractId: result.contractId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
+    return saveContractCommand(store, input, ctx);
   }
 
   if (name === 'contratto-canone') {
@@ -1218,19 +1203,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const monthlyRent = euro(values.canone);
     const monthlyAdvance = euro(values.acconto);
     if (monthlyRent <= 0 || monthlyAdvance < 0) throw invalid('bad-arguments');
-    const result = await setContractRent(
+    return setContractRentCommand(
       store,
       { contractId: values.contratto, from, monthlyRent, monthlyAdvance },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      contractId: result.contractId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'affitti-anno') {
@@ -1240,19 +1217,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
     const totalRent = euro(values.totale);
     if (totalRent <= 0) throw invalid('bad-arguments');
-    const result = await setRentYear(
+    return setRentYearCommand(
       store,
       { apartmentId: values.appartamento, year: values.anno, totalRent },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      rentYearId: result.rentYearId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse-stima') {
@@ -1321,77 +1290,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'contratti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadContractChecks(store, {
-      // The month of the clock: later months have no tenancies written yet.
-      asOf: month(clock().slice(0, 7)),
-      ...optional('apartmentId', values.appartamento),
+    return contractsCommand(store, optional('apartmentId', values.appartamento), ctx, {
+      details: values.dettagli === true,
     });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const years = await loadRentYears(store, optional('apartmentId', values.appartamento));
-    if (years.status === 'refused') throw new Stop('rejected', years.reason);
-    const details = values.dettagli === true;
-    // Codes, ids and months only; amounts, codes, dates and linked ids with --dettagli (R107).
-    return {
-      status: 'ok',
-      contracts: result.contracts.map((c) => ({
-        id: c.id,
-        apartmentId: c.apartmentId,
-        type: c.type,
-        start: c.start,
-        end: c.end,
-        settlement: c.settlement,
-        agreedRent: c.agreedRent,
-        forStudents: c.forStudents,
-        taxRegime: c.taxRegime,
-        tenancies: c.tenancyIds?.length ?? 0,
-        deposits: c.depositPaymentIds?.length ?? 0,
-        rentEntries: c.rent?.length ?? 0,
-        ...(details
-          ? {
-              durationMonths: c.durationMonths,
-              signedOn: c.signedOn,
-              registration: c.registration,
-              cedolareRateBp: c.cedolareRateBp,
-              rent: c.rent,
-              tenancyIds: c.tenancyIds,
-              depositPaymentIds: c.depositPaymentIds,
-            }
-          : {}),
-      })),
-      checks: result.checks.map((c) => ({
-        code: c.code,
-        contractId: c.contractId,
-        otherContractId: c.otherContractId,
-        from: c.from,
-        to: c.to,
-        ...(['rent-differs', 'contract-overlap'].includes(c.code)
-          ? { message: MESSAGES[c.code] }
-          : {}),
-        ...(details
-          ? {
-              tenancyId: c.tenancyId,
-              paymentId: c.paymentId,
-              expected: c.expected,
-              actual: c.actual,
-            }
-          : {}),
-      })),
-      // The rents of the year and the estimate are amounts: only with --dettagli (R107, R182).
-      rentYears: years.rentYears.map((y) => ({
-        apartmentId: y.apartmentId,
-        year: y.year,
-        ...(details
-          ? {
-              totalRent: y.totalRent,
-              cedolareRateBp: y.cedolareRateBp,
-              cedolareExpected: y.cedolareExpected,
-              ...(y.cedolareExpected === undefined
-                ? {}
-                : { message: MESSAGES['cedolare-estimate'] }),
-            }
-          : {}),
-      })),
-    };
   }
 
   if (name === 'presenza' || name === 'fine-presenza' || name === 'subentro') {
@@ -1403,75 +1304,45 @@ async function command(name, values, positionals, store, who, clock, newId) {
       return amount;
     };
     const deposit = v['caparra-attesa'] === undefined ? undefined : positive(v['caparra-attesa']);
-    let result;
-    try {
-      if (name === 'presenza') {
-        need(v, 'id', 'appartamento', 'inquilino', 'dal', 'affitto', 'forfait');
-        result = await saveTenancy(
-          store,
-          {
-            id: v.id,
-            apartmentId: v.appartamento,
-            tenantId: v.inquilino,
-            ...optional('room', v.posto),
-            from: month(v.dal),
-            ...optional('to', v.al === undefined ? undefined : month(v.al)),
-            monthlyRent: nonNegative(v.affitto),
-            monthlyForfait: nonNegative(v.forfait),
-            ...optional('expectedDeposit', deposit),
-            ...optional('contractId', v.contratto),
-          },
-          who,
-          clock,
-          newId,
-        );
-      } else if (name === 'fine-presenza') {
-        need(v, 'presenza', 'mese');
-        result = await endTenancy(
-          store,
-          { tenancyId: v.presenza, lastMonth: month(v.mese) },
-          who,
-          clock,
-          newId,
-        );
-      } else {
-        need(v, 'presenza', 'mese', 'id', 'inquilino', 'affitto', 'forfait');
-        result = await recordTakeover(
-          store,
-          {
-            outTenancyId: v.presenza,
-            lastMonth: month(v.mese),
-            incoming: {
-              id: v.id,
-              tenantId: v.inquilino,
-              monthlyRent: nonNegative(v.affitto),
-              monthlyForfait: nonNegative(v.forfait),
-              ...optional('expectedDeposit', deposit),
-            },
-          },
-          who,
-          clock,
-          newId,
-        );
-      }
-    } catch (error) {
-      // An id the store refuses (a name reserved on Windows) is a bad argument.
-      if (error instanceof RangeError) throw invalid('bad-arguments');
-      throw error;
+    if (name === 'presenza') {
+      need(v, 'id', 'appartamento', 'inquilino', 'dal', 'affitto', 'forfait');
+      return saveTenancyCommand(
+        store,
+        {
+          id: v.id,
+          apartmentId: v.appartamento,
+          tenantId: v.inquilino,
+          ...optional('room', v.posto),
+          from: month(v.dal),
+          ...optional('to', v.al === undefined ? undefined : month(v.al)),
+          monthlyRent: nonNegative(v.affitto),
+          monthlyForfait: nonNegative(v.forfait),
+          ...optional('expectedDeposit', deposit),
+          ...optional('contractId', v.contratto),
+        },
+        ctx,
+      );
     }
-    if (result.status === 'refused') {
-      throw new Stop('rejected', result.reason, {
-        ...optional('code', result.code),
-        ...optional('month', result.month),
-        // Review of 18 Nov 2026 (U4): the payments, recoveries and contracts on the stay (ids).
-        ...optional('recordIds', result.recordIds),
-      });
+    if (name === 'fine-presenza') {
+      need(v, 'presenza', 'mese');
+      return endTenancyCommand(store, { tenancyId: v.presenza, lastMonth: month(v.mese) }, ctx);
     }
-    return {
-      status: result.status,
-      tenancyId: result.tenancyId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
+    need(v, 'presenza', 'mese', 'id', 'inquilino', 'affitto', 'forfait');
+    return takeoverCommand(
+      store,
+      {
+        outTenancyId: v.presenza,
+        lastMonth: month(v.mese),
+        incoming: {
+          id: v.id,
+          tenantId: v.inquilino,
+          monthlyRent: nonNegative(v.affitto),
+          monthlyForfait: nonNegative(v.forfait),
+          ...optional('expectedDeposit', deposit),
+        },
+      },
+      ctx,
+    );
   }
 
   if (name === 'scambio-camera') {
@@ -1484,98 +1355,27 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (amount < 0) throw invalid('bad-arguments');
       return amount;
     };
-    let result;
-    try {
-      result = await recordRoomSwap(
-        store,
-        {
-          apartmentId: v.appartamento,
-          tenancyIdA: v['presenza-a'],
-          tenancyIdB: v['presenza-b'],
-          month: month(v.mese),
-          ...optional('monthlyRentA', rent(v['canone-a'])),
-          ...optional('idA', v['id-a']),
-          ...optional('idB', v['id-b']),
-          ...optional('monthlyRentB', rent(v['canone-b'])),
-        },
-        who,
-        clock,
-        newId,
-      );
-    } catch (error) {
-      // An id the store refuses (a name reserved on Windows) is a bad argument.
-      if (error instanceof RangeError) throw invalid('bad-arguments');
-      throw error;
-    }
-    if (result.status === 'refused') {
-      throw new Stop('rejected', result.reason, {
-        ...optional('message', SWAP_MESSAGES[result.reason]),
-        ...optional('part', result.part),
-        ...optional('code', result.code),
-        ...optional('month', result.month),
-      });
-    }
-    return {
-      status: result.status,
-      tenancyIds: result.tenancyIds,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-      ...(result.warnings === undefined
-        ? {}
-        : {
-            warnings: result.warnings,
-            message: result.warnings.map((w) => MESSAGES[w]).join(' '),
-          }),
-    };
+    return roomSwapCommand(
+      store,
+      {
+        apartmentId: v.appartamento,
+        tenancyIdA: v['presenza-a'],
+        tenancyIdB: v['presenza-b'],
+        month: month(v.mese),
+        ...optional('monthlyRentA', rent(v['canone-a'])),
+        ...optional('idA', v['id-a']),
+        ...optional('idB', v['id-b']),
+        ...optional('monthlyRentB', rent(v['canone-b'])),
+      },
+      ctx,
+    );
   }
 
   if (name === 'stato-contratti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadContractStatus(store, {
-      asOf: month(clock().slice(0, 7)),
-      ...optional('apartmentId', values.appartamento),
+    return contractStatusCommand(store, optional('apartmentId', values.appartamento), ctx, {
+      details: values.dettagli === true,
     });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const details = values.dettagli === true;
-    const count = (list, keys) =>
-      Object.fromEntries(keys.map((k) => [k, list.filter((x) => x === k).length]));
-    // Counts and codes only; tenancies, tenants, months and amounts with --dettagli (R107).
-    return {
-      status: 'ok',
-      contracts: result.contracts.map(({ contract, tenancies, deposits, checks }) => ({
-        contractId: contract.id,
-        apartmentId: contract.apartmentId,
-        tenancies: count(
-          tenancies.map((t) => t.state),
-          ['futura', 'in-corso', 'uscita'],
-        ),
-        takeovers: contract.takeovers?.length ?? 0,
-        deposits: count(
-          deposits.map((d) => d.status),
-          ['versata', 'diversa', 'mancante', 'non-impostata'],
-        ),
-        ...(deposits.some((d) => d.status === 'diversa' || d.status === 'mancante')
-          ? { message: MESSAGES['deposit-check'] }
-          : {}),
-        checks: checks.map((c) => c.code),
-        ...(details
-          ? {
-              tenancyList: tenancies.map(({ tenancy: t, state }) => ({
-                tenancyId: t.id,
-                tenantId: t.tenantId,
-                room: t.room,
-                from: t.from,
-                to: t.to,
-                state,
-                monthlyRent: t.monthlyRent,
-                monthlyForfait: t.monthlyForfait,
-                expectedDeposit: t.expectedDeposit,
-              })),
-              takeoverList: contract.takeovers,
-              depositList: deposits,
-            }
-          : {}),
-      })),
-    };
   }
 
   if (name === 'tasso-legale') {
@@ -1584,19 +1384,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || values.tasso?.length !== 1 || !/^[0-9]{4}$/.test(values.anno)) {
       throw invalid('bad-arguments');
     }
-    const result = await saveLegalRate(
+    return saveLegalRateCommand(
       store,
       { year: values.anno, rateBp: basisPoints(values.tasso[0]) },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      rateId: result.rateId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'caparra-restituzione') {
@@ -1609,60 +1401,16 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (at < 1) throw invalid('bad-arguments');
       return { label: text.slice(0, at), amount: positive(text.slice(at + 1)) };
     });
-    const result = await loadDepositReturn(store, {
-      apartmentId: values.appartamento,
-      tenantId: values.inquilino,
-      ...(values.conguaglio === undefined ? {} : { conguaglio: euro(values.conguaglio) }),
-      extraCharges,
-    });
-    if (result.status === 'refused') {
-      // F10: a deposit already returned is not changed: the lines of the closed periods are
-      // «da richiedere» (labels and amounts only with --dettagli, R107).
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.reason === 'already-returned' && result.toRequest.length > 0
-          ? {
-              toRequest: result.toRequest.length,
-              warning: MESSAGES['deposit-to-request'],
-              // Finding 8: the signs of a statement (a debt is negative), in euro.
-              ...(values.dettagli === true
-                ? {
-                    toRequestLines: result.toRequest.map(({ label, amount }) => ({
-                      label,
-                      amount: formatEuro(amount),
-                    })),
-                  }
-                : {}),
-            }
-          : {},
-      );
-    }
-    // Every line is an amount: only with --dettagli (R107).
-    return {
-      status: 'ok',
-      lines: result.statement.lines.length,
-      message: MESSAGES['deposit-return-draft'],
-      ...(result.recoveriesWaiting > 0
-        ? { recoveriesWaiting: result.recoveriesWaiting, warning: MESSAGES['recovery-waiting'] }
-        : {}),
-      // Answer F, fourth round A: shown apart, never in the total.
-      ...(result.toCheck.length > 0
-        ? {
-            toCheck: result.toCheck.length,
-            toCheckMessage: MESSAGES['forfait-to-check'],
-            ...(values.dettagli === true
-              ? {
-                  toCheckLines: result.toCheck.map(({ label, amount }) => ({
-                    label,
-                    amount: formatEuro(amount),
-                  })),
-                }
-              : {}),
-          }
-        : {}),
-      ...(values.dettagli === true ? { statement: result.statement } : {}),
-    };
+    return depositReturnCommand(
+      store,
+      {
+        apartmentId: values.appartamento,
+        tenantId: values.inquilino,
+        ...(values.conguaglio === undefined ? {} : { conguaglio: euro(values.conguaglio) }),
+        extraCharges,
+      },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'bolletta') {
