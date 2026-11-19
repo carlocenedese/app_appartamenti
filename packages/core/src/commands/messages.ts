@@ -92,7 +92,7 @@ export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {
   'missing-condominio-start':
     'Rifiutato: l’appartamento non ha l’inizio dell’esercizio del condominio dal giorno 1 (appartamento --esercizio-condominio MM-01).',
   'invalid-instalment':
-    'Rifiutato: rata non valida: esercizio AAAA-AA, rata n/N con N divisore di 12, importi e scadenza.',
+    'Rifiutato: rata non valida: esercizio AAAA-AA o AAAA, rata n/N con N divisore di 12, importi e scadenza.',
   'instalment-in-use':
     'Rifiutato: la rata ha abbinamenti o recuperi («recordIds»): annullarli prima di cambiarla.',
   'instalment-id-collision':
@@ -120,7 +120,7 @@ export const COMMAND_MESSAGES: Readonly<Record<string, string>> = {
   'period-reopened':
     'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
   'instalment-esercizio-format':
-    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 (il conguaglio divide solo questa forma).',
+    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27, oppure 2026 se l’esercizio del condominio inizia il 1° gennaio.',
   'tari-december-missing':
     'Rifiutato: l’appartamento è nell’avviso TARI comune e il periodo si chiude solo dopo l’addebito dell’avviso TARI del dicembre che sta dentro il periodo («month», R3): registrarlo e abbinarlo, poi chiudere.',
   'closed-period-changed':

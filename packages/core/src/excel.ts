@@ -31,7 +31,7 @@ import type {
 } from './model';
 import { cents, formatEuro, splitCents } from './money';
 import type { Cents } from './money';
-import { annualitaRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
+import { esercizioRange, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { MONTH_NAMES, monthRangeLabel } from './tari-note';
 import { compareText } from './text';
@@ -176,7 +176,7 @@ export function excelItems(input: ConguaglioInput, result: ConguaglioResult): Ex
 
   const esercizioOf = (instalment: Instalment) =>
     instalment.kind === 'condominio' && apartment.condominioStart !== undefined
-      ? annualitaRange(instalment.esercizio, apartment.condominioStart)
+      ? esercizioRange(instalment.esercizio, apartment.condominioStart)
       : undefined;
 
   const bills = own(input.bills).filter(

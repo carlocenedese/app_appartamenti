@@ -119,6 +119,7 @@ describe('saveCondoInstalment', () => {
     const refused = async (input: SaveCondoInstalmentInput, reason: string) =>
       expect(await save(store, input)).toMatchObject({ status: 'refused', reason });
     await refused({ ...first, apartmentId: 'apt-x' }, 'unknown-apartment');
+    // F7: the calendar year only for a fiscal year from 1 January.
     await refused({ ...first, esercizio: '2025' }, 'esercizio-format');
     await refused({ ...first, esercizio: '2025-27' }, 'invalid-instalment');
     await refused({ ...first, rateIndex: 4 }, 'invalid-instalment');
@@ -135,6 +136,18 @@ describe('saveCondoInstalment', () => {
       status: 'refused',
       reason: 'missing-condominio-start',
     });
+  });
+
+  it('F7: takes the calendar-year form «2026» for a fiscal year from 1 January', async () => {
+    const store = await withApartment({ month: 1, day: 1 });
+    const year = { ...first, esercizio: '2026', dueDate: isoDate('2026-01-10') };
+    expect(await save(store, year)).toMatchObject({ status: 'saved' });
+    const [saved] = (await loadAll(store, 'instalment', InstalmentSchema)).records;
+    expect(saved).toMatchObject({ esercizio: '2026', coversFrom: '2026-01', coversTo: '2026-04' });
+    // One form per apartment (R310): the cross-year form is refused next to it.
+    expect(
+      await save(store, { ...first, id: 'rata-a-2', rateIndex: 2, esercizio: '2026-27' }),
+    ).toEqual({ status: 'refused', reason: 'esercizio-format', documentIds: ['rata-a-1'] });
   });
 
   it('refuses an esercizio of another form than the documents of the apartment (R310)', async () => {

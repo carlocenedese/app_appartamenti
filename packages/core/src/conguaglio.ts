@@ -43,7 +43,7 @@ import type {
 } from './model';
 import { cents, splitCents } from './money';
 import type { Cents } from './money';
-import { annualitaRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
+import { esercizioRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
 import { bedsAt } from './valid-from';
@@ -734,7 +734,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     const covered = monthRange(instalment.coversFrom, instalment.coversTo);
     const esercizio =
       instalment.kind === 'condominio' && apartment.condominioStart !== undefined
-        ? annualitaRange(instalment.esercizio, apartment.condominioStart)
+        ? esercizioRange(instalment.esercizio, apartment.condominioStart)
         : undefined;
     const previousYear =
       toTenants && esercizio !== undefined && instalment.conguaglioPrec !== 0

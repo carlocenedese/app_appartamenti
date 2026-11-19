@@ -32,7 +32,7 @@ import {
 } from './model';
 import type { BillMatch, CondoDocument, Instalment, TenantRecovery } from './model';
 import type { ISODate, YearMonth } from './period';
-import { annualitaRange, rateCoverage } from './period';
+import { esercizioRange, rateCoverage } from './period';
 import { recordDependents } from './references';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
@@ -170,8 +170,8 @@ export type SaveCondoInstalmentResult =
  * Creates or replaces the condominium instalment `input.id` (review of 18 Nov 2026, I3, E4) in one
  * `condo.instalment` operation, undone with the reconciliation undo. The months it covers come
  * from the apartment's `condominioStart` (whole months: day 1, else `missing-condominio-start`)
- * and rate `rateIndex` of `rateCount` (R3: 12/n months in order); the esercizio is `YYYY-YY`
- * (`annualitaRange`) and of the same form as the apartment's other live condominium documents
+ * and rate `rateIndex` of `rateCount` (R3: 12/n months in order); the esercizio is `YYYY-YY`,
+ * or `YYYY` for a fiscal year from 1 January (F7, `esercizioRange`), and of the same form as the apartment's other live condominium documents
  * and instalments (R310, `esercizio-format`). Refused: an id that is not a safe file name part or
  * a schema refusal (`invalid-instalment`), an id of a TARI or of another apartment
  * (`id-collision`), a change to an instalment with live matches or recoveries
@@ -198,13 +198,17 @@ export async function saveCondoInstalment(
   const start = apartment.condominioStart;
   if (start === undefined || start.day !== 1) return refuse('missing-condominio-start');
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id)) return refuse('invalid-instalment');
-  // The settlement splits only a `2026-27` fiscal year (`annualitaRange`): `2026` is another form.
-  if (!/^[0-9]{4}-[0-9]{2}$/.test(input.esercizio)) {
+  // F7: `2026-27`, or the calendar year `2026` only for a fiscal year from 1 January (R389).
+  const calendar = /^[0-9]{4}$/.test(input.esercizio);
+  if (
+    !(calendar || /^[0-9]{4}-[0-9]{2}$/.test(input.esercizio)) ||
+    (calendar && start.month !== 1)
+  ) {
     return { status: 'refused', reason: 'esercizio-format', documentIds: [] };
   }
   let covers: { from: YearMonth; to: YearMonth };
   try {
-    const first = annualitaRange(input.esercizio, start).from.slice(0, 7) as YearMonth;
+    const first = esercizioRange(input.esercizio, start).from.slice(0, 7) as YearMonth;
     covers = rateCoverage(first, input.rateCount, input.rateIndex);
   } catch {
     return refuse('invalid-instalment');
