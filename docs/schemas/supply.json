@@ -43,6 +43,45 @@
           "weight"
         ]
       }
+    },
+    "earlierApartments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "description": "Calendar month, YYYY-MM (01 to 12). Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+            "type": "string",
+            "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])$"
+          },
+          "apartments": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "apartmentId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "apartmentId",
+                "weight"
+              ]
+            }
+          }
+        },
+        "required": [
+          "to",
+          "apartments"
+        ]
+      }
     }
   },
   "required": [
@@ -52,5 +91,5 @@
     "label",
     "apartments"
   ],
-  "description": "apartments: at least one, each apartment once, weight in basis points (1..10000), sum exactly 10000."
+  "description": "apartments: at least one, each apartment once, weight in basis points (1..10000), sum exactly 10000. earlierApartments: increasing months, the same rules for each entry."
 }

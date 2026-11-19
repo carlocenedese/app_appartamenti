@@ -16,6 +16,7 @@ import { lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { MONTH_NAMES } from './tari-note';
 import { foldText } from './text';
+import { weightsOver } from './valid-from';
 
 export type ProposalCheck = { code: string; severity: 'ok' | 'warn' | 'fail'; message: string };
 type Confidence = 'high' | 'medium' | 'missing';
@@ -50,7 +51,7 @@ export type ProposalContext = {
    * TARI: the supplies of shared notices (deleted ones are ignored), each with the apartments it is split
    * between by weight (basis points).
    */
-  supplies?: Pick<Supply, 'id' | 'label' | 'apartments' | 'deleted'>[];
+  supplies?: Pick<Supply, 'id' | 'label' | 'apartments' | 'earlierApartments' | 'deleted'>[];
 };
 
 type Fields = ExtractionResult['fields'];
@@ -385,12 +386,18 @@ function tariProposal(
             `Due utenze hanno la stessa etichetta «${supply.label}». Apri Impostazioni, Utenze e correggi: finché ce ne sono due, nessuna delle due viene usata.`,
           ),
         );
-        byLabel.set(key, { ...supply, apartments: [] });
+        byLabel.set(key, { id: supply.id, label: supply.label, apartments: [] });
       } else {
         byLabel.set(key, supply);
       }
     }
-    const known: { apartmentId: string; amount: Cents; supplyId: string }[] = [];
+    const known: {
+      apartmentId: string;
+      amount: Cents;
+      supplyId: string;
+      coversFrom: YearMonth;
+      coversTo: YearMonth;
+    }[] = [];
     for (const part of result.parts) {
       const target = byLabel.get(foldText(part.label));
       if (target === undefined || target.apartments.length === 0) {
@@ -403,12 +410,38 @@ function tariProposal(
       } else if (part.amount <= 0) {
         checks.push(fail('part-amount', `L'utenza «${part.label}» non ha un importo positivo.`));
       } else {
-        // An apartment's share of the supply by weight; cents that do not divide go as in R3.
-        const shares = splitCents(
-          part.amount,
-          target.apartments.map((a) => a.weight),
+        // Plan 22, answer 3 of user1: the notice month by month, each month with the weights in
+        // force (an A-B-A change too): the part is divided in equal parts over its months (R1, R3:
+        // the cents left to the first months), each stretch of months with the same weights is
+        // split by them, and each apartment gets one instalment per stretch.
+        const stretches = weightsOver(target, rate.coversFrom, rate.coversTo);
+        const counts = stretches.map(
+          (st) =>
+            monthsInPeriod(`${st.from}-01` as ISODate, lastDayOfMonth(st.to as YearMonth)).length,
         );
-        if (shares.some((share) => share <= 0)) {
+        const months = counts.reduce((a, b) => a + b, 0);
+        const perMonth = Math.floor(part.amount / months);
+        let extra = part.amount - perMonth * months;
+        const amounts = counts.map((n) => {
+          const first = Math.min(extra, n);
+          extra -= first;
+          return perMonth * n + first;
+        });
+        const rows = stretches.flatMap((st, k) => {
+          // An apartment's share of the supply by weight; cents that do not divide go as in R3.
+          const shares = splitCents(
+            amounts[k] as Cents,
+            st.value.map((a) => a.weight),
+          );
+          return st.value.map(({ apartmentId }, index) => ({
+            apartmentId,
+            amount: shares[index] as Cents,
+            supplyId: target.id,
+            coversFrom: st.from as YearMonth,
+            coversTo: st.to as YearMonth,
+          }));
+        });
+        if (rows.some((row) => row.amount <= 0)) {
           // A zero share would make the group inconsistent for the matching (weight > 0).
           checks.push(
             fail(
@@ -417,24 +450,24 @@ function tariProposal(
             ),
           );
         } else {
-          target.apartments.forEach(({ apartmentId }, index) => {
-            known.push({ apartmentId, amount: shares[index] as Cents, supplyId: target.id });
-          });
+          known.push(...rows);
         }
       }
     }
     const seen = new Set<string>();
-    for (const { apartmentId } of known) {
-      if (seen.has(apartmentId)) {
+    for (const { apartmentId, coversFrom } of known) {
+      // One instalment per apartment and stretch of months (plan 22).
+      const key = `${apartmentId}\u0000${coversFrom}`;
+      if (seen.has(key)) {
         checks.push(
           fail('duplicate-apartment', "Lo stesso appartamento compare due volte nell'avviso."),
         );
         break;
       }
-      seen.add(apartmentId);
+      seen.add(key);
     }
     const groupId = newId();
-    for (const { apartmentId, amount, supplyId } of known) {
+    for (const { apartmentId, amount, supplyId, coversFrom, coversTo } of known) {
       instalments.push({
         id: newId(),
         apartmentId,
@@ -443,6 +476,8 @@ function tariProposal(
         // every share, so the group agrees on its paying account (E1).
         ...(apartmentId === ctx.apartment.id ? {} : { paidFromApartmentId: ctx.apartment.id }),
         ...base,
+        coversFrom,
+        coversTo,
         rata: amount,
         shared: { groupId, groupTotal: total, weight: amount },
       });

@@ -111,7 +111,7 @@ function tenancyRecord(fields: Record<string, unknown>): Tenancy | undefined {
 
 /**
  * The first bed conflict the written tenancies would make: only the months in which one of them is
- * present (a start month of some tenancy, where every overlap begins), so an old conflict
+ * present (a start month of some tenancy or of some beds, where every overlap begins), so an old conflict
  * elsewhere does not block a correction.
  */
 function bedsConflict(
@@ -121,8 +121,12 @@ function bedsConflict(
 ): { code: SettlementInputErrorCode; month?: YearMonth; tenancyIds: string[] } | undefined {
   const ids = new Set(written.map((t) => t.id));
   const after = [...stored.filter((t) => !ids.has(t.id)), ...written];
+  // Plan 22: the first month of each change of the beds («valido dal») too.
   const months = [
-    ...new Set(after.filter((t) => t.apartmentId === apartment.id).map((t) => t.from)),
+    ...new Set([
+      ...after.filter((t) => t.apartmentId === apartment.id).map((t) => t.from),
+      ...(apartment.earlierBeds ?? []).map((e) => addMonths(e.to, 1)),
+    ]),
   ]
     .filter((m) => written.some((t) => isPresent(t, m)))
     .sort(compareText);

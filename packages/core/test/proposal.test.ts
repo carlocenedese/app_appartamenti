@@ -9,6 +9,7 @@ import {
   sharedGroupProblem,
   splitSharedDebit,
   suggestedFilePath,
+  yearMonth,
 } from '../src/index';
 import type {
   Bill,
@@ -579,6 +580,122 @@ describe('proposalFromExtraction: TARI', () => {
     expect(b?.shared?.groupId).toBe(l?.shared?.groupId);
     expect(b?.shared?.groupTotal).toBe(18546);
     expect(check(proposal, 'duplicate-apartment')).toBeUndefined();
+  });
+
+  it('plan 22: the weights of each month of the notice (answer 3 of user1), A-B-A included', () => {
+    const supplies = (to: string) => [
+      {
+        id: 'sup-app-a',
+        label: 'Appartamento A',
+        apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+        earlierApartments: [
+          {
+            to: yearMonth(to),
+            apartments: [
+              { apartmentId: 'apt-b', weight: 3333 },
+              { apartmentId: 'apt-c', weight: 6667 },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'sup-app-b',
+        label: 'Appartamento B',
+        apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+      },
+    ];
+    const tenancies = [
+      storedTenancy('b', 'apt-b', '2025-01'),
+      storedTenancy('c', 'apt-c', '2025-01'),
+      storedTenancy('l', 'apt-l', '2025-01'),
+    ];
+    // The notice covers January–April 2026: the new weights hold from January.
+    const after = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({ supplies: supplies('2025-12'), tenancies }),
+        ids(),
+      ),
+    );
+    expect(after.instalments.map((i) => [i.apartmentId, i.rata])).toEqual([
+      ['apt-b', 10075],
+      ['apt-l', 8471],
+    ]);
+    // Still the old ones in April: the old split.
+    const before = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({ supplies: supplies('2026-04'), tenancies }),
+        ids(),
+      ),
+    );
+    expect(before.instalments.map((i) => [i.apartmentId, i.rata])).toEqual([
+      ['apt-b', 3358],
+      ['apt-c', 6717],
+      ['apt-l', 8471],
+    ]);
+    // Answer 3 of user1: changed from March, inside the notice: month by month. 100,75 over 4
+    // months is 25,19 25,19 25,19 25,18; January–February 50,38 split 3333:6667, March–April
+    // 50,37 all to apt-b.
+    const inside = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({ supplies: supplies('2026-02'), tenancies }),
+        ids(),
+      ),
+    );
+    expect(severities(inside)).not.toContain('fail');
+    const rows = inside.instalments.map((i) => [i.apartmentId, i.coversFrom, i.coversTo, i.rata]);
+    expect(rows).toEqual([
+      ['apt-b', '2026-01', '2026-02', 1679],
+      ['apt-c', '2026-01', '2026-02', 3359],
+      ['apt-b', '2026-03', '2026-04', 5037],
+      ['apt-l', '2026-01', '2026-04', 8471],
+    ]);
+    expect(
+      sharedGroupProblem(
+        inside.instalments.map((i) => ({ ...i, v: 1, rev: 1, fileHash: 'a'.repeat(64) })),
+      ),
+    ).toBeUndefined();
+    // A-B-A inside one notice: three stretches, the first and last with the same weights.
+    const aba = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({
+          supplies: [
+            {
+              id: 'sup-app-a',
+              label: 'Appartamento A',
+              apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+              earlierApartments: [
+                { to: yearMonth('2026-01'), apartments: [{ apartmentId: 'apt-b', weight: 10000 }] },
+                {
+                  to: yearMonth('2026-02'),
+                  apartments: [
+                    { apartmentId: 'apt-b', weight: 5000 },
+                    { apartmentId: 'apt-c', weight: 5000 },
+                  ],
+                },
+              ],
+            },
+            {
+              id: 'sup-app-b',
+              label: 'Appartamento B',
+              apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+            },
+          ],
+          tenancies,
+        }),
+        ids(),
+      ),
+    );
+    expect(aba.instalments.map((i) => [i.apartmentId, i.coversFrom, i.coversTo, i.rata])).toEqual([
+      ['apt-b', '2026-01', '2026-01', 2519],
+      ['apt-b', '2026-02', '2026-02', 1260],
+      ['apt-c', '2026-02', '2026-02', 1259],
+      ['apt-b', '2026-03', '2026-04', 5037],
+      ['apt-l', '2026-01', '2026-04', 8471],
+    ]);
   });
 
   it('fails part-share and proposes nothing for a supply whose share rounds to zero', () => {

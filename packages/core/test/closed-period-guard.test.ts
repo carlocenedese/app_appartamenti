@@ -437,6 +437,27 @@ describe('closed period guard, second review', () => {
     await expect(write(store, 'supply', undefined, used, later, 'del')).rejects.toThrow(
       ClosedPeriodError,
     );
+    // Plan 22, decision 2: new weights from a month after the closed period pass; from a month
+    // inside it they are refused (what the period sees of the supply changes).
+    const dated = (to: string) => ({
+      ...used,
+      apartments: halves,
+      earlierApartments: [{ to, apartments: used.apartments }],
+    });
+    await expect(write(store, 'supply', dated('2026-05'), used, later, 'x')).rejects.toThrow(
+      ClosedPeriodError,
+    );
+    await write(store, 'supply', dated('2026-09'), used, later, 'x');
+  });
+
+  it('plan 22: beds from a month after the closed period pass, from inside it are refused', async () => {
+    const store = await closed();
+    const apt = await one(store, 'apartment', ApartmentSchema, 'apt');
+    const dated = (to: string) => ({ ...apt, posti: 2, earlierBeds: [{ to, posti: 1 }] });
+    await expect(write(store, 'apartment', dated('2026-02'), apt, later, 'x')).rejects.toThrow(
+      ClosedPeriodError,
+    );
+    await write(store, 'apartment', dated('2026-09'), apt, later, 'x');
   });
 
   it('J: the movement of a counted match and the class of a counted recovery are refused', async () => {

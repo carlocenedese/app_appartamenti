@@ -3,26 +3,40 @@
  * `condoDifferenceTo` is asked at creation. One `apartment.save` operation, nothing written while
  * `checkConsistency` reports a problem, nothing for the same request on the same state.
  */
-import { SettlementInputError, checkBeds } from './conguaglio';
+import { SettlementInputError, checkBeds, isPresent } from './conguaglio';
 import type { SettlementInputErrorCode } from './conguaglio';
 import { commitChange, writesBlocked } from './journal';
 import { ApartmentSchema, TenancySchema } from './model';
 import type { Apartment, Tenancy } from './model';
+import { addMonths } from './period';
 import type { YearMonth } from './period';
 import { isSafePath, loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
 import { compareText } from './text';
+import { bedsAt, datedChange } from './valid-from';
 
 type DataFields = Omit<Apartment, 'id' | 'v' | 'rev' | 'deleted'>;
-export type SaveApartmentInput = { id: string } & Partial<DataFields>;
+export type SaveApartmentInput = { id: string } & Partial<DataFields> & {
+    /**
+     * Plan 22: the month the new `posti` and `rooms` hold from («valido dal»); before it the old
+     * ones stay (`earlierBeds`). Without it the change holds from always, as before.
+     */
+    bedsValidFrom?: YearMonth;
+  };
 
 export type SaveApartmentResult =
   | { status: 'created' | 'updated'; operationId: string; apartmentId: string }
   | { status: 'unchanged'; apartmentId: string }
   | {
       status: 'refused';
-      reason: 'inconsistent-store' | 'missing-fields' | 'invalid-apartment' | 'needs-confirmation';
+      reason:
+        | 'inconsistent-store'
+        | 'missing-fields'
+        | 'invalid-apartment'
+        | 'needs-confirmation'
+        /** Plan 22: `bedsValidFrom` before the month of the last change (undo that first). */
+        | 'valid-from-order';
     }
   | ({ status: 'refused' } & BedsConflict);
 
@@ -46,9 +60,20 @@ export function bedsConflictOf(
   tenancies: readonly Tenancy[],
 ): BedsConflict | undefined {
   const own = tenancies.filter((t) => t.deleted !== true && t.apartmentId === apartment.id);
-  const { rooms } = apartment;
-  const lost = own.filter(
-    (t) => rooms !== undefined && t.room !== undefined && !rooms.includes(t.room),
+  // Every overlap begins in the first month of some stay or of some beds (plan 22).
+  const months = [
+    ...new Set([
+      ...own.map((t) => t.from),
+      ...(apartment.earlierBeds ?? []).map((e) => addMonths(e.to, 1)),
+    ]),
+  ].sort(compareText);
+  const lost = own.filter((t) =>
+    months.some((m) => {
+      const { rooms } = bedsAt(apartment, m);
+      return (
+        isPresent(t, m) && rooms !== undefined && t.room !== undefined && !rooms.includes(t.room)
+      );
+    }),
   );
   if (lost.length > 0) {
     return {
@@ -58,8 +83,7 @@ export function bedsConflictOf(
     };
   }
   try {
-    // Every overlap begins in the first month of some stay.
-    checkBeds(apartment, own, [...new Set(own.map((t) => t.from))].sort(compareText));
+    checkBeds(apartment, own, months);
     return undefined;
   } catch (error) {
     if (!(error instanceof SettlementInputError)) throw error;
@@ -99,7 +123,12 @@ export async function saveApartment(
   options: { confirmed?: boolean } = {},
 ): Promise<SaveApartmentResult> {
   const refuse = (
-    reason: 'inconsistent-store' | 'missing-fields' | 'invalid-apartment' | 'needs-confirmation',
+    reason:
+      | 'inconsistent-store'
+      | 'missing-fields'
+      | 'invalid-apartment'
+      | 'needs-confirmation'
+      | 'valid-from-order',
   ) => ({ status: 'refused', reason }) as const;
   if (await writesBlocked(store)) return refuse('inconsistent-store');
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.id) || !isSafePath(input.id)) {
@@ -114,13 +143,30 @@ export async function saveApartment(
     return refuse('invalid-apartment');
   }
   const live = before !== undefined && before.deleted !== true;
+  const { bedsValidFrom, ...fields } = input;
   const given: Partial<DataFields> = Object.fromEntries(
-    Object.entries(input).filter(([, v]) => v !== undefined),
+    Object.entries(fields).filter(([, v]) => v !== undefined),
   );
   const kept = Object.fromEntries(
     Object.entries(before ?? {}).filter(([key]) => key !== 'deleted'),
   ) as Partial<DataFields>;
-  const merged = { ...kept, ...given };
+  let merged = { ...kept, ...given };
+  // Plan 22: new beds from a month keep the old ones before it.
+  if (
+    live &&
+    bedsValidFrom !== undefined &&
+    (merged.posti !== before.posti || JSON.stringify(merged.rooms) !== JSON.stringify(before.rooms))
+  ) {
+    const earlierBeds = datedChange(
+      before.earlierBeds,
+      bedsValidFrom,
+      before.rooms === undefined
+        ? { posti: before.posti }
+        : { posti: before.posti, rooms: before.rooms },
+    );
+    if (earlierBeds === undefined) return refuse('valid-from-order');
+    merged = { ...merged, earlierBeds };
+  }
   if (!live && CREATE_FIELDS.some((field) => merged[field] === undefined)) {
     return refuse('missing-fields');
   }
@@ -142,7 +188,9 @@ export async function saveApartment(
   const after = parsed.data;
   if (
     live &&
-    (after.posti !== before.posti || JSON.stringify(after.rooms) !== JSON.stringify(before.rooms))
+    (after.posti !== before.posti ||
+      JSON.stringify(after.rooms) !== JSON.stringify(before.rooms) ||
+      JSON.stringify(after.earlierBeds) !== JSON.stringify(before.earlierBeds))
   ) {
     const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records;
     const conflict = bedsConflictOf(after, tenancies);

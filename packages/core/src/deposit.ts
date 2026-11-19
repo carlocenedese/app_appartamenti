@@ -7,7 +7,7 @@
 import { caparraReturn } from './caparra';
 import type { CaparraReturn } from './caparra';
 import { SettlementInputError, calcConguaglio, isPresent, settlementPeriodOf } from './conguaglio';
-import { tenantBalance } from './closing';
+import { flatPaymentsOf, rentOf, tenantBalance } from './closing';
 import { recoverableMovements } from './condominio';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
@@ -429,6 +429,8 @@ type Line = { label: string; amount: Cents };
  *   for a period other than the exit one, never offset by payments (C); for the exit period it is
  *   the «Conguaglio bollette» line (`exit.due`, with what is already paid on it apart, R302).
  * - The flat charge missing at the closing (H) and since (F11): «Forfait non incassato <periodo>».
+ * - The rent not collected of a period closed again after a reopening (plan 22): «Canone non
+ *   incassato <periodo>», outside the settlement.
  * - The supplementary (costs since the snapshot, K included): «Conguaglio supplementare
  *   <periodo>», or, once marked settled (D), only a later difference «… da saldare».
  * A reopened period of the tenant refuses (`period-reopened`, prudent: it can be closed again,
@@ -479,6 +481,7 @@ async function closedPeriodLines(
     const balance = tenantBalance(close, input.tenantId, {
       due: today?.due ?? 0,
       forfaitIncassato: today?.forfaitIncassato ?? 0,
+      payments: flatPaymentsOf(loaded.input.payments, input.tenantId, close.from, close.to),
     });
     if (balance.toCheck > 0) {
       toCheck.push({
@@ -492,8 +495,12 @@ async function closedPeriodLines(
     const supLeft = balance.supplementary - balance.supplementarySettled;
     const lost = marked ? 0 : Math.min(balance.lostFlat, Math.max(0, supLeft));
     const forfait = balance.fniLeft + lost;
+    // Plan 22, decision 1: the rent not collected of a period closed again (outside the
+    // settlement), less what user1 marked `saldato` or `non-recuperabile` (answer 2).
+    const rent = rentOf(close, loaded.input).get(input.tenantId)?.open ?? 0;
     const later: Line[] = [
       ...(forfait > 0 ? [{ label: `Forfait non incassato ${label}`, amount: cents(forfait) }] : []),
+      ...(rent > 0 ? [{ label: `Canone non incassato ${label}`, amount: cents(rent) }] : []),
       ...(supLeft - lost !== 0
         ? [
             {

@@ -233,6 +233,8 @@ export function settlementStateText(
     toCheck?: boolean;
     unsettled?: number;
     differences?: number;
+    /** Plan 22: the tenants with a rent not collected still open. */
+    rentMissing?: number;
   } = {
     changed: false,
     dataChanged: false,
@@ -265,6 +267,8 @@ export function settlementStateText(
     ...(flags.dataChanged ? ['dati cambiati dopo la chiusura, da controllare'] : []),
     // Answer F, fourth round A: more flat charge than was due, never a credit.
     ...(flags.toCheck === true ? ['forfait incassato in più, da verificare'] : []),
+    // Plan 22, answer 2: the rent not collected after a reopening, still open.
+    ...((flags.rentMissing ?? 0) > 0 ? [`canone non incassato ${String(flags.rentMissing)}`] : []),
   ];
   return `Conguaglio chiuso il ${date(closing.closedAt)}${steps.map((x) => `, ${x}`).join('')}${notes.length > 0 ? `: ${notes.join('; ')}` : ''}`;
 }
@@ -283,10 +287,18 @@ export function closingFlags(
   toCheck: boolean;
   unsettled: number;
   differences: number;
+  rentMissing: number;
 } {
   const { closing } = input;
   if (closing === undefined) {
-    return { changed: false, dataChanged: false, toCheck: false, unsettled: 0, differences: 0 };
+    return {
+      changed: false,
+      dataChanged: false,
+      toCheck: false,
+      unsettled: 0,
+      differences: 0,
+      rentMissing: 0,
+    };
   }
   let current = result;
   if (current === undefined) {
@@ -294,7 +306,14 @@ export function closingFlags(
       current = calcConguaglio(input);
     } catch (error) {
       if (!(error instanceof SettlementInputError)) throw error;
-      return { changed: true, dataChanged: true, toCheck: false, unsettled: 0, differences: 0 };
+      return {
+        changed: true,
+        dataChanged: true,
+        toCheck: false,
+        unsettled: 0,
+        differences: 0,
+        rentMissing: 0,
+      };
     }
   }
   // The one computation of the settlement (fifth round): the counts of the first row too.
@@ -305,6 +324,7 @@ export function closingFlags(
     toCheck: since.toCheck,
     unsettled: since.unsettled.length,
     differences: since.differences.length,
+    rentMissing: since.rentMissing,
   };
 }
 

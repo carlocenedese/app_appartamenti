@@ -135,7 +135,8 @@ async function bedsUndoBlockers(store: Store, changes: Operation['changes']): Pr
       was.data.deleted !== true &&
       is.success &&
       (was.data.posti !== is.data.posti ||
-        JSON.stringify(was.data.rooms) !== JSON.stringify(is.data.rooms))
+        JSON.stringify(was.data.rooms) !== JSON.stringify(is.data.rooms) ||
+        JSON.stringify(was.data.earlierBeds) !== JSON.stringify(is.data.earlierBeds))
       ? [was.data]
       : [];
   });

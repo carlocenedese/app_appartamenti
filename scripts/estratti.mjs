@@ -122,6 +122,8 @@ import {
   closePeriod,
   loadPeriodClosing,
   markPeriodSent,
+  markFlatChecked,
+  markRentMissing,
   markTenantSettled,
   reopenPeriod,
   equalShares,
@@ -283,6 +285,10 @@ export const MESSAGES = {
   'unknown-movement-in-close': 'Rifiutato: il movimento non esiste.',
   'missing-reason': 'Rifiutato: per riaprire il periodo serve il motivo (--motivo).',
   'no-supplementary': 'Rifiutato: l’inquilino non ha un conguaglio supplementare da saldare.',
+  'nothing-to-mark':
+    'Rifiutato: l’inquilino non ha un canone non incassato aperto per questo esito su questa chiusura.',
+  'nothing-to-check':
+    'Rifiutato: l’inquilino non ha forfait «da verificare» per questo esito su questa chiusura.',
   'forfait-to-check':
     'Da verificare: è stato incassato più forfait del dovuto in un periodo chiuso; non è un credito automatico.',
   'invalid-close-input': 'Rifiutato: data non valida.',
@@ -298,6 +304,8 @@ export const MESSAGES = {
     'Rifiutato: il conguaglio del periodo ora non si calcola, quindi non si sa se annullare la chiusura perderebbe un conguaglio supplementare: correggere prima i dati del periodo.',
   'already-closed':
     'Rifiutato: il periodo è già chiuso: per riaprirlo «riapri-periodo» con data e motivo.',
+  'rent-missing':
+    'Attenzione: il periodo riaperto è chiuso di nuovo senza un canone («rentMissing»): è la riga «Canone non incassato», trattenuta dalla caparra se è ancora in mano, altrimenti da richiedere (importi solo con --dettagli).',
   'cannot-close':
     'Rifiutato: il periodo non si chiude: mancano affitti o forfait, o ci sono voci in attesa («missing»; importi solo con --dettagli).',
   'period-settlement-error':
@@ -523,6 +531,7 @@ const OPTIONS = {
   escludi: { type: 'boolean' },
   dettagli: { type: 'boolean' },
   supplementare: { type: 'boolean' },
+  esito: { type: 'string' },
   file: { type: 'string' },
   id: { type: 'string' },
   nome: { type: 'string' },
@@ -680,8 +689,20 @@ const RECONCILE_KINDS = [
   'period.send',
   'period.settle',
   'period.reopen',
+  // Plan 22: the flat charge checked, and the dated weights of a supply («valido dal»).
+  'period.flat-check',
+  'period.rent-mark',
+  'supply.update',
 ];
 
+/** Plan 22: the outcomes of «forfait-verificato», Italian flag to the core's value. */
+const FLAT_OUTCOMES = { rimborso: 'rimborso', credito: 'credito', 'stessi-soldi': 'stessi-soldi' };
+/** Plan 22: the outcomes of «canone-non-incassato». */
+const RENT_OUTCOMES = {
+  richiesto: 'richiesto',
+  saldato: 'saldato',
+  'non-recuperabile': 'non-recuperabile',
+};
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
 const PAYABLE_STATES = ['da-pagare', 'in-scadenza', 'pagata', 'in-ritardo'];
 const PAYABLE_ITEM_KINDS = ['imu', 'condominio', 'tari', ...PayableKindSchema.options];
@@ -1597,6 +1618,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
           'rooms',
           v['posti-nomi']?.split(',').map((r) => r.trim()),
         ),
+        // Plan 22: new beds from a month («valido dal»), the old ones before it.
+        ...optional('bedsValidFrom', v.dal === undefined ? undefined : month(v.dal)),
       },
       who,
       clock,
@@ -3096,7 +3119,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
                   : {},
         );
       }
-      return result;
+      // Plan 22: the rent not collected of a reopened period closed again, as a warning.
+      if (result.rentMissing === undefined) return result;
+      return {
+        ...result,
+        rentMissing: result.rentMissing.map(({ amount, ...m }) => (details ? { ...m, amount } : m)),
+        warning: MESSAGES['rent-missing'],
+      };
     }
     const result = await loadPeriodClosing(store, query, day(clock().slice(0, 10)));
     if (result.status === 'refused') {
@@ -3123,13 +3152,40 @@ async function command(name, values, positionals, store, who, clock, newId) {
       changed: result.changed,
       dataChanged: result.dataChanged,
       tenants: result.tenants.map(
-        ({ delta, forfaitDelta, total, remaining, mainRemaining, forfaitPaid, toCheck, ...t }) => ({
+        ({
+          delta,
+          forfaitDelta,
+          total,
+          remaining,
+          mainRemaining,
+          forfaitPaid,
+          toCheck,
+          rentMissing,
+          rentAsked,
+          rentLost,
+          flatCredit,
+          ...t
+        }) => ({
           ...t,
           settled: settledIds.has(t.tenantId),
+          // Plan 22: the row «Canone non incassato» (amount only with --dettagli).
+          ...(rentMissing === 0 ? {} : { rentMissing: details ? rentMissing : true }),
+          ...(details && rentAsked !== 0 ? { rentAsked } : {}),
+          ...(details && rentLost !== 0 ? { rentLost } : {}),
           // F11: the flat charge no longer collected is a line of its own; fourth round A, B: the
           // supplementary computed once (`total`) and the flat charge «da verificare» (`toCheck`).
           ...(details
-            ? { delta, forfaitDelta, total, remaining, mainRemaining, forfaitPaid, toCheck }
+            ? {
+                delta,
+                forfaitDelta,
+                total,
+                remaining,
+                mainRemaining,
+                forfaitPaid,
+                toCheck,
+                // Plan 22: the flat charge checked as a credit, still to check.
+                flatCredit,
+              }
             : {}),
         }),
       ),
@@ -3199,6 +3255,46 @@ async function command(name, values, positionals, store, who, clock, newId) {
     return result;
   }
 
+  // Plan 22 (decision 3 and answer 2 of user1, 19 Nov 2026): the flat charge «da verificare»
+  // checked by user1, and the rent not collected marked, each with its outcome; the payment can
+  // still be corrected by hand. Ids only in the output.
+  if (name === 'forfait-verificato' || name === 'canone-non-incassato') {
+    need(values, 'appartamento', 'periodo', 'inquilino', 'data', 'esito');
+    const outcomes = name === 'forfait-verificato' ? FLAT_OUTCOMES : RENT_OUTCOMES;
+    if (positionals.length > 0 || !Object.hasOwn(outcomes, values.esito)) {
+      throw invalid('bad-arguments');
+    }
+    const result = await (name === 'forfait-verificato' ? markFlatChecked : markRentMissing)(
+      store,
+      {
+        apartmentId: values.appartamento,
+        periodLabel: values.periodo,
+        tenantId: values.inquilino,
+        on: day(values.data),
+        outcome: outcomes[values.esito],
+        ...optional('transactionId', values.movimento),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') {
+      const message = {
+        'unknown-tenant': 'unknown-tenant-in-close',
+        'unknown-movement': 'unknown-movement-in-close',
+        'nothing-to-check': 'nothing-to-check',
+        'nothing-to-mark': 'nothing-to-mark',
+        'invalid-input': 'invalid-close-input',
+      }[result.reason];
+      throw new Stop(
+        'rejected',
+        result.reason,
+        message === undefined ? {} : { message: MESSAGES[message] },
+      );
+    }
+    return result;
+  }
+
   // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
   // and the apartments it belongs to, `--appartamento` alone at 100% or `--ripartizione
   // apt-a:60;apt-b:40` (percentages); undone with annulla-riconciliazione. Ids only in the output.
@@ -3224,6 +3320,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       who,
       clock,
       newId,
+      // Plan 22: new weights of an existing supply from a month («valido dal»).
+      values.dal === undefined ? {} : { validFrom: month(values.dal) },
     );
     if (result.status === 'refused') {
       throw new Stop('rejected', result.reason, optional('supplyId', result.supplyId));
@@ -3428,6 +3526,8 @@ export const COMMAND_NAMES = [
   'conguaglio-supplementare',
   'invia-conguaglio',
   'conguaglio-saldato',
+  'forfait-verificato',
+  'canone-non-incassato',
   'riapri-periodo',
   'scegli-versione',
   'aiuto',
@@ -3548,9 +3648,12 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-assegna',
         'recupero',
         'conguaglio-saldato',
+        'forfait-verificato',
+        'canone-non-incassato',
       ],
       motivo: ['escludi', 'riapri-periodo'],
       supplementare: ['conguaglio-saldato'],
+      esito: ['forfait-verificato', 'canone-non-incassato'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: [
         'conferma',
@@ -3560,6 +3663,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'caparra-restituzione',
         'scheda-inquilino',
         'conguaglio-saldato',
+        'forfait-verificato',
+        'canone-non-incassato',
       ],
       giallo: ['soglie-consumi'],
       bolletta: ['consumi'],
@@ -3593,6 +3698,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'conguaglio-supplementare',
         'invia-conguaglio',
         'conguaglio-saldato',
+        'forfait-verificato',
+        'canone-non-incassato',
         'riapri-periodo',
       ],
       voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
@@ -3604,6 +3711,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'conguaglio-supplementare',
         'invia-conguaglio',
         'conguaglio-saldato',
+        'forfait-verificato',
+        'canone-non-incassato',
         'riapri-periodo',
       ],
       stato: ['scadenze', 'recupero'],
@@ -3656,6 +3765,8 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'recupero',
         'invia-conguaglio',
         'conguaglio-saldato',
+        'forfait-verificato',
+        'canone-non-incassato',
         'riapri-periodo',
       ],
       entro: ['scadenze', 'cruscotto'],
@@ -3674,7 +3785,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       scadenza: ['scadenza-nuova', 'scadenza-ripeti', 'rata-condominio'],
       'ogni-anno': ['scadenza-nuova'],
       'anno-riferimento': ['scadenza-nuova', 'scadenza-ripeti'],
-      dal: ['importa', 'contratto-canone', 'presenza'],
+      dal: ['importa', 'contratto-canone', 'presenza', 'appartamento', 'utenza'],
       al: ['importa', 'presenza'],
       posto: ['presenza'],
       affitto: ['presenza', 'subentro'],

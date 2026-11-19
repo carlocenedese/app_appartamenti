@@ -279,10 +279,78 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
       kind: 'text',
       value: 'Conguaglio provvisorio: voci in attesa 0',
     });
-    // A new closing waits for the flat charge (R5).
-    expect(await closePeriod(store, QUERY, 'p1', clock, ids('c2'))).toMatchObject({
+    // Plan 22, decision 1 (user1, 19 Nov 2026): the transfer bounced for the whole 480,00, rent
+    // included; the reopened period closes again with a warning and a row «Canone non incassato».
+    const closed = await closePeriod(store, QUERY, 'p1', clock, ids('c2'));
+    expect(closed).toMatchObject({
+      status: 'closed',
+      rentMissing: [{ tenantId: 't-a', month: '2025-10', amount: 45000 }],
+    });
+    const [record] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    // The flat charge goes to its own line (H), the rent stays out of the settlement (R4).
+    expect(record?.snapshot.tenants[0]).toMatchObject({ forfaitNonIncassato: 3000 });
+    const row = await loadPeriodClosing(store, QUERY, isoDate('2026-11-21'));
+    expect(row).toMatchObject({
+      status: 'closed',
+      tenants: [{ tenantId: 't-a', rentMissing: 45000 }],
+    });
+    const main = row.status === 'closed' ? row.tenants[0]?.mainRemaining : undefined;
+    // 90,00 of the bill less 330,00 of flat charge collected: the 30,00 missing is in the due.
+    expect(main).toBe(9000 - 33000);
+    // The rent paid since: the row goes away, nothing else changes.
+    await put(store, 'payment', payment('t-a', '2025-10', 45000, { id: 'pay-rent' }));
+    expect(await loadPeriodClosing(store, QUERY, isoDate('2026-11-21'))).toMatchObject({
+      tenants: [{ tenantId: 't-a', rentMissing: 0, mainRemaining: main }],
+    });
+  });
+
+  it('plan 22: the closing with a rent missing is undone like any other: reopened again', async () => {
+    const store = await setUp();
+    await closePeriod(store, QUERY, 'p1', clock, ids('c'));
+    await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-11-20', reason: 'Bonifico respinto' },
+      'p1',
+      clock,
+      ids('r'),
+    );
+    const [first] = (await loadAll(store, 'payment', PaymentSchema)).records;
+    if (first === undefined) throw new Error('payment');
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('payment', first.id),
+            before: first,
+            after: { ...first, rev: 2, deleted: true },
+          },
+        ],
+      },
+      clock,
+      ids('del'),
+    );
+    const closed = await closePeriod(store, QUERY, 'p1', clock, ids('c2'));
+    if (closed.status !== 'closed') throw new Error(closed.status);
+    expect(closed.rentMissing).toHaveLength(1);
+    await undoOperation(store, closed.operationId, 'p1', clock, ids('u'));
+    expect(await loadPeriodClosing(store, QUERY, isoDate('2026-11-21'))).toMatchObject({
+      status: 'reopened',
+    });
+  });
+
+  it('plan 22: a period never closed still refuses while a rent is missing', async () => {
+    const store = await setUp(MONTHS.slice(1));
+    expect(await closePeriod(store, QUERY, 'p1', clock, ids('c'))).toMatchObject({
       status: 'refused',
       reason: 'cannot-close',
+      missing: [
+        { kind: 'rent', month: '2025-10' },
+        { kind: 'forfait', month: '2025-10' },
+      ],
     });
   });
 
@@ -453,6 +521,87 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     expect((await closePeriod(store, QUERY, 'p1', clock, ids('e'))).status).toBe('refused');
     await put(store, 'match', match(december, 3000, { transactionDate: isoDate('2025-12-16') }));
     expect((await closePeriod(store, QUERY, 'p1', clock, ids('f'))).status).toBe('closed');
+  });
+
+  it('plan 22 (I1): the shared notice is read with the weights in force in the months of the period', async () => {
+    const supply = (extra: Record<string, unknown>) => ({
+      id: 'sup-a',
+      v: 1,
+      rev: 1,
+      label: 'UTENZA-A',
+      ...extra,
+    });
+    const refused = { status: 'refused', reason: 'tari-december-missing', month: '2025-12' };
+    // Joins the supply only from 2026-10, after the period: no December is waited for.
+    const joins = await setUp();
+    await put(
+      joins,
+      'supply',
+      supply({
+        apartments: [
+          { apartmentId: 'apt', weight: 5000 },
+          { apartmentId: 'apt-2', weight: 5000 },
+        ],
+        earlierApartments: [
+          { to: '2026-09', apartments: [{ apartmentId: 'apt-2', weight: 10000 }] },
+        ],
+      }),
+    );
+    expect((await closePeriod(joins, QUERY, 'p1', clock, ids('j'))).status).toBe('closed');
+    // Leaves the supply from 2027-01: in the period it is in, so December 2025 is waited for.
+    const leaves = await setUp();
+    await put(
+      leaves,
+      'supply',
+      supply({
+        apartments: [{ apartmentId: 'apt-2', weight: 10000 }],
+        earlierApartments: [
+          {
+            to: '2026-12',
+            apartments: [
+              { apartmentId: 'apt', weight: 5000 },
+              { apartmentId: 'apt-2', weight: 5000 },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(await closePeriod(leaves, QUERY, 'p1', clock, ids('l'))).toEqual(refused);
+    // Review I3: leaves from November 2025, before the December of the period: nothing waited for.
+    const early = await setUp();
+    await put(
+      early,
+      'supply',
+      supply({
+        apartments: [{ apartmentId: 'apt-2', weight: 10000 }],
+        earlierApartments: [
+          {
+            to: '2025-10',
+            apartments: [
+              { apartmentId: 'apt', weight: 5000 },
+              { apartmentId: 'apt-2', weight: 5000 },
+            ],
+          },
+        ],
+      }),
+    );
+    expect((await closePeriod(early, QUERY, 'p1', clock, ids('e'))).status).toBe('closed');
+    // Joins in December 2025: that December is waited for.
+    const december = await setUp();
+    await put(
+      december,
+      'supply',
+      supply({
+        apartments: [
+          { apartmentId: 'apt', weight: 5000 },
+          { apartmentId: 'apt-2', weight: 5000 },
+        ],
+        earlierApartments: [
+          { to: '2025-11', apartments: [{ apartmentId: 'apt-2', weight: 10000 }] },
+        ],
+      }),
+    );
+    expect(await closePeriod(december, QUERY, 'p1', clock, ids('d'))).toEqual(refused);
   });
 });
 
