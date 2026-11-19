@@ -14,12 +14,16 @@ import {
   loadDepositReturn,
   loadExcelInput,
   loadPeriodClosing,
+  markFlatChecked,
   markPeriodSent,
+  markRentMissing,
   markTenantSettled,
   recordPath,
   reopenPeriod,
   saveLegalRate,
+  readJournal,
   tenantBalance,
+  undoOperation,
 } from '../src/index';
 import type { PeriodClose, RecordKind } from '../src/index';
 import { isoDate } from '../src/period';
@@ -168,6 +172,418 @@ const paysLate = (store: MemoryStore, amount = 3000) =>
     payment('t-a', '2026-05', amount, { id: 'pay-late', date: isoDate('2026-12-05') }),
     later,
   );
+
+/** Plan 22, decision 1: reopened, the May transfer of 480,00 bounced (rent too), closed again. */
+const bounced = async () => {
+  const store = await setUp('2026-08', 0, '2026-09');
+  await reopenPeriod(
+    store,
+    { ...QUERY, on: '2026-11-20', reason: 'Bonifico di maggio respinto' },
+    'p1',
+    later,
+    ids('r'),
+  );
+  const may = (await loadAll(store, 'payment', PaymentSchema)).records.find(
+    (p) => p.forMonth === '2026-05',
+  );
+  if (may === undefined) throw new Error('payment');
+  await commitChange(
+    store,
+    {
+      profileId: 'p1',
+      kind: 'test.seed',
+      summary: 'x',
+      changes: [
+        {
+          path: recordPath('payment', may.id),
+          before: may,
+          after: { ...may, rev: 2, deleted: true },
+        },
+      ],
+    },
+    later,
+    ids('del'),
+  );
+  expect(await closePeriod(store, QUERY, 'p1', later, ids('c2'))).toMatchObject({
+    status: 'closed',
+    rentMissing: [{ tenantId: 't-a', month: '2026-05', amount: 45000 }],
+  });
+  return store;
+};
+
+describe('plan 22: rent not collected after a reopening (decision 1 of user1)', () => {
+  it('the deposit still held keeps «Canone non incassato» and «Forfait non incassato», once each', async () => {
+    const store = await bounced();
+    const lines = await statement(store);
+    expect(lines.filter((l) => l.label.includes('non incassato'))).toEqual([
+      { label: 'Forfait non incassato 2025-26', amount: -3000 },
+      { label: 'Canone non incassato 2025-26', amount: -45000 },
+    ]);
+    // The rent paid since: only the flat charge line is left.
+    await put(store, 'payment', payment('t-a', '2026-05', 45000, { id: 'pay-rent' }), later);
+    expect((await statement(store)).map((l) => l.label)).not.toContain(
+      'Canone non incassato 2025-26',
+    );
+  });
+
+  it('the deposit already returned: the rent is «da richiedere»', async () => {
+    const store = await bounced();
+    await put(store, 'payment', depositBack('2026-09-10'), later);
+    const r = await loadDepositReturn(store, {
+      apartmentId: 'apt',
+      tenantId: 't-a',
+      extraCharges: [],
+    });
+    expect(r).toMatchObject({ status: 'refused', reason: 'already-returned' });
+    expect(
+      r.status === 'refused' && r.reason === 'already-returned' ? r.toRequest : [],
+    ).toContainEqual({ label: 'Canone non incassato 2025-26', amount: -45000 });
+  });
+});
+
+describe('plan 22: the rent not collected marked by user1 (answer 2)', () => {
+  const mark = (
+    store: MemoryStore,
+    outcome: 'richiesto' | 'saldato' | 'non-recuperabile',
+    n: string,
+  ) =>
+    markRentMissing(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-10', outcome },
+      'p1',
+      later,
+      ids(`rent-${n}`),
+    );
+  const row = async (store: MemoryStore) => {
+    const c = await loadPeriodClosing(store, QUERY, isoDate('2027-05-02'));
+    if (c.status !== 'closed') throw new Error(c.status);
+    return c.tenants[0];
+  };
+  const rentLine = async (store: MemoryStore) =>
+    (await statement(store)).find((l) => l.label === 'Canone non incassato 2025-26');
+  const count = async (store: MemoryStore) => {
+    const d = await loadDashboard(store, { today: isoDate('2027-05-02'), settlements: [QUERY] });
+    return d.status === 'computed'
+      ? d.apartments[0]?.counts['conguaglio:canone-non-incassato']
+      : undefined;
+  };
+  const firstRow = async (store: MemoryStore) => {
+    const loaded = await loadExcelInput(store, QUERY);
+    if (loaded.status !== 'ok') throw new Error(loaded.reason);
+    return buildOwnersWorkbook(loaded.input).sheets[0]?.rows[0]?.[0];
+  };
+
+  it('«richiesto» only says it was asked: still open, withheld and counted', async () => {
+    const store = await bounced();
+    expect(await count(store)).toBe(1);
+    expect(await firstRow(store)).toMatchObject({
+      value: expect.stringMatching(/canone non incassato 1/) as unknown,
+    });
+    expect((await mark(store, 'richiesto', 'a')).status).toBe('saved');
+    expect(await row(store)).toMatchObject({ rentMissing: 45000, rentAsked: 45000, rentLost: 0 });
+    expect(await rentLine(store)).toEqual({
+      label: 'Canone non incassato 2025-26',
+      amount: -45000,
+    });
+    expect(await count(store)).toBe(1);
+    expect(await mark(store, 'richiesto', 'b')).toEqual({
+      status: 'refused',
+      reason: 'nothing-to-mark',
+    });
+  });
+
+  it('«saldato» closes the row: not withheld, not counted; the undo puts it back', async () => {
+    const store = await bounced();
+    const saved = await mark(store, 'saldato', 'a');
+    if (saved.status !== 'saved') throw new Error(saved.status);
+    expect(await row(store)).toMatchObject({ rentMissing: 0, rentLost: 0 });
+    expect(await rentLine(store)).toBeUndefined();
+    expect(await count(store)).toBeUndefined();
+    expect(await firstRow(store)).not.toMatchObject({
+      value: expect.stringMatching(/canone non incassato/) as unknown,
+    });
+    expect(await mark(store, 'saldato', 'b')).toEqual({
+      status: 'refused',
+      reason: 'nothing-to-mark',
+    });
+    await undoOperation(store, saved.operationId, 'p1', later, ids('u'));
+    expect((await row(store))?.rentMissing).toBe(45000);
+  });
+
+  it('«non recuperabile» leaves it with the owner: not withheld, not asked, shown as lost', async () => {
+    const store = await bounced();
+    expect((await mark(store, 'non-recuperabile', 'a')).status).toBe('saved');
+    expect(await row(store)).toMatchObject({ rentMissing: 0, rentLost: 45000 });
+    expect(await rentLine(store)).toBeUndefined();
+    // Kept in the history when the period is reopened and closed again.
+    await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-12-11', reason: 'Prova' },
+      'p1',
+      later,
+      ids('r3'),
+    );
+    expect((await closePeriod(store, QUERY, 'p1', later, ids('c3'))).status).toBe('closed');
+    expect(await row(store)).toMatchObject({ rentMissing: 0, rentLost: 45000 });
+  });
+
+  it('refuses a tenant not in the snapshot, an unknown movement and a period not closed', async () => {
+    const store = await bounced();
+    expect(
+      await markRentMissing(
+        store,
+        { ...QUERY, tenantId: 't-no', on: '2026-12-10', outcome: 'saldato' },
+        'p1',
+        later,
+        ids('x'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'unknown-tenant' });
+    expect(
+      await markRentMissing(
+        store,
+        { ...QUERY, tenantId: 't-a', on: '2026-12-10', outcome: 'saldato', transactionId: 'tx-no' },
+        'p1',
+        later,
+        ids('y'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'unknown-movement' });
+    await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-12-11', reason: 'Prova' },
+      'p1',
+      later,
+      ids('r4'),
+    );
+    expect(await mark(store, 'saldato', 'z')).toEqual({ status: 'refused', reason: 'not-closed' });
+  });
+});
+
+describe('plan 22: «forfait verificato» (decision 3 of user1)', () => {
+  /** Closing 2 settled, then the 30,00 of May paid again: 30,00 «da verificare» (R358). */
+  const extra = async () => {
+    const store = await reclosed();
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-01' },
+      'p1',
+      later,
+      ids('s'),
+    );
+    await paysLate(store);
+    return store;
+  };
+  const row = async (store: MemoryStore) => {
+    const c = await loadPeriodClosing(store, QUERY, isoDate('2027-05-02'));
+    if (c.status !== 'closed') throw new Error(c.status);
+    const t = c.tenants[0];
+    if (t === undefined) throw new Error('row');
+    return t;
+  };
+  const deposit = async (store: MemoryStore) => {
+    const r = await loadDepositReturn(store, {
+      apartmentId: 'apt',
+      tenantId: 't-a',
+      extraCharges: [],
+    });
+    if (r.status !== 'computed') throw new Error(r.reason);
+    return { total: r.statement.total, toCheck: r.toCheck };
+  };
+  let checks = 0;
+  const check = (
+    store: MemoryStore,
+    outcome: 'rimborso' | 'credito' | 'stessi-soldi',
+    extraFields: { transactionId?: string } = {},
+  ) =>
+    markFlatChecked(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-10', outcome, ...extraFields },
+      'p1',
+      later,
+      ids(`f-${outcome}-${String(++checks)}`),
+    );
+
+  for (const outcome of ['stessi-soldi', 'rimborso'] as const) {
+    it(`«${outcome}»: nothing left to check; what is owed and withheld does not change`, async () => {
+      const store = await extra();
+      const before = await row(store);
+      const held = await deposit(store);
+      expect([before.toCheck, before.action]).toEqual([3000, 'da-verificare']);
+      expect(held.toCheck).toEqual([
+        { label: 'Forfait incassato in più 2025-26 (da verificare)', amount: 3000 },
+      ]);
+      expect((await check(store, outcome)).status).toBe('saved');
+      const after = await row(store);
+      expect([after.toCheck, after.action]).toEqual([0, 'nessuna']);
+      expect([after.remaining, after.mainRemaining, after.total]).toEqual([
+        before.remaining,
+        before.mainRemaining,
+        before.total,
+      ]);
+      expect(await deposit(store)).toEqual({ total: held.total, toCheck: [] });
+      const [record] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+      expect(record?.flatChecked).toMatchObject([
+        { tenantId: 't-a', on: '2026-12-10', outcome, amount: 3000 },
+      ]);
+      // Answer 7: tied to the tenant's flat-charge payments of the period, the late one included.
+      expect(record?.flatChecked?.[0]?.payments).toContainEqual({ id: 'pay-late', amount: 3000 });
+      // Nothing left: refused.
+      expect(await check(store, outcome)).toEqual({
+        status: 'refused',
+        reason: 'nothing-to-check',
+      });
+    });
+  }
+
+  it('«credito» (answer 5): a credit of the tenant in the supplementary, back with the deposit', async () => {
+    const store = await extra();
+    const before = await row(store);
+    const held = await deposit(store);
+    expect((await check(store, 'credito')).status).toBe('saved');
+    const after = await row(store);
+    expect([after.toCheck, after.action, after.flatCredit]).toEqual([0, 'da-rimborsare', 3000]);
+    expect(after.remaining).toBe(before.remaining - 3000);
+    expect(after.total).toBe(before.total - 3000);
+    expect(after.mainRemaining).toBe(before.mainRemaining);
+    // The statement gives the 30,00 back to the tenant.
+    expect(await deposit(store)).toEqual({ total: held.total + 3000, toCheck: [] });
+    expect(await check(store, 'credito')).toEqual({
+      status: 'refused',
+      reason: 'nothing-to-check',
+    });
+    // Refunded and marked: nothing left.
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-20', supplementary: true },
+      'p1',
+      later,
+      ids('sup'),
+    );
+    expect((await row(store)).remaining).toBe(0);
+  });
+
+  it('answer 7: the payment taken away and a new one of the same amount is to check again', async () => {
+    const store = await extra();
+    await check(store, 'rimborso');
+    expect((await row(store)).toCheck).toBe(0);
+    const late = (await loadAll(store, 'payment', PaymentSchema)).records.find(
+      (p) => p.id === 'pay-late',
+    );
+    if (late === undefined) throw new Error('payment');
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('payment', late.id),
+            before: late,
+            after: { ...late, rev: 2, deleted: true },
+          },
+        ],
+      },
+      later,
+      ids('drop-late'),
+    );
+    await put(
+      store,
+      'payment',
+      payment('t-a', '2026-05', 3000, { id: 'pay-later', date: isoDate('2027-02-05') }),
+      later,
+    );
+    expect((await row(store)).toCheck).toBe(3000);
+  });
+
+  it('refuses without anything to check, an unknown tenant or movement, a period not closed', async () => {
+    const store = await reclosed();
+    expect(await check(store, 'rimborso')).toEqual({
+      status: 'refused',
+      reason: 'nothing-to-check',
+    });
+    await markTenantSettled(
+      store,
+      { ...QUERY, tenantId: 't-a', on: '2026-12-01' },
+      'p1',
+      later,
+      ids('s'),
+    );
+    await paysLate(store);
+    expect(await check(store, 'rimborso', { transactionId: 'tx-nessuno' })).toEqual({
+      status: 'refused',
+      reason: 'unknown-movement',
+    });
+    expect(
+      await markFlatChecked(
+        store,
+        { ...QUERY, tenantId: 't-no', on: '2026-12-10', outcome: 'rimborso' },
+        'p1',
+        later,
+        ids('x'),
+      ),
+    ).toEqual({ status: 'refused', reason: 'unknown-tenant' });
+    await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-12-11', reason: 'Prova' },
+      'p1',
+      later,
+      ids('r2'),
+    );
+    expect(await check(store, 'rimborso')).toEqual({ status: 'refused', reason: 'not-closed' });
+  });
+
+  it('the payment can still be corrected by hand: the check is capped, no phantom credit', async () => {
+    const store = await extra();
+    await check(store, 'stessi-soldi');
+    const settled = await row(store);
+    const late = (await loadAll(store, 'payment', PaymentSchema)).records.find(
+      (p) => p.id === 'pay-late',
+    );
+    if (late === undefined) throw new Error('payment');
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          {
+            path: recordPath('payment', late.id),
+            before: late,
+            after: { ...late, rev: 2, deleted: true },
+          },
+        ],
+      },
+      later,
+      ids('fix-late'),
+    );
+    const fixed = await row(store);
+    expect(fixed.toCheck).toBe(0);
+    // The payment taken away: the 30,00 is owed again, never a credit of the tenant.
+    expect(fixed.remaining).toBe(settled.remaining);
+  });
+
+  it('the undo takes the check back; reopened and closed again it is kept in the history', async () => {
+    const store = await extra();
+    const saved = await check(store, 'rimborso');
+    if (saved.status !== 'saved') throw new Error(saved.status);
+    await undoOperation(store, saved.operationId, 'p1', later, ids('u'));
+    expect((await row(store)).toCheck).toBe(3000);
+    await check(store, 'rimborso');
+    await reopenPeriod(
+      store,
+      { ...QUERY, on: '2026-12-11', reason: 'Prova' },
+      'p1',
+      later,
+      ids('r2'),
+    );
+    expect((await closePeriod(store, QUERY, 'p1', later, ids('c3'))).status).toBe('closed');
+    const [record] = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records;
+    expect(record?.history?.at(-1)?.flatChecked).toHaveLength(1);
+    expect((await row(store)).toCheck).toBe(0);
+    expect((await readJournal(store)).operations.map((o) => o.kind)).toContain('period.flat-check');
+  });
+});
 
 describe('deposit statement and closed periods (B4, F10)', () => {
   it('an older closed period not marked settled is withheld on its own line', async () => {

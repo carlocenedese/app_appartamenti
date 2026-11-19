@@ -53,12 +53,19 @@ const POINTERS: { [K in RecordKind]?: (r: Of<K>) => Pointer[] } = {
     ...at('apartmentId', 'apartment', [r.apartmentId]),
     ...at('tenantId', 'tenant', [r.tenantId]),
   ],
-  supply: (r) =>
-    at(
+  supply: (r) => [
+    ...at(
       'apartments',
       'apartment',
       r.apartments.map((a) => a.apartmentId),
     ),
+    // Plan 22: the apartments of the earlier weights («valido dal») too.
+    ...at(
+      'earlierApartments',
+      'apartment',
+      (r.earlierApartments ?? []).flatMap((e) => e.apartments.map((a) => a.apartmentId)),
+    ),
+  ],
   bill: (r) => at('apartmentId', 'apartment', [r.apartmentId]),
   payment: (r) => [
     ...at('apartmentId', 'apartment', [r.apartmentId]),
@@ -143,6 +150,23 @@ const POINTERS: { [K in RecordKind]?: (r: Of<K>) => Pointer[] } = {
       'settled.transactionId',
       'transaction',
       (r.settled ?? []).map((s) => s.transactionId),
+    ),
+    // Plan 22: the movements given with a supplementary settled, a flat charge checked or a rent
+    // marked.
+    ...at(
+      'supplementarySettled.transactionId',
+      'transaction',
+      (r.supplementarySettled ?? []).map((s) => s.transactionId),
+    ),
+    ...at(
+      'flatChecked.transactionId',
+      'transaction',
+      (r.flatChecked ?? []).map((f) => f.transactionId),
+    ),
+    ...at(
+      'rentMarks.transactionId',
+      'transaction',
+      (r.rentMarks ?? []).map((f) => f.transactionId),
     ),
   ],
 };

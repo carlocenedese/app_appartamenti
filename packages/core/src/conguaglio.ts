@@ -46,6 +46,7 @@ import type { Cents } from './money';
 import { annualitaRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
+import { bedsAt } from './valid-from';
 import { CALC_VERSION, PER_BED_CALC_VERSION } from './version';
 
 /** The cost categories of a settlement row: the bill categories, the TARI and the condominium. */
@@ -456,7 +457,8 @@ function bedsIn(
   present: Tenancy[],
   month: YearMonth,
 ): (string | undefined)[] {
-  const { rooms, posti } = apartment;
+  // Plan 22: the beds in force in the month («valido dal»).
+  const { rooms, posti } = bedsAt(apartment, month);
   if (rooms !== undefined) {
     for (const tenancy of present) {
       if (tenancy.room === undefined || !rooms.includes(tenancy.room)) {
@@ -971,6 +973,25 @@ export function calcConguaglioSupplementare(input: {
     tenants,
     unassignedDelta: cents(emptyBeds(input.current) - emptyBeds(input.snapshot)),
   };
+}
+
+/**
+ * Plan 22: the rent not collected per tenant and month over `months` (the `rent` part of `canClosePeriod`):
+ * the row «Canone non incassato» of a period closed again after a reopening. Read from today's
+ * payments, which a closed period keeps still: a new payment for the month takes it away.
+ */
+export function rentNotCollected(input: {
+  tenancies: Tenancy[];
+  payments: Payment[];
+  months: YearMonth[];
+}): Map<string, { month: YearMonth; amount: Cents }[]> {
+  const owed = new Map<string, { month: YearMonth; amount: Cents }[]>();
+  for (const m of canClosePeriod({ ...input, pending: [] }).missing) {
+    if (m.kind === 'rent') {
+      owed.set(m.tenantId, [...(owed.get(m.tenantId) ?? []), { month: m.month, amount: m.amount }]);
+    }
+  }
+  return owed;
 }
 
 export type CloseMissing =

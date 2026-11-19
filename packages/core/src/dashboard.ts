@@ -259,6 +259,8 @@ export async function loadDashboard(
           'conguaglio:forfait-da-verificare',
           since.tenants.filter((t) => t.toCheck > 0).length,
         );
+        // Plan 22, answer 2: a rent not collected after a reopening, still open.
+        add(apartmentId, 'conguaglio:canone-non-incassato', since.rentMissing);
       }
       add(apartmentId, 'conguaglio:voci-in-attesa', result.pending.length);
       if (result.unassigned !== 0) add(apartmentId, 'conguaglio:mesi-senza-inquilini');

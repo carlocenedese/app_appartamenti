@@ -41,6 +41,10 @@ const FINGERPRINTS: Record<number, string> = {
   // and forfaitNonIncassato of its snapshot, amount and flatCollected of a settled mark
   // (decided by user1, 18 Nov; recomputed in rounds 2 and 5).
   4: '83a0e7cf47dc02bad1581ab0795479dd8e12f8e7309e1c5c5d5edc053d7c2e55',
+  // Plan 22 (authorised by user1, 19 Nov 2026): earlierBeds of an apartment and earlierApartments
+  // of a supply («valido dal»), flatChecked and rentMarks of a periodClose (recomputed after the
+  // answers of user1, 19 Nov 2026; format 5 not released yet).
+  5: 'e3e769abede37dbfcd1a7cab7277ca2fb6a83a6a547ec9cf92ee38ec4d8cebee',
 };
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));

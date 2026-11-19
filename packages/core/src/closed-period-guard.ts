@@ -8,7 +8,7 @@
  * the period (they change the presences, rents or shares of the snapshot, answers A and B of
  * user1). The apartment itself (beds, start of the year, condominium settings) cannot change
  * while one of its periods is closed (answer B): those fields have no date, so a change reaches
- * every period. A movement and its class that back a match or a recovery of the period are
+ * every period; beds and weights with a start month (plan 22) are compared month by month. A movement and its class that back a match or a recovery of the period are
  * guarded too (answer J).
  *
  * Each guarded kind is compared through what the period sees of it (`viewIn`), so a change outside
@@ -19,13 +19,14 @@
 import { settlementPeriodOf } from './conguaglio';
 import type { Operation } from './journal';
 import { ApartmentSchema, ContractSchema, PeriodCloseSchema } from './model';
-import type { PeriodClose } from './model';
+import type { Apartment, PeriodClose, Supply } from './model';
 import { settlementPeriods } from './period';
 import type { YearMonth } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
 import { compareText } from './text';
 import { compareTimestamps } from './time';
+import { bedsOver, weightsOver } from './valid-from';
 
 /** Thrown, writing nothing, by a write that would change what a closed period counted (F5). */
 export class ClosedPeriodError extends Error {
@@ -199,13 +200,11 @@ async function viewIn(
   switch (kind) {
     case 'apartment':
       if (value.id !== close.apartmentId) break;
-      view = pick(value, [
-        'posti',
-        'rooms',
-        'annualitaStart',
-        'condominioStart',
-        'condoDifferenceTo',
-      ]);
+      view = {
+        ...pick(value, ['annualitaStart', 'condominioStart', 'condoDifferenceTo']),
+        // Plan 22: the beds in force in the months of the period («valido dal»).
+        beds: bedsOver(value as Pick<Apartment, 'posti' | 'rooms' | 'earlierBeds'>, from, to),
+      };
       break;
     case 'supply': {
       // Only a supply that a notice counted in the period is linked to (finding 2).
@@ -215,11 +214,26 @@ async function viewIn(
         linked = (await viewIn(ctx, 'instalment', notice, close)) !== undefined;
       }
       if (!linked) break;
-      const apartments = Array.isArray(value.apartments) ? (value.apartments as Json[]) : [];
+      // Plan 22: the weights in force in the months of the period («valido dal»).
+      const sorted = (rows: readonly Json[]) =>
+        [...rows].sort((a, b) => compareText(str(a.apartmentId), str(b.apartmentId)));
       view = {
-        apartments: [...apartments].sort((a, b) =>
-          compareText(str(a.apartmentId), str(b.apartmentId)),
-        ),
+        apartments: weightsOver(
+          {
+            apartments: Array.isArray(value.apartments)
+              ? (value.apartments as Supply['apartments'])
+              : [],
+            ...(Array.isArray(value.earlierApartments)
+              ? {
+                  earlierApartments: value.earlierApartments as NonNullable<
+                    Supply['earlierApartments']
+                  >,
+                }
+              : {}),
+          },
+          from,
+          to,
+        ).map((s) => ({ ...s, value: sorted(s.value) })),
       };
       break;
     }

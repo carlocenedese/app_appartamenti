@@ -757,6 +757,148 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     // ~20 CLI spawns in a row: Windows runners need more than the 5 s default.
   }, 60_000);
 
+  it('piano 22: posti nuovi «valido dal» dopo il periodo chiuso passano, dentro sono rifiutati', async () => {
+    await closable();
+    await cli('chiudi-periodo', ...args);
+    const inside = await cli(
+      'appartamento',
+      '--id',
+      'apt-x',
+      '--posti',
+      '2',
+      '--dal',
+      '2026-05',
+      '--modifica',
+    );
+    expect(inside.json.reason).toBe('closed-period');
+    const after = await cli(
+      'appartamento',
+      '--id',
+      'apt-x',
+      '--posti',
+      '2',
+      '--dal',
+      '2026-10',
+      '--modifica',
+    );
+    expect(after.code, after.out).toBe(0);
+    expect(after.json.status).toBe('updated');
+    const back = await cli(
+      'appartamento',
+      '--id',
+      'apt-x',
+      '--posti',
+      '3',
+      '--dal',
+      '2026-09',
+      '--modifica',
+    );
+    expect(back.json.reason).toBe('valid-from-order');
+  }, 60_000);
+
+  it('piano 22: forfait-verificato chiude il «da verificare» senza cambiare il dovuto; si annulla', async () => {
+    await closable();
+    await cli('chiudi-periodo', ...args);
+    await cli('riapri-periodo', ...args, '--data', '2026-11-20', '--motivo', 'Forfait di ottobre');
+    const store = new FsStore(dir);
+    const path = recordPath('payment', 'pay-2025-10');
+    const before = await store.readJson(path);
+    await commitChange(
+      store,
+      {
+        profileId: 'cli',
+        kind: 'test.seed',
+        summary: 'dati inventati',
+        changes: [{ path, before, after: { ...before, amount: 45000 } }],
+      },
+      () => ORA,
+      newId,
+    );
+    expect((await cli('chiudi-periodo', ...args)).code).toBe(0);
+    const tenant = ['--inquilino', 't-x', '--data', '2026-12-01'];
+    expect((await cli('conguaglio-saldato', ...args, ...tenant)).code).toBe(0);
+    const flat = ['forfait-verificato', ...args, ...tenant];
+    expect((await cli(...flat, '--esito', 'stessi-soldi')).json.reason).toBe('nothing-to-check');
+    await seed([
+      [
+        'payment',
+        {
+          id: 'pay-ott-dopo',
+          v: 1,
+          rev: 1,
+          apartmentId: 'apt-x',
+          tenantId: 't-x',
+          date: '2026-12-05',
+          amount: 3000,
+          confirmed: true,
+          kind: 'canone',
+          forMonth: '2025-10',
+          source: 'manual',
+        },
+      ],
+    ]);
+    const sup = async () => (await cli('conguaglio-supplementare', ...args, '--dettagli')).json;
+    const was = await sup();
+    expect(was.toCheck).toBe(true);
+    expect(was.tenants[0].toCheck).toBe(3000);
+    expect((await cli(...flat, '--esito', 'forse')).code).toBe(2);
+    const done = await cli(...flat, '--esito', 'stessi-soldi');
+    expect(done.code, done.out).toBe(0);
+    expect(done.json.status).toBe('saved');
+    const now = await sup();
+    expect(now).not.toHaveProperty('toCheck');
+    expect(now.tenants[0]).toMatchObject({ toCheck: 0, remaining: was.tenants[0].remaining });
+    const undo = await cli('annulla-riconciliazione', '--operazione', done.json.operationId);
+    expect(undo.code, undo.out).toBe(0);
+    expect((await sup()).tenants[0].toCheck).toBe(3000);
+  }, 60_000);
+
+  it('piano 22: riaperto per un bonifico respinto, si chiude di nuovo con «Canone non incassato»', async () => {
+    await closable();
+    await cli('chiudi-periodo', ...args);
+    await cli('riapri-periodo', ...args, '--data', '2026-11-20', '--motivo', 'Bonifico respinto');
+    const store = new FsStore(dir);
+    const path = recordPath('payment', 'pay-2025-10');
+    const before = await store.readJson(path);
+    await commitChange(
+      store,
+      {
+        profileId: 'cli',
+        kind: 'test.seed',
+        summary: 'dati inventati',
+        changes: [{ path, before, after: { ...before, rev: 2, deleted: true } }],
+      },
+      () => ORA,
+      newId,
+    );
+    const again = await cli('chiudi-periodo', ...args);
+    expect(again.code, again.out).toBe(0);
+    expect(again.json).toMatchObject({
+      status: 'closed',
+      rentMissing: [{ tenantId: 't-x', month: '2025-10' }],
+    });
+    expect(again.json.warning).toMatch(/Canone non incassato/);
+    expect(again.out).not.toMatch(/45000/);
+    const sup = await cli('conguaglio-supplementare', ...args, '--dettagli');
+    expect(sup.json.tenants[0]).toMatchObject({ tenantId: 't-x', rentMissing: 45000 });
+    // Answer 2 of user1: marked by hand.
+    const tenant = ['--inquilino', 't-x', '--data', '2026-12-01'];
+    expect((await cli('canone-non-incassato', ...args, ...tenant, '--esito', 'pagato')).code).toBe(
+      2,
+    );
+    const asked = await cli('canone-non-incassato', ...args, ...tenant, '--esito', 'richiesto');
+    expect(asked.code, asked.out).toBe(0);
+    const paid = await cli('canone-non-incassato', ...args, ...tenant, '--esito', 'saldato');
+    expect(paid.json.status).toBe('saved');
+    expect((await cli('conguaglio-supplementare', ...args)).json.tenants[0]).not.toHaveProperty(
+      'rentMissing',
+    );
+    const twice = await cli('canone-non-incassato', ...args, ...tenant, '--esito', 'saldato');
+    expect(twice.json.reason).toBe('nothing-to-mark');
+    const undo = await cli('annulla-riconciliazione', '--operazione', paid.json.operationId);
+    expect(undo.code, undo.out).toBe(0);
+  }, 60_000);
+
   it('F10: caparra già restituita, i conguagli chiusi non saldati sono «da richiedere»', async () => {
     await closable();
     await cli('chiudi-periodo', ...args);
