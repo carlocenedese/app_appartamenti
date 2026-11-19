@@ -15,7 +15,7 @@ Deciso da user1 il 19 novembre 2026; prevale sulla parte di R1 (sezione 42) che 
 - La quota di un mese si divide in parti uguali; i centesimi che avanzano vanno ai primi inquilini presenti nell'ordine dei posti (`Apartment.rooms`), senza `rooms` in ordine di `tenantId`.
 - La divisione della bolletta tra i mesi (in proporzione ai giorni, R340) non cambia: una bolletta a cavallo di un mese con inquilini e di un mese vuoto dà la quota del primo ai presenti e quella del secondo alla proprietà.
 - Affitto, interessi sulla caparra, `condoDifferenceTo` (con `owner` il conguaglio dell'anno prima resta alla proprietà e non si divide), recuperi delle spese straordinarie e ogni altra regola.
-- Campi `unassigned`, `unassignedByBucket`, `emptyBeds` dell'istantanea: restano e ora contano solo i mesi senza inquilini. Riga dell'Excel «Mesi senza inquilini» (prima «Posti vuoti (proprietà)») e codice del cruscotto `conguaglio:mesi-senza-inquilini` (prima `conguaglio:posti-vuoti`), risposta 3 di user1. Nessun cambio di schema, `DATA_FORMAT` resta 4, `CORE_VERSION` non sale (come R340).
+- Campi `unassigned`, `unassignedByBucket`, `emptyBeds` dell'istantanea: restano e ora contano solo i mesi senza inquilini. Riga dell'Excel «Mesi senza inquilini» (prima «Posti vuoti (proprietà)») e codice del cruscotto `conguaglio:mesi-senza-inquilini` (prima `conguaglio:posti-vuoti`), risposta 3 di user1. Nessun cambio di schema, `DATA_FORMAT` resta 4, `CORE_VERSION` resta 0.1.0; sale solo `CALC_VERSION` (R363).
 
 ## Passi
 
@@ -27,4 +27,4 @@ Deciso da user1 il 19 novembre 2026; prevale sulla parte di R1 (sezione 42) che 
 
 ## Effetto sui periodi chiusi
 
-Deciso da user1 il 19 novembre 2026 (risposta 1): un periodo già chiuso con la regola di prima la tiene, i posti vuoti restano alla proprietà e non nasce nessun conguaglio supplementare; un periodo riaperto è aperto e alla chiusura successiva usa la regola nuova. Da fare: il riconoscimento delle istantanee vecchie (in attesa della scelta del meccanismo, vedi R363).
+Deciso da user1 il 19 novembre 2026 (risposta 1): un periodo già chiuso con la regola di prima la tiene, i posti vuoti restano alla proprietà e non nasce nessun conguaglio supplementare; un periodo riaperto è aperto e alla chiusura successiva usa la regola nuova. Le istantanee vecchie si riconoscono da `engineVersion` 0.1.0 e si ricalcolano per posti; le nuove hanno `CALC_VERSION` 0.2.0 (R363). `CORE_VERSION` resta 0.1.0.

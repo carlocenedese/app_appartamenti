@@ -3,7 +3,7 @@
 // (conguaglio-condominio.test.ts) and the golden fixtures theirs (conguaglio-golden.test.ts).
 import { describe, expect, it } from 'vitest';
 import {
-  CORE_VERSION,
+  CALC_VERSION,
   ContractSchema,
   InstalmentSchema,
   SettlementInputError,
@@ -19,6 +19,7 @@ import {
   isoDate,
   rateCoverage,
   settlementPeriods,
+  splitOfClosing,
   yearMonth,
 } from '../src/index';
 import type { Bill, BillMatch, Instalment, Payment, Tenancy } from '../src/index';
@@ -107,7 +108,7 @@ describe('Step 1: values of the specification', () => {
       ['d', 9845, 9845],
     ]);
     expect(result.unassigned).toBe(0);
-    expect(result.engineVersion).toBe(CORE_VERSION);
+    expect(result.engineVersion).toBe(CALC_VERSION);
     expect(row(result, 'a').byCategory).toEqual({ elettricita: 9847 });
   });
 
@@ -414,6 +415,23 @@ describe('Step 2: review focus', () => {
         ['b', 4500],
       ]);
       expect(result.unassigned).toBe(0);
+      expect(result.engineVersion).toBe(CALC_VERSION);
+    });
+
+    it('R363: with split beds (a period closed before plan 21) 30,00 each and 30,00 to the owner', () => {
+      const luce = bill('luce', '2026-10-01', '2026-10-31', 9000);
+      const result = calc({
+        apartment: apartment({ posti: 3 }),
+        bills: [luce],
+        matches: [match(luce, 9000)],
+        tenancies: [tenancy('a', '2026-10', undefined), tenancy('b', '2026-10', undefined)],
+        split: splitOfClosing({ engineVersion: '0.1.0' }),
+      });
+      expect(result.tenants.map((t) => t.spese)).toEqual([3000, 3000]);
+      expect(result.unassigned).toBe(3000);
+      expect(result.engineVersion).toBe('0.1.0');
+      expect(splitOfClosing({ engineVersion: CALC_VERSION })).toBe('present');
+      expect(splitOfClosing(undefined)).toBe('present');
     });
 
     it('gives the leftover cents to the first tenants present in the order of the rooms', () => {

@@ -46,7 +46,7 @@ import type { Cents } from './money';
 import { annualitaRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
-import { CORE_VERSION } from './version';
+import { CALC_VERSION, PER_BED_CALC_VERSION } from './version';
 
 /** The cost categories of a settlement row: the bill categories, the TARI and the condominium. */
 export type CostCategory = Bill['category'] | Instalment['kind'];
@@ -102,7 +102,22 @@ export interface ConguaglioInput {
    * An `assumed` match stored before B1 is never paid either and gives the same reason.
    */
   unverified?: readonly { itemType: BillMatch['itemType']; itemId: string }[];
+  /**
+   * How a month's costs are split (plan 21, R363): `present` (default) among the tenants present;
+   * `beds` over the beds, empty ones to the owner, only to recompute a period closed before plan
+   * 21 (`splitOfClosing`).
+   */
+  split?: 'present' | 'beds';
 }
+
+/**
+ * The split of a period with this live closing (R363, decided by user1 on 19 Nov 2026): a snapshot
+ * of the calculation before plan 21 keeps the split over the beds; an open or reopened period
+ * (no live closing) and a later snapshot use the split among the tenants present.
+ */
+export const splitOfClosing = (
+  closing: { engineVersion: string } | undefined,
+): 'present' | 'beds' => (closing?.engineVersion === PER_BED_CALC_VERSION ? 'beds' : 'present');
 
 type Span = { from: YearMonth; to: YearMonth };
 
@@ -158,7 +173,7 @@ export interface ConguaglioWarning {
 }
 
 export interface ConguaglioResult {
-  /** `CORE_VERSION`, so that a snapshot taken at closing can be reproduced later. */
+  /** `CALC_VERSION` (`PER_BED_CALC_VERSION` with `split: 'beds'`), so a snapshot can be reproduced. */
   engineVersion: string;
   /** Every tenant present in the period, sorted by id. */
   tenants: TenantSettlement[];
@@ -605,17 +620,24 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   };
   // A month's amount over the tenants present, in the order of the beds (plan 21); a month with
   // nobody present stays with the owner. Months outside the period belong to another settlement.
+  const perBed = input.split === 'beds';
   const share = (month: YearMonth, amount: number, bucket: Bucket, category?: CostCategory) => {
     const occupants = beds.get(month);
     if (occupants === undefined || amount === 0) return;
-    const present = occupants.filter((tenantId) => tenantId !== undefined);
-    if (present.length === 0) {
+    // Per bed (before plan 21): every bed has a part, an empty one goes to the owner.
+    const parts = perBed ? occupants : occupants.filter((tenantId) => tenantId !== undefined);
+    if (parts.length === 0) {
       unassigned[bucket] += amount;
       return;
     }
-    equalSplit(cents(amount), present.length).forEach((part, i) => {
+    equalSplit(cents(amount), parts.length).forEach((part, i) => {
+      const tenantId = parts[i];
+      if (tenantId === undefined) {
+        unassigned[bucket] += part;
+        return;
+      }
       // Every tenant present has a tally: `tallies` holds all the tenancies of the period.
-      const tally = tallies.get(present[i] as string) as Tally;
+      const tally = tallies.get(tenantId) as Tally;
       tally[bucket] += part;
       if (category !== undefined) {
         tally.byCategory.set(category, (tally.byCategory.get(category) ?? 0) + part);
@@ -819,7 +841,7 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
   });
 
   return {
-    engineVersion: CORE_VERSION,
+    engineVersion: perBed ? PER_BED_CALC_VERSION : CALC_VERSION,
     tenants,
     unassigned: cents(
       unassigned.spese + unassigned.rata + unassigned.conguaglioPrec + unassigned.commissione,
