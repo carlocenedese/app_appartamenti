@@ -17,24 +17,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { FsStore } from '../packages/store-fs/src/fs-store.ts';
-import {
-  EXCEL_SHEETS,
-  ExcelInputError,
-  SettlementInputError,
-  YearSchema,
-  buildConguaglioWorkbook,
-  buildOwnersWorkbook,
-  buildTaxWorkbook,
-  calcConguaglio,
-  excelFilePath,
-  excelItems,
-  loadExcelInput,
-  loadTaxExport,
-  ownersFilePath,
-  ownersItems,
-  taxFilePath,
-  writeXlsx,
-} from '../packages/core/src/index.ts';
+import { YearSchema, conguaglioExcelCommand, taxExcelCommand } from '../packages/core/src/index.ts';
 import {
   Stop,
   checkDefaultFolders,
@@ -138,103 +121,25 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     let target = values.uscita === undefined ? undefined : outputPath(values.uscita, '.xlsx');
     if (target !== undefined && existsSync(target.file)) throw rejected('file-exists');
 
-    if (taxes) {
-      // Plan 10, R215: every live apartment and contract; names and codes stay in the file.
-      const loaded = await loadTaxExport(new FsStore(values.cartella));
-      if (loaded.status !== 'ok') throw rejected(loaded.reason);
-      if (target === undefined) {
-        const file = join(values.cartella, ...taxFilePath(values.tasse).split('/'));
-        target = { file, folder: dirname(file) };
-        checkDefaultFolders(values.cartella, file);
-        if (existsSync(file)) throw rejected('file-exists');
-      }
-      const workbook = buildTaxWorkbook(loaded);
-      if (values.uscita === undefined) mkdirSync(target.folder, { recursive: true });
-      writeNew(target.file, target.folder, writeXlsx(workbook), io);
-      return done(0, {
-        status: 'written',
-        year: values.tasse,
-        sheets: workbook.sheets.length,
-        apartments: loaded.apartments.length,
-        contracts: loaded.contracts.length,
-      });
-    }
-
-    let loaded;
-    try {
-      loaded = await loadExcelInput(new FsStore(values.cartella), {
-        apartmentId: values.appartamento,
-        periodLabel: values.periodo,
-      });
-    } catch (error) {
-      // E6: only the periods that cannot be built (a lease year not from day 1, period.ts); any
-      // other error stays a failure.
-      if (error instanceof RangeError && error.message.startsWith('Settlement periods are whole')) {
-        throw rejected('bad-periods');
-      }
-      throw error;
-    }
-    if (loaded.status !== 'ok') throw rejected(loaded.reason);
+    const store = new FsStore(values.cartella);
+    const prepared = taxes
+      ? await taxExcelCommand(store, { year: values.tasse })
+      : await conguaglioExcelCommand(store, {
+          apartmentId: values.appartamento,
+          periodLabel: values.periodo,
+          owners: values.proprietari === true,
+        });
     if (target === undefined) {
-      const file = join(
-        values.cartella,
-        ...(values.proprietari === true ? ownersFilePath : excelFilePath)(
-          loaded.input.apartment,
-          loaded.input.period,
-        ).split('/'),
-      );
+      const file = join(values.cartella, ...prepared.path.split('/'));
       target = { file, folder: dirname(file) };
       checkDefaultFolders(values.cartella, file);
       if (existsSync(file)) throw rejected('file-exists');
     }
-    const { file, folder } = target;
-    if (values.proprietari === true) {
-      // Plan 5b, R175: no tenancy is read, so no settlement refusal.
-      const owners = buildOwnersWorkbook(loaded.input);
-      if (values.uscita === undefined) mkdirSync(folder, { recursive: true });
-      writeNew(file, folder, writeXlsx(owners), io);
-      const items = ownersItems(loaded.input);
-      return done(0, {
-        status: 'written',
-        apartmentId: loaded.input.apartment.id,
-        period: loaded.input.period.label,
-        sheets: owners.sheets.length,
-        items: items.length,
-        pending: items.filter((i) =>
-          ['in-attesa', 'importo-diverso', 'duplicato'].includes(i.status),
-        ).length,
-      });
-    }
-    let workbook;
-    let result;
-    try {
-      result = calcConguaglio(loaded.input);
-      workbook = buildConguaglioWorkbook(loaded.input);
-    } catch (error) {
-      if (error instanceof ExcelInputError) {
-        throw rejected('missing-tenant', { tenantIds: error.tenantIds });
-      }
-      if (error instanceof SettlementInputError) {
-        // I5: the ids of the rates to correct (ids only, no amount).
-        throw rejected('settlement-input', {
-          code: error.code,
-          ...(error.instalmentIds === undefined ? {} : { instalmentIds: error.instalmentIds }),
-        });
-      }
-      throw error;
-    }
+    const { bytes, body } = prepared.build();
     // Only the default folder is created, and only once the file can be built.
-    if (values.uscita === undefined) mkdirSync(folder, { recursive: true });
-    writeNew(file, folder, writeXlsx(workbook), io);
-    return done(0, {
-      status: 'written',
-      apartmentId: loaded.input.apartment.id,
-      period: loaded.input.period.label,
-      sheets: EXCEL_SHEETS.length,
-      tenants: result.tenants.length,
-      items: excelItems(loaded.input, result).length,
-      pending: result.pending.length,
-    });
+    if (values.uscita === undefined) mkdirSync(target.folder, { recursive: true });
+    writeNew(target.file, target.folder, bytes, io);
+    return done(0, body);
   } catch (error) {
     if (error instanceof Stop) {
       return done(error.status === 'invalid' ? 2 : 1, {

@@ -56,12 +56,16 @@ const invalid = (): never => {
   throw new RangeError('Invalid zip');
 };
 
-/**
- * The entries of a zip, in the order of its central directory. Stored (0) and deflate (8) only;
- * sizes from the central directory; CRC checked. Throws a `RangeError` (constant message) for bytes
- * that are not such a zip, an encrypted or zip64 one, or a wrong size or CRC.
- */
-export function readZip(bytes: Uint8Array, inflateRaw: InflateRaw): ZipEntry[] {
+interface ZipItem {
+  path: string;
+  method: number;
+  crc: number;
+  size: number;
+  packed: Uint8Array;
+}
+
+/** The central directory of a zip with every check that comes before inflating. */
+function zipDirectory(bytes: Uint8Array): ZipItem[] {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const u16 = (at: number) => (at + 2 <= bytes.length ? v.getUint16(at, true) : invalid());
   const u32 = (at: number) => (at + 4 <= bytes.length ? v.getUint32(at, true) : invalid());
@@ -79,7 +83,7 @@ export function readZip(bytes: Uint8Array, inflateRaw: InflateRaw): ZipEntry[] {
   if (count > DOCX_LIMITS.entries) invalid();
   let total = 0;
   const decoder = new TextDecoder('utf-8', { fatal: true });
-  const entries: ZipEntry[] = [];
+  const items: ZipItem[] = [];
   for (let i = 0; i < count; i += 1) {
     if (u32(at) !== CENTRAL_HEADER) invalid();
     const flags = u16(at + 8);
@@ -103,7 +107,19 @@ export function readZip(bytes: Uint8Array, inflateRaw: InflateRaw): ZipEntry[] {
     if (u32(offset) !== LOCAL_HEADER) invalid();
     const start = offset + 30 + u16(offset + 26) + u16(offset + 28);
     if (start + packedSize > bytes.length) invalid();
-    const packed = bytes.subarray(start, start + packedSize);
+    items.push({ path, method, crc, size, packed: bytes.subarray(start, start + packedSize) });
+    at += 46 + nameLength + u16(at + 30) + u16(at + 32);
+  }
+  return items;
+}
+
+/**
+ * The entries of a zip, in the order of its central directory. Stored (0) and deflate (8) only;
+ * sizes from the central directory; CRC checked. Throws a `RangeError` (constant message) for bytes
+ * that are not such a zip, an encrypted or zip64 one, or a wrong size or CRC.
+ */
+export function readZip(bytes: Uint8Array, inflateRaw: InflateRaw): ZipEntry[] {
+  return zipDirectory(bytes).map(({ path, method, crc, size, packed }) => {
     let data = packed;
     if (method === 8) {
       try {
@@ -113,10 +129,40 @@ export function readZip(bytes: Uint8Array, inflateRaw: InflateRaw): ZipEntry[] {
       }
     }
     if (data.length !== size || crc32(data) !== crc) invalid();
-    entries.push({ path, data });
-    at += 46 + nameLength + u16(at + 30) + u16(at + 32);
+    return { path, data };
+  });
+}
+
+/**
+ * Plan 26, R404: inflates the deflated entries of `bytes` ahead with an asynchronous inflate (the
+ * webview only has `DecompressionStream`) and gives the synchronous `InflateRaw` that `readZip`
+ * takes for the same bytes. An entry that does not inflate, or bytes that are not a zip, are left
+ * to `readZip` to refuse.
+ */
+export async function inflateAhead(
+  bytes: Uint8Array,
+  inflate: (data: Uint8Array, maxOutputLength: number) => Promise<Uint8Array>,
+): Promise<InflateRaw> {
+  const inflated = new Map<number, Uint8Array>();
+  let items: ZipItem[] = [];
+  try {
+    items = zipDirectory(bytes);
+  } catch {
+    // readZip throws the same error.
   }
-  return entries;
+  for (const { method, size, packed } of items) {
+    if (method !== 8) continue;
+    try {
+      inflated.set(packed.byteOffset, await inflate(packed, Math.max(1, size)));
+    } catch {
+      // Left out: readZip refuses it.
+    }
+  }
+  return (data) => {
+    const done = inflated.get(data.byteOffset);
+    if (done === undefined) throw new RangeError('Not inflated');
+    return done;
+  };
 }
 
 function decodeXml(text: string): string {

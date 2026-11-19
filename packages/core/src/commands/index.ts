@@ -9,3 +9,4 @@ export * from './contracts';
 export * from './condo';
 export * from './bills';
 export * from './periods';
+export * from './documents';
