@@ -2,6 +2,8 @@
 // task 8): profilo, conto, importa, decidi, annulla. The core does the work; this file reads
 // the clock, makes the ids, opens the data folder with FsStore and reads the statement file
 // (read only, never copied) as a CSV (core reader) or an XLSX (`python -I -m bollette_pdf table`).
+// Plan 24 (R386): every command is a function of `packages/core/src/commands`, which the screens
+// of the app call too; here stay the options, the files, Python, the PDF moves and the printing.
 //
 // The output is one JSON line with a status, counts and ids: never a name, an IBAN, an amount, a
 // description or a path, unless `--dettagli` asks for the held rows. Every message is constant.
@@ -58,437 +60,109 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { FsStore, moveFileNoOverwrite } from '../packages/store-fs/src/fs-store.ts';
 import {
-  AccountSchema,
-  ApartmentSchema,
-  BillSchema,
-  InstalmentSchema,
-  BankProfileSchema,
-  CsvError,
   ExcludeReasonSchema,
   ISODateSchema,
-  StatementReadError,
   StatementTableSchema,
-  BankTransactionSchema,
   OutgoingKindSchema,
   TaxVoiceSchema,
-  TenantSchema,
   TransferPurposeSchema,
   TimestampSchema,
   YearMonthSchema,
   YearSchema,
-  cancelAutomaticClass,
-  cancelAutomaticPayment,
-  checkConsistency,
-  FileAccessError,
-  forkVersions,
-  ClosedPeriodError,
-  ClosingUndoError,
-  InconsistentRecordError,
-  NewerDataError,
-  resolveFork,
-  UnreadableRecordsError,
-  confirmIncome,
-  confirmMatch,
-  confirmOutgoing,
-  confirmTenantOutgoing,
-  confirmTransfer,
-  excludeMovement,
-  importStatement,
-  loadContractChecks,
-  loadRentYears,
-  loadAccountBalances,
-  loadImuRates,
-  loadCondo,
-  loadCondoEstimate,
-  loadContacts,
-  loadAll,
-  parseCsv,
   parseEuro,
-  readJournal,
-  recordManualTransfer,
-  repairDiverged,
-  resolveHeld,
-  runReconciliation,
-  saveAccount,
-  saveBankProfile,
-  saveApartment,
-  saveCondoDocument,
-  saveContact,
-  saveTenantRecovery,
-  saveSupply,
-  saveCondoInstalment,
-  saveSettings,
-  loadSettings,
-  closePeriod,
-  loadPeriodClosing,
-  markPeriodSent,
-  markFlatChecked,
-  markRentMissing,
-  markTenantSettled,
-  reopenPeriod,
   equalShares,
-  saveContract,
-  setContractRent,
-  saveTenancy,
-  endTenancy,
-  recordRoomSwap,
-  recordTakeover,
-  loadContractStatus,
-  loadDepositReturn,
-  saveLegalRate,
-  confirmTaxDiscrepancy,
-  saveTenantCard,
-  saveConsumptionSettings,
   billFileMove,
-  loadConsumption,
-  saveTenant,
-  setImuYear,
-  setRentYear,
-  assignImuF24,
-  assignTaxPayment,
-  copyPreviousTaxYear,
-  loadTaxTable,
-  setTaxEstimate,
   PayableKindSchema,
-  loadScadenzario,
-  repeatPayable,
-  savePayable,
-  setPayablePaid,
-  undoBlockedBy,
-  undoDependents,
-  countByType,
-  referenceProblems,
-  undoImport,
-  undoOperation,
-  ExtractionResultSchema,
-  hashBytes,
-  importBill,
-  loadDashboard,
-  undoBillImport,
   DATA_FORMAT,
-  PeriodCloseSchema,
-  isLiveClose,
-  closeMarks,
-  formatEuro,
   WORKSPACE_PATH,
   findWorkspace,
   raiseDataFormat,
+  CommandStop,
+  COMMAND_MESSAGES,
+  stopBody,
+  commandRefusal,
+  FAILED_BODY,
+  closedPeriodStates,
+  changedClosedPeriods,
+  saveBankProfileCommand,
+  saveAccountCommand,
+  importTargetOf,
+  statementCsvTable,
+  importStatementCommand,
+  resolveHeldCommand,
+  undoImportCommand,
+  saveTenantCommand,
+  saveTenantCardCommand,
+  reconcileCommand,
+  confirmOutgoingCommand,
+  cancelOutgoingCommand,
+  confirmTenantOutgoingCommand,
+  confirmTransferCommand,
+  manualTransferCommand,
+  balancesCommand,
+  confirmMatchCommand,
+  confirmIncomeCommand,
+  undoOperationCommand,
+  referencesCommand,
+  cancelPaymentCommand,
+  excludeMovementCommand,
+  repairCommand,
+  chooseVersionCommand,
+  setImuYearCommand,
+  assignImuF24Command,
+  imuRatesCommand,
+  setTaxEstimateCommand,
+  copyTaxYearCommand,
+  assignTaxCommand,
+  confirmTaxCommand,
+  taxTableCommand,
+  payablesCommand,
+  savePayableCommand,
+  repeatPayableCommand,
+  payablePaidCommand,
+  saveContractCommand,
+  setContractRentCommand,
+  setRentYearCommand,
+  contractsCommand,
+  saveTenancyCommand,
+  endTenancyCommand,
+  takeoverCommand,
+  roomSwapCommand,
+  contractStatusCommand,
+  saveLegalRateCommand,
+  depositReturnCommand,
+  saveApartmentCommand,
+  saveCondoDocumentCommand,
+  saveRecoveryCommand,
+  condoCommand,
+  condoEstimateCommand,
+  saveContactCommand,
+  contactsCommand,
+  saveConsumptionSettingsCommand,
+  consumptionCommand,
+  billReadingOf,
+  refuseRegisteredBill,
+  importBillCommand,
+  undoBillCommand,
+  dashboardCommand,
+  saveCondoInstalmentCommand,
+  settingsCommand,
+  closePeriodCommand,
+  periodClosingCommand,
+  markPeriodSentCommand,
+  markTenantSettledCommand,
+  reopenPeriodCommand,
+  markFlatCheckedCommand,
+  markRentMissingCommand,
+  saveSupplyCommand,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const PYTHON_TIMEOUT_MS = 60_000;
 
-export const MESSAGES = {
-  'bad-arguments':
-    'Argomenti non validi: vedere «pnpm estratti <comando> --help» (comandi: «pnpm estratti --help»).',
-  'unknown-command': 'Comando sconosciuto: l’elenco dei comandi è in «pnpm estratti --help».',
-  'annualita-not-first-day':
-    'Argomenti non validi: l’annualità comincia il giorno 1 di un mese (per esempio --annualita 10-01), perché i periodi di conguaglio sono a mesi interi.',
-  'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
-  'bad-file': 'Il file non esiste, non si può leggere o è troppo grande.',
-  'bad-profile': 'Il profilo della banca non è valido.',
-  'unreadable-statement': 'L’estratto non si può leggere: file non valido o troppo grande.',
-  'no-python': 'Impossibile leggere l’XLSX: interprete Python non utilizzabile.',
-  'already-imported': 'Questo estratto è già stato importato.',
-  'unknown-apartment': 'Rifiutato: appartamento sconosciuto.',
-  'invalid-kind': 'Rifiutato: tipo non ammesso per un’uscita verso un inquilino.',
-  'rule-conflict-dates':
-    'Rifiutato: una regola in conflitto comincia il giorno del movimento o dopo; confermare «solo questa volta».',
-  'unknown-bank-profile': 'Rifiutato: profilo della banca sconosciuto.',
-  'bad-iban': 'Rifiutato: IBAN non valido.',
-  'iban-in-use': 'Rifiutato: IBAN già usato da un altro conto.',
-  'unknown-account': 'Rifiutato: conto sconosciuto.',
-  'wrong-profile': 'Rifiutato: il profilo non è quello del conto.',
-  'wrong-account': 'Rifiutato: il conto dell’estratto non è quello indicato.',
-  'bad-declared-account': 'Rifiutato: il conto scritto nell’estratto è vuoto.',
-  'masked-account': 'Rifiutato: il conto scritto nell’estratto è mascherato.',
-  'needs-period': 'Rifiutato: serve il periodo (--dal e --al).',
-  'period-mismatch': 'Rifiutato: il periodo indicato non è quello dell’estratto.',
-  'row-outside-period': 'Rifiutato: una riga è fuori dal periodo.',
-  'not-decidable': 'Rifiutato: estratto sconosciuto, o riga non da decidere o già decisa.',
-  'no-import': 'Rifiutato: nessuna importazione da annullare per questo estratto.',
-  'shared-transactions': 'Rifiutato: un altro estratto elenca gli stessi movimenti.',
-  'held-duplicates': 'Rifiutato: un altro estratto ha righe da rivedere che ne dipendono.',
-  'dependent-payments': 'Rifiutato: dei pagamenti dipendono dai movimenti di questo estratto.',
-  'dependent-records':
-    'Rifiutato: abbinamenti o classificazioni dipendono dai movimenti di questo estratto.',
-  'later-changes': 'Rifiutato: dopo l’importazione ci sono state altre modifiche.',
-  'journal-not-aligned': 'Rifiutato: il registro non è riallineato con i dati.',
-  'inconsistent-store':
-    'Rifiutato: i dati non sono come li lascia il registro: eseguire «pnpm estratti ripara».',
-  'unknown-proposal': 'Rifiutato: proposta sconosciuta o già confermata.',
-  'month-outside-presence':
-    'Attenzione: il mese del canone è fuori dalla presenza dell’inquilino. Registrato; controllare il mese.',
-  'month-already-paid':
-    'Attenzione: per questo mese c’è già un altro canone confermato dell’inquilino. Registrato; controllare il mese.',
-  'invalid-shared-notice':
-    'Un avviso comune (TARI) non si può abbinare: se è stato registrato prima del 18 novembre 2026, annullarlo con «annulla-bolletta» e registrarlo di nuovo con «bolletta».',
-  'already-recorded':
-    'Già registrato, nessuna modifica: per registrarne un secondo uguale usare --id.',
-  'stale-proposal':
-    "Rifiutato: la situazione è cambiata dopo un'altra conferma (il movimento può essere diventato automatico): rilanciare riconcilia e scegliere dalla lista nuova.",
-  'tenant-not-allowed': 'Rifiutato: inquilino non ammesso per questa proposta.',
-  'empty-parts': 'Rifiutato: nessuna parte, o una parte senza importo positivo.',
-  'sum-mismatch': 'Rifiutato: la somma delle parti non è l’importo del movimento.',
-  'no-presence': 'Rifiutato: l’inquilino non ha una presenza nell’appartamento del conto.',
-  'repair-refused':
-    'Non riparato: il dato sul disco non è uno stato da cui parte il registro. Se è biforcato, scegliere con «scegli-versione»; altrimenti attendere che Dropbox finisca la sincronizzazione e riprovare.',
-  'newer-data': 'Rifiutato: dati scritti da una versione più nuova dell’app: aggiornare l’app.',
-  'unreadable-records':
-    'Rifiutato: alcuni dati non si possono usare (rovinati, di un’altra versione, biforcati o non leggibili): vedere «paths».',
-  'file-access':
-    'Rifiutato: un file non si può usare ora (aperto in un altro programma, permessi, Dropbox): chiuderlo e riprovare.',
-  'inconsistent-record':
-    'Rifiutato: il dato non è come dice il registro: «ripara», o «scegli-versione» se è stato modificato in due posti.',
-  'not-forked':
-    'Rifiutato: il file non ha due versioni da scegliere, o l’operazione non è una di quelle.',
-  'not-reconcile-operation':
-    'Rifiutato: si annullano solo le operazioni della riconciliazione (incassi, esclusioni, abbinamenti, uscite, giroconti, IMU, contratti, appartamenti, condominio, scadenze, tasse, presenze, rubrica).',
-  'unknown-payment': 'Rifiutato: pagamento sconosciuto o già annullato.',
-  'not-automatic': 'Rifiutato: non è un pagamento automatico di una riconciliazione.',
-  'unknown-operation': 'Rifiutato: operazione sconosciuta.',
-  'already-undone': 'Rifiutato: l’operazione è già stata annullata.',
-  'has-dependents': 'Rifiutato: operazioni successive dipendono da questa: annullarle prima.',
-  // Review of 18 Nov 2026 (annullo, U8): the creation of an apartment, a rule, a stay, an account...
-  'record-has-dependents':
-    'Rifiutato: dei record dipendono da ciò che questa operazione ha creato (conteggi per tipo in «counts»): annullarli prima.',
-  'rooms-in-use':
-    'Rifiutato: i posti («rooms») sono usati da presenze («tenancyIds»), anche passate: aggiungere il posto nuovo, spostare le presenze, poi togliere il vecchio.',
-  'apartment-unknown-room':
-    'Rifiutato: una presenza («tenancyIds») non indica un posto dell’appartamento: indicarlo prima di cambiare i posti.',
-  'apartment-beds-conflict':
-    'Rifiutato: con questi posti le presenze non entrano più («code», dal mese «month»).',
-  'tenancy-in-use':
-    'Rifiutato: la presenza ha pagamenti, recuperi o un contratto collegati («recordIds»): per un altro inquilino o appartamento creare una presenza nuova.',
-  'no-references': 'Nessun riferimento pendente.',
-  'label-in-use':
-    'Rifiutato: un’utenza con questa etichetta esiste già con altri appartamenti o quote («supplyId»).',
-  'missing-condominio-start':
-    'Rifiutato: l’appartamento non ha l’inizio dell’esercizio del condominio dal giorno 1 (appartamento --esercizio-condominio MM-01).',
-  'invalid-instalment':
-    'Rifiutato: rata non valida: esercizio AAAA-AA, rata n/N con N divisore di 12, importi e scadenza.',
-  'instalment-in-use':
-    'Rifiutato: la rata ha abbinamenti o recuperi («recordIds»): annullarli prima di cambiarla.',
-  'instalment-id-collision':
-    'Rifiutato: l’identificativo è di una rata TARI o di un altro appartamento.',
-  'owner-share-differs':
-    'Attenzione: le rate dell’esercizio non hanno la stessa quota della proprietà o lo stesso numero di rate («instalmentIds»): il conguaglio le rifiuta finché non si corregge.',
-  'invalid-workspace-settings': 'Rifiutato: impostazione non valida.',
-  'closing-changed':
-    'Rifiutato: dopo la chiusura sono cambiati costi o dati del periodo, e annullarla perderebbe il conguaglio supplementare. Due vie: tenere la chiusura e usare «conguaglio-supplementare»; oppure riaprire il periodo con il motivo («riapri-periodo»), che tiene l’istantanea nello storico.',
-  'reopen-changed':
-    'Rifiutato: dopo la riapertura sono cambiati costi o dati del periodo: annullarla chiuderebbe il periodo senza un’istantanea nuova. Chiudere di nuovo con «chiudi-periodo».',
-  'not-closed': 'Rifiutato: il periodo non è chiuso (mai chiuso, o riaperto).',
-  'unknown-tenant-in-close':
-    'Rifiutato: l’inquilino non è nell’istantanea della chiusura del periodo.',
-  'unknown-movement-in-close': 'Rifiutato: il movimento non esiste.',
-  'missing-reason': 'Rifiutato: per riaprire il periodo serve il motivo (--motivo).',
-  'no-supplementary': 'Rifiutato: l’inquilino non ha un conguaglio supplementare da saldare.',
-  'nothing-to-mark':
-    'Rifiutato: l’inquilino non ha un canone non incassato aperto per questo esito su questa chiusura.',
-  'nothing-to-check':
-    'Rifiutato: l’inquilino non ha forfait «da verificare» per questo esito su questa chiusura.',
-  'forfait-to-check':
-    'Da verificare: è stato incassato più forfait del dovuto in un periodo chiuso; non è un credito automatico.',
-  'invalid-close-input': 'Rifiutato: data non valida.',
-  'period-reopened':
-    'Rifiutato: un periodo di conguaglio dell’inquilino è riaperto: chiuderlo di nuovo prima del prospetto della caparra.',
-  'instalment-esercizio-format':
-    'Rifiutato: una rata vuole l’esercizio nella forma 2026-27 (il conguaglio divide solo questa forma).',
-  'tari-december-missing':
-    'Rifiutato: l’appartamento è nell’avviso TARI comune e il periodo si chiude solo dopo l’addebito dell’avviso TARI del dicembre che sta dentro il periodo («month», R3): registrarlo e abbinarlo, poi chiudere.',
-  'closed-period-changed':
-    'Attenzione: questa scrittura cambia un periodo di conguaglio già chiuso («closedPeriods»): serve un conguaglio supplementare (conguaglio-supplementare).',
-  'closing-unknown':
-    'Rifiutato: il conguaglio del periodo ora non si calcola, quindi non si sa se annullare la chiusura perderebbe un conguaglio supplementare: correggere prima i dati del periodo.',
-  'already-closed':
-    'Rifiutato: il periodo è già chiuso: per riaprirlo «riapri-periodo» con data e motivo.',
-  'rent-missing':
-    'Attenzione: il periodo riaperto è chiuso di nuovo senza un canone («rentMissing»): è la riga «Canone non incassato», trattenuta dalla caparra se è ancora in mano, altrimenti da richiedere (importi solo con --dettagli).',
-  'cannot-close':
-    'Rifiutato: il periodo non si chiude: mancano affitti o forfait, o ci sono voci in attesa («missing»; importi solo con --dettagli).',
-  'period-settlement-error':
-    'Rifiutato: il conguaglio del periodo non si può calcolare («code»): correggere i dati, poi riprovare.',
-  'unknown-period': 'Rifiutato: periodo di conguaglio sconosciuto per l’appartamento.',
-  'ambiguous-period-label':
-    'Rifiutato: due contratti danno periodi diversi con la stessa etichetta.',
-  'invalid-supply':
-    'Rifiutato: utenza non valida: etichetta vuota, o le quote degli appartamenti non fanno 100%.',
-  'class-has-dependents':
-    'Rifiutato: la classificazione automatica del movimento ha un recupero, un pagamento di tasse o una scadenza pagata: decidere prima se vale la bolletta o il recupero.',
-  'movement-has-dependents':
-    'Rifiutato: dei record dipendono da questo movimento: annullarli prima.',
-  'unknown-transaction': 'Rifiutato: movimento sconosciuto o cancellato.',
-  'already-classified': 'Rifiutato: il movimento è già escluso o classificato: annullarlo prima.',
-  'unknown-item': 'Rifiutato: bolletta o rata sconosciuta o cancellata.',
-  'transaction-used': 'Rifiutato: il movimento è escluso, già pagato o classificato a mano.',
-  'duplicate-part': 'Rifiutato: la stessa parte compare due volte.',
-  'invalid-group': 'Rifiutato: l’avviso comune della rata non è valido.',
-  'invalid-matches': 'Rifiutato: le somme dell’abbinamento non tornano.',
-  'unknown-class': 'Rifiutato: il movimento non ha una classificazione.',
-  'class-not-automatic': 'Rifiutato: non è una classificazione automatica di una riconciliazione.',
-  'f24-not-tasse': 'Rifiutato: un F24 va nella categoria «tasse».',
-  'f24-not-outgoing': 'Rifiutato: un F24 è solo un’uscita.',
-  'leg-not-allowed': 'Rifiutato: il movimento indicato non è una gamba di questo giroconto.',
-  'same-account': 'Rifiutato: i due conti sono lo stesso conto.',
-  'invalid-amount': 'Rifiutato: l’importo deve essere positivo.',
-  'bad-rates': 'Rifiutato: le rate vanno numerate da 1 senza buchi, con importi positivi.',
-  'rates-mismatch':
-    'Rifiutato: un altro appartamento dello stesso gruppo e anno ha un altro numero di rate.',
-  'not-imu-candidate':
-    'Rifiutato: il movimento non è un F24 da assegnare (proposta F24 o F24 da ripartire del conto).',
-  'unknown-rate': 'Rifiutato: nessun appartamento del gruppo ha questa rata in questo anno.',
-  'payer-not-in-group': 'Rifiutato: l’appartamento del conto non è nel gruppo in questo anno.',
-  'rate-already-paid': 'Rifiutato: un altro F24 è già assegnato a questa rata.',
-  'imu-has-assignments':
-    'Rifiutato: un F24 è assegnato a una rata IMU che cambierebbe: annullare prima l’assegnazione.',
-  'imu-to-reconcile': 'Rata IMU da riconciliare: controllare gli importi attesi (imu-atteso).',
-  'unknown-tenancy': 'Rifiutato: una presenza indicata non esiste o è di un altro appartamento.',
-  'unknown-deposit':
-    'Rifiutato: una caparra indicata non è un pagamento «caparra» di questo appartamento.',
-  'rent-outside-contract':
-    'Rifiutato: le nuove date lasciano fuori una voce del canone già scritta.',
-  'unknown-contract': 'Rifiutato: contratto sconosciuto o cancellato.',
-  'invalid-contract': 'Rifiutato: i dati del contratto non sono validi.',
-  'month-outside-contract': 'Rifiutato: il mese è fuori dalle date del contratto.',
-  'bad-amount': 'Rifiutato: il canone deve essere positivo e l’acconto non negativo.',
-  'rent-differs':
-    'Canone del contratto diverso dal totale delle presenze: controllare il contratto o le presenze.',
-  'cedolare-estimate': 'Cedolare stimata: da confermare, non è un pagamento.',
-  'contract-overlap':
-    'Due contratti vivi dello stesso appartamento hanno mesi in comune: controllare le date.',
-  'unknown-payable': 'Rifiutato: scadenza sconosciuta o annullata.',
-  'not-repeating': 'Rifiutato: la scadenza non è segnata «ogni anno».',
-  'already-repeated': 'Rifiutato: la scadenza ha già la voce successiva.',
-  'already-paid': 'Rifiutato: la scadenza è già segnata pagata: annullare prima.',
-  'transaction-not-classified':
-    'Rifiutato: il movimento non ha una classificazione confermata a mano (esclusioni escluse).',
-  'payable-linked': 'Rifiutato: il movimento paga già una scadenza: annullare prima.',
-  'bad-date': 'Rifiutato: serve la data del pagamento o il movimento.',
-  'date-and-transaction': 'Rifiutato: indicare la data o il movimento, non tutti e due.',
-  'missing-fields':
-    'Rifiutato: per un appartamento nuovo servono nome, locatore, posti, annualità e differenza del condominio.',
-  'invalid-document': 'Rifiutato: i dati del documento del condominio non sono validi.',
-  'esercizio-format':
-    'Rifiutato: l’esercizio ha una forma diversa da quella degli altri documenti dell’appartamento (2026 o 2026-27).',
-  'not-extraordinary':
-    'Rifiutato: la voce non è una spesa condominiale straordinaria viva di questo appartamento.',
-  'amount-too-high': 'Rifiutato: da recuperare più della spesa anticipata.',
-  'bad-shares':
-    'Rifiutato: quote non valide (inquilino ripetuto o senza presenza, quota zero o di segno diverso, somma diversa).',
-  'unknown-expense':
-    'Rifiutato: il movimento non è un’uscita viva classificata a questo appartamento.',
-  'missing-date':
-    'Rifiutato: senza spesa collegata servono la data della spesa (--data) o il periodo (--periodo).',
-  'recovery-above-expense':
-    'Avviso: i recuperi superano la spesa straordinaria, corretta dopo: controllare i recuperi.',
-  'invalid-recovery': 'Rifiutato: i dati del recupero non sono validi.',
-  'needs-confirmation':
-    'Rifiutato: posti e inizio dell’annualità cambiano ogni conguaglio: ripetere con --modifica.',
-  'invalid-apartment': 'Rifiutato: i dati dell’appartamento non sono validi.',
-  'f24-pattern-missing':
-    'Nota: il profilo della banca non riconosce ancora gli F24 di questo conto.',
-  'invalid-tenancy':
-    'Rifiutato: i dati della presenza non sono validi (identificativo, mesi o importi).',
-  'unknown-tenant': 'Rifiutato: inquilino sconosciuto o cancellato.',
-  'same-tenant': 'Rifiutato: nel subentro l’inquilino che entra è quello che esce.',
-  'no-contract': 'Rifiutato: la presenza che esce non è in esattamente un contratto vivo.',
-  'tenancy-exists': 'Rifiutato: la presenza che entra esiste già con altri dati.',
-  'beds-conflict':
-    'Rifiutato: con questa presenza il conguaglio non si può calcolare (posto occupato, posto sconosciuto, troppi inquilini o inquilino presente due volte).',
-  'tenancy-has-dependents':
-    'Rifiutato: versamenti, recuperi o presenze nello stesso posto dipendono da questa operazione: annullarli prima.',
-  'takeover-unlinked':
-    'Rifiutato: il contratto ha un subentro: ripetere --presenze con le presenze del subentro.',
-  'no-room': 'Rifiutato: una delle due presenze non ha un posto.',
-  'same-room': 'Rifiutato: le due presenze sono nello stesso posto.',
-  'different-contract': 'Rifiutato: le due presenze sono in contratti diversi.',
-  'pending-takeover':
-    'Rifiutato: una delle due presenze ha già un subentro registrato: annullare prima il subentro.',
-  'id-too-long':
-    'Rifiutato: l’identificativo della presenza nuova supera 64 caratteri (vedi part): indicarlo con --id-a o --id-b.',
-  'swap-unlinked':
-    'Rifiutato: il contratto ha un cambio di posto: ripetere --presenze con entrambe le presenze di ciascun inquilino.',
-  'swap-rent-unchanged':
-    'Nota: i due posti hanno affitti diversi e almeno uno resta quello di prima: indicare --canone-a e --canone-b se cambiano.',
-  'swap-forfait-unchanged': 'Nota: i due forfait sono diversi e ciascuno tiene il proprio.',
-  'has-recoveries':
-    'Rifiutato: l’inquilino ha un recupero in un periodo in cui non sarebbe più presente: correggere prima il recupero.',
-  'deposit-check': 'Caparra mancante o diversa da quella attesa: controllare i versamenti.',
-  'no-deposit': 'Rifiutato: nessuna caparra versata da questo inquilino in questo appartamento.',
-  'already-returned': 'Rifiutato: la caparra risulta già restituita.',
-  'deposit-to-request':
-    'Attenzione: la caparra è già restituita e il prospetto non cambia: i conguagli dei periodi chiusi non saldati o supplementari sono da richiedere («toRequest»; righe con --dettagli).',
-  'missing-rate':
-    'Rifiutato: manca il tasso legale di un anno della permanenza: inserirlo con «tasso-legale».',
-  'no-exit': 'Rifiutato: la permanenza dell’inquilino non ha ancora una fine.',
-  'partial-return':
-    'Rifiutato: c’è già una restituzione parziale della caparra: come contarla non è ancora deciso.',
-  'several-stays':
-    'Rifiutato: l’inquilino ha avuto più permanenze separate nell’appartamento: quale caparra appartenga a quale non è ancora deciso.',
-  'mixed-f24-out':
-    'Da verificare: la parte non IMU di un F24 misto resta fuori dal saldo tra appartamenti.',
-  'recovery-waiting':
-    'Avviso: un recupero da trattenere aspetta il pagamento della spesa: non è ancora nel prospetto.',
-  'no-period': 'Rifiutato: nessun periodo di conguaglio contiene il mese di uscita.',
-  'ambiguous-period': 'Rifiutato: più periodi di conguaglio contengono il mese di uscita.',
-  'settlement-error':
-    'Rifiutato: il conguaglio del periodo di uscita non si calcola (presenze o rate da correggere).',
-  'invalid-rate': 'Rifiutato: anno o tasso non validi.',
-  'deposit-return-draft':
-    'Prospetto con le date, i tassi e il conguaglio indicati: da controllare prima dell’invio.',
-  'bad-year': 'Rifiutato: anno non valido.',
-  'bad-parts':
-    'Rifiutato: parti non valide (importo non positivo, voce e anno ripetuti, voce non ammessa).',
-  'year-not-empty':
-    'Rifiutato: l’anno ha già delle stime per un appartamento indicato: non si sovrascrive nulla.',
-  'nothing-to-copy': 'Rifiutato: nessuna stima dell’anno prima da copiare.',
-  'not-tax-debit': 'Rifiutato: il movimento non è un addebito contabilizzato classificato «tasse».',
-  'imu-assigned': 'Rifiutato: il movimento paga una rata IMU: annullare prima l’assegnazione.',
-  'tax-assigned':
-    'Rifiutato: il movimento è assegnato a cedolare o registro: annullare prima l’assegnazione.',
-  'invalid-contact':
-    'Rifiutato: contatto non valido (id o campi vuoti, categoria sconosciuta, collegamento ripetuto).',
-  'unknown-supply': 'Rifiutato: utenza sconosciuta.',
-  'condo-estimate-copied':
-    'Stima copiata da un esercizio precedente: non è un documento del condominio e non si salva.',
-  'tax-year-empty':
-    'Avviso: nessuna stima delle tasse per quest’anno: «tasse-copia» copia l’anno prima.',
-  'tax-no-payable':
-    'Da verificare: nessuna scadenza con anno di riferimento per questa voce e quest’anno; una scadenza senza anno va riscritta con «scadenza-nuova --id <id> --anno-riferimento <AAAA>».',
-  'no-discrepancy': 'Rifiutato: la voce di quest’anno non ha una discrepanza da confermare.',
-  'bad-note': 'Rifiutato: la nota è vuota.',
-  'invalid-card': 'Rifiutato: la scheda riservata è vuota o ha dati non validi (date AAAA-MM-GG).',
-  'bad-values':
-    'Il file dei valori non è valido: un oggetto JSON con testi per codice_fiscale, luogo_nascita, data_nascita, residenza, documento_numero, documento_ente, documento_rilascio, documento_scadenza.',
-  'invalid-settings': 'Rifiutato: soglie non valide.',
-  'unknown-bill': 'Rifiutato: bolletta sconosciuta o cancellata.',
-  'no-consumption-thresholds':
-    'Nessuna soglia dell’allarme consumi: inserirle con «soglie-consumi» (nessun valore predefinito).',
-  'bad-voce': 'Rifiutato: voce delle tasse non valida.',
-  'bad-voice': 'Rifiutato: una scadenza di cedolare o registro è già la sua voce: niente --voce.',
-  'tax-discrepancy':
-    'Discrepanza tra la stima e il pagato più l’ancora previsto: solo un avviso, non blocca nulla.',
-  failed: 'Operazione non riuscita: ripetere il comando (per un estratto, «importa»).',
-  'bad-reading': 'La lettura non è valida: rifarla con «python -I -m bollette_pdf extract».',
-  'bill-rejected': 'Rifiutato: niente da registrare, o file diverso da quello letto.',
-  'duplicate-bill': 'Questo documento è già registrato.',
-  'possible-duplicate-bill': 'Un documento con gli stessi dati è già registrato: controllare.',
-  'several-documents':
-    'Rifiutato: il file contiene più documenti; indicare quale con --pagine a-b (o --pagine intero).',
-  'has-dependents-bill':
-    'Rifiutato: un abbinamento o un recupero usa la bolletta; annullare prima quelli.',
-};
-
-/** Thrown to stop with a status; `invalid` is exit 2, `rejected` exit 1. */
-// Plan 18: the refusals of scambio-camera whose general message speaks of a takeover or an arrival.
-const SWAP_MESSAGES = {
-  'same-tenant': 'Rifiutato: nello scambio le due presenze sono dello stesso inquilino.',
-  'no-contract': 'Rifiutato: una delle due presenze non è in esattamente un contratto vivo.',
-  'tenancy-exists':
-    'Rifiutato: una presenza nuova esiste già con altri dati: annullare lo scambio precedente (annulla-riconciliazione) o scegliere altri identificativi con --id-a e --id-b.',
-};
+/** The messages of the core's commands, kept here for the tests of the command line. */
+export const MESSAGES = COMMAND_MESSAGES;
 
 /**
  * E12: `--importo -15,00` as `--importo=-15,00`: a value that starts with a minus and a digit,
@@ -504,14 +178,7 @@ const negativeValues = (args) =>
     return /^-\d/.test(next) && OPTIONS[own]?.type === 'string' ? [`${arg}=${next}`] : [arg];
   });
 
-class Stop extends Error {
-  constructor(status, reason, extra = {}) {
-    super(reason);
-    this.status = status;
-    this.reason = reason;
-    this.extra = extra;
-  }
-}
+const Stop = CommandStop;
 const invalid = (reason, extra) => new Stop('invalid', reason, extra);
 
 const OPTIONS = {
@@ -635,66 +302,6 @@ const OPTIONS = {
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
 const TENANT_KINDS = ['caparra', 'conguaglio', 'altro'];
-/** The operations `annulla-riconciliazione` undoes (R116, R126, R132). */
-const RECONCILE_KINDS = [
-  'income.reconcile',
-  'income.confirm',
-  'income.cancel-payment',
-  'movement.exclude',
-  'match.reconcile',
-  'match.confirm',
-  'outgoing.reconcile',
-  'outgoing.confirm',
-  'outgoing.cancel-auto',
-  'outgoing.tenant',
-  'transfer.reconcile',
-  'transfer.confirm',
-  'transfer.manual',
-  'imu.expected',
-  'imu.assign',
-  'contract.save',
-  'contract.rent',
-  'apartment.save',
-  'condo.document',
-  'recovery.save',
-  'rent.year',
-  'payable.save',
-  'payable.repeat',
-  'payable.paid',
-  'tenancy.save',
-  'tenancy.end',
-  'tenancy.takeover',
-  'tenancy.swap',
-  'tax.estimate',
-  'tax.copy',
-  'tax.assign',
-  'contact.save',
-  'legal-rate.save',
-  'tax.confirm',
-  'tenant.card',
-  'consumption.settings',
-  // Review of 18 Nov 2026 (annullo, point 1): an apartment created by mistake can be taken away,
-  // its account and supply first; `undoBlockedBy` refuses while records point at them.
-  'account.save',
-  'supply.link',
-  'tenant.save',
-  'bank-profile.save',
-  // I3, E4: a condominium instalment typed by user1.
-  'condo.instalment',
-  // I9: the workspace settings.
-  'settings.save',
-  // I2, R5: the closing of a settlement period (its undo opens the period again).
-  'period.close',
-  // F1, F3: sent, settled and reopened.
-  'period.send',
-  'period.settle',
-  'period.reopen',
-  // Plan 22: the flat charge checked, and the dated weights of a supply («valido dal»).
-  'period.flat-check',
-  'period.rent-mark',
-  'supply.update',
-];
-
 /** Plan 22: the outcomes of «forfait-verificato», Italian flag to the core's value. */
 const FLAT_OUTCOMES = { rimborso: 'rimborso', credito: 'credito', 'stessi-soldi': 'stessi-soldi' };
 /** Plan 22: the outcomes of «canone-non-incassato». */
@@ -900,40 +507,16 @@ function xlsxTable(file) {
   }
 }
 
-function csvTable(bytes, separator) {
-  let text;
-  try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    throw invalid('unreadable-statement');
-  }
-  try {
-    return parseCsv(text, separator);
-  } catch (error) {
-    if (error instanceof CsvError) {
-      throw invalid('unreadable-statement', { code: error.code, row: error.row });
-    }
-    throw error;
-  }
-}
-
 async function command(name, values, positionals, store, who, clock, newId) {
+  const ctx = { who, clock, newId };
   if (name === 'profilo') {
     if (positionals.length !== 1) throw invalid('bad-arguments');
-    let profile;
-    try {
-      profile = BankProfileSchema.parse(JSON.parse(readBytes(positionals[0]).toString('utf8')));
-    } catch (error) {
-      throw error instanceof Stop ? error : invalid('bad-profile');
-    }
-    const operation = await saveBankProfile(store, profile, who, clock, newId);
-    if (operation === undefined) return { status: 'unchanged', id: profile.id };
-    return { status: 'saved', id: profile.id, operationId: operation.id };
+    return saveBankProfileCommand(store, readBytes(positionals[0]).toString('utf8'), ctx);
   }
 
   if (name === 'conto') {
     need(values, 'appartamento', 'profilo', 'etichetta');
-    const result = await saveAccount(
+    return saveAccountCommand(
       store,
       {
         apartmentId: values.appartamento,
@@ -941,13 +524,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         bankProfileId: values.profilo,
         ...(values.iban === undefined ? {} : { iban: values.iban }),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'rejected') throw new Stop('rejected', result.reason);
-    if (result.status === 'unchanged') return { status: 'unchanged', id: result.account.id };
-    return { status: 'saved', id: result.account.id, operationId: result.operationId };
   }
 
   if (name === 'importa') {
@@ -962,15 +540,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (period !== undefined && !(period.from.success && period.to.success)) {
       throw invalid('bad-arguments');
     }
-    const account = (await loadAll(store, 'account', AccountSchema)).records.find(
-      (a) => a.id === values.conto,
-    );
-    const profile = (await loadAll(store, 'bankProfile', BankProfileSchema)).records.find(
-      (p) => p.id === account?.bankProfileId,
-    );
-    if (account === undefined || profile === undefined) {
-      throw new Stop('rejected', account === undefined ? 'unknown-account' : 'wrong-profile');
-    }
+    const { account, profile } = await importTargetOf(store, values.conto);
     const file = positionals[0];
     const bytes = readBytes(file);
     let table;
@@ -979,65 +549,21 @@ async function command(name, values, positionals, store, who, clock, newId) {
       // Python reads the file itself: if it changed since `bytes` (the hash), the table is not the file's.
       if (!readBytes(file).equals(bytes)) throw invalid('unreadable-statement');
     } else {
-      table = csvTable(bytes, profile.csvSeparator ?? ';');
+      table = statementCsvTable(bytes, profile.csvSeparator ?? ';');
     }
-    let result;
-    try {
-      result = await importStatement(
-        store,
-        {
-          accountId: account.id,
-          fileBytes: new Uint8Array(bytes),
-          // The name goes into the statement record (the data folder), never into the output.
-          fileName: file.split(/[\\/]/).at(-1) ?? 'estratto',
-          table,
-          ...(period === undefined
-            ? {}
-            : { period: { from: period.from.data, to: period.to.data } }),
-        },
-        who,
-        clock,
-        newId,
-      );
-    } catch (error) {
-      if (error instanceof StatementReadError) {
-        throw invalid('unreadable-statement', {
-          code: error.code,
-          row: error.row,
-          ...(error.column === undefined ? {} : { column: error.column }),
-        });
-      }
-      throw error;
-    }
-    if (result.status === 'already-imported') {
-      throw new Stop('already-imported', 'already-imported', { statementId: result.statementId });
-    }
-    if (result.status === 'rejected') {
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.row === undefined ? {} : { row: result.row },
-      );
-    }
-    const waiting = result.statement.held.filter((h) => h.decision === undefined);
-    return {
-      status: 'imported',
-      statementId: result.statement.id,
-      added: result.added,
-      alreadyKnown: result.alreadyKnown,
-      held: result.held,
-      heldRows: waiting.map((h) => h.row),
-      ...(values.dettagli === true
-        ? {
-            details: waiting.map((h) => ({
-              row: h.row,
-              date: h.transaction.date,
-              amount: h.transaction.amount,
-              description: h.transaction.description,
-            })),
-          }
-        : {}),
-    };
+    return importStatementCommand(
+      store,
+      {
+        accountId: account.id,
+        fileBytes: new Uint8Array(bytes),
+        // The name goes into the statement record (the data folder), never into the output.
+        fileName: file.split(/[\\/]/).at(-1) ?? 'estratto',
+        table,
+        ...(period === undefined ? {} : { period: { from: period.from.data, to: period.to.data } }),
+      },
+      ctx,
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'decidi') {
@@ -1049,13 +575,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-arguments');
     }
     const decision = values.tieni === true ? 'keep' : 'exclude';
-    try {
-      await resolveHeld(store, values.estratto, Number(values.riga), decision, who, clock, newId);
-    } catch (error) {
-      if (error instanceof RangeError) throw new Stop('rejected', 'not-decidable');
-      throw error;
-    }
-    return { status: 'decided', statementId: values.estratto, row: Number(values.riga), decision };
+    return resolveHeldCommand(
+      store,
+      { statementId: values.estratto, row: Number(values.riga), decision },
+      ctx,
+    );
   }
 
   if (name === 'soglie-consumi') {
@@ -1063,7 +587,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || (values.giallo === undefined && values.rosso === undefined)) {
       throw invalid('bad-arguments');
     }
-    const result = await saveConsumptionSettings(
+    return saveConsumptionSettingsCommand(
       store,
       {
         ...optional('apartmentId', values.appartamento),
@@ -1076,108 +600,28 @@ async function command(name, values, positionals, store, who, clock, newId) {
           values.rosso === undefined ? undefined : metricThresholds(values.rosso),
         ),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return result;
   }
 
   if (name === 'consumi') {
-    // Differences in basis points and levels; the sides (amounts, quantities) with --dettagli.
     need(values, 'bolletta');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadConsumption(store, values.bolletta);
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const side = (c) =>
-      c === undefined
-        ? undefined
-        : {
-            differences: c.differences,
-            ...(values.dettagli === true ? { reference: c.reference } : {}),
-          };
-    return {
-      status: 'ok',
-      thresholds: result.thresholds,
-      ...(result.thresholds ? {} : { message: MESSAGES['no-consumption-thresholds'] }),
-      yearBefore: side(result.comparison.yearBefore),
-      recent: side(result.comparison.recent),
-      ...(values.dettagli === true ? { current: result.comparison.current } : {}),
-    };
+    return consumptionCommand(store, values.bolletta, { details: values.dettagli === true });
   }
 
   if (name === 'scheda-inquilino') {
     // Plan 17, R311: the reserved card of a tenant, from a JSON file (never personal data as
-    // arguments, never echoed). Keys: codice_fiscale, luogo_nascita, data_nascita, residenza,
-    // documento_numero, documento_ente, documento_rilascio, documento_scadenza. Replaces the card.
+    // arguments, never echoed); the core checks the keys.
     need(values, 'inquilino', 'valori');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    let given;
+    let valuesJson;
     try {
-      given = JSON.parse(readBytes(values.valori).toString('utf8'));
+      valuesJson = readBytes(values.valori).toString('utf8');
     } catch {
       throw invalid('bad-values');
     }
-    const keys = [
-      'codice_fiscale',
-      'luogo_nascita',
-      'data_nascita',
-      'residenza',
-      'documento_numero',
-      'documento_ente',
-      'documento_rilascio',
-      'documento_scadenza',
-    ];
-    if (
-      typeof given !== 'object' ||
-      given === null ||
-      Array.isArray(given) ||
-      Object.entries(given).some(([k, v]) => !keys.includes(k) || typeof v !== 'string')
-    ) {
-      throw invalid('bad-values');
-    }
-    if (
-      given.documento_numero === undefined &&
-      Object.keys(given).some((k) => k.startsWith('documento_'))
-    ) {
-      throw invalid('bad-values');
-    }
-    const date = (text) => (ISODateSchema.safeParse(text).success ? text : null);
-    const card = {
-      ...optional('taxCode', given.codice_fiscale),
-      ...optional('birthPlace', given.luogo_nascita),
-      ...optional(
-        'birthDate',
-        given.data_nascita === undefined ? undefined : date(given.data_nascita),
-      ),
-      ...optional('residence', given.residenza),
-      ...(given.documento_numero === undefined
-        ? {}
-        : {
-            idDocument: {
-              number: given.documento_numero,
-              ...optional('issuer', given.documento_ente),
-              ...optional(
-                'issuedOn',
-                given.documento_rilascio === undefined ? undefined : date(given.documento_rilascio),
-              ),
-              ...optional(
-                'expiresOn',
-                given.documento_scadenza === undefined ? undefined : date(given.documento_scadenza),
-              ),
-            },
-          }),
-    };
-    const result = await saveTenantCard(
-      store,
-      { tenantId: values.inquilino, card },
-      who,
-      clock,
-      newId,
-    );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return result;
+    return saveTenantCardCommand(store, { tenantId: values.inquilino, valuesJson }, ctx);
   }
 
   if (name === 'inquilino') {
@@ -1189,143 +633,22 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    let operation;
-    try {
-      operation = await saveTenant(
-        store,
-        {
-          id: values.id,
-          name: values.nome,
-          ...(values.lingua === undefined ? {} : { language: values.lingua }),
-        },
-        who,
-        clock,
-        newId,
-      );
-    } catch (error) {
-      // An id the store refuses (a name reserved on Windows, a bad segment) is a bad argument.
-      if (error instanceof RangeError) throw invalid('bad-arguments');
-      throw error;
-    }
-    if (operation === undefined) return { status: 'unchanged', id: values.id };
-    return { status: 'saved', id: values.id, operationId: operation.id };
+    return saveTenantCommand(
+      store,
+      {
+        id: values.id,
+        name: values.nome,
+        ...(values.lingua === undefined ? {} : { language: values.lingua }),
+      },
+      ctx,
+    );
   }
 
   if (name === 'riconcilia') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const run = await runReconciliation(store, who, clock, newId, {
-      dryRun: values.prova === true,
+    return reconcileCommand(store, { dryRun: values.prova === true }, ctx, {
+      details: values.dettagli === true,
     });
-    if (run.status === 'refused') throw new Stop('rejected', run.reason);
-    const { income: result, match, transfers, outgoing } = run;
-    let extra = () => ({});
-    let arrearExtra = () => ({});
-    let txExtra = () => ({});
-    if (values.dettagli === true) {
-      const all = { includeDeleted: true };
-      const txs = (await loadAll(store, 'transaction', BankTransactionSchema, all)).records;
-      const tenants = (await loadAll(store, 'tenant', TenantSchema, all)).records;
-      txExtra = (p) => {
-        const tx = txs.find((t) => t.id === p.transactionId);
-        return {
-          transactionId: p.transactionId,
-          date: tx?.date,
-          amount: tx?.amount,
-          description: tx?.description,
-        };
-      };
-      arrearExtra = (a) => ({
-        tenantId: a.tenantId,
-        tenantName: tenants.find((t) => t.id === a.tenantId)?.name ?? a.tenantId,
-      });
-      extra = (p) => {
-        const tx = txs.find((t) => t.id === p.transactionId);
-        return {
-          tenantIds: p.tenantIds,
-          date: tx?.date,
-          amount: tx?.amount,
-          description: tx?.description,
-          tenantNames: p.tenantIds.map((id) => tenants.find((t) => t.id === id)?.name ?? id),
-        };
-      };
-    }
-    // No F24 is recognised while the profile of the account has no f24Pattern (R129): say so.
-    const profiles = (await loadAll(store, 'bankProfile', BankProfileSchema)).records;
-    const notes = (await loadAll(store, 'account', AccountSchema)).records
-      .filter((a) => profiles.find((p) => p.id === a.bankProfileId)?.f24Pattern === undefined)
-      .map((a) => ({
-        accountId: a.id,
-        f24PatternMissing: true,
-        message: MESSAGES['f24-pattern-missing'],
-      }));
-    return {
-      status: 'reconciled',
-      written: result.written,
-      proposals: result.proposals.map((p) => ({
-        id: p.id,
-        step: p.step,
-        reason: p.reason,
-        // Ids are chosen by the user (they could be real names): only a count without --dettagli.
-        tenantCount: p.tenantIds.length,
-        ...(p.month === undefined ? {} : { month: p.month }),
-        ...extra(p),
-      })),
-      skipped: result.skipped,
-      // Only id and reason: the movement id, the date and the amount stay out (R124).
-      exclusions: run.exclusions.map((e) => ({
-        id: e.id,
-        reason: e.reason,
-      })),
-      // Month and apartment (its id is always shown, user1, 15 Nov 2026, R117); the tenant,
-      // whose id is chosen by the user like tenantIds, only with --dettagli.
-      arrears: result.arrears.map((a) => ({
-        month: a.month,
-        apartmentId: a.apartmentId,
-        ...arrearExtra(a),
-      })),
-      ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
-      // Ids, reasons and counts only (R107, R126).
-      match: {
-        written: match.written,
-        yielded: match.yielded,
-        proposals: match.proposals.map((p) => ({ id: p.id, reason: p.reason })),
-        pending: match.pending.length,
-        unverified: match.unverified.length,
-        invalidGroups: match.invalidGroups.length,
-        // E1: a shared notice registered before the fix has no paying account on its rates.
-        ...(match.invalidGroups.length > 0 ? { message: MESSAGES['invalid-shared-notice'] } : {}),
-        ...(match.operationId === undefined ? {} : { operationId: match.operationId }),
-      },
-      // Ids, reasons and counts only (R132); the movements and the legs with --dettagli.
-      transfers: {
-        written: transfers.written,
-        completed: transfers.completed,
-        proposals: transfers.proposals.map((p) => ({
-          id: p.id,
-          reason: p.reason,
-          legCount: p.legIds.length,
-          // Movement ids, as inside `p-giro-<id>`: `giroconto --gambe` gives them back (R132).
-          legIds: p.legIds,
-          ...txExtra(p),
-        })),
-        ...(transfers.operationId === undefined ? {} : { operationId: transfers.operationId }),
-      },
-      outgoing: {
-        written: outgoing.written,
-        proposals: outgoing.proposals.map((p) => ({
-          id: p.id,
-          step: p.step,
-          reason: p.reason,
-          ...(p.suggestedKind === undefined ? {} : { suggestedKind: p.suggestedKind }),
-          // Group, year and index only (plan 3d, task 5): always to confirm with imu-f24.
-          ...(p.imuSuggestion === undefined ? {} : { imuSuggestion: p.imuSuggestion }),
-          ...txExtra(p),
-        })),
-        missingDocument: outgoing.missingDocument.length,
-        ...(outgoing.operationId === undefined ? {} : { operationId: outgoing.operationId }),
-      },
-      notes,
-    };
   }
 
   if (name === 'uscita') {
@@ -1333,7 +656,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !OutgoingKindSchema.safeParse(values.categoria).success) {
       throw invalid('bad-arguments');
     }
-    const result = await confirmOutgoing(
+    return confirmOutgoingCommand(
       store,
       {
         proposalId: values.proposta,
@@ -1342,36 +665,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
         rememberRule: values['solo-questa-volta'] !== true,
         f24: values.f24 === true,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: 'confirmed',
-      operationId: result.operationId,
-      classId: result.classId,
-      ...(result.ruleId === undefined ? {} : { ruleId: result.ruleId }),
-    };
   }
 
   if (name === 'annulla-uscita') {
     need(values, 'movimento');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await cancelAutomaticClass(store, values.movimento, who, clock, newId);
-    if (result.status === 'refused' && result.reason === 'not-automatic') {
-      // The reason is the core's; the message is the one of a class, not of a payment.
-      throw new Stop('rejected', result.reason, { message: MESSAGES['class-not-automatic'] });
-    }
-    if (result.status === 'refused' && result.reason === 'has-dependents') {
-      // Plan 10: a tax payment on the movement.
-      throw new Stop('rejected', result.reason, {
-        message: MESSAGES['movement-has-dependents'],
-        recordIds: result.recordIds,
-      });
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'cancelled', operationId: result.operationId };
+    return cancelOutgoingCommand(store, values.movimento, ctx);
   }
 
   if (name === 'uscita-inquilino') {
@@ -1383,7 +684,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await confirmTenantOutgoing(
+    return confirmTenantOutgoingCommand(
       store,
       {
         proposalId: values.proposta,
@@ -1391,12 +692,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         kind: values.tipo,
         forMonth: values.mese,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'confirmed', operationId: result.operationId, paymentId: result.paymentId };
   }
 
   if (name === 'giroconto') {
@@ -1413,7 +710,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await confirmTransfer(
+    return confirmTransferCommand(
       store,
       {
         proposalId: values.proposta,
@@ -1422,12 +719,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         legIds,
         ...(values['altra-gamba'] === undefined ? {} : { otherLegId: values['altra-gamba'] }),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'confirmed', operationId: result.operationId, transferId: result.transferId };
   }
 
   if (name === 'giroconto-manuale') {
@@ -1450,7 +743,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (values.id !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(values.id)) {
       throw invalid('bad-arguments');
     }
-    const result = await recordManualTransfer(
+    return manualTransferCommand(
       store,
       {
         ...optional('id', values.id),
@@ -1460,51 +753,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
         date: date.data,
         purpose: values.scopo,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Ruling (E2): the same transfer again is that transfer; a second identical one needs --id.
-    if (result.status === 'unchanged') {
-      return values.id === undefined
-        ? { ...result, message: MESSAGES['already-recorded'] }
-        : result;
-    }
-    return { status: 'recorded', operationId: result.operationId, transferId: result.transferId };
   }
 
   if (name === 'saldi') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadAccountBalances(store);
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Without --dettagli only the apartments of each pair and counts: no amount, no date (R132).
-    const toSplitImu = result.toSplit.filter((t) => t.imu !== undefined).length;
-    if (values.dettagli === true) {
-      return {
-        status: 'ok',
-        pairs: result.pairs,
-        toSplit: result.toSplit,
-        toSplitImu,
-        unverified: result.unverified,
-        mixedF24: result.mixedF24,
-      };
-    }
-    return {
-      status: 'ok',
-      pairs: result.pairs.map((p) => ({
-        creditorApartmentId: p.creditorApartmentId,
-        debtorApartmentId: p.debtorApartmentId,
-        items: p.items.length,
-      })),
-      toSplit: result.toSplit.length,
-      toSplitImu,
-      unverified: result.unverified.length,
-      // Plan 17, R307: the part of a mixed F24 that is no IMU, out of the balance (to check).
-      ...(result.mixedF24.length > 0
-        ? { mixedF24: result.mixedF24.length, message: MESSAGES['mixed-f24-out'] }
-        : {}),
-    };
+    return balancesCommand(store, { details: values.dettagli === true });
   }
 
   if (name === 'imu-atteso') {
@@ -1516,7 +771,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await setImuYear(
+    return setImuYearCommand(
       store,
       {
         apartmentId: values.appartamento,
@@ -1525,22 +780,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...(values.totale === undefined ? {} : { annualTotal: euro(values.totale) }),
         rates: values.rata.map(parseRate),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused' && result.reason === 'has-dependents') {
-      throw new Stop('rejected', result.reason, {
-        message: MESSAGES['imu-has-assignments'],
-        recordIds: result.recordIds,
-      });
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      imuYearId: result.imuYearId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'imu-f24') {
@@ -1554,7 +795,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await assignImuF24(
+    return assignImuF24Command(
       store,
       {
         transactionId: values.movimento,
@@ -1563,18 +804,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         rateIndex: Number(rata),
         rememberRule: values['solo-questa-volta'] !== true,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    if (result.status === 'unchanged') return { status: 'unchanged', classId: result.classId };
-    return {
-      status: 'assigned',
-      operationId: result.operationId,
-      classId: result.classId,
-      ...(result.ruleId === undefined ? {} : { ruleId: result.ruleId }),
-    };
   }
 
   // appartamento creates (every field and --differenza-condominio, the question at creation) or
@@ -1591,7 +822,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await saveApartment(
+    return saveApartmentCommand(
       store,
       {
         id: v.id,
@@ -1621,34 +852,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
         // Plan 22: new beds from a month («valido dal»), the old ones before it.
         ...optional('bedsValidFrom', v.dal === undefined ? undefined : month(v.dal)),
       },
-      who,
-      clock,
-      newId,
+      ctx,
       { confirmed: v.modifica === true },
     );
-    if (result.status === 'refused' && result.reason === 'rooms-in-use') {
-      throw new Stop('rejected', result.reason, {
-        rooms: result.rooms,
-        tenancyIds: result.tenancyIds,
-      });
-    }
-    if (result.status === 'refused' && result.reason === 'beds-conflict') {
-      throw new Stop('rejected', result.reason, {
-        message:
-          MESSAGES[
-            result.code === 'unknown-room' ? 'apartment-unknown-room' : 'apartment-beds-conflict'
-          ],
-        code: result.code,
-        ...optional('month', result.month),
-        tenancyIds: result.tenancyIds,
-      });
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      apartmentId: result.apartmentId,
-      ...(result.status === 'unchanged' ? {} : { operationId: result.operationId }),
-    };
   }
 
   if (name === 'condominio-documento') {
@@ -1657,7 +863,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-arguments');
     }
     const quota = values['quota-conduttore'];
-    const result = await saveCondoDocument(
+    return saveCondoDocumentCommand(
       store,
       {
         apartmentId: values.appartamento,
@@ -1666,23 +872,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         total: euro(values.totale),
         ...optional('quotaConduttore', quota === undefined ? undefined : euro(quota)),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') {
-      // R310: which documents have the other form (ids only).
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.reason === 'esercizio-format' ? { documentIds: result.documentIds } : {},
-      );
-    }
-    return {
-      status: result.status,
-      documentId: result.documentId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   // recupero: the part of an extraordinary expense to recover from tenants chosen by user1, with
@@ -1703,7 +894,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const amount = euro(values.importo);
     const quotes = values.quote?.split(';').map(euro);
     if (quotes !== undefined && quotes.length !== tenants.length) throw invalid('bad-arguments');
-    const result = await saveTenantRecovery(
+    return saveRecoveryCommand(
       store,
       {
         id: values.id,
@@ -1719,73 +910,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
         status: stato,
         ...optional('periodLabel', values.periodo),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      recoveryId: result.recoveryId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   // The owners' check of the condominium expenses (section 12) and the differences consuntivo −
   // preventivo; amounts and dates only with --dettagli (R107, R194).
   if (name === 'condominio') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadCondo(store, {
-      asOf: day(clock().slice(0, 10)),
-      ...optional('apartmentId', values.appartamento),
-      ...optional('esercizio', values.esercizio),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const details = values.dettagli === true;
-    const rates = result.rates.map((r) => ({
-      instalmentId: r.instalmentId,
-      apartmentId: r.apartmentId,
-      esercizio: r.esercizio,
-      rateIndex: r.rateIndex,
-      rateCount: r.rateCount,
-      straordinaria: r.straordinaria,
-      status: r.status,
-      ...(details
-        ? { expected: r.expected, debited: r.debited, dueDate: r.dueDate, debitDates: r.debitDates }
-        : {}),
-    }));
-    return {
-      status: 'ok',
-      rates,
-      anomalies: rates.filter((r) =>
-        ['senza-addebito', 'importo-diverso', 'duplicato'].includes(r.status),
-      ).length,
-      differences: result.differences.map((d) => ({
-        apartmentId: d.apartmentId,
-        esercizio: d.esercizio,
-        to: d.to,
-        conduttore: d.conduttore === undefined ? 0 : 1,
-        ...(details
-          ? {
-              preventivo: d.preventivo,
-              consuntivo: d.consuntivo,
-              difference: d.difference,
-              ...optional('conduttoreDetails', d.conduttore),
-            }
-          : {}),
-      })),
-      recoveries: result.recoveries.map((r) => ({
-        recoveryId: r.id,
-        apartmentId: r.apartmentId,
-        ...optional('instalmentId', r.instalmentId),
-        ...optional('transactionId', r.transactionId),
-        status: r.status,
-        ...optional('periodLabel', r.periodLabel),
-        tenants: r.shares.length,
-        ...(details ? { amount: r.amount, shares: r.shares } : {}),
-      })),
-      warnings: result.warnings.map((w) => ({ ...w, message: MESSAGES[w.code] })),
-    };
+    return condoCommand(
+      store,
+      {
+        ...optional('apartmentId', values.appartamento),
+        ...optional('esercizio', values.esercizio),
+      },
+      ctx,
+      { details: values.dettagli === true },
+    );
   }
 
   // The estimate of a fiscal year (plan 14, R250): source always, amounts only with --dettagli.
@@ -1795,27 +936,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !/^[A-Za-z0-9_-]{1,32}$/.test(values.esercizio)) {
       throw invalid('bad-arguments');
     }
-    const result = await loadCondoEstimate(store, {
-      apartmentId: values.appartamento,
-      esercizio: values.esercizio,
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const e = result.estimate;
-    if (e === undefined) return { status: 'ok' };
-    return {
-      status: 'ok',
-      estimate: {
-        apartmentId: e.apartmentId,
-        esercizio: e.esercizio,
-        source: e.source,
-        fromEsercizio: e.fromEsercizio,
-        fromKind: e.fromKind,
-        ...(e.source === 'copiata' ? { message: MESSAGES['condo-estimate-copied'] } : {}),
-        ...(values.dettagli === true
-          ? { total: e.total, quotaConduttore: e.quotaConduttore, lines: e.lines }
-          : {}),
-      },
-    };
+    return condoEstimateCommand(
+      store,
+      { apartmentId: values.appartamento, esercizio: values.esercizio },
+      { details: values.dettagli === true },
+    );
   }
 
   // The address book (plan 14, R253): every field replaced, a field left out is removed.
@@ -1824,7 +949,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !CONTACT_ROLES.includes(values.ruolo)) {
       throw invalid('bad-arguments');
     }
-    const result = await saveContact(
+    return saveContactCommand(
       store,
       {
         id: values.id,
@@ -1837,16 +962,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...optional('supplyIds', idList(values.utenze)),
         ...optional('categories', idList(values.categorie)),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      contactId: result.contactId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   // Ids, role and links; the name and the contacts only with --dettagli (R107).
@@ -1857,28 +974,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await loadContacts(store, {
-      ...optional('apartmentId', values.appartamento),
-      ...optional('role', values.ruolo),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: 'ok',
-      contacts: result.contacts.map((c) => ({
-        contactId: c.id,
-        role: c.role,
-        apartmentIds: c.apartmentIds,
-        supplyIds: c.supplyIds ?? [],
-        categories: c.categories ?? [],
-        ...(values.dettagli === true
-          ? { name: c.name, phone: c.phone, email: c.email, notes: c.notes }
-          : {
-              phone: c.phone === undefined ? 0 : 1,
-              email: c.email === undefined ? 0 : 1,
-              notes: c.notes === undefined ? 0 : 1,
-            }),
-      })),
-    };
+    return contactsCommand(
+      store,
+      { ...optional('apartmentId', values.appartamento), ...optional('role', values.ruolo) },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'imu') {
@@ -1888,36 +988,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await loadImuRates(
-      store,
-      values.anno === undefined ? {} : { year: values.anno },
-    );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Group, year, index and state only; amounts, dates and the movement with --dettagli (R107).
-    const rates = result.rates.map((r) => ({
-      f24Group: r.f24Group,
-      year: r.year,
-      rateIndex: r.rateIndex,
-      status: r.status,
-      f24: r.transactionId === undefined ? 0 : 1,
-      ...(r.status === 'da-riconciliare' ? { message: MESSAGES['imu-to-reconcile'] } : {}),
-      ...(values.dettagli === true
-        ? {
-            expected: r.expected,
-            paid: r.paid,
-            difference:
-              r.paid === undefined || r.expected === undefined ? undefined : r.paid - r.expected,
-            dueDate: r.dueDate,
-            transactionId: r.transactionId,
-            annual: r.annual,
-          }
-        : {}),
-    }));
-    return {
-      status: 'ok',
-      rates,
-      toReconcile: rates.filter((r) => r.status === 'da-riconciliare').length,
-    };
+    return imuRatesCommand(store, values.anno === undefined ? {} : { year: values.anno }, {
+      details: values.dettagli === true,
+    });
   }
 
   // contratto replaces every field of the contract (rent history aside): an option left out,
@@ -1964,20 +1037,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
       ...optional('tenancyIds', idList(v.presenze)),
       ...optional('depositPaymentIds', idList(v.caparre)),
     };
-    let result;
-    try {
-      result = await saveContract(store, input, who, clock, newId);
-    } catch (error) {
-      // An id the store refuses (a name reserved on Windows, a bad segment) is a bad argument.
-      if (error instanceof RangeError) throw invalid('bad-arguments');
-      throw error;
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      contractId: result.contractId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
+    return saveContractCommand(store, input, ctx);
   }
 
   if (name === 'contratto-canone') {
@@ -1987,19 +1047,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     const monthlyRent = euro(values.canone);
     const monthlyAdvance = euro(values.acconto);
     if (monthlyRent <= 0 || monthlyAdvance < 0) throw invalid('bad-arguments');
-    const result = await setContractRent(
+    return setContractRentCommand(
       store,
       { contractId: values.contratto, from, monthlyRent, monthlyAdvance },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      contractId: result.contractId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'affitti-anno') {
@@ -2009,19 +1061,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
     const totalRent = euro(values.totale);
     if (totalRent <= 0) throw invalid('bad-arguments');
-    const result = await setRentYear(
+    return setRentYearCommand(
       store,
       { apartmentId: values.appartamento, year: values.anno, totalRent },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      rentYearId: result.rentYearId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse-stima') {
@@ -2035,19 +1079,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
     const amount = euro(values.importo);
     if (amount < 0) throw invalid('bad-arguments');
-    const result = await setTaxEstimate(
+    return setTaxEstimateCommand(
       store,
       { apartmentId: values.appartamento, year: values.anno, voce: values.voce, amount },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      estimateId: result.estimateId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse-copia') {
@@ -2055,57 +1091,32 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !YearSchema.safeParse(values.anno).success) {
       throw invalid('bad-arguments');
     }
-    const result = await copyPreviousTaxYear(
+    return copyTaxYearCommand(
       store,
       { year: values.anno, ...optional('apartmentId', values.appartamento) },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      estimateIds: result.estimateIds,
-      ...(result.status === 'copied' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse-assegna') {
     need(values, 'movimento');
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
-    const result = await assignTaxPayment(
+    return assignTaxCommand(
       store,
       { transactionId: values.movimento, parts: values.parte.map(parseTaxPart) },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      taxPaymentId: result.taxPaymentId,
-      ...(result.status === 'assigned' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse-conferma') {
-    // Plan 17, R304: a discrepancy confirmed with a note no longer warns (undone with
-    // annulla-riconciliazione). The note is not echoed: it is free text.
+    // Plan 17, R304: a discrepancy confirmed with a note (not echoed: it is free text).
     need(values, 'appartamento', 'anno', 'voce', 'note');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await confirmTaxDiscrepancy(
+    return confirmTaxCommand(
       store,
       { apartmentId: values.appartamento, year: values.anno, voce: values.voce, note: values.note },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      confirmationId: result.confirmationId,
-      ...(result.status === 'confirmed' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse') {
@@ -2114,123 +1125,18 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-arguments');
     }
     // Today: --oggi, or the UTC date of the clock (as scadenze).
-    const result = await loadTaxTable(store, {
-      year: values.anno,
-      today: day(values.oggi ?? clock().slice(0, 10)),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const details = values.dettagli === true;
-    // Voce, state, reasons and ids only; amounts and the taxpayer (a name) with --dettagli (R107).
-    return {
-      status: 'ok',
-      year: values.anno,
-      tables: result.tables.map((t) => ({
-        apartmentIds: t.apartmentIds,
-        ...(details ? { taxpayer: t.taxpayer } : {}),
-        rows: t.rows.map((r) => ({
-          voce: r.voce,
-          state: r.state,
-          reasons: r.reasons,
-          ...(r.state === 'discrepanza' ? { message: MESSAGES['tax-discrepancy'] } : {}),
-          ...(r.reasons.includes('no-expected-source')
-            ? { message: MESSAGES['tax-no-payable'] }
-            : {}),
-          ...(details
-            ? {
-                estimate: r.estimate,
-                paid: r.paid,
-                expected: r.expected,
-                difference: r.difference,
-                ...(r.annualDifference === undefined
-                  ? {}
-                  : { annualDifference: r.annualDifference }),
-                ...(r.cedolareProposals === undefined
-                  ? {}
-                  : {
-                      cedolareProposals: r.cedolareProposals,
-                      proposalMessage: MESSAGES['cedolare-estimate'],
-                    }),
-              }
-            : {}),
-        })),
-      })),
-      warnings: result.warnings.map((w) => ({ ...w, message: MESSAGES['tax-year-empty'] })),
-    };
+    return taxTableCommand(
+      store,
+      { year: values.anno, today: day(values.oggi ?? clock().slice(0, 10)) },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'contratti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadContractChecks(store, {
-      // The month of the clock: later months have no tenancies written yet.
-      asOf: month(clock().slice(0, 7)),
-      ...optional('apartmentId', values.appartamento),
+    return contractsCommand(store, optional('apartmentId', values.appartamento), ctx, {
+      details: values.dettagli === true,
     });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const years = await loadRentYears(store, optional('apartmentId', values.appartamento));
-    if (years.status === 'refused') throw new Stop('rejected', years.reason);
-    const details = values.dettagli === true;
-    // Codes, ids and months only; amounts, codes, dates and linked ids with --dettagli (R107).
-    return {
-      status: 'ok',
-      contracts: result.contracts.map((c) => ({
-        id: c.id,
-        apartmentId: c.apartmentId,
-        type: c.type,
-        start: c.start,
-        end: c.end,
-        settlement: c.settlement,
-        agreedRent: c.agreedRent,
-        forStudents: c.forStudents,
-        taxRegime: c.taxRegime,
-        tenancies: c.tenancyIds?.length ?? 0,
-        deposits: c.depositPaymentIds?.length ?? 0,
-        rentEntries: c.rent?.length ?? 0,
-        ...(details
-          ? {
-              durationMonths: c.durationMonths,
-              signedOn: c.signedOn,
-              registration: c.registration,
-              cedolareRateBp: c.cedolareRateBp,
-              rent: c.rent,
-              tenancyIds: c.tenancyIds,
-              depositPaymentIds: c.depositPaymentIds,
-            }
-          : {}),
-      })),
-      checks: result.checks.map((c) => ({
-        code: c.code,
-        contractId: c.contractId,
-        otherContractId: c.otherContractId,
-        from: c.from,
-        to: c.to,
-        ...(['rent-differs', 'contract-overlap'].includes(c.code)
-          ? { message: MESSAGES[c.code] }
-          : {}),
-        ...(details
-          ? {
-              tenancyId: c.tenancyId,
-              paymentId: c.paymentId,
-              expected: c.expected,
-              actual: c.actual,
-            }
-          : {}),
-      })),
-      // The rents of the year and the estimate are amounts: only with --dettagli (R107, R182).
-      rentYears: years.rentYears.map((y) => ({
-        apartmentId: y.apartmentId,
-        year: y.year,
-        ...(details
-          ? {
-              totalRent: y.totalRent,
-              cedolareRateBp: y.cedolareRateBp,
-              cedolareExpected: y.cedolareExpected,
-              ...(y.cedolareExpected === undefined
-                ? {}
-                : { message: MESSAGES['cedolare-estimate'] }),
-            }
-          : {}),
-      })),
-    };
   }
 
   if (name === 'presenza' || name === 'fine-presenza' || name === 'subentro') {
@@ -2242,75 +1148,45 @@ async function command(name, values, positionals, store, who, clock, newId) {
       return amount;
     };
     const deposit = v['caparra-attesa'] === undefined ? undefined : positive(v['caparra-attesa']);
-    let result;
-    try {
-      if (name === 'presenza') {
-        need(v, 'id', 'appartamento', 'inquilino', 'dal', 'affitto', 'forfait');
-        result = await saveTenancy(
-          store,
-          {
-            id: v.id,
-            apartmentId: v.appartamento,
-            tenantId: v.inquilino,
-            ...optional('room', v.posto),
-            from: month(v.dal),
-            ...optional('to', v.al === undefined ? undefined : month(v.al)),
-            monthlyRent: nonNegative(v.affitto),
-            monthlyForfait: nonNegative(v.forfait),
-            ...optional('expectedDeposit', deposit),
-            ...optional('contractId', v.contratto),
-          },
-          who,
-          clock,
-          newId,
-        );
-      } else if (name === 'fine-presenza') {
-        need(v, 'presenza', 'mese');
-        result = await endTenancy(
-          store,
-          { tenancyId: v.presenza, lastMonth: month(v.mese) },
-          who,
-          clock,
-          newId,
-        );
-      } else {
-        need(v, 'presenza', 'mese', 'id', 'inquilino', 'affitto', 'forfait');
-        result = await recordTakeover(
-          store,
-          {
-            outTenancyId: v.presenza,
-            lastMonth: month(v.mese),
-            incoming: {
-              id: v.id,
-              tenantId: v.inquilino,
-              monthlyRent: nonNegative(v.affitto),
-              monthlyForfait: nonNegative(v.forfait),
-              ...optional('expectedDeposit', deposit),
-            },
-          },
-          who,
-          clock,
-          newId,
-        );
-      }
-    } catch (error) {
-      // An id the store refuses (a name reserved on Windows) is a bad argument.
-      if (error instanceof RangeError) throw invalid('bad-arguments');
-      throw error;
+    if (name === 'presenza') {
+      need(v, 'id', 'appartamento', 'inquilino', 'dal', 'affitto', 'forfait');
+      return saveTenancyCommand(
+        store,
+        {
+          id: v.id,
+          apartmentId: v.appartamento,
+          tenantId: v.inquilino,
+          ...optional('room', v.posto),
+          from: month(v.dal),
+          ...optional('to', v.al === undefined ? undefined : month(v.al)),
+          monthlyRent: nonNegative(v.affitto),
+          monthlyForfait: nonNegative(v.forfait),
+          ...optional('expectedDeposit', deposit),
+          ...optional('contractId', v.contratto),
+        },
+        ctx,
+      );
     }
-    if (result.status === 'refused') {
-      throw new Stop('rejected', result.reason, {
-        ...optional('code', result.code),
-        ...optional('month', result.month),
-        // Review of 18 Nov 2026 (U4): the payments, recoveries and contracts on the stay (ids).
-        ...optional('recordIds', result.recordIds),
-      });
+    if (name === 'fine-presenza') {
+      need(v, 'presenza', 'mese');
+      return endTenancyCommand(store, { tenancyId: v.presenza, lastMonth: month(v.mese) }, ctx);
     }
-    return {
-      status: result.status,
-      tenancyId: result.tenancyId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
+    need(v, 'presenza', 'mese', 'id', 'inquilino', 'affitto', 'forfait');
+    return takeoverCommand(
+      store,
+      {
+        outTenancyId: v.presenza,
+        lastMonth: month(v.mese),
+        incoming: {
+          id: v.id,
+          tenantId: v.inquilino,
+          monthlyRent: nonNegative(v.affitto),
+          monthlyForfait: nonNegative(v.forfait),
+          ...optional('expectedDeposit', deposit),
+        },
+      },
+      ctx,
+    );
   }
 
   if (name === 'scambio-camera') {
@@ -2323,98 +1199,27 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (amount < 0) throw invalid('bad-arguments');
       return amount;
     };
-    let result;
-    try {
-      result = await recordRoomSwap(
-        store,
-        {
-          apartmentId: v.appartamento,
-          tenancyIdA: v['presenza-a'],
-          tenancyIdB: v['presenza-b'],
-          month: month(v.mese),
-          ...optional('monthlyRentA', rent(v['canone-a'])),
-          ...optional('idA', v['id-a']),
-          ...optional('idB', v['id-b']),
-          ...optional('monthlyRentB', rent(v['canone-b'])),
-        },
-        who,
-        clock,
-        newId,
-      );
-    } catch (error) {
-      // An id the store refuses (a name reserved on Windows) is a bad argument.
-      if (error instanceof RangeError) throw invalid('bad-arguments');
-      throw error;
-    }
-    if (result.status === 'refused') {
-      throw new Stop('rejected', result.reason, {
-        ...optional('message', SWAP_MESSAGES[result.reason]),
-        ...optional('part', result.part),
-        ...optional('code', result.code),
-        ...optional('month', result.month),
-      });
-    }
-    return {
-      status: result.status,
-      tenancyIds: result.tenancyIds,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-      ...(result.warnings === undefined
-        ? {}
-        : {
-            warnings: result.warnings,
-            message: result.warnings.map((w) => MESSAGES[w]).join(' '),
-          }),
-    };
+    return roomSwapCommand(
+      store,
+      {
+        apartmentId: v.appartamento,
+        tenancyIdA: v['presenza-a'],
+        tenancyIdB: v['presenza-b'],
+        month: month(v.mese),
+        ...optional('monthlyRentA', rent(v['canone-a'])),
+        ...optional('idA', v['id-a']),
+        ...optional('idB', v['id-b']),
+        ...optional('monthlyRentB', rent(v['canone-b'])),
+      },
+      ctx,
+    );
   }
 
   if (name === 'stato-contratti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadContractStatus(store, {
-      asOf: month(clock().slice(0, 7)),
-      ...optional('apartmentId', values.appartamento),
+    return contractStatusCommand(store, optional('apartmentId', values.appartamento), ctx, {
+      details: values.dettagli === true,
     });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const details = values.dettagli === true;
-    const count = (list, keys) =>
-      Object.fromEntries(keys.map((k) => [k, list.filter((x) => x === k).length]));
-    // Counts and codes only; tenancies, tenants, months and amounts with --dettagli (R107).
-    return {
-      status: 'ok',
-      contracts: result.contracts.map(({ contract, tenancies, deposits, checks }) => ({
-        contractId: contract.id,
-        apartmentId: contract.apartmentId,
-        tenancies: count(
-          tenancies.map((t) => t.state),
-          ['futura', 'in-corso', 'uscita'],
-        ),
-        takeovers: contract.takeovers?.length ?? 0,
-        deposits: count(
-          deposits.map((d) => d.status),
-          ['versata', 'diversa', 'mancante', 'non-impostata'],
-        ),
-        ...(deposits.some((d) => d.status === 'diversa' || d.status === 'mancante')
-          ? { message: MESSAGES['deposit-check'] }
-          : {}),
-        checks: checks.map((c) => c.code),
-        ...(details
-          ? {
-              tenancyList: tenancies.map(({ tenancy: t, state }) => ({
-                tenancyId: t.id,
-                tenantId: t.tenantId,
-                room: t.room,
-                from: t.from,
-                to: t.to,
-                state,
-                monthlyRent: t.monthlyRent,
-                monthlyForfait: t.monthlyForfait,
-                expectedDeposit: t.expectedDeposit,
-              })),
-              takeoverList: contract.takeovers,
-              depositList: deposits,
-            }
-          : {}),
-      })),
-    };
   }
 
   if (name === 'tasso-legale') {
@@ -2423,19 +1228,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || values.tasso?.length !== 1 || !/^[0-9]{4}$/.test(values.anno)) {
       throw invalid('bad-arguments');
     }
-    const result = await saveLegalRate(
+    return saveLegalRateCommand(
       store,
       { year: values.anno, rateBp: basisPoints(values.tasso[0]) },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      rateId: result.rateId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'caparra-restituzione') {
@@ -2448,60 +1245,16 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (at < 1) throw invalid('bad-arguments');
       return { label: text.slice(0, at), amount: positive(text.slice(at + 1)) };
     });
-    const result = await loadDepositReturn(store, {
-      apartmentId: values.appartamento,
-      tenantId: values.inquilino,
-      ...(values.conguaglio === undefined ? {} : { conguaglio: euro(values.conguaglio) }),
-      extraCharges,
-    });
-    if (result.status === 'refused') {
-      // F10: a deposit already returned is not changed: the lines of the closed periods are
-      // «da richiedere» (labels and amounts only with --dettagli, R107).
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.reason === 'already-returned' && result.toRequest.length > 0
-          ? {
-              toRequest: result.toRequest.length,
-              warning: MESSAGES['deposit-to-request'],
-              // Finding 8: the signs of a statement (a debt is negative), in euro.
-              ...(values.dettagli === true
-                ? {
-                    toRequestLines: result.toRequest.map(({ label, amount }) => ({
-                      label,
-                      amount: formatEuro(amount),
-                    })),
-                  }
-                : {}),
-            }
-          : {},
-      );
-    }
-    // Every line is an amount: only with --dettagli (R107).
-    return {
-      status: 'ok',
-      lines: result.statement.lines.length,
-      message: MESSAGES['deposit-return-draft'],
-      ...(result.recoveriesWaiting > 0
-        ? { recoveriesWaiting: result.recoveriesWaiting, warning: MESSAGES['recovery-waiting'] }
-        : {}),
-      // Answer F, fourth round A: shown apart, never in the total.
-      ...(result.toCheck.length > 0
-        ? {
-            toCheck: result.toCheck.length,
-            toCheckMessage: MESSAGES['forfait-to-check'],
-            ...(values.dettagli === true
-              ? {
-                  toCheckLines: result.toCheck.map(({ label, amount }) => ({
-                    label,
-                    amount: formatEuro(amount),
-                  })),
-                }
-              : {}),
-          }
-        : {}),
-      ...(values.dettagli === true ? { statement: result.statement } : {}),
-    };
+    return depositReturnCommand(
+      store,
+      {
+        apartmentId: values.appartamento,
+        tenantId: values.inquilino,
+        ...(values.conguaglio === undefined ? {} : { conguaglio: euro(values.conguaglio) }),
+        extraCharges,
+      },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'bolletta') {
@@ -2514,45 +1267,29 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (percent !== undefined && !/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(percent)) {
       throw invalid('bad-arguments');
     }
-    let read;
+    const details = values.dettagli === true;
+    let json;
     try {
-      read = ExtractionResultSchema.safeParse(
-        JSON.parse(readBytes(values.lettura).toString('utf8')),
-      );
+      json = readBytes(values.lettura).toString('utf8');
     } catch {
       throw invalid('bad-reading');
     }
-    // E15: with --dettagli, the paths of the fields that do not fit (names, never values).
-    if (!read.success) {
-      throw invalid(
-        'bad-reading',
-        values.dettagli === true
-          ? { fields: [...new Set(read.error.issues.map((i) => i.path.join('.')))].sort() }
-          : {},
-      );
-    }
+    const reading = billReadingOf(json, { details });
     let bytes;
     try {
       bytes = readBytes(positionals[0]);
     } catch (error) {
       // E14: the PDF moved by an earlier registration of this same reading: say so.
-      const { fileHash } = read.data;
-      const registered = [
-        ...(await loadAll(store, 'bill', BillSchema)).records,
-        ...(await loadAll(store, 'instalment', InstalmentSchema)).records,
-      ].find((r) => r.fileHash === fileHash);
-      if (registered !== undefined) {
-        throw new Stop('rejected', 'duplicate-bill', { existingId: registered.id });
-      }
+      await refuseRegisteredBill(store, reading.fileHash);
       throw error;
     }
     // Without --codici, those of the apartment (`appartamento --codici`, R314).
     const knownCodes =
       values.codici === undefined ? undefined : values.codici.split(',').filter((c) => c !== '');
-    const result = await importBill(
+    const { body, file } = await importBillCommand(
       store,
       {
-        result: read.data,
+        result: reading,
         bytes,
         apartmentId: values.appartamento,
         knownCodes,
@@ -2562,81 +1299,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ),
         mode: values.conferma === true ? 'manual' : 'auto',
       },
-      who,
-      clock,
-      newId,
+      ctx,
+      { details },
     );
-    const details = values.dettagli === true;
-    // Codes and ids only; the messages hold amounts, months and quantities (R107).
-    const checks = (list) =>
-      list.map((c) => ({
-        code: c.code,
-        severity: c.severity,
-        ...(details ? { message: c.message } : {}),
-      }));
-    // The comparison as `consumi`: differences and levels; the sides (amounts) with --dettagli.
-    const consumptionOf = (c) => {
-      if (c === undefined) return {};
-      const side = (x) =>
-        x === undefined
-          ? undefined
-          : { differences: x.differences, ...(details ? { reference: x.reference } : {}) };
-      return {
-        consumption: {
-          thresholds: c.thresholds,
-          ...(c.thresholds ? {} : { message: MESSAGES['no-consumption-thresholds'] }),
-          yearBefore: side(c.yearBefore),
-          recent: side(c.recent),
-          ...(details ? { current: c.current } : {}),
-        },
-      };
-    };
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    if (result.status === 'rejected') {
-      throw new Stop('rejected', 'bill-rejected', {
-        checks: checks(result.checks),
-        ...(details ? { detail: result.reason } : {}),
-      });
-    }
-    if (result.status === 'duplicate' || result.status === 'possible-duplicate') {
-      throw new Stop('rejected', `${result.status}-bill`, { existingId: result.existingId });
-    }
-    if (result.status === 'da-rivedere') {
-      return {
-        status: result.status,
-        pendingId: result.pendingId,
-        ...optional('operationId', result.operationId),
-        codes: result.codes,
-        checks: checks(result.checks),
-        ...consumptionOf(result.consumption),
-        ...(details ? { reasons: result.reasons } : {}),
-      };
-    }
+    if (file === undefined) return body;
     // Plan 17, R315: the PDF of a whole file registered as a bill goes to the Bollette folder of
     // the apartment, never over another file and only from inside the shared folder.
-    const bills = (await loadAll(store, 'bill', BillSchema)).records;
-    const bill = bills.find((b) => result.ids.includes(b.id));
-    const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
-    const apartment = apartments.find((a) => a.id === values.appartamento);
-    const [first, last] = read.data.pageRange ?? [1, read.data.pages];
-    let file = 'not-moved';
-    if (bill !== undefined && apartment !== undefined && first === 1 && last === read.data.pages) {
+    let moved = 'not-moved';
+    if (file !== 'not-moved') {
       const inside = relative(resolve(values.cartella), resolve(positionals[0]));
-      if (inside.startsWith('..') || isAbsolute(inside)) file = 'outside-folder';
+      if (inside.startsWith('..') || isAbsolute(inside)) moved = 'outside-folder';
       else {
-        const plan = billFileMove(apartment, bill.filePath);
+        const plan = billFileMove(file.apartment, file.filePath);
         // The bill is registered whatever happens to the file: never «failed» for a move.
-        file = await moveSafely(values.cartella, inside.split(/[\\/]/).join('/'), plan.filed);
+        moved = await moveSafely(values.cartella, inside.split(/[\\/]/).join('/'), plan.filed);
       }
     }
-    return {
-      status: result.status,
-      ids: result.ids,
-      operationId: result.operationId,
-      checks: checks(result.checks),
-      ...consumptionOf(result.consumption),
-      file,
-    };
+    return { ...body, file: moved };
   }
 
   if (name === 'annulla-bolletta') {
@@ -2650,60 +1329,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
         pages = [Number(found[1]), Number(found[2])];
       } else throw invalid('bad-arguments');
     }
-    const fileHash = await hashBytes(readBytes(positionals[0]));
-    // Read before the undo: the bill tells where the file is and which Da_smistare it goes to.
-    const filed = (await loadAll(store, 'bill', BillSchema)).records.find(
-      (b) => b.fileHash === fileHash,
+    const { body, move } = await undoBillCommand(
+      store,
+      { bytes: readBytes(positionals[0]), ...optional('pages', pages) },
+      ctx,
+      { details: values.dettagli === true },
     );
-    let result;
-    try {
-      result = await undoBillImport(store, fileHash, who, clock, newId, optional('pages', pages));
-    } catch (error) {
-      const text = error instanceof Error ? error.message : '';
-      if (text.includes('depend on it')) throw new Stop('rejected', 'has-dependents-bill');
-      if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
-      throw error;
-    }
-    if (result.status === 'refused') {
-      if (result.reason === 'several-documents') {
-        throw new Stop('rejected', 'several-documents', { documents: result.documents });
-      }
-      if (result.reason === 'has-dependents') {
-        // Counts only: the ids are shown with --dettagli (R107).
-        throw new Stop('rejected', 'has-dependents-bill', {
-          dependents: result.recordIds.length,
-          ...(values.dettagli === true ? { recordIds: result.recordIds } : {}),
-        });
-      }
-      throw new Stop('rejected', result.reason);
-    }
-    // Plan 17, R315: the file goes back to Da_smistare, once nothing of it is registered, never
-    // over another file.
+    // Plan 17, R315: the file goes back to Da_smistare, never over another file.
     let file = 'not-moved';
-    const left = (await loadAll(store, 'bill', BillSchema)).records.some(
-      (b) => b.fileHash === fileHash,
-    );
-    const apartment =
-      filed === undefined
-        ? undefined
-        : (await loadAll(store, 'apartment', ApartmentSchema)).records.find(
-            (a) => a.id === filed.apartmentId,
-          );
-    if (filed !== undefined && apartment !== undefined && !left) {
-      const plan = billFileMove(apartment, filed.filePath);
+    if (move !== undefined) {
       const inside = relative(resolve(values.cartella), resolve(positionals[0]))
         .split(/[\\/]/)
         .join('/');
-      if (inside.normalize('NFC') === plan.filed.normalize('NFC')) {
-        file = await moveSafely(values.cartella, plan.filed, plan.inbox);
+      if (inside.normalize('NFC') === move.from.normalize('NFC')) {
+        file = await moveSafely(values.cartella, move.from, move.to);
       }
     }
-    return {
-      status: 'undone',
-      records: result.records,
-      operationIds: result.operations.map((o) => o.id),
-      file,
-    };
+    return { ...body, file };
   }
 
   if (name === 'cruscotto') {
@@ -2716,29 +1358,18 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (at < 1 || at === text.length - 1) throw invalid('bad-arguments');
       return { apartmentId: text.slice(0, at), periodLabel: text.slice(at + 1) };
     });
-    const result = await loadDashboard(store, {
-      // Today: --oggi, or the UTC date of the clock, as `scadenze`.
-      today: day(values.oggi ?? clock().slice(0, 10)),
-      ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
-      ...optional('taxYear', anno),
-      // Without --periodo-conguaglio, the period in course of each apartment (R316).
-      ...(settlements.length === 0 ? {} : { settlements }),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Counts and codes; the share of the empty beds is an amount: only with --dettagli (R107).
-    return {
-      status: 'ok',
-      apartments: result.apartments,
-      settlements: result.settlements.map((r) => ({
-        apartmentId: r.apartmentId,
-        periodLabel: r.periodLabel,
-        ...optional('problem', r.problem),
-        ...optional('pending', r.pending),
-        // R5: «chiuso» when the period has a live closing, else provisional.
-        ...(r.problem === undefined ? { state: r.step ?? 'provvisorio' } : {}),
-        ...(values.dettagli === true ? optional('unassigned', r.unassigned) : {}),
-      })),
-    };
+    return dashboardCommand(
+      store,
+      {
+        // Today: --oggi, or the UTC date of the clock, as `scadenze`.
+        today: day(values.oggi ?? clock().slice(0, 10)),
+        ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
+        ...optional('taxYear', anno),
+        // Without --periodo-conguaglio, the period in course of each apartment (R316).
+        ...(settlements.length === 0 ? {} : { settlements }),
+      },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'scadenze') {
@@ -2751,61 +1382,16 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (stato === 'in-scadenza' && entro === undefined) throw invalid('bad-arguments');
     // Today: --oggi, or the UTC date of the clock (plan 9, «Mie scelte» 3).
     const today = day(values.oggi ?? clock().slice(0, 10));
-    const result = await loadScadenzario(store, {
-      today,
-      ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const details = values.dettagli === true;
-    const years = details ? await loadRentYears(store, {}) : undefined;
-    if (years?.status === 'refused') throw new Stop('rejected', years.reason);
-    return {
-      status: 'ok',
-      // Dates, amounts, movements and names only with --dettagli (R107).
-      items: result.items
-        .filter(
-          (i) =>
-            (stato === undefined || i.state === stato) && (tipo === undefined || i.kind === tipo),
-        )
-        .map((i) => ({
-          source: i.source,
-          id: i.id,
-          kind: i.kind,
-          apartmentIds: i.apartmentIds,
-          state: i.state,
-          ...optional('check', i.check),
-          ...optional('repeatYearly', i.repeatYearly),
-          ...optional('taxYear', i.taxYear),
-          ...optional('repeated', i.repeated),
-          ...(details
-            ? {
-                taxpayers: i.taxpayers,
-                ...optional('dueDate', i.dueDate),
-                ...optional('expected', i.expected),
-                ...optional('paidOn', i.paidOn),
-                ...optional('transactionId', i.transactionId),
-              }
-            : {}),
-        })),
-      contractEnds: result.contractEnds.map((c) => ({
-        contractId: c.contractId,
-        apartmentId: c.apartmentId,
-        ...(details ? { end: c.end } : {}),
-      })),
-      // The cedolare estimate is shown beside the list, never an item (plan 9, question 4).
-      ...(years === undefined
-        ? {}
-        : {
-            estimates: years.rentYears
-              .filter((y) => y.cedolareExpected !== undefined)
-              .map((y) => ({
-                apartmentId: y.apartmentId,
-                year: y.year,
-                cedolareExpected: y.cedolareExpected,
-                message: MESSAGES['cedolare-estimate'],
-              })),
-          }),
-    };
+    return payablesCommand(
+      store,
+      {
+        today,
+        ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
+        ...optional('state', stato),
+        ...optional('kind', tipo),
+      },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'scadenza-nuova') {
@@ -2819,7 +1405,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await savePayable(
+    return savePayableCommand(
       store,
       {
         ...optional('id', values.id),
@@ -2835,22 +1421,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
         // The voce of the tax table of a bollo or F24, chosen here (plan 17, R303).
         ...optional('taxVoice', values.voce),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Ruling (E3): the same payable again is that payable; a second identical one needs --id.
-    if (result.status === 'unchanged' && values.id === undefined) {
-      return { ...result, message: MESSAGES['already-recorded'] };
-    }
-    return result;
   }
 
   if (name === 'scadenza-ripeti') {
     need(values, 'id', 'scadenza');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await repeatPayable(
+    return repeatPayableCommand(
       store,
       {
         payableId: values.id,
@@ -2861,12 +1439,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ),
         ...optional('taxYear', taxYearOf(values['anno-riferimento'])),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return result;
   }
 
   if (name === 'scadenza-pagata') {
@@ -2878,52 +1452,26 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await setPayablePaid(
+    return payablePaidCommand(
       store,
       {
         payableId: values.id,
         ...optional('transactionId', values.movimento),
         ...optional('date', values.data === undefined ? undefined : day(values.data)),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return result;
   }
 
   if (name === 'abbina') {
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
-    const result = await confirmMatch(
-      store,
-      { parts: values.parte.map(parseMatchPart) },
-      who,
-      clock,
-      newId,
-    );
-    if (result.status === 'refused') {
-      // The errors of invalid-matches are codes and ids only, no amount.
-      throw new Stop(
-        'rejected',
-        result.reason,
-        'errors' in result ? { errors: result.errors } : {},
-      );
-    }
-    // amountDiffers: bill ids confirmed for the debit, not the document amount (R2: «importo
-    // diverso», an id only, no amount).
-    return {
-      status: 'confirmed',
-      operationId: result.operationId,
-      matchIds: result.matchIds,
-      ...optional('amountDiffers', result.amountDiffers),
-    };
+    return confirmMatchCommand(store, { parts: values.parte.map(parseMatchPart) }, ctx);
   }
 
   if (name === 'conferma') {
     need(values, 'proposta', 'inquilino');
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
-    const result = await confirmIncome(
+    return confirmIncomeCommand(
       store,
       {
         proposalId: values.proposta,
@@ -2931,70 +1479,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
         parts: values.parte.map(parsePart),
         rememberPayer: values['solo-questa-volta'] !== true,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: 'confirmed',
-      operationId: result.operationId,
-      paymentIds: result.paymentIds,
-      ...(result.payerId === undefined ? {} : { payerId: result.payerId }),
-      // B17: codes and months only (no amount): a rent month outside the presence or paid twice.
-      ...optional(
-        'warnings',
-        result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
-      ),
-    };
   }
 
   if (name === 'annulla-riconciliazione' || name === 'annulla-incassi') {
     need(values, 'operazione');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const { operations } = await readJournal(store);
-    const target = operations.find((o) => o.id === values.operazione);
-    if (target === undefined) throw new Stop('rejected', 'unknown-operation');
-    if (!RECONCILE_KINDS.includes(target.kind)) {
-      throw new Stop('rejected', 'not-reconcile-operation');
-    }
-    // A cancellation whose movement has had another use since: undoing it would give a second one;
-    // an imu.expected under an assigned F24 would change its rate (plan 3d).
-    const recordIds = await undoBlockedBy(store, target.id);
-    // U8: records pointing at what the operation created, with the counts by kind (no names).
-    const created = recordIds.length > 0 ? await undoDependents(store, target.id) : [];
-    if (created.length > 0 && target.kind !== 'imu.expected') {
-      throw new Stop('rejected', 'has-dependents', {
-        message: MESSAGES['record-has-dependents'],
-        counts: countByType(created),
-        recordIds,
-      });
-    }
-    if (recordIds.length > 0) {
-      throw new Stop('rejected', 'has-dependents', {
-        message:
-          MESSAGES[
-            target.kind === 'imu.expected'
-              ? 'imu-has-assignments'
-              : target.kind.startsWith('tenancy.')
-                ? 'tenancy-has-dependents'
-                : 'movement-has-dependents'
-          ],
-        recordIds,
-      });
-    }
-    try {
-      const undone = await undoOperation(store, target.id, who, clock, newId);
-      return { status: 'undone', operationId: undone.id };
-    } catch (error) {
-      // Finding 9: the core refuses an undo that would close a period without a new snapshot.
-      if (error instanceof ClosingUndoError) throw new Stop('rejected', error.reason);
-      const text = error instanceof Error ? error.message : '';
-      if (text.includes('was already undone')) throw new Stop('rejected', 'already-undone');
-      if (text.includes('depend on it')) throw new Stop('rejected', 'has-dependents');
-      if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
-      throw error;
-    }
+    return undoOperationCommand(store, values.operazione, ctx);
   }
 
   // I3, E4 (review of 18 Nov 2026): a condominium instalment of the plan of a fiscal year, as the
@@ -3008,7 +1500,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     );
     if (positionals.length > 0 || found === null) throw invalid('bad-arguments');
     const amountOr0 = (text) => (text === undefined ? euro('0,00') : euro(text));
-    const result = await saveCondoInstalment(
+    return saveCondoInstalmentCommand(
       store,
       {
         id: values.id,
@@ -3022,37 +1514,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         conguaglioPrec: amountOr0(values['conguaglio-prec']),
         ...(values.straordinaria === true ? { straordinaria: true } : {}),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') {
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.reason === 'esercizio-format'
-          ? {
-              documentIds: result.documentIds,
-              ...(result.documentIds.length === 0
-                ? { message: MESSAGES['instalment-esercizio-format'] }
-                : {}),
-            }
-          : result.reason === 'instalment-in-use'
-            ? { recordIds: result.recordIds }
-            : result.reason === 'id-collision'
-              ? { message: MESSAGES['instalment-id-collision'] }
-              : {},
-      );
-    }
-    return {
-      status: result.status,
-      instalmentId: result.instalmentId,
-      ...optional('operationId', result.operationId),
-      ...optional(
-        'warnings',
-        result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
-      ),
-    };
   }
 
   // I9 (review of 18 Nov 2026): the workspace settings, read, or set with --tolleranza-imu
@@ -3060,34 +1523,17 @@ async function command(name, values, positionals, store, who, clock, newId) {
   if (name === 'impostazioni') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const imu = values['tolleranza-imu'];
-    let written;
-    if (imu !== undefined) {
-      const result = await saveSettings(
-        store,
-        // 0 is no tolerance at all (the schema allows it); basisPoints starts at 0,01%.
-        {
-          imuToleranceBp:
-            imu === 'predefinita' ? null : /^0(,0{1,2})?$/.test(imu) ? 0 : basisPoints(imu),
-        },
-        who,
-        clock,
-        newId,
-      );
-      if (result.status === 'refused') throw new Stop('rejected', result.reason);
-      written = result;
-    }
-    const settings = await loadSettings(store);
-    return {
-      status: written?.status ?? 'ok',
-      ...optional('operationId', written?.operationId),
-      settings: {
-        // Basis points (100 is 1%): no amount-like text in the output.
-        imuTolerance: {
-          basisPoints: settings.imuToleranceBp.value,
-          isDefault: settings.imuToleranceBp.isDefault,
-        },
-      },
-    };
+    return settingsCommand(
+      store,
+      imu === undefined
+        ? {}
+        : // 0 is no tolerance at all (the schema allows it); basisPoints starts at 0,01%.
+          {
+            imuToleranceBp:
+              imu === 'predefinita' ? null : /^0(,0{1,2})?$/.test(imu) ? 0 : basisPoints(imu),
+          },
+      ctx,
+    );
   }
 
   // I2, R5 (review of 18 Nov 2026): the closing of a settlement period with its snapshot, and the
@@ -3097,101 +1543,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
     need(values, 'appartamento', 'periodo');
     if (positionals.length > 0) throw invalid('bad-arguments');
     const query = { apartmentId: values.appartamento, periodLabel: values.periodo };
-    const details = values.dettagli === true;
-    if (name === 'chiudi-periodo') {
-      const result = await closePeriod(store, query, who, clock, newId);
-      if (result.status === 'refused') {
-        throw new Stop(
-          'rejected',
-          result.reason,
-          result.reason === 'tari-december-missing'
-            ? { month: result.month }
-            : result.reason === 'cannot-close'
-              ? {
-                  missing: result.missing.map(({ amount, ...m }) =>
-                    details && amount !== undefined ? { ...m, amount } : m,
-                  ),
-                }
-              : result.reason === 'settlement-error'
-                ? { code: result.code, message: MESSAGES['period-settlement-error'] }
-                : result.reason === 'ambiguous-period'
-                  ? { message: MESSAGES['ambiguous-period-label'] }
-                  : {},
-        );
-      }
-      // Plan 22: the rent not collected of a reopened period closed again, as a warning.
-      if (result.rentMissing === undefined) return result;
-      return {
-        ...result,
-        rentMissing: result.rentMissing.map(({ amount, ...m }) => (details ? { ...m, amount } : m)),
-        warning: MESSAGES['rent-missing'],
-      };
-    }
-    const result = await loadPeriodClosing(store, query, day(clock().slice(0, 10)));
-    if (result.status === 'refused') {
-      const message =
-        result.reason === 'ambiguous-period'
-          ? 'ambiguous-period-label'
-          : result.reason === 'settlement-error'
-            ? 'period-settlement-error'
-            : result.reason;
-      throw new Stop('rejected', result.reason, {
-        ...optional('code', result.code),
-        message: MESSAGES[message],
-      });
-    }
-    if (result.status === 'open') return { status: 'open' };
-    const settledIds = new Set(result.settled.map((s) => s.tenantId));
-    return {
-      status: result.status,
-      // F1, F3: the step of the closing.
-      state: result.state,
-      closedAt: result.closedAt,
-      ...optional('sentOn', result.sentOn),
-      ...(result.reopened === undefined ? {} : { reopenedOn: result.reopened.on }),
-      changed: result.changed,
-      dataChanged: result.dataChanged,
-      tenants: result.tenants.map(
-        ({
-          delta,
-          forfaitDelta,
-          total,
-          remaining,
-          mainRemaining,
-          forfaitPaid,
-          toCheck,
-          rentMissing,
-          rentAsked,
-          rentLost,
-          flatCredit,
-          ...t
-        }) => ({
-          ...t,
-          settled: settledIds.has(t.tenantId),
-          // Plan 22: the row «Canone non incassato» (amount only with --dettagli).
-          ...(rentMissing === 0 ? {} : { rentMissing: details ? rentMissing : true }),
-          ...(details && rentAsked !== 0 ? { rentAsked } : {}),
-          ...(details && rentLost !== 0 ? { rentLost } : {}),
-          // F11: the flat charge no longer collected is a line of its own; fourth round A, B: the
-          // supplementary computed once (`total`) and the flat charge «da verificare» (`toCheck`).
-          ...(details
-            ? {
-                delta,
-                forfaitDelta,
-                total,
-                remaining,
-                mainRemaining,
-                forfaitPaid,
-                toCheck,
-                // Plan 22: the flat charge checked as a credit, still to check.
-                flatCredit,
-              }
-            : {}),
-        }),
-      ),
-      ...(result.toCheck ? { toCheck: true, warning: MESSAGES['forfait-to-check'] } : {}),
-      ...(details ? { unassignedDelta: result.unassignedDelta } : {}),
-    };
+    const options = { details: values.dettagli === true };
+    return name === 'chiudi-periodo'
+      ? closePeriodCommand(store, query, ctx, options)
+      : periodClosingCommand(store, query, ctx, options);
   }
 
   // F1, F3 (decided by user1 on 18 Nov 2026): sent, settled per tenant, reopened with a reason.
@@ -3200,12 +1555,10 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0) throw invalid('bad-arguments');
     const query = { apartmentId: values.appartamento, periodLabel: values.periodo };
     const on = day(values.data);
-    let result;
-    if (name === 'invia-conguaglio') {
-      result = await markPeriodSent(store, { ...query, on }, who, clock, newId);
-    } else if (name === 'conguaglio-saldato') {
+    if (name === 'invia-conguaglio') return markPeriodSentCommand(store, { ...query, on }, ctx);
+    if (name === 'conguaglio-saldato') {
       need(values, 'inquilino');
-      result = await markTenantSettled(
+      return markTenantSettledCommand(
         store,
         {
           ...query,
@@ -3215,44 +1568,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
           // D: the supplementary settlement instead of the closing's.
           ...(values.supplementare === true ? { supplementary: true } : {}),
         },
-        who,
-        clock,
-        newId,
-      );
-    } else {
-      need(values, 'motivo');
-      result = await reopenPeriod(
-        store,
-        { ...query, on, reason: values.motivo },
-        who,
-        clock,
-        newId,
+        ctx,
       );
     }
-    if (result.status === 'refused' && result.reason === 'use-supplementary') {
-      // The main is already settled and a supplementary is left: the amount, in euro.
-      const amount = formatEuro(Math.abs(result.amount));
-      throw new Stop('rejected', result.reason, {
-        message:
-          result.amount < 0
-            ? `Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare a favore dell’inquilino di ${amount}: usa --supplementare.`
-            : `Il conguaglio di questa chiusura è già segnato saldato; resta un conguaglio supplementare di ${amount}: usa --supplementare.`,
-      });
-    }
-    if (result.status === 'refused') {
-      const message = {
-        'unknown-tenant': 'unknown-tenant-in-close',
-        'unknown-movement': 'unknown-movement-in-close',
-        'no-supplementary': 'no-supplementary',
-        'invalid-input': 'invalid-close-input',
-      }[result.reason];
-      throw new Stop(
-        'rejected',
-        result.reason,
-        message === undefined ? {} : { message: MESSAGES[message] },
-      );
-    }
-    return result;
+    need(values, 'motivo');
+    return reopenPeriodCommand(store, { ...query, on, reason: values.motivo }, ctx);
   }
 
   // Plan 22 (decision 3 and answer 2 of user1, 19 Nov 2026): the flat charge «da verificare»
@@ -3264,7 +1584,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !Object.hasOwn(outcomes, values.esito)) {
       throw invalid('bad-arguments');
     }
-    const result = await (name === 'forfait-verificato' ? markFlatChecked : markRentMissing)(
+    return (name === 'forfait-verificato' ? markFlatCheckedCommand : markRentMissingCommand)(
       store,
       {
         apartmentId: values.appartamento,
@@ -3274,25 +1594,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         outcome: outcomes[values.esito],
         ...optional('transactionId', values.movimento),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') {
-      const message = {
-        'unknown-tenant': 'unknown-tenant-in-close',
-        'unknown-movement': 'unknown-movement-in-close',
-        'nothing-to-check': 'nothing-to-check',
-        'nothing-to-mark': 'nothing-to-mark',
-        'invalid-input': 'invalid-close-input',
-      }[result.reason];
-      throw new Stop(
-        'rejected',
-        result.reason,
-        message === undefined ? {} : { message: MESSAGES[message] },
-      );
-    }
-    return result;
   }
 
   // E5 (review of 18 Nov 2026): a supply of a shared notice (the code printed on the TARI notice)
@@ -3314,48 +1617,26 @@ async function command(name, values, positionals, store, who, clock, newId) {
             if (found === null) throw invalid('bad-arguments');
             return { apartmentId: found[1], basisPoints: basisPoints(found[2]) };
           });
-    const result = await saveSupply(
+    return saveSupplyCommand(
       store,
       { label: values.etichetta.trim(), rows, note: '' },
-      who,
-      clock,
-      newId,
+      ctx,
       // Plan 22: new weights of an existing supply from a month («valido dal»).
       values.dal === undefined ? {} : { validFrom: month(values.dal) },
     );
-    if (result.status === 'refused') {
-      throw new Stop('rejected', result.reason, optional('supplyId', result.supplyId));
-    }
-    return {
-      status: result.status,
-      supplyId: result.supplyId,
-      ...optional('operationId', result.operationId),
-    };
   }
 
   // Review of 18 Nov 2026 (annullo, point 2): the live records pointing at a missing or deleted
   // one; kinds, ids and the field only, never a value.
   if (name === 'riferimenti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const problems = (await referenceProblems(store)).map(({ from, field, to }) => ({
-      from,
-      field,
-      to,
-      message: `${from.type} ${from.id}: ${field} punta a ${to.type} ${to.id}, che non c’è o è cancellato.`,
-    }));
-    return {
-      status: 'ok',
-      problems,
-      ...(problems.length === 0 ? { message: MESSAGES['no-references'] } : {}),
-    };
+    return referencesCommand(store);
   }
 
   if (name === 'annulla-pagamento') {
     need(values, 'pagamento');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await cancelAutomaticPayment(store, values.pagamento, who, clock, newId);
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'cancelled', operationId: result.operationId };
+    return cancelPaymentCommand(store, values.pagamento, ctx);
   }
 
   if (name === 'escludi') {
@@ -3363,101 +1644,32 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !ExcludeReasonSchema.safeParse(values.motivo).success) {
       throw invalid('bad-arguments');
     }
-    const result = await excludeMovement(
+    return excludeMovementCommand(
       store,
       { transactionId: values.movimento, reason: values.motivo },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused' && result.reason === 'has-dependents') {
-      // The reason is the core's; the message is the one of a movement, not of an operation.
-      throw new Stop('rejected', result.reason, {
-        message: MESSAGES['movement-has-dependents'],
-        recordIds: result.recordIds,
-      });
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'excluded', operationId: result.operationId };
   }
 
   if (name === 'ripara') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    // Repairs every diverged record it can and reports the rest (a fork, a record newer on disk,
-    // a conflict copy): those need a person (revisione 2026-11-18).
-    const problems = await checkConsistency(store);
-    let repaired = 0;
-    const left = [];
-    for (const problem of problems) {
-      if (problem.reason === 'diverged') {
-        try {
-          await repairDiverged(store, problem.path);
-          repaired += 1;
-          continue;
-        } catch {
-          left.push({ path: problem.path, reason: 'repair-refused' });
-          continue;
-        }
-      }
-      left.push({ path: problem.path, reason: problem.reason });
-    }
-    return { status: 'repaired', repaired, ...(left.length > 0 ? { left } : {}) };
+    return repairCommand(store);
   }
 
   if (name === 'scegli-versione') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     need(values, 'file');
-    const versions = await forkVersions(store, values.file);
-    if (values.operazione === undefined) {
-      if (versions.length === 0) throw new Stop('rejected', 'not-forked');
-      // Operation ids, times and profile ids only; the content with --dettagli.
-      return {
-        status: 'versions',
-        versions: versions.map((op) => {
-          const after = op.changes.find((change) => change.path === values.file)?.after;
-          // Finding 6: the marks of each version of a closing, so that choosing loses none unseen.
-          const close = PeriodCloseSchema.safeParse(after);
-          return {
-            operationId: op.id,
-            at: op.at,
-            profileId: op.profileId,
-            ...(close.success ? { marks: closeMarks(close.data) } : {}),
-            ...(values.dettagli === true ? { record: after } : {}),
-          };
-        }),
-      };
-    }
-    if (!versions.some((op) => op.id === values.operazione))
-      throw new Stop('rejected', 'not-forked');
-    const operation = await resolveFork(store, values.file, values.operazione, who, clock, newId);
-    return { status: 'resolved', operationId: operation.id };
+    return chooseVersionCommand(
+      store,
+      { file: values.file, ...optional('operationId', values.operazione) },
+      ctx,
+      { details: values.dettagli === true },
+    );
   }
 
   // annulla
   need(values, 'estratto');
-  try {
-    const result = await undoImport(store, values.estratto, who, clock, newId);
-    if (result.status === 'refused') {
-      throw new Stop(
-        'rejected',
-        result.reason,
-        result.reason === 'dependent-payments'
-          ? { paymentIds: result.paymentIds }
-          : result.reason === 'dependent-records'
-            ? { recordIds: result.recordIds }
-            : {},
-      );
-    }
-    return { status: 'undone', statementId: values.estratto, operationId: result.operation.id };
-  } catch (error) {
-    if (error instanceof Stop) throw error;
-    if (error instanceof RangeError) throw new Stop('rejected', 'no-import');
-    // refuseIfDiverged (journal.ts): the folder is not as the journal leaves it (R106, N2).
-    if (error instanceof Error && error.message.startsWith('Cannot undo:')) {
-      throw new Stop('rejected', 'journal-not-aligned');
-    }
-    throw error;
-  }
+  return undoImportCommand(store, values.estratto, ctx);
 }
 
 /** The commands `main` accepts; each one has a line in COMMAND_HELP (estratti-aiuto.mjs). */
@@ -3532,31 +1744,6 @@ export const COMMAND_NAMES = [
   'scegli-versione',
   'aiuto',
 ];
-
-/**
- * The state of each closed settlement period (R5), by closing id, as `loadPeriodClosing` gives it:
- * compared before and after a write to warn that the write changed a closed period (review,
- * point 6). Nothing when no period is closed; a folder it cannot read gives nothing.
- */
-async function closedStates(store, today) {
-  const states = new Map();
-  try {
-    // Only the periods closed now: a reopened one is open again (F3).
-    const closes = (await loadAll(store, 'periodClose', PeriodCloseSchema)).records.filter(
-      isLiveClose,
-    );
-    for (const c of closes) {
-      const query = { apartmentId: c.apartmentId, periodLabel: c.periodLabel };
-      states.set(c.id, {
-        query,
-        state: JSON.stringify(await loadPeriodClosing(store, query, today)),
-      });
-    }
-  } catch {
-    return new Map();
-  }
-  return states;
-}
 
 /**
  * The data folder of one command line (review of 18 Nov 2026, data format): before its first
@@ -3860,7 +2047,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     }
     const store = new CliStore(values.cartella);
     const today = day(now.slice(0, 10));
-    const closedBefore = await closedStates(store, today);
+    const closedBefore = await closedPeriodStates(store, today);
     const result = await command(
       name,
       values,
@@ -3874,57 +2061,16 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
     let body = store.formatRaised ? { ...result, dataFormat: 'raised' } : result;
     // Point 6: a write that changed a period closed before it (never a refusal of ours).
     if (store.formatChecked && closedBefore.size > 0) {
-      const after = await closedStates(store, today);
-      const changed = [...closedBefore]
-        .filter(([id, { state }]) => after.has(id) && after.get(id).state !== state)
-        .map(([, { query }]) => query);
-      if (changed.length > 0) {
-        body = {
-          ...body,
-          closedPeriods: changed,
-          closedPeriodMessage: MESSAGES['closed-period-changed'],
-        };
-      }
+      const changed = changedClosedPeriods(closedBefore, await closedPeriodStates(store, today));
+      if (changed !== undefined) body = { ...body, ...changed };
     }
     return done(0, body);
   } catch (error) {
-    if (error instanceof Stop) {
-      return done(error.status === 'invalid' ? 2 : 1, {
-        status: error.status,
-        reason: error.reason,
-        message: MESSAGES[error.reason],
-        ...error.extra,
-      });
-    }
-    // The typed refusals of the core carry relative paths and ids only (revisione 2026-11-18).
-    const refusal =
-      error instanceof NewerDataError || error instanceof FileAccessError
-        ? {
-            reason: error instanceof NewerDataError ? 'newer-data' : 'file-access',
-            paths: [error.path],
-          }
-        : error instanceof InconsistentRecordError
-          ? { reason: 'inconsistent-record', paths: [error.path], state: error.reason }
-          : error instanceof ClosedPeriodError
-            ? {
-                reason: 'closed-period',
-                paths: [error.path],
-                apartmentId: error.apartmentId,
-                periodLabel: error.periodLabel,
-              }
-            : error instanceof UnreadableRecordsError
-              ? { reason: 'unreadable-records', paths: error.records.map((r) => r.path) }
-              : undefined;
-    if (refusal !== undefined) {
-      // The core's text for unreadable records names the ids and, for a fork, «scegli-versione».
-      const message =
-        error instanceof UnreadableRecordsError || error instanceof ClosedPeriodError
-          ? error.message
-          : MESSAGES[refusal.reason];
-      return done(1, { status: 'rejected', ...refusal, message });
-    }
+    if (error instanceof Stop) return done(error.status === 'invalid' ? 2 : 1, stopBody(error));
+    const refusal = commandRefusal(error);
+    if (refusal !== undefined) return done(1, refusal);
     // Never the message or the stack: they could hold a path or a value.
-    return done(3, { status: 'failed', reason: 'failed', message: MESSAGES.failed });
+    return done(3, FAILED_BODY);
   }
 }
 
