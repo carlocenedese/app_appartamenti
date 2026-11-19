@@ -26,6 +26,7 @@ import {
 } from './model';
 import { isLiveClose, periodCloseId } from './closing';
 import { splitOfClosing } from './conguaglio';
+import { withContractEnds } from './contract';
 import { settlementPeriods } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
@@ -87,7 +88,8 @@ export async function loadExcelInput(
       period: { label: period.label, from: period.from, to: period.to },
       periods: spans,
       tenants: await records('tenant', TenantSchema),
-      tenancies: own(await records('tenancy', TenancySchema)),
+      // F9 a: a stay without end lasts until the end of its contract.
+      tenancies: withContractEnds(own(await records('tenancy', TenancySchema)), contracts),
       bills: own(await records('bill', BillSchema)),
       instalments: own(await records('instalment', InstalmentSchema)),
       payments: own(await records('payment', PaymentSchema)),

@@ -4,6 +4,7 @@
  * `checkConsistency` reports a problem (R106, R107). Summaries carry counts only.
  */
 import { isPresent } from './conguaglio';
+import { withContractEnds } from './contract';
 import { reconcileIncome, rentArrears } from './income';
 import type { IncomeProposal, RentArrear } from './income';
 import { commitChange, latestOperationByPath, readJournal, writesBlocked } from './journal';
@@ -13,6 +14,7 @@ import {
   ApartmentSchema,
   BankTransactionSchema,
   BillMatchSchema,
+  ContractSchema,
   MovementClassSchema,
   PayerSchema,
   PaymentSchema,
@@ -140,7 +142,11 @@ async function loadIncomeState(store: Store, alsoUsed: ReadonlySet<string> = new
   return {
     accounts: (await loadAll(store, 'account', AccountSchema, all)).records,
     apartments: (await loadAll(store, 'apartment', ApartmentSchema, all)).records,
-    tenancies: (await loadAll(store, 'tenancy', TenancySchema, all)).records,
+    // F9 a: a stay without end lasts until the end of its contract (arrears, months to pay).
+    tenancies: withContractEnds(
+      (await loadAll(store, 'tenancy', TenancySchema, all)).records,
+      (await loadAll(store, 'contract', ContractSchema)).records,
+    ),
     tenants: (await loadAll(store, 'tenant', TenantSchema, all)).records,
     payers: (await loadAll(store, 'payer', PayerSchema, all)).records,
     payments,

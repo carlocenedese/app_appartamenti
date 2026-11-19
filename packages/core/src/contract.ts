@@ -43,6 +43,26 @@ export function cedolareRateForYear(
   return others.length === 0 ? rate : undefined;
 }
 
+/**
+ * F9 a (user1, 19 Nov 2026): a stay without `to` lasts until the end of its contract, the latest
+ * `end` of the live contracts that link it (`tenancyIds`). A stay no live contract links keeps no
+ * end. Only for reading what to calculate: a write never stores the derived `to`.
+ */
+export function withContractEnds(tenancies: Tenancy[], contracts: Contract[]): Tenancy[] {
+  const ends = new Map<string, YearMonth>();
+  for (const c of contracts) {
+    if (c.deleted === true) continue;
+    for (const id of c.tenancyIds ?? []) {
+      const known = ends.get(id);
+      if (known === undefined || known < c.end) ends.set(id, c.end);
+    }
+  }
+  return tenancies.map((t) => {
+    const end = ends.get(t.id);
+    return t.to !== undefined || end === undefined ? t : { ...t, to: end };
+  });
+}
+
 /** The entry of `rent` with the largest `from` not after `month`; none before the first entry. */
 export function rentForMonth(
   contract: Pick<Contract, 'rent'>,

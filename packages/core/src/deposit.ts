@@ -9,6 +9,7 @@ import type { CaparraReturn } from './caparra';
 import { SettlementInputError, calcConguaglio, isPresent, settlementPeriodOf } from './conguaglio';
 import { flatPaymentsOf, rentOf, tenantBalance } from './closing';
 import { recoverableMovements } from './condominio';
+import { withContractEnds } from './contract';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
 import { legalInterest } from './interest';
@@ -243,9 +244,11 @@ export async function loadDepositReturn(
     >,
   ) => ({ status: 'refused', reason }) as const;
   if (await writesBlocked(store)) return refuse('inconsistent-store');
-  const tenancies = (await loadAll(store, 'tenancy', TenancySchema)).records.filter(
-    (t) => t.apartmentId === input.apartmentId,
-  );
+  // F9 a: a stay without end lasts until the end of its contract.
+  const tenancies = withContractEnds(
+    (await loadAll(store, 'tenancy', TenancySchema)).records,
+    (await loadAll(store, 'contract', ContractSchema)).records,
+  ).filter((t) => t.apartmentId === input.apartmentId);
   const check = depositChecks({
     tenancies,
     payments: (await loadAll(store, 'payment', PaymentSchema)).records,

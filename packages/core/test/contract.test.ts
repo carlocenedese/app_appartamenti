@@ -7,6 +7,7 @@ import {
   cedolareRateForYear,
   cents,
   contractChecks,
+  withContractEnds,
   rentForMonth,
   yearMonth,
 } from '../src/index';
@@ -505,5 +506,37 @@ describe('contractChecks: takeovers and rents after the end (plan 11, review)', 
       ['payment-after-end', 't-a', '2026-04'], // sorted by paymentId: p-for, then p-late
       ['payment-after-end', 't-a', '2026-03'],
     ]);
+  });
+});
+
+describe('withContractEnds (F9 a)', () => {
+  const stay = (id: string, extra: Partial<Tenancy> = {}): Tenancy =>
+    TenancySchema.parse({
+      id,
+      v: 1,
+      rev: 1,
+      apartmentId: 'app-a',
+      tenantId: `ten-${id}`,
+      from: '2025-10',
+      monthlyRent: 30000,
+      monthlyForfait: 3000,
+      ...extra,
+    });
+  const linking = (id: string, end: string, tenancyIds: string[], extra = {}): Contract =>
+    ContractSchema.parse({ ...contract, id, end, rent: undefined, tenancyIds, ...extra });
+
+  it('ends a stay without end with the latest live contract that links it; leaves the rest', () => {
+    const open = stay('open');
+    const ended = stay('ended', { to: yearMonth('2026-03') });
+    const free = stay('free');
+    const result = withContractEnds(
+      [open, ended, free],
+      [
+        linking('c-1', '2026-09', ['open', 'ended']),
+        linking('c-2', '2027-09', ['open']),
+        linking('c-3', '2029-09', ['open'], { deleted: true }),
+      ],
+    );
+    expect(result).toEqual([{ ...open, to: '2027-09' }, ended, free]);
   });
 });
