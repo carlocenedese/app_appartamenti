@@ -296,13 +296,19 @@ jobs:
           path: release
           merge-multiple: true
 
-      # The key of R31 has no password: the CLI assumes an empty one when stdin is not a terminal.
+      # The key has a password (user1, 18 November 2026): secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+      # of the same environment. stdin is closed, so the CLI never waits for a prompt.
       - name: Sign the update files
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             echo "Manca il secret TAURI_SIGNING_PRIVATE_KEY dell'environment release: vedi docs/distribuzione.md." >&2
+            exit 1
+          fi
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
+            echo "Manca il secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD dell'environment release: vedi docs/distribuzione.md." >&2
             exit 1
           fi
           version="${GITHUB_REF_NAME#v}"
