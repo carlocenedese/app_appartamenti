@@ -23,7 +23,7 @@ scelta (`recordPath('supplierProfile', …)`).
    - Interprete: in produzione solo quello incluso; in sviluppo (`debug_assertions`) la variabile
      `PYTHON` se c'è, come i test e `estratti.mjs`, altrimenti quello incluso. Mai il Python di
      sistema in produzione.
-   - Argomenti come vettore, nessuna shell: `-I -m bollette_pdf extract --pdf=… --profiles=…
+   - Argomenti come vettore, nessuna shell: `-B -I -m bollette_pdf extract --pdf=… --profiles=…
      --at=…`, `--pages=…` se dato, `--ocr-data=…` solo se c'è `ocr-data/ita.traineddata`.
    - Percorsi: assoluti, esistenti (file il PDF, cartella i profili) e consentiti dall'ambito del
      plugin dei file (`FsExt::fs_scope().is_allowed`, che risolve i collegamenti come i comandi

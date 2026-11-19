@@ -18,7 +18,7 @@ Tre plugin ufficiali di Tauri 2, licenza `Apache-2.0 OR MIT` (ammessa):
 In `src/lib.rs` i plugin sono solo registrati, nell'ordine fs, dialog, persisted-scope
 (persisted-scope legge l'ambito del plugin fs all'avvio). Un solo comando Rust proprio,
 `read_bill_pdf` (piano 23), che avvia il lettore Python incluso solo su un PDF e una cartella dei
-profili consentiti dall'ambito del plugin fs (`FsExt::fs_scope().is_allowed`), cioè dentro la
+profili consentiti dall'ambito del plugin fs (`FsExt::try_fs_scope()` e `is_allowed`), cioè dentro la
 cartella scelta; senza `AppManifest` in `build.rs` non ha voci nei permessi.
 
 ## Permessi

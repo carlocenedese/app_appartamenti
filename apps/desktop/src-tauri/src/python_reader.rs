@@ -59,7 +59,10 @@ impl ReadError {
                 format!("Lettura interrotta: nessuna risposta entro {seconds} s.")
             }
             ReadError::OutputTooLarge => "Lettura interrotta: risposta troppo grande.".into(),
-            ReadError::ExitCode { first_line, .. } if !first_line.is_empty() => first_line.clone(),
+            ReadError::ExitCode {
+                code: Some(EXIT_ERROR),
+                first_line,
+            } if is_package_sentence(first_line) => first_line.clone(),
             ReadError::ExitCode { code: Some(code), .. } => {
                 format!("Python è uscito con il codice {code}.")
             }
@@ -75,6 +78,17 @@ impl ReadError {
     pub fn to_value(&self) -> Value {
         json!({ "code": self.code(), "message": self.message() })
     }
+}
+
+/// The package's exit code for wrong arguments or an unreadable file (`EXIT_ERROR` in
+/// python/bollette_pdf/__main__.py): only then is the first line of stderr one of its constant
+/// sentences. Any other code may come from the interpreter itself, whose messages hold paths
+/// (the Windows user name) or an English traceback.
+const EXIT_ERROR: i32 = 2;
+
+/// A sentence of the package: not empty and without a path separator, for extra safety.
+fn is_package_sentence(line: &str) -> bool {
+    !line.is_empty() && !line.contains(['/', '\\'])
 }
 
 /// The interpreter of the `python/` resource, as `interpreterPath` of scripts/bundle-python.mjs.
@@ -116,7 +130,8 @@ pub fn extract_args(
     pages: Option<&str>,
     ocr_data: Option<&Path>,
 ) -> Vec<OsString> {
-    let mut args: Vec<OsString> = ["-I", "-m", "bollette_pdf", "extract"]
+    // -B: no `.pyc` written into the signed app bundle (-I ignores PYTHONDONTWRITEBYTECODE).
+    let mut args: Vec<OsString> = ["-B", "-I", "-m", "bollette_pdf", "extract"]
         .into_iter()
         .map(OsString::from)
         .collect();
@@ -149,7 +164,23 @@ pub fn checked_path(
     if !kind || !allowed(&real) {
         return Err(ReadError::PathForbidden);
     }
-    Ok(real)
+    Ok(without_verbatim_drive(real))
+}
+
+/// `\\?\C:\…` (what `canonicalize` gives on Windows) as `C:\…`, the form Python and the user
+/// know; any other path, `\\?\UNC\…` included, as it is.
+/// shortcut: drive paths only, a network share keeps the long form; upgrade if one is used.
+pub fn without_verbatim_drive(path: PathBuf) -> PathBuf {
+    let short = path.to_str().and_then(|text| {
+        let bytes = text.as_bytes();
+        let drive = bytes.len() >= 7
+            && text.starts_with("\\\\?\\")
+            && bytes[4].is_ascii_alphabetic()
+            && bytes[5] == b':'
+            && bytes[6] == b'\\';
+        drive.then(|| PathBuf::from(&text[4..]))
+    });
+    short.unwrap_or(path)
 }
 
 /// Reads to the end (a full pipe would stall the child), keeping at most `cap` bytes; `over`
@@ -161,7 +192,8 @@ fn read_capped(mut source: impl Read, cap: usize, over: &AtomicBool) -> Vec<u8> 
         match source.read(&mut buffer) {
             Ok(0) => break,
             Ok(n) => {
-                if kept.len() + n > cap {
+                if over.load(Ordering::Relaxed) || kept.len() + n > cap {
+                    // Keep draining, never appending: the result is OutputTooLarge anyway.
                     over.store(true, Ordering::Relaxed);
                 } else {
                     kept.extend_from_slice(&buffer[..n]);
@@ -241,6 +273,7 @@ pub fn run(
             }
         }
     };
+    // The threads end at EOF: the package starts no subprocess that could keep the pipes open.
     let stdout = out_thread.join().map_err(|_| ReadError::Internal)?;
     let stderr = err_thread.join().map_err(|_| ReadError::Internal)?;
     if too_large.load(Ordering::Relaxed) {
@@ -288,6 +321,7 @@ mod tests {
         assert_eq!(
             strings(&args),
             [
+                "-B",
                 "-I",
                 "-m",
                 "bollette_pdf",
@@ -305,7 +339,7 @@ mod tests {
             Some(Path::new("/r/ocr-data")),
         );
         assert_eq!(
-            strings(&args)[6..],
+            strings(&args)[7..],
             ["--at=--help", "--pages=3-4", "--ocr-data=/r/ocr-data"]
         );
     }
@@ -386,6 +420,7 @@ mod tests {
         };
         assert_eq!(exit(Some(2), "Argomenti non validi.").message(), "Argomenti non validi.");
         assert_eq!(exit(Some(3), "").message(), "Python è uscito con il codice 3.");
+        assert_eq!(exit(None, "").message(), "Python è stato interrotto dal sistema.");
         assert_eq!(exit(None, "").code(), "exit-code");
         for error in [
             ReadError::PathForbidden,
@@ -397,6 +432,44 @@ mod tests {
             assert!(!error.message().is_empty());
         }
         assert_eq!(ReadError::PythonMissing.code(), "python-missing");
+    }
+
+    #[test]
+    fn forwards_stderr_only_for_the_package_exit_code() {
+        let exit = |code, line: &str| ReadError::ExitCode {
+            code,
+            first_line: line.into(),
+        };
+        let interpreter =
+            r"C:\Programmi\App Bollette\python\python.exe: No module named bollette_pdf";
+        assert_eq!(exit(Some(1), interpreter).message(), "Python è uscito con il codice 1.");
+        assert_eq!(
+            exit(Some(1), "Traceback (most recent call last):").message(),
+            "Python è uscito con il codice 1."
+        );
+        assert_eq!(exit(Some(2), interpreter).message(), "Python è uscito con il codice 2.");
+        assert_eq!(
+            exit(Some(2), "/opt/app/python3: errore").message(),
+            "Python è uscito con il codice 2."
+        );
+        assert_eq!(
+            exit(None, "Argomenti non validi.").message(),
+            "Python è stato interrotto dal sistema."
+        );
+    }
+
+    #[test]
+    fn drops_the_verbatim_prefix_of_a_drive_path_only() {
+        let cases = [
+            (r"\\?\C:\Bollette\luce.pdf", r"C:\Bollette\luce.pdf"),
+            (r"\\?\UNC\server\share\a.pdf", r"\\?\UNC\server\share\a.pdf"),
+            (r"C:\Bollette\luce.pdf", r"C:\Bollette\luce.pdf"),
+            ("/Users/a/luce.pdf", "/Users/a/luce.pdf"),
+            (r"\\?\", r"\\?\"),
+        ];
+        for (given, expected) in cases {
+            assert_eq!(without_verbatim_drive(PathBuf::from(given)), PathBuf::from(expected));
+        }
     }
 
     #[test]
@@ -433,7 +506,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn a_non_zero_exit_gives_the_first_line_of_stderr() {
+    fn a_package_error_gives_the_first_line_of_stderr() {
         let result = sh(
             "printf 'Argomenti non validi.\\naltro\\n' >&2; exit 2",
             TIMEOUT,
@@ -445,6 +518,11 @@ mod tests {
                 code: Some(2),
                 first_line: "Argomenti non validi.".into(),
             })
+        );
+        let other = sh("printf '/opt/app/python3: No module\\n' >&2; exit 1", TIMEOUT, 1000);
+        assert_eq!(
+            other.unwrap_err().message(),
+            "Python è uscito con il codice 1."
         );
     }
 
