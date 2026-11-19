@@ -28,9 +28,10 @@ Inquilini di Appartamento A 2024-25 (5 posti, tutti occupati tutto l'anno):
 - **Excel:** nessun arrotondamento. Le quote restano decimali (C!J7 = 0,002083…; R!G3 =
   9,2858…) e il «conguaglio da versare» contiene frazioni di centesimo.
 - **Regola dell'app:** tutto in centesimi. Una voce si divide prima sui suoi mesi, poi in ogni
-  mese per i 5 posti; ogni divisione dà la somma esatta, con i centesimi di resto ai primi mesi e,
-  nel mese, ai primi posti nell'ordine dei posti dell'appartamento (Singola, Doppia marmo 1, …).
-  La somma delle quote più i posti vuoti è sempre uguale all'importo.
+  mese tra gli inquilini presenti (piano 21, 19 novembre 2026; prima per i 5 posti); ogni divisione
+  dà la somma esatta, con i centesimi di resto ai primi mesi e, nel mese, ai primi inquilini presenti
+  nell'ordine dei posti dell'appartamento (Singola, Doppia marmo 1, …). La somma delle quote più i
+  mesi senza inquilini (alla proprietà) è sempre uguale all'importo.
 - **Deciso (user1):** resti ai primi mesi, poi ai primi posti nell'ordine dei posti dell'Excel.
   L'ordine sta nell'appartamento, nel campo `rooms` (un nome per posto, `Tenancy.room` usa questi
   nomi); per Appartamento A: Singola, Doppia marmo 1, Doppia marmo 2, Doppia 1, Doppia 2.
@@ -39,8 +40,9 @@ Inquilini di Appartamento A 2024-25 (5 posti, tutti occupati tutto l'anno):
 
 - **Excel:** il divisore è il numero di posti, non quello degli inquilini presenti: Appartamento A `/5`
   (C!J6 `=D6/5+E6/5-H6-I6`), Appartamento B `/4` (C!J6 `=D6/4+…`), Appartamento C `/4` (R!N24 `=N13/4-…`).
-- **Regola dell'app:** divisore = posti dell'appartamento (sezione 15). Un posto vuoto in un mese
-  resta alla proprietà (`unassigned`).
+- **Regola dell'app (deciso da user1 il 19 novembre 2026, sostituisce «divisore = posti»):**
+  divisore = inquilini presenti nel mese; un posto vuoto non ha quota. Solo un mese senza nessun
+  inquilino resta alla proprietà (`unassigned`).
 
 ## (c) Mese di ingresso e di uscita
 

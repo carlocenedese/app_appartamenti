@@ -88,7 +88,7 @@ export interface CondominioYearCheck {
   esercizio: string;
   /** Items of that year still pending: the check holds only when there are none. */
   pending: string[];
-  /** Tenants' rata and last year's settlement plus the same on empty beds. */
+  /** Tenants' rata and last year's settlement plus the same on months with no tenant (plan 21). */
   shared: number;
   /** The tenants' quota of the budget (instalments minus the owner's yearly share) plus last year. */
   budget: number;
@@ -97,7 +97,7 @@ export interface CondominioYearCheck {
 /**
  * The year-end check of the condominium: every fiscal year of the (non extraordinary) condominium
  * instalments is settled over its own 12 months, which need not be the lease year of the fixture,
- * and what reaches the tenants and the empty beds is compared with the budget. The owner's yearly
+ * and what reaches the tenants and the owner (months with no tenant) is compared with the budget. The owner's yearly
  * share is the `quotaProprieta` of the records with a non-zero `rata` (R-C8).
  */
 export function condominioYearChecks(

@@ -11,7 +11,7 @@ Un file per appartamento e annualità conclusa (`<appartamento>-<annualità>.jso
 Excel reali e anonimizzato con `tools/anonymise.py` (Task 7 del piano 1). Contiene appartamento,
 contratto, periodo, bollette, rate, versamenti, movimenti, abbinamenti, inquilini e i valori
 attesi del conguaglio per inquilino: `due`, `forfaitIncassato` e le spese per tipologia
-(`byCategory`), più le quote dei posti vuoti (`expectedUnassigned`).
+(`byCategory`), più le quote dei mesi senza inquilini, alla proprietà (`expectedUnassigned`; prima del piano 21 i posti vuoti).
 
 - I valori `expected` non sono «quello che dice l'Excel» ma quello che user1 ha controllato e
   approvato (`approvedBy`); ogni differenza dall'Excel sta in `knownDeviations` con il motivo.

@@ -25,6 +25,7 @@ import {
   TenantSchema,
 } from './model';
 import { isLiveClose, periodCloseId } from './closing';
+import { splitOfClosing } from './conguaglio';
 import { settlementPeriods } from './period';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
@@ -101,6 +102,8 @@ export async function loadExcelInput(
       unverified: (await planMatch(store)).run.unverified,
       freeDebits: await loadFreeDebits(store, matches),
       ...(closing === undefined ? {} : { closing }),
+      // R363: a period closed before plan 21 is recomputed with the split over the beds.
+      split: splitOfClosing(closing),
     },
   };
 }

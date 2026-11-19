@@ -77,7 +77,7 @@ Dovuto = spese − forfait incassato (negativo: da restituire).
 
 ## Totali
 
-- App: € 1.229,25; posti vuoti: € 0,00.
+- App: € 1.229,25; mesi senza inquilini: € 0,00.
 - Excel: € 1.265,81.
 - Differenza: - € 36,56.
 

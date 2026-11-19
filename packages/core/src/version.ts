@@ -10,6 +10,15 @@ import type { Workspace } from './model';
 export const CORE_VERSION = '0.1.0';
 
 /**
+ * Version of the settlement calculation, written as `engineVersion` of a `ConguaglioResult` and
+ * of a closing snapshot. Separate from `CORE_VERSION`, which also becomes `minAppVersion` of a new
+ * workspace and stays at 0.1.0 (docs/revisione-2026-11-18-dati.md, R363). `PER_BED_CALC_VERSION`
+ * is the calculation before plan 21, which split each month over the beds.
+ */
+export const CALC_VERSION = '0.2.0';
+export const PER_BED_CALC_VERSION = '0.1.0';
+
+/**
  * The format of the data this core reads and writes: the shape of every record, of the operations
  * of the journal and of `workspace.json`, as one integer, separate from the version of the app.
  * It is stored in `workspace.json` as `schemaVersion`; the app passes it as `schemaVersion` to

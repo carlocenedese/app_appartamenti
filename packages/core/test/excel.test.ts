@@ -124,7 +124,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       ['C', 'Elena Prova', 'ott – feb', 5],
       ['C', 'Carla Prova', 'mar – set', 7],
       ['D', 'Dario Prova', 'gen – set', 9],
-      ['Posti vuoti (proprietà)', null, null, null],
+      ['Mesi senza inquilini', null, null, null],
       ['Totale', null, null, null],
     ]);
     const order = ['ten-a', 'ten-b', 'ten-e', 'ten-c', 'ten-d'];
@@ -597,7 +597,7 @@ describe('paid, residual and status of the settlement (question 3)', () => {
     expect(settlementStatus(cents(10000), [csv(-2000)])).toBe('parziale');
   });
 
-  it('sums paid and residual in the total, and leaves the empty beds blank', () => {
+  it('sums paid and residual in the total, and leaves the months without tenants blank', () => {
     const rows = rowsOf(sheets().get('Conguagli'));
     const tenants = rows.slice(2, -2);
     const totale = rows.at(-1);
@@ -644,7 +644,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '1407c032c15a936d9a7fae89df38852dccd4cfbe8505f8b4e4de1b313ec2815d',
+      '41a4743cbd81e2a82f9f2ddd36e9327f9c1b2c68233e3e4f35b8eb4059f5ae70',
     );
   });
 });
