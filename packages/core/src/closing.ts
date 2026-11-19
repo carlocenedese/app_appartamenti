@@ -2,11 +2,12 @@
  * The pure part of the closing of a settlement period (review of 18 Nov 2026, I2, R5): the id,
  * the snapshot of a calculation and the supplementary settlement against it.
  */
-import { calcConguaglioSupplementare } from './conguaglio';
+import { calcConguaglioSupplementare, rentNotCollected } from './conguaglio';
 import type { ConguaglioResult, SettlementCosts, SupplementaryRow } from './conguaglio';
-import type { PeriodClose, Tenancy } from './model';
+import type { Payment, PeriodClose, Tenancy } from './model';
 import { cents } from './money';
 import type { Cents } from './money';
+import { isoDate, monthsInPeriod } from './period';
 import type { ISODate } from './period';
 
 /**
@@ -38,6 +39,12 @@ export interface ClosingRow extends Omit<SupplementaryRow, 'action'> {
    */
   toCheck: Cents;
   action: SupplementaryRow['action'] | 'da-verificare';
+  /**
+   * Plan 22, decision 1: the rent of the period not collected today (a bounced transfer after a
+   * reopening), the row «Canone non incassato». Not part of the settlement (R4): outside `total`,
+   * `remaining` and every mark.
+   */
+  rentMissing: Cents;
 }
 
 /** A closed (or reopened, F3) period with what changed since its snapshot. */
@@ -259,9 +266,18 @@ function snapshotCosts(snapshot: PeriodClose['snapshot']): SettlementCosts {
 export function closingOf(
   close: PeriodClose,
   current: ConguaglioResult,
-  input: { tenancies: Tenancy[] },
+  input: { tenancies: Tenancy[]; payments?: Payment[] },
   asOf: ISODate,
 ): PeriodClosed {
+  // Without the payments (a caller that has none) nothing is known missing.
+  const rent =
+    input.payments === undefined
+      ? new Map<string, Cents>()
+      : rentNotCollected({
+          tenancies: input.tenancies,
+          payments: input.payments,
+          months: monthsInPeriod(isoDate(`${close.from}-01`), isoDate(`${close.to}-01`)),
+        });
   const supplementary = calcConguaglioSupplementare({
     current,
     snapshot: snapshotCosts(close.snapshot),
@@ -319,6 +335,7 @@ export function closingOf(
       forfaitPaid: ledger.forfaitPaid,
       toCheck: ledger.toCheck,
       action,
+      rentMissing: rent.get(row.tenantId) ?? cents(0),
     };
   });
   const unsettled = tenants.filter((t) => t.mainRemaining !== 0).map((t) => t.tenantId);

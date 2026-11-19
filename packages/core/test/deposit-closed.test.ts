@@ -169,6 +169,74 @@ const paysLate = (store: MemoryStore, amount = 3000) =>
     later,
   );
 
+/** Plan 22, decision 1: reopened, the May transfer of 480,00 bounced (rent too), closed again. */
+const bounced = async () => {
+  const store = await setUp('2026-08', 0, '2026-09');
+  await reopenPeriod(
+    store,
+    { ...QUERY, on: '2026-11-20', reason: 'Bonifico di maggio respinto' },
+    'p1',
+    later,
+    ids('r'),
+  );
+  const may = (await loadAll(store, 'payment', PaymentSchema)).records.find(
+    (p) => p.forMonth === '2026-05',
+  );
+  if (may === undefined) throw new Error('payment');
+  await commitChange(
+    store,
+    {
+      profileId: 'p1',
+      kind: 'test.seed',
+      summary: 'x',
+      changes: [
+        {
+          path: recordPath('payment', may.id),
+          before: may,
+          after: { ...may, rev: 2, deleted: true },
+        },
+      ],
+    },
+    later,
+    ids('del'),
+  );
+  expect(await closePeriod(store, QUERY, 'p1', later, ids('c2'))).toMatchObject({
+    status: 'closed',
+    rentMissing: [{ tenantId: 't-a', month: '2026-05', amount: 45000 }],
+  });
+  return store;
+};
+
+describe('plan 22: rent not collected after a reopening (decision 1 of user1)', () => {
+  it('the deposit still held keeps «Canone non incassato» and «Forfait non incassato», once each', async () => {
+    const store = await bounced();
+    const lines = await statement(store);
+    expect(lines.filter((l) => l.label.includes('non incassato'))).toEqual([
+      { label: 'Forfait non incassato 2025-26', amount: -3000 },
+      { label: 'Canone non incassato 2025-26', amount: -45000 },
+    ]);
+    // The rent paid since: only the flat charge line is left.
+    await put(store, 'payment', payment('t-a', '2026-05', 45000, { id: 'pay-rent' }), later);
+    expect((await statement(store)).map((l) => l.label)).not.toContain(
+      'Canone non incassato 2025-26',
+    );
+  });
+
+  it('the deposit already returned: the rent is «da richiedere»', async () => {
+    const store = await bounced();
+    await put(store, 'payment', depositBack('2026-09-10'), later);
+    const r = await loadDepositReturn(store, {
+      apartmentId: 'apt',
+      tenantId: 't-a',
+      extraCharges: [],
+    });
+    expect(r).toMatchObject({ status: 'refused', reason: 'already-returned' });
+    expect(
+      r.status === 'refused' && r.reason === 'already-returned' ? r.toRequest : [],
+    ).toContainEqual({ label: 'Canone non incassato 2025-26', amount: -45000 });
+  });
+});
+
 describe('deposit statement and closed periods (B4, F10)', () => {
   it('an older closed period not marked settled is withheld on its own line', async () => {
     // The tenant leaves in March 2027 with 120,00 of the 2025-26 settlement unpaid.

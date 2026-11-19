@@ -298,6 +298,8 @@ export const MESSAGES = {
     'Rifiutato: il conguaglio del periodo ora non si calcola, quindi non si sa se annullare la chiusura perderebbe un conguaglio supplementare: correggere prima i dati del periodo.',
   'already-closed':
     'Rifiutato: il periodo è già chiuso: per riaprirlo «riapri-periodo» con data e motivo.',
+  'rent-missing':
+    'Attenzione: il periodo riaperto è chiuso di nuovo senza un canone («rentMissing»): è la riga «Canone non incassato», trattenuta dalla caparra se è ancora in mano, altrimenti da richiedere (importi solo con --dettagli).',
   'cannot-close':
     'Rifiutato: il periodo non si chiude: mancano affitti o forfait, o ci sono voci in attesa («missing»; importi solo con --dettagli).',
   'period-settlement-error':
@@ -3096,7 +3098,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
                   : {},
         );
       }
-      return result;
+      // Plan 22: the rent not collected of a reopened period closed again, as a warning.
+      if (result.rentMissing === undefined) return result;
+      return {
+        ...result,
+        rentMissing: result.rentMissing.map(({ amount, ...m }) => (details ? { ...m, amount } : m)),
+        warning: MESSAGES['rent-missing'],
+      };
     }
     const result = await loadPeriodClosing(store, query, day(clock().slice(0, 10)));
     if (result.status === 'refused') {
@@ -3123,9 +3131,21 @@ async function command(name, values, positionals, store, who, clock, newId) {
       changed: result.changed,
       dataChanged: result.dataChanged,
       tenants: result.tenants.map(
-        ({ delta, forfaitDelta, total, remaining, mainRemaining, forfaitPaid, toCheck, ...t }) => ({
+        ({
+          delta,
+          forfaitDelta,
+          total,
+          remaining,
+          mainRemaining,
+          forfaitPaid,
+          toCheck,
+          rentMissing,
+          ...t
+        }) => ({
           ...t,
           settled: settledIds.has(t.tenantId),
+          // Plan 22: the row «Canone non incassato» (amount only with --dettagli).
+          ...(rentMissing === 0 ? {} : { rentMissing: details ? rentMissing : true }),
           // F11: the flat charge no longer collected is a line of its own; fourth round A, B: the
           // supplementary computed once (`total`) and the flat charge «da verificare» (`toCheck`).
           ...(details

@@ -26,8 +26,17 @@ type Query = { apartmentId: string; periodLabel: string };
 type LoadRefusal =
   'inconsistent-store' | 'unknown-apartment' | 'unknown-period' | 'ambiguous-period';
 
+/** Plan 22: a rent of a reopened period closed again without it (decision 1 of user1). */
+export type RentMissing = { tenantId: string; month: string; amount: Cents };
+
 export type ClosePeriodResult =
-  | { status: 'closed'; operationId: string; closeId: string }
+  | {
+      status: 'closed';
+      operationId: string;
+      closeId: string;
+      /** The warning: rents not collected, each a row «Canone non incassato» (plan 22). */
+      rentMissing?: RentMissing[];
+    }
   | { status: 'refused'; reason: LoadRefusal | 'already-closed' }
   /** R3: the December TARI notice (`month`) of an apartment of the shared notice is not debited. */
   | { status: 'refused'; reason: 'tari-december-missing'; month: string }
@@ -128,7 +137,15 @@ export async function closePeriod(
     }
   }
   const forfaitMissing = new Map<string, number>();
+  // Plan 22, decision 1 of user1 (19 Nov 2026): a rent not collected after a reopening (a bounced
+  // transfer) does not hold a reopened period open; the closing warns and shows the row
+  // «Canone non incassato». Never closed: refused as before.
+  const rentMissing: RentMissing[] = [];
   const missing = check.missing.filter((m) => {
+    if (m.kind === 'rent' && reopened !== undefined) {
+      rentMissing.push({ tenantId: m.tenantId, month: m.month, amount: m.amount });
+      return false;
+    }
     if (m.kind !== 'forfait') return true;
     const used = (forfaitMissing.get(m.tenantId) ?? 0) + m.amount;
     if (used > (allowance.get(m.tenantId) ?? 0)) return true;
@@ -215,7 +232,12 @@ export async function closePeriod(
     clock,
     newId,
   );
-  return { status: 'closed', operationId: operation.id, closeId: id };
+  return {
+    status: 'closed',
+    operationId: operation.id,
+    closeId: id,
+    ...(rentMissing.length === 0 ? {} : { rentMissing }),
+  };
 }
 
 export type PeriodClosingResult =

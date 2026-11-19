@@ -757,6 +757,36 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     // ~20 CLI spawns in a row: Windows runners need more than the 5 s default.
   }, 60_000);
 
+  it('piano 22: riaperto per un bonifico respinto, si chiude di nuovo con «Canone non incassato»', async () => {
+    await closable();
+    await cli('chiudi-periodo', ...args);
+    await cli('riapri-periodo', ...args, '--data', '2026-11-20', '--motivo', 'Bonifico respinto');
+    const store = new FsStore(dir);
+    const path = recordPath('payment', 'pay-2025-10');
+    const before = await store.readJson(path);
+    await commitChange(
+      store,
+      {
+        profileId: 'cli',
+        kind: 'test.seed',
+        summary: 'dati inventati',
+        changes: [{ path, before, after: { ...before, rev: 2, deleted: true } }],
+      },
+      () => ORA,
+      newId,
+    );
+    const again = await cli('chiudi-periodo', ...args);
+    expect(again.code, again.out).toBe(0);
+    expect(again.json).toMatchObject({
+      status: 'closed',
+      rentMissing: [{ tenantId: 't-x', month: '2025-10' }],
+    });
+    expect(again.json.warning).toMatch(/Canone non incassato/);
+    expect(again.out).not.toMatch(/45000/);
+    const sup = await cli('conguaglio-supplementare', ...args, '--dettagli');
+    expect(sup.json.tenants[0]).toMatchObject({ tenantId: 't-x', rentMissing: 45000 });
+  }, 60_000);
+
   it('F10: caparra già restituita, i conguagli chiusi non saldati sono «da richiedere»', async () => {
     await closable();
     await cli('chiudi-periodo', ...args);
