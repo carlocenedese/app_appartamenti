@@ -72,7 +72,6 @@ import {
   YearSchema,
   loadContractChecks,
   loadRentYears,
-  loadImuRates,
   loadCondo,
   loadCondoEstimate,
   loadContacts,
@@ -103,22 +102,11 @@ import {
   loadContractStatus,
   loadDepositReturn,
   saveLegalRate,
-  confirmTaxDiscrepancy,
   saveConsumptionSettings,
   billFileMove,
   loadConsumption,
-  setImuYear,
   setRentYear,
-  assignImuF24,
-  assignTaxPayment,
-  copyPreviousTaxYear,
-  loadTaxTable,
-  setTaxEstimate,
   PayableKindSchema,
-  loadScadenzario,
-  repeatPayable,
-  savePayable,
-  setPayablePaid,
   ExtractionResultSchema,
   hashBytes,
   importBill,
@@ -161,6 +149,18 @@ import {
   excludeMovementCommand,
   repairCommand,
   chooseVersionCommand,
+  setImuYearCommand,
+  assignImuF24Command,
+  imuRatesCommand,
+  setTaxEstimateCommand,
+  copyTaxYearCommand,
+  assignTaxCommand,
+  confirmTaxCommand,
+  taxTableCommand,
+  payablesCommand,
+  savePayableCommand,
+  repeatPayableCommand,
+  payablePaidCommand,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
@@ -798,7 +798,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await setImuYear(
+    return setImuYearCommand(
       store,
       {
         apartmentId: values.appartamento,
@@ -807,22 +807,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ...(values.totale === undefined ? {} : { annualTotal: euro(values.totale) }),
         rates: values.rata.map(parseRate),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused' && result.reason === 'has-dependents') {
-      throw new Stop('rejected', result.reason, {
-        message: MESSAGES['imu-has-assignments'],
-        recordIds: result.recordIds,
-      });
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      imuYearId: result.imuYearId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'imu-f24') {
@@ -836,7 +822,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await assignImuF24(
+    return assignImuF24Command(
       store,
       {
         transactionId: values.movimento,
@@ -845,18 +831,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         rateIndex: Number(rata),
         rememberRule: values['solo-questa-volta'] !== true,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    if (result.status === 'unchanged') return { status: 'unchanged', classId: result.classId };
-    return {
-      status: 'assigned',
-      operationId: result.operationId,
-      classId: result.classId,
-      ...(result.ruleId === undefined ? {} : { ruleId: result.ruleId }),
-    };
   }
 
   // appartamento creates (every field and --differenza-condominio, the question at creation) or
@@ -1170,36 +1146,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await loadImuRates(
-      store,
-      values.anno === undefined ? {} : { year: values.anno },
-    );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Group, year, index and state only; amounts, dates and the movement with --dettagli (R107).
-    const rates = result.rates.map((r) => ({
-      f24Group: r.f24Group,
-      year: r.year,
-      rateIndex: r.rateIndex,
-      status: r.status,
-      f24: r.transactionId === undefined ? 0 : 1,
-      ...(r.status === 'da-riconciliare' ? { message: MESSAGES['imu-to-reconcile'] } : {}),
-      ...(values.dettagli === true
-        ? {
-            expected: r.expected,
-            paid: r.paid,
-            difference:
-              r.paid === undefined || r.expected === undefined ? undefined : r.paid - r.expected,
-            dueDate: r.dueDate,
-            transactionId: r.transactionId,
-            annual: r.annual,
-          }
-        : {}),
-    }));
-    return {
-      status: 'ok',
-      rates,
-      toReconcile: rates.filter((r) => r.status === 'da-riconciliare').length,
-    };
+    return imuRatesCommand(store, values.anno === undefined ? {} : { year: values.anno }, {
+      details: values.dettagli === true,
+    });
   }
 
   // contratto replaces every field of the contract (rent history aside): an option left out,
@@ -1317,19 +1266,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
     }
     const amount = euro(values.importo);
     if (amount < 0) throw invalid('bad-arguments');
-    const result = await setTaxEstimate(
+    return setTaxEstimateCommand(
       store,
       { apartmentId: values.appartamento, year: values.anno, voce: values.voce, amount },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      estimateId: result.estimateId,
-      ...(result.status === 'saved' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse-copia') {
@@ -1337,57 +1278,32 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !YearSchema.safeParse(values.anno).success) {
       throw invalid('bad-arguments');
     }
-    const result = await copyPreviousTaxYear(
+    return copyTaxYearCommand(
       store,
       { year: values.anno, ...optional('apartmentId', values.appartamento) },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      estimateIds: result.estimateIds,
-      ...(result.status === 'copied' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse-assegna') {
     need(values, 'movimento');
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
-    const result = await assignTaxPayment(
+    return assignTaxCommand(
       store,
       { transactionId: values.movimento, parts: values.parte.map(parseTaxPart) },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      taxPaymentId: result.taxPaymentId,
-      ...(result.status === 'assigned' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse-conferma') {
-    // Plan 17, R304: a discrepancy confirmed with a note no longer warns (undone with
-    // annulla-riconciliazione). The note is not echoed: it is free text.
+    // Plan 17, R304: a discrepancy confirmed with a note (not echoed: it is free text).
     need(values, 'appartamento', 'anno', 'voce', 'note');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await confirmTaxDiscrepancy(
+    return confirmTaxCommand(
       store,
       { apartmentId: values.appartamento, year: values.anno, voce: values.voce, note: values.note },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: result.status,
-      confirmationId: result.confirmationId,
-      ...(result.status === 'confirmed' ? { operationId: result.operationId } : {}),
-    };
   }
 
   if (name === 'tasse') {
@@ -1396,48 +1312,11 @@ async function command(name, values, positionals, store, who, clock, newId) {
       throw invalid('bad-arguments');
     }
     // Today: --oggi, or the UTC date of the clock (as scadenze).
-    const result = await loadTaxTable(store, {
-      year: values.anno,
-      today: day(values.oggi ?? clock().slice(0, 10)),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const details = values.dettagli === true;
-    // Voce, state, reasons and ids only; amounts and the taxpayer (a name) with --dettagli (R107).
-    return {
-      status: 'ok',
-      year: values.anno,
-      tables: result.tables.map((t) => ({
-        apartmentIds: t.apartmentIds,
-        ...(details ? { taxpayer: t.taxpayer } : {}),
-        rows: t.rows.map((r) => ({
-          voce: r.voce,
-          state: r.state,
-          reasons: r.reasons,
-          ...(r.state === 'discrepanza' ? { message: MESSAGES['tax-discrepancy'] } : {}),
-          ...(r.reasons.includes('no-expected-source')
-            ? { message: MESSAGES['tax-no-payable'] }
-            : {}),
-          ...(details
-            ? {
-                estimate: r.estimate,
-                paid: r.paid,
-                expected: r.expected,
-                difference: r.difference,
-                ...(r.annualDifference === undefined
-                  ? {}
-                  : { annualDifference: r.annualDifference }),
-                ...(r.cedolareProposals === undefined
-                  ? {}
-                  : {
-                      cedolareProposals: r.cedolareProposals,
-                      proposalMessage: MESSAGES['cedolare-estimate'],
-                    }),
-              }
-            : {}),
-        })),
-      })),
-      warnings: result.warnings.map((w) => ({ ...w, message: MESSAGES['tax-year-empty'] })),
-    };
+    return taxTableCommand(
+      store,
+      { year: values.anno, today: day(values.oggi ?? clock().slice(0, 10)) },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'contratti') {
@@ -2033,61 +1912,16 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (stato === 'in-scadenza' && entro === undefined) throw invalid('bad-arguments');
     // Today: --oggi, or the UTC date of the clock (plan 9, «Mie scelte» 3).
     const today = day(values.oggi ?? clock().slice(0, 10));
-    const result = await loadScadenzario(store, {
-      today,
-      ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const details = values.dettagli === true;
-    const years = details ? await loadRentYears(store, {}) : undefined;
-    if (years?.status === 'refused') throw new Stop('rejected', years.reason);
-    return {
-      status: 'ok',
-      // Dates, amounts, movements and names only with --dettagli (R107).
-      items: result.items
-        .filter(
-          (i) =>
-            (stato === undefined || i.state === stato) && (tipo === undefined || i.kind === tipo),
-        )
-        .map((i) => ({
-          source: i.source,
-          id: i.id,
-          kind: i.kind,
-          apartmentIds: i.apartmentIds,
-          state: i.state,
-          ...optional('check', i.check),
-          ...optional('repeatYearly', i.repeatYearly),
-          ...optional('taxYear', i.taxYear),
-          ...optional('repeated', i.repeated),
-          ...(details
-            ? {
-                taxpayers: i.taxpayers,
-                ...optional('dueDate', i.dueDate),
-                ...optional('expected', i.expected),
-                ...optional('paidOn', i.paidOn),
-                ...optional('transactionId', i.transactionId),
-              }
-            : {}),
-        })),
-      contractEnds: result.contractEnds.map((c) => ({
-        contractId: c.contractId,
-        apartmentId: c.apartmentId,
-        ...(details ? { end: c.end } : {}),
-      })),
-      // The cedolare estimate is shown beside the list, never an item (plan 9, question 4).
-      ...(years === undefined
-        ? {}
-        : {
-            estimates: years.rentYears
-              .filter((y) => y.cedolareExpected !== undefined)
-              .map((y) => ({
-                apartmentId: y.apartmentId,
-                year: y.year,
-                cedolareExpected: y.cedolareExpected,
-                message: MESSAGES['cedolare-estimate'],
-              })),
-          }),
-    };
+    return payablesCommand(
+      store,
+      {
+        today,
+        ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
+        ...optional('state', stato),
+        ...optional('kind', tipo),
+      },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'scadenza-nuova') {
@@ -2101,7 +1935,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await savePayable(
+    return savePayableCommand(
       store,
       {
         ...optional('id', values.id),
@@ -2117,22 +1951,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
         // The voce of the tax table of a bollo or F24, chosen here (plan 17, R303).
         ...optional('taxVoice', values.voce),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Ruling (E3): the same payable again is that payable; a second identical one needs --id.
-    if (result.status === 'unchanged' && values.id === undefined) {
-      return { ...result, message: MESSAGES['already-recorded'] };
-    }
-    return result;
   }
 
   if (name === 'scadenza-ripeti') {
     need(values, 'id', 'scadenza');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await repeatPayable(
+    return repeatPayableCommand(
       store,
       {
         payableId: values.id,
@@ -2143,12 +1969,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ),
         ...optional('taxYear', taxYearOf(values['anno-riferimento'])),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return result;
   }
 
   if (name === 'scadenza-pagata') {
@@ -2160,19 +1982,15 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await setPayablePaid(
+    return payablePaidCommand(
       store,
       {
         payableId: values.id,
         ...optional('transactionId', values.movimento),
         ...optional('date', values.data === undefined ? undefined : day(values.data)),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return result;
   }
 
   if (name === 'abbina') {

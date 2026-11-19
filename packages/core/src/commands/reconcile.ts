@@ -47,9 +47,9 @@ export async function reconcileCommand(
   if (run.status === 'refused') throw new Stop('rejected', run.reason);
   const { income: result, match, transfers, outgoing } = run;
   type WithTransaction = { transactionId?: string };
-  let extra = (_p: WithTransaction & { tenantIds: string[] }): Record<string, unknown> => ({});
-  let arrearExtra = (_a: { tenantId: string }): Record<string, unknown> => ({});
-  let txExtra = (_p: WithTransaction): Record<string, unknown> => ({});
+  let extra: (p: WithTransaction & { tenantIds: string[] }) => Record<string, unknown> = () => ({});
+  let arrearExtra: (a: { tenantId: string }) => Record<string, unknown> = () => ({});
+  let txExtra: (p: WithTransaction) => Record<string, unknown> = () => ({});
   if (options.details) {
     const all = { includeDeleted: true };
     const txs = (await loadAll(store, 'transaction', BankTransactionSchema, all)).records;
