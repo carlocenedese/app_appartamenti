@@ -34,3 +34,10 @@ Oggi: `canClosePeriod` dà `kind: 'rent'` per inquilino e mese (pagamenti `canon
 ## Chiusura
 
 Formato 5 con `pnpm schemas:export` e impronta; regole R364 e seguenti in `docs/progress.md`; sezione 42 della specifica; `CLOSING_MODEL_SEEDS=500`; `node scripts/check-personal-data.mjs`.
+
+## Seguito: risposte di user1 del 19 novembre 2026 e revisione
+
+- Canone: ogni canone mancante del periodo riaperto; segno a mano `canone-non-incassato --esito richiesto|saldato|non-recuperabile` (`periodClose.rentMarks`), conteggio del cruscotto e prima riga dell'Excel.
+- Pesi: avviso TARI diviso mese per mese con i pesi di ogni mese (anche A-B-A), una rata per appartamento e tratto; il controllo del dicembre (F4) legge i pesi dei mesi del periodo (reperto I1).
+- Forfait verificato: `credito` va nel supplementare; `rimborso` è già rimborsato; ogni verifica è legata ai pagamenti dell'inquilino nel periodo (`payments`).
+- Riferimenti `earlierApartments` e `transactionId` dei segni; test di modello con canone respinto e segni. Formato 5 invariato, impronta ricalcolata. R364–R369.

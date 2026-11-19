@@ -4,7 +4,15 @@
  * with it (`calcConguaglioSupplementare`). One `period.close` operation, undone with the
  * reconciliation undo. No amount or name in a summary.
  */
-import { closingOf, isLiveClose, periodCloseId, snapshotOf, tenantBalance } from './closing';
+import {
+  closingOf,
+  flatPaymentsOf,
+  isLiveClose,
+  periodCloseId,
+  rentOf,
+  snapshotOf,
+  tenantBalance,
+} from './closing';
 import { ClosingUndoError, periodInputs } from './closed-period-guard';
 import type { PeriodClosed } from './closing';
 import { SettlementInputError, calcConguaglio, canClosePeriod } from './conguaglio';
@@ -20,6 +28,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
+import { weightsOver } from './valid-from';
 import type { Store } from './store/store';
 
 type Query = { apartmentId: string; periodLabel: string };
@@ -156,8 +165,11 @@ export async function closePeriod(
   // R3: an apartment with a supply of the shared TARI notice closes only after the December
   // notice inside the period is debited (a real match, not assumed), so that the September share
   // of that notice does not open the period again (F4, decided by user1 on 18 Nov 2026).
+  // Plan 22: the weights in force in the months of the period («valido dal»), not today's.
   const shared = (await loadAll(store, 'supply', SupplySchema)).records.some((supply) =>
-    supply.apartments.some((a) => a.apartmentId === query.apartmentId),
+    weightsOver(supply, input.period.from, input.period.to).some((s) =>
+      s.value.some((a) => a.apartmentId === query.apartmentId),
+    ),
   );
   if (shared) {
     const debited = new Set(
@@ -191,6 +203,7 @@ export async function closePeriod(
               ? {}
               : { supplementarySettled: before.supplementarySettled }),
             ...(before.flatChecked === undefined ? {} : { flatChecked: before.flatChecked }),
+            ...(before.rentMarks === undefined ? {} : { rentMarks: before.rentMarks }),
             reopened,
           },
         ]
@@ -276,8 +289,10 @@ export type MarkCloseResult =
         | 'unknown-movement'
         | 'missing-reason'
         | 'no-supplementary'
-        /** Plan 22: no flat charge «da verificare» left for that outcome. */
+        /** Plan 22: no flat charge «da verificare» left. */
         | 'nothing-to-check'
+        /** Plan 22: no rent not collected left for that outcome. */
+        | 'nothing-to-mark'
         | 'invalid-input';
     }
   /**
@@ -399,7 +414,11 @@ export function markTenantSettled(
       const calc = await computed(store, input);
       if (calc.status === 'refused') return { status: 'refused', reason: 'invalid-input' } as const;
       const today = calc.result.tenants.find((t) => t.tenantId === input.tenantId);
-      const now = { due: today?.due ?? 0, forfaitIncassato: today?.forfaitIncassato ?? 0 };
+      const now = {
+        due: today?.due ?? 0,
+        forfaitIncassato: today?.forfaitIncassato ?? 0,
+        payments: flatPaymentsOf(calc.input.payments, input.tenantId, close.from, close.to),
+      };
       const others = (close.settled ?? []).filter((s) => s.tenantId !== input.tenantId);
       // Flat charge «da verificare» never blocks a mark (final review) and no mark changes it: the
       // supplementary already leaves the extra out, and a main mark keeps the flat charge of the
@@ -454,10 +473,11 @@ export function markTenantSettled(
 /**
  * Plan 22 (decision 3 of user1, 19 Nov 2026): user1 checked the flat charge «da verificare» of
  * `tenantId` on `on`, with its outcome, in one `period.flat-check` (undone with the reconciliation
- * undo). `rimborso` and `stessi-soldi` take the amount out of what is to check; what is owed and
- * withheld does not change. `credito` is recorded and the amount stays to check: where a credit
- * goes is not decided (question for user1). The amount is what is to check now (for `credito`, not
- * already recorded as a credit). The payment can still be corrected by hand. Refused:
+ * undo). Every outcome takes the amount (all that is to check now) out of what is to check;
+ * `rimborso` (refunded on `on`) and `stessi-soldi` leave what is owed and withheld as it is,
+ * `credito` puts it in the supplementary settlement as a credit of the tenant (answers 5, 6). The
+ * check is tied to the tenant's flat-charge payments of the period (answer 7): if one of them goes
+ * or changes, the amount is to check again. The payment can still be corrected by hand. Refused:
  * `not-closed`, `unknown-tenant`, `unknown-movement`, `nothing-to-check`.
  */
 export function markFlatChecked(
@@ -492,12 +512,13 @@ export function markFlatChecked(
       const calc = await computed(store, input);
       if (calc.status === 'refused') return { status: 'refused', reason: 'invalid-input' } as const;
       const today = calc.result.tenants.find((t) => t.tenantId === input.tenantId);
+      const payments = flatPaymentsOf(calc.input.payments, input.tenantId, close.from, close.to);
       const ledger = tenantBalance(close, input.tenantId, {
         due: today?.due ?? 0,
         forfaitIncassato: today?.forfaitIncassato ?? 0,
+        payments,
       });
-      const amount =
-        input.outcome === 'credito' ? ledger.toCheck - ledger.flatCredit : ledger.toCheck;
+      const amount = ledger.toCheck;
       if (amount <= 0) return { status: 'refused', reason: 'nothing-to-check' } as const;
       return {
         fields: {
@@ -508,6 +529,76 @@ export function markFlatChecked(
               on: input.on,
               outcome: input.outcome,
               amount: cents(amount),
+              ...(input.transactionId === undefined ? {} : { transactionId: input.transactionId }),
+              // Answer 7: tied to the payments it was made on.
+              payments,
+            },
+          ],
+        },
+      };
+    },
+    profileId,
+    clock,
+    newId,
+  );
+}
+
+/**
+ * Plan 22 (answer 2 of user1, 19 Nov 2026): user1 marks the rent not collected of `tenantId` on the
+ * live closing, in one `period.rent-mark` (undone with the reconciliation undo), recording what is
+ * open now month by month. `richiesto`: asked from the tenant, nothing else changes. `saldato`:
+ * paid outside the payments recorded, no longer open, withheld or asked. `non-recuperabile`: left
+ * with the owner (R5), no longer open, withheld or asked. Refused: `not-closed`, `unknown-tenant`,
+ * `unknown-movement`, `nothing-to-mark` (nothing open, or for `richiesto` all of it already asked).
+ */
+export function markRentMissing(
+  store: Store,
+  input: Query & {
+    tenantId: string;
+    on: string;
+    outcome: 'richiesto' | 'saldato' | 'non-recuperabile';
+    transactionId?: string;
+  },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<MarkCloseResult> {
+  return changeClose(
+    store,
+    input,
+    'period.rent-mark',
+    'Canone non incassato di un inquilino segnato.',
+    async (close) => {
+      if (!close.snapshot.tenants.some((t) => t.tenantId === input.tenantId)) {
+        return { status: 'refused', reason: 'unknown-tenant' } as const;
+      }
+      if (
+        input.transactionId !== undefined &&
+        !(await loadAll(store, 'transaction', BankTransactionSchema)).records.some(
+          (t) => t.id === input.transactionId,
+        )
+      ) {
+        return { status: 'refused', reason: 'unknown-movement' } as const;
+      }
+      const calc = await computed(store, input);
+      if (calc.status === 'refused') return { status: 'refused', reason: 'invalid-input' } as const;
+      const rent = rentOf(close, calc.input).get(input.tenantId);
+      if (
+        rent === undefined ||
+        rent.open === 0 ||
+        (input.outcome === 'richiesto' && rent.asked === rent.open)
+      ) {
+        return { status: 'refused', reason: 'nothing-to-mark' } as const;
+      }
+      return {
+        fields: {
+          rentMarks: [
+            ...(close.rentMarks ?? []),
+            {
+              tenantId: input.tenantId,
+              on: input.on,
+              outcome: input.outcome,
+              months: rent.months,
               ...(input.transactionId === undefined ? {} : { transactionId: input.transactionId }),
             },
           ],

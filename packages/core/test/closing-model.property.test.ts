@@ -17,8 +17,8 @@
 // (`toCheck`), never a credit (answer F); a credit from costs (a credit note) is a credit. A mark
 // while there is extra flat charge is allowed and leaves it to check (final review).
 // 7. a mark never changes toCheck; 8. toCheck never decreases unless a flat-charge payment was
-//    cancelled, the mark that made it extra undone, or the extra checked by user1 (plan 22: refunded
-//    or the same money; a credit stays to check), since the last state checked.
+//    cancelled, the mark that made it extra undone, or the extra checked by user1 (plan 22, every
+//    outcome; a credit goes into the supplementary), since the last state checked.
 //
 // Invariants after every action (numbers as in the task of the fifth round):
 // 1. reopen then close with no data change between: t-b's withheld amount and toCheck unchanged;
@@ -29,7 +29,9 @@
 //    (checked on the sequences that have such a pair);
 // 5. what the statement withholds for the period equals the ledger's remaining, its toCheck the
 //    ledger's toCheck;
-// 6. no line of the period appears twice (main and supplementary counted once each).
+// 6. no line of the period appears twice (main and supplementary counted once each);
+// 9. (plan 22) the «Canone non incassato» line of t-b is the rent of a bounced transfer, until
+//    user1 marks it `saldato` or `non-recuperabile` (`richiesto` leaves it).
 //
 // Fixed seeds here; CLOSING_MODEL_SEEDS=<n> runs n seeds, CLOSING_MODEL_FIRST=<seed> the first one.
 // A failing seed is shrunk (actions removed one at a time while it still fails on the same
@@ -42,6 +44,7 @@ import {
   loadExcelInput,
   loadPeriodClosing,
   markFlatChecked,
+  markRentMissing,
   markTenantSettled,
   readJournal,
   recordPath,
@@ -88,10 +91,13 @@ type Action =
   | { kind: 'undo-mark' }
   /** Plan 22: «forfait verificato» of t-b. */
   | { kind: 'flat-check'; outcome: 'rimborso' | 'credito' | 'stessi-soldi' }
+  /** Plan 22: the March rent of t-b bounced (while reopened), and its mark. */
+  | { kind: 'bounce' }
+  | { kind: 'rent-mark'; outcome: 'richiesto' | 'saldato' | 'non-recuperabile' }
   | { kind: 'reopen' }
   | { kind: 'close' };
 
-const DATA = new Set(['bill', 'pay', 'cancel']);
+const DATA = new Set(['bill', 'pay', 'cancel', 'bounce']);
 
 /**
  * A random sequence of up to 12 actions, built from short episodes so that the states worth
@@ -152,7 +158,18 @@ function actions(seed: number): Action[] {
     else if (roll === 5 || roll === 6)
       out.push({ kind: r.pick(['main', 'sup'] as const), tenant: tenant() });
     else if (roll === 7) out.push({ kind: 'undo-mark' });
-    else if (roll === 8 && r.int(2) === 0) {
+    else if (roll === 8 && r.int(3) === 0) {
+      // Plan 22: a bounced rent, closed again with «Canone non incassato», then marked.
+      out.push(
+        { kind: 'reopen' },
+        { kind: 'bounce' },
+        { kind: 'close' },
+        {
+          kind: 'rent-mark',
+          outcome: r.pick(['richiesto', 'saldato', 'non-recuperabile'] as const),
+        },
+      );
+    } else if (roll === 8 && r.int(2) === 0) {
       // Plan 22: a flat charge cut and closed again, settled, paid again (extra), then checked.
       const m = month();
       out.push(
@@ -177,8 +194,8 @@ const show = (a: Action): string =>
         ? `cancel-flat ${a.tenant} ${a.month}`
         : a.kind === 'main' || a.kind === 'sup'
           ? `${a.kind}-settled ${a.tenant}`
-          : a.kind === 'flat-check'
-            ? `flat-check ${a.outcome}`
+          : a.kind === 'flat-check' || a.kind === 'rent-mark'
+            ? `${a.kind} ${a.outcome}`
             : a.kind;
 
 /** The owner's ledger of one tenant. */
@@ -195,8 +212,9 @@ type Ledger = {
   paidAtMain?: number;
   /** The flat charge collected at the last main mark: what comes after it is extra. */
   flatAtMain?: number;
-  /** Plan 22: the extra checked as refunded or the same money (no longer to check). */
+  /** Plan 22: the extra checked by user1 (no longer to check), and of it the credit (answer 5). */
   checked?: number;
+  credit?: number;
 };
 const FLAT_DUE: Record<Tenant, number> = { 't-a': 12 * 3000, 't-b': 11 * 3000 };
 
@@ -212,6 +230,8 @@ class Run {
   marks: { opId: string; before: Map<Tenant, Ledger> }[] = [];
   late = 0;
   pays = 0;
+  /** Plan 22: the rent of t-b not collected and still open, as the owner sees it. */
+  rent = 0;
 
   clock = () => {
     this.tick += 1;
@@ -328,7 +348,7 @@ class Run {
     const extra = this.extra(l, now.flat);
     // Plan 22: a check changes what is to check (capped by today's extra), never what is owed.
     return {
-      remaining: now.due + extra - l.mainDeclared - l.supDeclared,
+      remaining: now.due + extra - l.mainDeclared - l.supDeclared - (l.credit ?? 0),
       toCheck: Math.max(0, extra - (l.checked ?? 0)),
     };
   }
@@ -346,6 +366,7 @@ class Run {
   /** What the app says for t-b: withheld for the period and toCheck, or undefined (reopened). */
   async app(): Promise<
     | {
+        rent: number;
         withheld: number;
         toCheck: number;
         lines: { label: string; amount: number }[];
@@ -367,15 +388,20 @@ class Run {
       if (r.reason === 'period-reopened') return undefined;
       throw new Error(`deposit refused: ${r.reason}`);
     }
-    const lines = r.statement.lines.filter(
+    const all = r.statement.lines.filter(
       (l) => l.label !== 'Caparra' && l.label !== 'Interessi legali',
     );
+    // Plan 22: the rent not collected is outside the settlement, compared apart (invariant 9).
+    const isRent = (l: { label: string }) => l.label.startsWith('Canone non incassato');
+    const lines = all.filter((l) => !isRent(l));
+    const rent = -all.filter(isRent).reduce((s, l) => s + l.amount, 0);
     const closing = await loadPeriodClosing(this.store, QUERY, isoDate('2026-12-31'));
     const rowOf = (id: Tenant) =>
       closing.status === 'closed' ? closing.tenants.find((x) => x.tenantId === id) : undefined;
     const row = rowOf('t-b');
     const other = rowOf('t-a');
     return {
+      rent,
       withheld: -lines.reduce((s, l) => s + l.amount, 0),
       toCheck: r.toCheck.reduce((s, l) => s + l.amount, 0),
       lines,
@@ -450,6 +476,12 @@ class Run {
           this.clock,
           this.newId,
         );
+        // Answer 7: a check holds only while the payments it was made on are there.
+        if (a.tenant === 't-b') {
+          const l = this.ledgers.get('t-b') as Ledger;
+          delete l.checked;
+          delete l.credit;
+        }
         return true;
       }
       case 'main':
@@ -494,7 +526,8 @@ class Run {
             l.flatAtMain = now.flat - extra;
           }
         } else {
-          l.supDeclared = now.due + extra - mainLevel;
+          // Plan 22: a credit of a checked flat charge is part of the supplementary (answer 5).
+          l.supDeclared = now.due + extra - (l.credit ?? 0) - mainLevel;
         }
         this.marks.push({ opId: result.operationId, before });
         return true;
@@ -514,8 +547,48 @@ class Run {
         }
         if (result.status === 'unchanged') return false;
         const l = this.ledgers.get('t-b') as Ledger;
-        if (a.outcome !== 'credito') l.checked = (l.checked ?? 0) + toCheck;
+        l.checked = (l.checked ?? 0) + toCheck;
+        // Answer 5: a credit goes into the supplementary settlement.
+        if (a.outcome === 'credito') l.credit = (l.credit ?? 0) + toCheck;
         this.marks.push({ opId: result.operationId, before });
+        return true;
+      }
+      case 'bounce': {
+        if (this.closed) return false;
+        const path = recordPath('payment', 'pay-t-b-2026-03-rent');
+        const before = (await this.store.readJson(path)) as Record<string, unknown> | undefined;
+        if (before === undefined || before.deleted === true) return false;
+        await commitChange(
+          this.store,
+          {
+            profileId: 'p1',
+            kind: 'test.seed',
+            summary: 'x',
+            changes: [{ path, before, after: undefined }],
+          },
+          this.clock,
+          this.newId,
+        );
+        // The 30,00 of the flat charge left goes to the rent first (R4): 420,00 are missing.
+        this.rent = 45000 - 3000;
+        // Answer 7: a payment the checks of t-b were made on is gone: they no longer hold.
+        const l = this.ledgers.get('t-b') as Ledger;
+        delete l.checked;
+        delete l.credit;
+        return true;
+      }
+      case 'rent-mark': {
+        const result = await markRentMissing(
+          this.store,
+          { ...QUERY, tenantId: 't-b', on: '2026-12-02', outcome: a.outcome },
+          'p1',
+          this.clock,
+          this.newId,
+        );
+        if (result.status === 'refused') {
+          return refused(result.reason, ['not-closed', 'nothing-to-mark']);
+        }
+        if (a.outcome !== 'richiesto') this.rent = 0;
         return true;
       }
       case 'undo-mark': {
@@ -593,7 +666,12 @@ async function check(sequence: readonly Action[]): Promise<Failure | undefined> 
     if (DATA.has(a.kind)) dataSinceReopen = true;
     // Undoing a mark takes back the mark that made the payment extra: it may lower toCheck too.
     // Plan 22: a check of the flat charge lowers it too.
-    if (a.kind === 'cancel' || a.kind === 'undo-mark' || a.kind === 'flat-check') {
+    if (
+      a.kind === 'cancel' ||
+      a.kind === 'undo-mark' ||
+      a.kind === 'flat-check' ||
+      a.kind === 'bounce'
+    ) {
       cancelledSince = true;
     }
     const app = await run.app();
@@ -667,6 +745,10 @@ async function check(sequence: readonly Action[]): Promise<Failure | undefined> 
         invariant: 5,
         detail: `withheld ${String(app.withheld)} toCheck ${String(app.toCheck)}; ledger ${String(want.remaining)} / ${String(want.toCheck)}; lines ${JSON.stringify(app.lines)}`,
       };
+    }
+    // 9 (plan 22): the rent not collected of t-b, as the owner sees it.
+    if (app.rent !== run.rent) {
+      return { invariant: 9, detail: `rent ${String(app.rent)}; ledger ${String(run.rent)}` };
     }
     // 7, 8
     if (lastToCheck !== undefined) {

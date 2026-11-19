@@ -881,6 +881,22 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     expect(again.out).not.toMatch(/45000/);
     const sup = await cli('conguaglio-supplementare', ...args, '--dettagli');
     expect(sup.json.tenants[0]).toMatchObject({ tenantId: 't-x', rentMissing: 45000 });
+    // Answer 2 of user1: marked by hand.
+    const tenant = ['--inquilino', 't-x', '--data', '2026-12-01'];
+    expect((await cli('canone-non-incassato', ...args, ...tenant, '--esito', 'pagato')).code).toBe(
+      2,
+    );
+    const asked = await cli('canone-non-incassato', ...args, ...tenant, '--esito', 'richiesto');
+    expect(asked.code, asked.out).toBe(0);
+    const paid = await cli('canone-non-incassato', ...args, ...tenant, '--esito', 'saldato');
+    expect(paid.json.status).toBe('saved');
+    expect((await cli('conguaglio-supplementare', ...args)).json.tenants[0]).not.toHaveProperty(
+      'rentMissing',
+    );
+    const twice = await cli('canone-non-incassato', ...args, ...tenant, '--esito', 'saldato');
+    expect(twice.json.reason).toBe('nothing-to-mark');
+    const undo = await cli('annulla-riconciliazione', '--operazione', paid.json.operationId);
+    expect(undo.code, undo.out).toBe(0);
   }, 60_000);
 
   it('F10: caparra già restituita, i conguagli chiusi non saldati sono «da richiedere»', async () => {

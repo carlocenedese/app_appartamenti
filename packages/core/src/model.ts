@@ -1549,6 +1549,26 @@ const FlatCheckedSchema = z.array(
     outcome: z.enum(['rimborso', 'credito', 'stessi-soldi']),
     amount: CentsSchema,
     transactionId: NonEmptyString.optional(),
+    /**
+     * The tenant's flat-charge payments of the period when checked (answer 7 of user1): the check
+     * holds only while each of them is still there with the same amount.
+     */
+    payments: z.array(z.object({ id: NonEmptyString, amount: CentsSchema })).optional(),
+  }),
+);
+
+/**
+ * Plan 22 (answer 2 of user1, 19 Nov 2026): a rent not collected after a reopening marked by user1:
+ * `richiesto` (asked from the tenant), `saldato` (paid outside the payments recorded) or
+ * `non-recuperabile` (left with the owner, R5). `months` is what was missing then, per month.
+ */
+const RentMarksSchema = z.array(
+  z.object({
+    tenantId: NonEmptyString,
+    on: ISODateSchema,
+    outcome: z.enum(['richiesto', 'saldato', 'non-recuperabile']),
+    months: z.array(z.object({ month: YearMonthSchema, amount: CentsSchema })).min(1),
+    transactionId: NonEmptyString.optional(),
   }),
 );
 
@@ -1580,6 +1600,8 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
   supplementarySettled: SupplementarySettledSchema.optional(),
   /** Flat charges «da verificare» checked by user1 (plan 22), in the order they were checked. */
   flatChecked: FlatCheckedSchema.optional(),
+  /** Rents not collected marked by user1 (plan 22), in the order they were marked. */
+  rentMarks: RentMarksSchema.optional(),
   /**
    * The records the snapshot counted, as `<kind>/<id>`, sorted (F5): what existed at the closing,
    * read from the folder and not from the clocks, so an operation of another computer synced
@@ -1599,6 +1621,7 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
         settled: PeriodSettledSchema.optional(),
         supplementarySettled: SupplementarySettledSchema.optional(),
         flatChecked: FlatCheckedSchema.optional(),
+        rentMarks: RentMarksSchema.optional(),
         reopened: PeriodReopenedSchema,
       }),
     )

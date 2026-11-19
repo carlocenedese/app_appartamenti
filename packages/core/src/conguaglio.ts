@@ -976,7 +976,7 @@ export function calcConguaglioSupplementare(input: {
 }
 
 /**
- * Plan 22: the rent not collected per tenant over `months` (the `rent` part of `canClosePeriod`):
+ * Plan 22: the rent not collected per tenant and month over `months` (the `rent` part of `canClosePeriod`):
  * the row «Canone non incassato» of a period closed again after a reopening. Read from today's
  * payments, which a closed period keeps still: a new payment for the month takes it away.
  */
@@ -984,10 +984,12 @@ export function rentNotCollected(input: {
   tenancies: Tenancy[];
   payments: Payment[];
   months: YearMonth[];
-}): Map<string, Cents> {
-  const owed = new Map<string, Cents>();
+}): Map<string, { month: YearMonth; amount: Cents }[]> {
+  const owed = new Map<string, { month: YearMonth; amount: Cents }[]>();
   for (const m of canClosePeriod({ ...input, pending: [] }).missing) {
-    if (m.kind === 'rent') owed.set(m.tenantId, cents((owed.get(m.tenantId) ?? 0) + m.amount));
+    if (m.kind === 'rent') {
+      owed.set(m.tenantId, [...(owed.get(m.tenantId) ?? []), { month: m.month, amount: m.amount }]);
+    }
   }
   return owed;
 }

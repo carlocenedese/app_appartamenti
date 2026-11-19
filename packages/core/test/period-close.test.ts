@@ -522,6 +522,52 @@ describe('closePeriod and loadPeriodClosing (R5)', () => {
     await put(store, 'match', match(december, 3000, { transactionDate: isoDate('2025-12-16') }));
     expect((await closePeriod(store, QUERY, 'p1', clock, ids('f'))).status).toBe('closed');
   });
+
+  it('plan 22 (I1): the shared notice is read with the weights in force in the months of the period', async () => {
+    const supply = (extra: Record<string, unknown>) => ({
+      id: 'sup-a',
+      v: 1,
+      rev: 1,
+      label: 'UTENZA-A',
+      ...extra,
+    });
+    const refused = { status: 'refused', reason: 'tari-december-missing', month: '2025-12' };
+    // Joins the supply only from 2026-10, after the period: no December is waited for.
+    const joins = await setUp();
+    await put(
+      joins,
+      'supply',
+      supply({
+        apartments: [
+          { apartmentId: 'apt', weight: 5000 },
+          { apartmentId: 'apt-2', weight: 5000 },
+        ],
+        earlierApartments: [
+          { to: '2026-09', apartments: [{ apartmentId: 'apt-2', weight: 10000 }] },
+        ],
+      }),
+    );
+    expect((await closePeriod(joins, QUERY, 'p1', clock, ids('j'))).status).toBe('closed');
+    // Leaves the supply from 2027-01: in the period it is in, so December 2025 is waited for.
+    const leaves = await setUp();
+    await put(
+      leaves,
+      'supply',
+      supply({
+        apartments: [{ apartmentId: 'apt-2', weight: 10000 }],
+        earlierApartments: [
+          {
+            to: '2026-12',
+            apartments: [
+              { apartmentId: 'apt', weight: 5000 },
+              { apartmentId: 'apt-2', weight: 5000 },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(await closePeriod(leaves, QUERY, 'p1', clock, ids('l'))).toEqual(refused);
+  });
 });
 
 describe('R363: a period closed before plan 21 keeps the split over the beds', () => {

@@ -123,6 +123,7 @@ import {
   loadPeriodClosing,
   markPeriodSent,
   markFlatChecked,
+  markRentMissing,
   markTenantSettled,
   reopenPeriod,
   equalShares,
@@ -284,6 +285,8 @@ export const MESSAGES = {
   'unknown-movement-in-close': 'Rifiutato: il movimento non esiste.',
   'missing-reason': 'Rifiutato: per riaprire il periodo serve il motivo (--motivo).',
   'no-supplementary': 'Rifiutato: l’inquilino non ha un conguaglio supplementare da saldare.',
+  'nothing-to-mark':
+    'Rifiutato: l’inquilino non ha un canone non incassato aperto per questo esito su questa chiusura.',
   'nothing-to-check':
     'Rifiutato: l’inquilino non ha forfait «da verificare» per questo esito su questa chiusura.',
   'forfait-to-check':
@@ -688,11 +691,18 @@ const RECONCILE_KINDS = [
   'period.reopen',
   // Plan 22: the flat charge checked, and the dated weights of a supply («valido dal»).
   'period.flat-check',
+  'period.rent-mark',
   'supply.update',
 ];
 
 /** Plan 22: the outcomes of «forfait-verificato», Italian flag to the core's value. */
 const FLAT_OUTCOMES = { rimborso: 'rimborso', credito: 'credito', 'stessi-soldi': 'stessi-soldi' };
+/** Plan 22: the outcomes of «canone-non-incassato». */
+const RENT_OUTCOMES = {
+  richiesto: 'richiesto',
+  saldato: 'saldato',
+  'non-recuperabile': 'non-recuperabile',
+};
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
 const PAYABLE_STATES = ['da-pagare', 'in-scadenza', 'pagata', 'in-ritardo'];
 const PAYABLE_ITEM_KINDS = ['imu', 'condominio', 'tari', ...PayableKindSchema.options];
@@ -3151,6 +3161,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
           forfaitPaid,
           toCheck,
           rentMissing,
+          rentAsked,
+          rentLost,
           flatCredit,
           ...t
         }) => ({
@@ -3158,6 +3170,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
           settled: settledIds.has(t.tenantId),
           // Plan 22: the row «Canone non incassato» (amount only with --dettagli).
           ...(rentMissing === 0 ? {} : { rentMissing: details ? rentMissing : true }),
+          ...(details && rentAsked !== 0 ? { rentAsked } : {}),
+          ...(details && rentLost !== 0 ? { rentLost } : {}),
           // F11: the flat charge no longer collected is a line of its own; fourth round A, B: the
           // supplementary computed once (`total`) and the flat charge «da verificare» (`toCheck`).
           ...(details
@@ -3241,21 +3255,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
     return result;
   }
 
-  // Plan 22 (decision 3 of user1, 19 Nov 2026): the flat charge «da verificare» checked by user1,
-  // with its outcome; the payment can still be corrected by hand. Ids only in the output.
-  if (name === 'forfait-verificato') {
+  // Plan 22 (decision 3 and answer 2 of user1, 19 Nov 2026): the flat charge «da verificare»
+  // checked by user1, and the rent not collected marked, each with its outcome; the payment can
+  // still be corrected by hand. Ids only in the output.
+  if (name === 'forfait-verificato' || name === 'canone-non-incassato') {
     need(values, 'appartamento', 'periodo', 'inquilino', 'data', 'esito');
-    if (positionals.length > 0 || !Object.hasOwn(FLAT_OUTCOMES, values.esito)) {
+    const outcomes = name === 'forfait-verificato' ? FLAT_OUTCOMES : RENT_OUTCOMES;
+    if (positionals.length > 0 || !Object.hasOwn(outcomes, values.esito)) {
       throw invalid('bad-arguments');
     }
-    const result = await markFlatChecked(
+    const result = await (name === 'forfait-verificato' ? markFlatChecked : markRentMissing)(
       store,
       {
         apartmentId: values.appartamento,
         periodLabel: values.periodo,
         tenantId: values.inquilino,
         on: day(values.data),
-        outcome: FLAT_OUTCOMES[values.esito],
+        outcome: outcomes[values.esito],
         ...optional('transactionId', values.movimento),
       },
       who,
@@ -3267,6 +3283,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
         'unknown-tenant': 'unknown-tenant-in-close',
         'unknown-movement': 'unknown-movement-in-close',
         'nothing-to-check': 'nothing-to-check',
+        'nothing-to-mark': 'nothing-to-mark',
         'invalid-input': 'invalid-close-input',
       }[result.reason];
       throw new Stop(
@@ -3510,6 +3527,7 @@ export const COMMAND_NAMES = [
   'invia-conguaglio',
   'conguaglio-saldato',
   'forfait-verificato',
+  'canone-non-incassato',
   'riapri-periodo',
   'scegli-versione',
   'aiuto',
@@ -3631,10 +3649,11 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'recupero',
         'conguaglio-saldato',
         'forfait-verificato',
+        'canone-non-incassato',
       ],
       motivo: ['escludi', 'riapri-periodo'],
       supplementare: ['conguaglio-saldato'],
-      esito: ['forfait-verificato'],
+      esito: ['forfait-verificato', 'canone-non-incassato'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: [
         'conferma',
@@ -3645,6 +3664,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'scheda-inquilino',
         'conguaglio-saldato',
         'forfait-verificato',
+        'canone-non-incassato',
       ],
       giallo: ['soglie-consumi'],
       bolletta: ['consumi'],
@@ -3679,6 +3699,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'invia-conguaglio',
         'conguaglio-saldato',
         'forfait-verificato',
+        'canone-non-incassato',
         'riapri-periodo',
       ],
       voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
@@ -3691,6 +3712,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'invia-conguaglio',
         'conguaglio-saldato',
         'forfait-verificato',
+        'canone-non-incassato',
         'riapri-periodo',
       ],
       stato: ['scadenze', 'recupero'],
@@ -3744,6 +3766,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'invia-conguaglio',
         'conguaglio-saldato',
         'forfait-verificato',
+        'canone-non-incassato',
         'riapri-periodo',
       ],
       entro: ['scadenze', 'cruscotto'],

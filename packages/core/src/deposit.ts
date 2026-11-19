@@ -6,14 +6,8 @@
  */
 import { caparraReturn } from './caparra';
 import type { CaparraReturn } from './caparra';
-import {
-  SettlementInputError,
-  calcConguaglio,
-  isPresent,
-  rentNotCollected,
-  settlementPeriodOf,
-} from './conguaglio';
-import { tenantBalance } from './closing';
+import { SettlementInputError, calcConguaglio, isPresent, settlementPeriodOf } from './conguaglio';
+import { flatPaymentsOf, rentOf, tenantBalance } from './closing';
 import { recoverableMovements } from './condominio';
 import { inSettlement } from './excel';
 import { loadExcelInput } from './excel-store';
@@ -487,6 +481,7 @@ async function closedPeriodLines(
     const balance = tenantBalance(close, input.tenantId, {
       due: today?.due ?? 0,
       forfaitIncassato: today?.forfaitIncassato ?? 0,
+      payments: flatPaymentsOf(loaded.input.payments, input.tenantId, close.from, close.to),
     });
     if (balance.toCheck > 0) {
       toCheck.push({
@@ -500,13 +495,9 @@ async function closedPeriodLines(
     const supLeft = balance.supplementary - balance.supplementarySettled;
     const lost = marked ? 0 : Math.min(balance.lostFlat, Math.max(0, supLeft));
     const forfait = balance.fniLeft + lost;
-    // Plan 22, decision 1: the rent not collected of a period closed again (outside the settlement).
-    const rent =
-      rentNotCollected({
-        tenancies: loaded.input.tenancies,
-        payments: loaded.input.payments,
-        months: monthsInPeriod(isoDate(`${close.from}-01`), isoDate(`${close.to}-01`)),
-      }).get(input.tenantId) ?? 0;
+    // Plan 22, decision 1: the rent not collected of a period closed again (outside the
+    // settlement), less what user1 marked `saldato` or `non-recuperabile` (answer 2).
+    const rent = rentOf(close, loaded.input).get(input.tenantId)?.open ?? 0;
     const later: Line[] = [
       ...(forfait > 0 ? [{ label: `Forfait non incassato ${label}`, amount: cents(forfait) }] : []),
       ...(rent > 0 ? [{ label: `Canone non incassato ${label}`, amount: cents(rent) }] : []),

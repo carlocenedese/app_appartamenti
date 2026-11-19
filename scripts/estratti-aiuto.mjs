@@ -79,6 +79,8 @@ export const COMMAND_HELP = {
     'Segna saldato il conguaglio di un inquilino (--inquilino, --data, --movimento facoltativo; --supplementare per il supplementare).',
   'forfait-verificato':
     'Registra l’esito del forfait «da verificare» di un inquilino (--inquilino, --data, --esito rimborso|credito|stessi-soldi, --movimento facoltativo).',
+  'canone-non-incassato':
+    'Segna il canone non incassato di un inquilino dopo una riapertura (--inquilino, --data, --esito richiesto|saldato|non-recuperabile, --movimento facoltativo).',
   'riapri-periodo':
     'Riapre un periodo chiuso con --data e --motivo; l’istantanea resta nello storico.',
   'scegli-versione':

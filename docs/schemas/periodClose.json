@@ -221,6 +221,27 @@
           "transactionId": {
             "type": "string",
             "minLength": 1
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "amount": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "id",
+                "amount"
+              ]
+            }
           }
         },
         "required": [
@@ -228,6 +249,65 @@
           "on",
           "outcome",
           "amount"
+        ]
+      }
+    },
+    "rentMarks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on": {
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists in the month needs a \"format\": \"date\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+            "type": "string",
+            "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "richiesto",
+              "saldato",
+              "non-recuperabile"
+            ]
+          },
+          "months": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "month": {
+                  "description": "Calendar month, YYYY-MM (01 to 12). Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])$"
+                },
+                "amount": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "month",
+                "amount"
+              ]
+            }
+          },
+          "transactionId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "tenantId",
+          "on",
+          "outcome",
+          "months"
         ]
       }
     },
@@ -447,6 +527,27 @@
                 "transactionId": {
                   "type": "string",
                   "minLength": 1
+                },
+                "payments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "amount"
+                    ]
+                  }
                 }
               },
               "required": [
@@ -454,6 +555,65 @@
                 "on",
                 "outcome",
                 "amount"
+              ]
+            }
+          },
+          "rentMarks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tenantId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "on": {
+                  "format": "date",
+                  "description": "Calendar date, YYYY-MM-DD. The pattern checks the month and day ranges; that the day exists in the month needs a \"format\": \"date\" check or the consumer's own. Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "richiesto",
+                    "saldato",
+                    "non-recuperabile"
+                  ]
+                },
+                "months": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "month": {
+                        "description": "Calendar month, YYYY-MM (01 to 12). Where \"$\" accepts a trailing newline (Python), the consumer must reject one.",
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])$"
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "month",
+                      "amount"
+                    ]
+                  }
+                },
+                "transactionId": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "tenantId",
+                "on",
+                "outcome",
+                "months"
               ]
             }
           },
