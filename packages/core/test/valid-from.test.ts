@@ -13,10 +13,12 @@ import {
   recordPath,
   saveApartment,
   saveSupply,
+  saveTenancy,
   undoOperation,
 } from '../src/index';
 import type { RecordKind } from '../src/index';
 import { bedsAt, bedsOver, datedChange, weightsAt, weightsOver } from '../src/valid-from';
+import { cents } from '../src/money';
 import { yearMonth } from '../src/period';
 import { apartment, payment, period, tenancy } from './helpers/conguaglio-builders';
 import { clock, ids } from './helpers/income-year';
@@ -238,6 +240,37 @@ describe('saveApartment with «valido dal» and the closed period (F5)', () => {
         { confirmed: true },
       ),
     ).toMatchObject({ status: 'refused', reason: 'beds-conflict', month: '2026-04' });
+  });
+});
+
+describe('a stay written against dated beds', () => {
+  it('a second stay from January is refused where the beds drop to 1 in April', async () => {
+    const store = new MemoryStore();
+    await put(
+      store,
+      'apartment',
+      apartment({ posti: 1, earlierBeds: [{ to: yearMonth('2026-03'), posti: 2 }] }),
+    );
+    await put(store, 'tenant', { id: 't-a', v: 1, rev: 1, name: 'Nome Inventato' });
+    await put(store, 'tenant', { id: 't-b', v: 1, rev: 1, name: 'Altro Nome' });
+    await put(store, 'tenancy', tenancy('t-a', '2025-10', undefined));
+    const stay = (to?: string) => ({
+      id: 'tcy-b',
+      apartmentId: 'apt',
+      tenantId: 't-b',
+      from: yearMonth('2026-01'),
+      ...(to === undefined ? {} : { to: yearMonth(to) }),
+      monthlyRent: cents(45000),
+      monthlyForfait: cents(3000),
+    });
+    expect(await saveTenancy(store, stay(), 'p1', clock, ids('t'))).toMatchObject({
+      status: 'refused',
+      reason: 'beds-conflict',
+      month: '2026-04',
+    });
+    expect((await saveTenancy(store, stay('2026-03'), 'p1', clock, ids('t2'))).status).toBe(
+      'saved',
+    );
   });
 });
 
