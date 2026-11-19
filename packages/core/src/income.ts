@@ -108,6 +108,21 @@ export function whoPaid(tx: BankTransaction, ctx: IncomeContext): WhoResult {
 }
 
 /**
+ * The `<tenantId>\u0000<month>` keys whose live `canone` payments of `apartmentId` add up to more
+ * than zero (`forMonth`, else the month of the date): a month refunded in full (B5 c, a negative
+ * `canone`) is unpaid again.
+ */
+function paidKeys(payments: readonly Payment[], apartmentId: string): Set<string> {
+  const net = new Map<string, number>();
+  for (const p of payments) {
+    if (p.deleted === true || p.kind !== 'canone' || p.apartmentId !== apartmentId) continue;
+    const key = `${p.tenantId}\u0000${p.forMonth ?? p.date.slice(0, 7)}`;
+    net.set(key, (net.get(key) ?? 0) + p.amount);
+  }
+  return new Set([...net].filter(([, amount]) => amount > 0).map(([key]) => key));
+}
+
+/**
  * Sorts tenant ids: name in the text; then rent plus flat charge of a presence in the apartment in
  * the month equal to the amount; then present in that month without a live rent payment for it there;
  * then name (the id without a live tenant), then id.
@@ -127,16 +142,9 @@ function candidateOrder(
       t.from <= month &&
       (t.to === undefined || month <= t.to),
   );
+  const keys = paidKeys(ctx.payments, apartmentId);
   const paid = new Set(
-    ctx.payments
-      .filter(
-        (p) =>
-          p.deleted !== true &&
-          p.kind === 'canone' &&
-          p.apartmentId === apartmentId &&
-          (p.forMonth ?? p.date.slice(0, 7)) === month,
-      )
-      .map((p) => p.tenantId),
+    [...keys].filter((k) => k.endsWith(`\u0000${month}`)).map((k) => k.split('\u0000')[0]),
   );
   const flags = (id: string): number[] => {
     const name = names.get(id);
@@ -243,11 +251,7 @@ export function rentArrears(
   );
   for (const apartmentId of apartmentIds) {
     const covered = coveredMonths(input, apartmentId);
-    const paid = new Set(
-      input.payments
-        .filter((p) => p.deleted !== true && p.kind === 'canone' && p.apartmentId === apartmentId)
-        .map((p) => `${p.tenantId}\u0000${p.forMonth ?? p.date.slice(0, 7)}`),
-    );
+    const paid = paidKeys(input.payments, apartmentId);
     for (const t of input.tenancies) {
       if (t.deleted === true || t.apartmentId !== apartmentId || gone.has(t.tenantId)) continue;
       for (const month of covered) {
@@ -397,15 +401,9 @@ export function reconcileIncome(
       covered.set(apartmentId, cov);
     }
     const paid = new Set(
-      ctx.payments
-        .filter(
-          (p) =>
-            p.deleted !== true &&
-            p.kind === 'canone' &&
-            p.tenantId === tenantId &&
-            p.apartmentId === apartmentId,
-        )
-        .map((p) => p.forMonth ?? p.date.slice(0, 7)),
+      [...paidKeys(ctx.payments, apartmentId)]
+        .filter((k) => k.startsWith(`${tenantId}\u0000`))
+        .map((k) => k.slice(tenantId.length + 1)),
     );
     const unpaid = presentMonths.filter((m) => cov.has(m) && !paid.has(m));
     const apartment = input.apartments.find((a) => a.deleted !== true && a.id === apartmentId);

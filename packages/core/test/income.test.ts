@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collectedForfait, SettlementInputError } from '../src/conguaglio';
 import { coveredMonths, reconcileIncome, rentArrears } from '../src/income';
 import { OperationSchema } from '../src/journal';
+import { cents } from '../src/money';
 import { recordPath } from '../src/store/records';
 import type { IncomeContext } from '../src/income';
 import {
@@ -748,6 +749,28 @@ describe('rentArrears (user1, 15 Nov 2026)', () => {
     expect(reconcileIncome(input({ statements: all, transactions, payments })).payments).toEqual(
       [],
     );
+  });
+
+  it('a month refunded in full (a negative canone, B5 c) is an arrear again and not automatic', () => {
+    const later = [statement({ from: '2026-02-01', to: '2026-03-31' })];
+    const transactions = [tx('x2', '2026-02-03'), tx('x3', '2026-03-02')];
+    const first = reconcileIncome(input({ statements: later, transactions }));
+    const paid = first.payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }));
+    const feb = paid.find((p) => p.forMonth === '2026-02');
+    if (feb === undefined) throw new Error('february');
+    const refund = { ...feb, id: 'refund', amount: cents(-feb.amount), transactionId: 'out-1' };
+    expect(rentArrears(input({ statements: later, payments: [...paid, refund] }))).toEqual([
+      { apartmentId: 'a1', tenantId: 't1', month: '2026-02' },
+    ]);
+    // A new transfer of the full amount in February pays it automatically again.
+    const again = reconcileIncome(
+      input({
+        statements: later,
+        transactions: [...transactions, tx('x4', '2026-02-20')],
+        payments: [...paid, refund],
+      }),
+    );
+    expect(again.payments.map((p) => [p.transactionId, p.forMonth])).toEqual([['x4', '2026-02']]);
   });
 
   it('skips a tenant whose record is deleted, even with a live presence (user1, 15 Nov 2026)', () => {

@@ -214,6 +214,16 @@ export async function confirmTenantOutgoingCommand(
   ctx: CommandContext,
 ) {
   const result = await confirmTenantOutgoing(store, input, ctx.who, ctx.clock, ctx.newId);
+  if (result.status === 'refused' && result.reason === 'no-rent-credit') {
+    // G4-I1: the message names the months with an open credit (none: «nessuno»).
+    throw new Stop('rejected', result.reason, {
+      months: result.months,
+      message:
+        `Rifiutato: l’inquilino non ha un credito di canone versato in più nel mese ` +
+        `${input.forMonth}. Mesi con un credito aperto: ` +
+        `${result.months.length === 0 ? 'nessuno' : result.months.join(', ')}.`,
+    });
+  }
   if (result.status === 'refused') throw new Stop('rejected', result.reason);
   return { status: 'confirmed', operationId: result.operationId, paymentId: result.paymentId };
 }

@@ -31,6 +31,7 @@ import { recoveriesUsing } from './condo-store';
 import { taxPaymentsUsing } from './tax-store';
 import { isPayerIban, outgoingCandidate, reconcileOutgoing, validRules } from './outgoing';
 import type { MovementClassDraft, OutgoingProposal } from './outgoing';
+import { loadRentExcesses } from './income-store';
 import { parseOrThrow } from './parse';
 import { firstPresenceDay } from './payers';
 import { addDays } from './period';
@@ -346,7 +347,12 @@ export type ConfirmTenantOutgoingResult =
   | {
       status: 'refused';
       reason: 'inconsistent-store' | 'invalid-kind' | 'unknown-proposal' | 'tenant-not-allowed';
-    };
+    }
+  /**
+   * G4-I1: a rent refund (`rentRefund`) for a month with no open credit of the tenant there;
+   * `months` are the months that have one (empty when none).
+   */
+  | { status: 'refused'; reason: 'no-rent-credit'; months: YearMonth[] };
 
 /** The kinds of an outgoing to a tenant: never `canone`, the rent is an income (R130). */
 const TenantOutgoingKindSchema = z.enum(['caparra', 'conguaglio', 'altro']);
@@ -368,8 +374,12 @@ export async function confirmTenantOutgoing(
   clock: () => string,
   newId: () => string,
 ): Promise<ConfirmTenantOutgoingResult> {
-  const refuse = (reason: Extract<ConfirmTenantOutgoingResult, { status: 'refused' }>['reason']) =>
-    ({ status: 'refused', reason }) as const;
+  const refuse = (
+    reason: Exclude<
+      Extract<ConfirmTenantOutgoingResult, { status: 'refused' }>['reason'],
+      'no-rent-credit'
+    >,
+  ) => ({ status: 'refused', reason }) as const;
   if (await writesBlocked(store)) return refuse('inconsistent-store');
   // The type says it already; a caller in plain JavaScript could still pass `canone`.
   if (!TenantOutgoingKindSchema.safeParse(input.kind).success) return refuse('invalid-kind');
@@ -385,6 +395,17 @@ export async function confirmTenantOutgoing(
   const live = state.tenants.some((t) => t.id === input.tenantId && t.deleted !== true);
   if (!live || firstPresenceDay(tenancies, input.tenantId, apartmentId) === undefined) {
     return refuse('tenant-not-allowed');
+  }
+  if (input.rentRefund === true) {
+    // G4-I1: a refund is the one of an open credit, in its month; otherwise it would count nowhere
+    // and the deposit would pay the credit again.
+    const months = (await loadRentExcesses(store))
+      .filter((e) => e.apartmentId === apartmentId && e.tenantId === input.tenantId && e.credit > 0)
+      .map((e) => e.month)
+      .sort();
+    if (!months.includes(input.forMonth)) {
+      return { status: 'refused', reason: 'no-rent-credit', months: [...new Set(months)] };
+    }
   }
   const payment = parseOrThrow(
     PaymentSchema,

@@ -8,6 +8,7 @@ import {
   confirmTenantOutgoing,
   excludeMovement,
   loadAll,
+  loadRentExcesses,
   planIncome,
   readJournal,
   recordPath,
@@ -947,26 +948,71 @@ describe('uscite verso gli inquilini (plan 3c, task 8, question 9)', () => {
     ).toEqual({ status: 'refused', reason: 'has-dependents', recordIds: ['pay-x-1'] });
   });
 
-  it('B5 (c): --rimborso-canone writes a negative canone of the month', async () => {
+  it('B5 (c): --rimborso-canone writes a negative canone of a month with a credit, else refuses', async () => {
     const store = await withTenants(tx('x', '2027-03-25', -4000));
-    expect(
-      await confirmTenantOutgoing(
+    // Paid 540,00 for February 2027, the last month of the stay (its contract ends then): a
+    // credit of 40,00, with no month to cover.
+    await put(store, 'contract', [
+      {
+        ...base,
+        id: 'ctr-n1',
+        apartmentId: 'app-a',
+        type: '1+1',
+        start: '2026-01',
+        end: '2027-02',
+        settlement: 'annuale',
+        tenancyIds: ['n1'],
+      },
+    ]);
+    const months = Array.from({ length: 14 }, (_, i) => {
+      const n = 2026 * 12 + i;
+      return `${String(Math.floor(n / 12))}-${String((n % 12) + 1).padStart(2, '0')}`;
+    });
+    await put(
+      store,
+      'payment',
+      months.map((m) => ({
+        ...base,
+        id: `pay-${m}`,
+        apartmentId: 'app-a',
+        tenantId: 't1',
+        date: `${m}-05`,
+        amount: m === '2027-02' ? 54000 : 50000,
+        confirmed: true,
+        kind: 'canone',
+        forMonth: m,
+        source: 'manual',
+      })),
+    );
+    const refund = (forMonth: string) =>
+      confirmTenantOutgoing(
         store,
         {
           proposalId: 'p-uscita-x',
           tenantId: 't1',
           kind: 'altro',
-          forMonth: '2027-03' as YearMonth,
+          forMonth: forMonth as YearMonth,
           rentRefund: true,
         },
         'p1',
         clock,
         ids('t'),
-      ),
-    ).toMatchObject({ status: 'confirmed', paymentId: 'pay-x-1' });
-    expect(await payments(store)).toMatchObject([
-      { id: 'pay-x-1', amount: -4000, kind: 'canone', forMonth: '2027-03' },
-    ]);
+      );
+    // G4-I1: the month of the payment that refunds it is not the month of the credit.
+    const before = await snapshot(store);
+    expect(await refund('2027-03')).toEqual({
+      status: 'refused',
+      reason: 'no-rent-credit',
+      months: ['2027-02'],
+    });
+    expect(await snapshot(store)).toEqual(before);
+    expect(await refund('2027-02')).toMatchObject({ status: 'confirmed', paymentId: 'pay-x-1' });
+    expect((await payments(store)).find((p) => p.id === 'pay-x-1')).toMatchObject({
+      amount: -4000,
+      kind: 'canone',
+      forMonth: '2027-02',
+    });
+    expect(await loadRentExcesses(store)).toEqual([]);
   });
 
   it('refusals write nothing: tenant without presence or deleted, unknown proposal, F24, income', async () => {
