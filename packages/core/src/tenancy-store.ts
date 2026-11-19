@@ -12,6 +12,7 @@ import type { Operation } from './journal';
 import {
   ApartmentSchema,
   ContractSchema,
+  NoteSchema,
   PaymentSchema,
   TenancySchema,
   TenantRecoverySchema,
@@ -530,7 +531,8 @@ export type RoomSwapResult =
  * both stays end the month before; each tenant starts a stay (`idA`/`idB`, default
  * `<old id>-<month>`) in the other's room with their own end, flat charge and expected deposit (no
  * new deposit) and the rent given, else their own; both join the contract's `tenancyIds`; the rent
- * history and the takeovers are not touched. Warnings, never a rule: `swap-rent-unchanged` (a rent
+ * history and the takeovers are not touched; a private note on the contract tells the swap (H5,
+ * `note-<new id of A>`, undone with the rest). Warnings, never a rule: `swap-rent-unchanged` (a rent
  * not given and the two rents differ), `swap-forfait-unchanged` (the two flat charges differ: each
  * keeps their own, question 4). The same request is `unchanged`: compared without `to`, so a later
  * exit written on a new stay does not make it another request; a new stay unlinked since by
@@ -666,6 +668,29 @@ export async function recordRoomSwap(
       ? undefined
       : bedsConflict(apartment, state.tenancies, [endedA, endedB, newA, newB]);
   if (conflict !== undefined) return refuseBeds(conflict);
+  // H5 (user1, 19 Nov 2026): the swap in the history of the contract, as a private note.
+  const name = (t: Tenancy) => state.tenants.find((x) => x.id === t.tenantId)?.name ?? t.tenantId;
+  const at = clock();
+  const note = parseOrThrow(
+    NoteSchema,
+    {
+      id: `note-${newA.id}`,
+      v: 1,
+      rev: 1,
+      targetType: 'contract',
+      targetId: contractA.id,
+      text:
+        `Scambio di posto dal ${month}: ${name(a)} dal posto ${a.room} al posto ${b.room}, ` +
+        `${name(b)} dal posto ${b.room} al posto ${a.room}.`,
+      profileId,
+      at,
+      visibleToTenants: false,
+    },
+    'note',
+  );
+  const noteBefore = (
+    await loadAll(store, 'note', NoteSchema, { includeDeleted: true })
+  ).records.find((n) => n.id === note.id);
   const result = await write(
     store,
     ids[0],
@@ -679,9 +704,10 @@ export async function recordRoomSwap(
         before: contractA,
         after: linked(linked(contractA, newA.id), newB.id),
       },
+      { path: recordPath('note', note.id), before: noteBefore, after: note },
     ],
     meta,
-    clock,
+    () => at,
     newId,
   );
   return result.status === 'saved'
