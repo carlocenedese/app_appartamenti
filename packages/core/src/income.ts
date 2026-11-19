@@ -5,6 +5,8 @@
 import { checkTenantOverlaps, isPresent } from './conguaglio';
 import { normaliseIban } from './iban';
 import { latestOperationByPath } from './journal';
+import { cents } from './money';
+import type { Cents } from './money';
 import type { Operation } from './journal';
 import { DEFAULT_RENT_LATE_DAYS } from './model';
 import type {
@@ -445,4 +447,87 @@ export function reconcileIncome(
     proposals: proposals.sort(byId),
     skipped: skipped.sort((a, b) => compareText(a.transactionId, b.transactionId)),
   };
+}
+
+/**
+ * B5 (user1, 18 Nov 2026): rent paid in excess. For each tenant and apartment, a month whose
+ * confirmed `canone` payments (`forMonth`, else the month of the date) add up to more than the
+ * rent plus flat charge of the stay present that month is flagged, on its latest payment (by date,
+ * then id). It proposes the oldest earlier month of a stay of the tenant there that is short: paid
+ * less than due, and either paid in part or covered in full by the statements (`covered`, an
+ * arrear). `amount` is what would move: the excess, at most the shortfall and the payment. Without
+ * such a month the excess is flagged with no `proposedMonth`. Nothing moves until a person
+ * confirms it (`confirmRentExcess`). Sorted by id; `tenancies` with their contract ends.
+ */
+export interface RentExcess {
+  /** `p-eccedenza-<paymentId>`. */
+  id: string;
+  apartmentId: string;
+  tenantId: string;
+  paymentId: string;
+  month: YearMonth;
+  excess: Cents;
+  proposedMonth?: YearMonth;
+  amount?: Cents;
+}
+
+export function rentExcesses(input: {
+  tenancies: Tenancy[];
+  payments: Payment[];
+  covered: (apartmentId: string) => ReadonlySet<YearMonth>;
+}): RentExcess[] {
+  const out: RentExcess[] = [];
+  const groups = new Map<string, Payment[]>();
+  for (const p of input.payments) {
+    if (p.deleted === true || !p.confirmed || p.kind !== 'canone') continue;
+    const key = `${p.apartmentId}\u0000${p.tenantId}`;
+    groups.set(key, [...(groups.get(key) ?? []), p]);
+  }
+  for (const payments of groups.values()) {
+    const [{ apartmentId, tenantId }] = payments as [Payment];
+    const stays = input.tenancies.filter(
+      (t) => t.deleted !== true && t.apartmentId === apartmentId && t.tenantId === tenantId,
+    );
+    const due = (month: YearMonth): number | undefined => {
+      const stay = stays.find((t) => isPresent(t, month));
+      return stay === undefined ? undefined : stay.monthlyRent + stay.monthlyForfait;
+    };
+    const monthOf = (p: Payment) => (p.forMonth ?? p.date.slice(0, 7)) as YearMonth;
+    const paid = new Map<YearMonth, number>();
+    for (const p of payments) paid.set(monthOf(p), (paid.get(monthOf(p)) ?? 0) + p.amount);
+    const covered = input.covered(apartmentId);
+    const earliest = stays.map((t) => t.from).sort(compareText)[0];
+    for (const month of [...paid.keys()].sort(compareText)) {
+      const owed = due(month);
+      if (owed === undefined || earliest === undefined) continue;
+      const excess = (paid.get(month) ?? 0) - owed;
+      if (excess <= 0) continue;
+      const [latest] = payments
+        .filter((p) => monthOf(p) === month)
+        .sort((a, b) => compareText(b.date, a.date) || compareText(b.id, a.id)) as [Payment];
+      let proposed: { month: YearMonth; amount: number } | undefined;
+      for (let m = earliest; m < month && proposed === undefined; m = addMonths(m, 1)) {
+        const short = (due(m) ?? 0) - (paid.get(m) ?? 0);
+        if (short > 0 && ((paid.get(m) ?? 0) > 0 || covered.has(m))) {
+          proposed = { month: m, amount: Math.min(excess, short, latest.amount) };
+        }
+      }
+      if (proposed !== undefined) {
+        // A later excess of the same tenant does not propose the same shortfall again.
+        paid.set(proposed.month, (paid.get(proposed.month) ?? 0) + proposed.amount);
+      }
+      out.push({
+        id: `p-eccedenza-${latest.id}`,
+        apartmentId,
+        tenantId,
+        paymentId: latest.id,
+        month,
+        excess: cents(excess),
+        ...(proposed === undefined
+          ? {}
+          : { proposedMonth: proposed.month, amount: cents(proposed.amount) }),
+      });
+    }
+  }
+  return out.sort((a, b) => compareText(a.id, b.id));
 }

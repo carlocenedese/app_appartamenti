@@ -5,8 +5,8 @@
  */
 import { isPresent } from './conguaglio';
 import { withContractEnds } from './contract';
-import { reconcileIncome, rentArrears } from './income';
-import type { IncomeProposal, RentArrear } from './income';
+import { coveredMonths, reconcileIncome, rentArrears, rentExcesses } from './income';
+import type { IncomeProposal, RentArrear, RentExcess } from './income';
 import { commitChange, latestOperationByPath, readJournal, writesBlocked } from './journal';
 import type { Operation } from './journal';
 import {
@@ -174,6 +174,8 @@ export type ReconcileRunResult =
       skipped: number;
       /** The arrears (`rentArrears`) with the automatic payments of the run counted as paid. */
       arrears: RentArrear[];
+      /** B5: rent paid in excess, with the month it would cover (`rentExcesses`). */
+      excesses: RentExcess[];
       operationId?: string;
     }
   | { status: 'refused'; reason: 'inconsistent-store' };
@@ -225,17 +227,104 @@ export async function runReconcile(
 export async function planIncome(store: Store, alsoUsed?: ReadonlySet<string>) {
   const state = await loadIncomeState(store, alsoUsed);
   const { payments, proposals, skipped } = reconcileIncome(state);
+  const withRun = [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))];
   const result = {
     status: 'reconciled' as const,
     written: payments.length,
     proposals,
     skipped: skipped.length,
-    arrears: rentArrears({
-      ...state,
-      payments: [...state.payments, ...payments.map((p) => ({ ...p, v: 1 as const, rev: 1 }))],
-    }),
+    arrears: rentArrears({ ...state, payments: withRun }),
+    excesses: excessesOf({ ...state, payments: withRun }),
   };
   return { state, payments, result };
+}
+
+const excessesOf = (state: Awaited<ReturnType<typeof loadIncomeState>>) =>
+  rentExcesses({
+    tenancies: state.tenancies,
+    payments: state.payments,
+    covered: (apartmentId) => coveredMonths(state, apartmentId),
+  });
+
+export type ConfirmRentExcessResult =
+  | { status: 'confirmed'; operationId: string; paymentIds: string[] }
+  | {
+      status: 'refused';
+      reason: 'inconsistent-store' | 'unknown-proposal' | 'no-month-to-cover';
+    };
+
+/**
+ * B5 (user1, 18 Nov 2026): confirms the excess `proposalId` (`p-eccedenza-<paymentId>`) as
+ * recomputed now, in one `income.excess` operation that `annulla-riconciliazione` undoes. The
+ * payment keeps its amount less `amount`, and a payment `<paymentId>-<proposedMonth>` of the same
+ * tenant, date, source and movement takes `amount` for `proposedMonth`; when `amount` is the whole
+ * payment, the payment itself moves to `proposedMonth`. The movement total does not change.
+ * Refused, writing nothing: `inconsistent-store`, `unknown-proposal` (no such excess now),
+ * `no-month-to-cover` (an excess with no short month before it: it stays flagged). Not confirming
+ * leaves the excess flagged; the closed-period guard of `commitChange` applies (F5).
+ */
+export async function confirmRentExcess(
+  store: Store,
+  proposalId: string,
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<ConfirmRentExcessResult> {
+  const refuse = (reason: Extract<ConfirmRentExcessResult, { status: 'refused' }>['reason']) =>
+    ({ status: 'refused', reason }) as const;
+  if (await writesBlocked(store)) return refuse('inconsistent-store');
+  const state = await loadIncomeState(store);
+  const excess = excessesOf(state).find((e) => e.id === proposalId);
+  const payment = state.payments.find((p) => p.id === excess?.paymentId);
+  if (excess === undefined || payment === undefined) return refuse('unknown-proposal');
+  if (excess.proposedMonth === undefined || excess.amount === undefined) {
+    return refuse('no-month-to-cover');
+  }
+  const { proposedMonth, amount } = excess;
+  const whole = amount === payment.amount;
+  const moved = parseOrThrow(
+    PaymentSchema,
+    whole
+      ? { ...payment, forMonth: proposedMonth }
+      : { ...payment, amount: payment.amount - amount },
+    'payment',
+  );
+  const splitId = `${payment.id}-${proposedMonth}`;
+  const split = whole
+    ? undefined
+    : parseOrThrow(
+        PaymentSchema,
+        { ...payment, id: splitId, rev: 1, amount, forMonth: proposedMonth },
+        'payment',
+      );
+  const operation = await commitChange(
+    store,
+    {
+      profileId,
+      kind: 'income.excess',
+      apartmentId: payment.apartmentId,
+      summary: 'Assegnato un canone versato in più a un mese che mancava.',
+      changes: [
+        { path: recordPath('payment', payment.id), before: payment, after: moved },
+        ...(split === undefined
+          ? []
+          : [
+              {
+                path: recordPath('payment', split.id),
+                before: state.payments.find((p) => p.id === split.id),
+                after: split,
+              },
+            ]),
+      ],
+    },
+    clock,
+    newId,
+  );
+  return {
+    status: 'confirmed',
+    operationId: operation.id,
+    paymentIds: split === undefined ? [payment.id] : [payment.id, split.id],
+  };
 }
 
 export interface ConfirmIncomeInput {

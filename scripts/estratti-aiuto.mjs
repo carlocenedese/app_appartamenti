@@ -21,6 +21,8 @@ export const COMMAND_HELP = {
   'annulla-riconciliazione':
     'Annulla un’operazione del registro (--operazione), se nulla dipende da essa.',
   'annulla-pagamento': 'Annulla un pagamento automatico: il movimento torna da rivedere.',
+  'eccedenza-canone':
+    'Assegna un canone versato in più al mese che manca, come lo propone riconcilia (--proposta).',
   escludi: 'Esclude un movimento (doppione, non contabilizzato, non reale).',
   abbina: 'Abbina a mano bollette e rate a un addebito (--parte).',
   uscita: 'Classifica un’uscita (utenze, tasse, condominio, altro).',

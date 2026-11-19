@@ -105,6 +105,7 @@ import {
   undoOperationCommand,
   referencesCommand,
   cancelPaymentCommand,
+  confirmRentExcessCommand,
   excludeMovementCommand,
   repairCommand,
   chooseVersionCommand,
@@ -1639,6 +1640,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
     return cancelPaymentCommand(store, values.pagamento, ctx);
   }
 
+  if (name === 'eccedenza-canone') {
+    // B5: confirms the month a rent paid in excess covers, as `riconcilia` proposes it.
+    need(values, 'proposta');
+    if (positionals.length > 0) throw invalid('bad-arguments');
+    return confirmRentExcessCommand(store, values.proposta, ctx);
+  }
+
   if (name === 'escludi') {
     need(values, 'movimento', 'motivo');
     if (positionals.length > 0 || !ExcludeReasonSchema.safeParse(values.motivo).success) {
@@ -1686,6 +1694,7 @@ export const COMMAND_NAMES = [
   'annulla-incassi',
   'annulla-riconciliazione',
   'annulla-pagamento',
+  'eccedenza-canone',
   'escludi',
   'abbina',
   'uscita',
@@ -1841,7 +1850,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       motivo: ['escludi', 'riapri-periodo'],
       supplementare: ['conguaglio-saldato'],
       esito: ['forfait-verificato', 'canone-non-incassato'],
-      proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
+      proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto', 'eccedenza-canone'],
       inquilino: [
         'conferma',
         'uscita-inquilino',

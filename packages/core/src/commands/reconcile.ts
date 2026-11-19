@@ -5,7 +5,7 @@
 import { loadAccountBalances } from '../balances';
 import { closeMarks } from '../closing';
 import { ClosingUndoError } from '../closed-period-guard';
-import { cancelAutomaticPayment, confirmIncome } from '../income-store';
+import { cancelAutomaticPayment, confirmIncome, confirmRentExcess } from '../income-store';
 import {
   checkConsistency,
   forkVersions,
@@ -111,6 +111,16 @@ export async function reconcileCommand(
       month: a.month,
       apartmentId: a.apartmentId,
       ...arrearExtra(a),
+    })),
+    // B5: rent paid in excess, with the month it would cover; amounts only with --dettagli.
+    excesses: result.excesses.map((e) => ({
+      id: e.id,
+      apartmentId: e.apartmentId,
+      month: e.month,
+      ...optional('proposedMonth', e.proposedMonth),
+      ...(options.details
+        ? { ...arrearExtra(e), excess: e.excess, ...optional('amount', e.amount) }
+        : {}),
     })),
     ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
     // Ids, reasons and counts only (R107, R126).
@@ -304,6 +314,23 @@ export async function confirmIncomeCommand(
       result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
     ),
   };
+}
+
+/** `eccedenza-canone` (B5): confirms one proposal of `excesses`; ids only. */
+export async function confirmRentExcessCommand(
+  store: Store,
+  proposalId: string,
+  ctx: CommandContext,
+) {
+  const result = await confirmRentExcess(store, proposalId, ctx.who, ctx.clock, ctx.newId);
+  if (result.status === 'refused') {
+    throw new Stop(
+      'rejected',
+      result.reason,
+      result.reason === 'no-month-to-cover' ? { message: MESSAGES['no-month-to-cover'] } : {},
+    );
+  }
+  return { status: 'confirmed', operationId: result.operationId, paymentIds: result.paymentIds };
 }
 
 /** `annulla-riconciliazione` (and `annulla-incassi`): one operation of `RECONCILE_KINDS`. */
