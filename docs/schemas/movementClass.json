@@ -37,7 +37,8 @@
       "enum": [
         "doppione",
         "non-contabilizzato",
-        "non-reale"
+        "non-reale",
+        "privato"
       ]
     },
     "apartmentId": {

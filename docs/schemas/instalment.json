@@ -127,6 +127,17 @@
       "type": "string",
       "minLength": 1
     },
+    "filePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "originalName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^(?!(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(?:\\.|$))[^\\\\/:*?\"<>|]+$",
+      "description": "A bare file name: no folder, no character Windows refuses, NFC."
+    },
     "fileDocument": {
       "type": "object",
       "properties": {

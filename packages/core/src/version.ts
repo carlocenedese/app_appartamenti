@@ -38,7 +38,9 @@ export const OPEN_STAY_CALC_VERSIONS: readonly string[] = ['0.1.0', '0.2.0'];
  * the newer app raises the folder's number with `raiseDataFormat` before its first write.
  */
 // 5: plan 22, dated beds and weights («valido dal») and the flat charge checked (user1, 19 Nov 2026).
-export const DATA_FORMAT = 5;
+// 6: plan 25 (authorised by user1, 19 Nov 2026): excludeReason `privato`, supplyCodes of a supply,
+// filePath and originalName of a TARI instalment and originalName of a bill, handConfirmation.
+export const DATA_FORMAT = 6;
 
 /**
  * A plain `MAJOR.MINOR.PATCH` version: three numbers without leading zeros, digits `0-9` only

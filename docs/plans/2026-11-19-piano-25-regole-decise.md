@@ -39,3 +39,13 @@ e va nelle domande per user1.
 
 Dopo ogni commit: `pnpm lint`, `pnpm typecheck`, `pnpm test`. Alla fine anche i due fusi orari,
 `CLOSING_MODEL_SEEDS=500` e `node scripts/check-personal-data.mjs`.
+
+## Seconda parte: risposte di user1 (19 novembre 2026) e revisione
+
+User1 ha autorizzato il formato dei dati 6, un solo aumento per quattro punti: F9 b (`privato` tra i
+motivi di esclusione), F9 c (`filePath` e `originalName` della rata TARI, `originalName` della
+bolletta), F12 (`supplyCodes` dell'utenza) e il punto 6 (record `handConfirmation`, «confermato a
+mano»). Poi, un commit ciascuno: F7 (`2026` con ogni inizio), F9 a (ultimo contratto con i
+rinnovi; i periodi chiusi prima di F9 a tengono le presenze di allora, `CALC_VERSION` 0.3.0; guardia
+e controlli dei contratti sulla fine calcolata), B5 (mesi successivi e più mesi, credito da
+rimborsare, avviso alla chiusura, C1), i quattro punti dello schema, specifica e registro.

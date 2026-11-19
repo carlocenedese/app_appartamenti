@@ -107,6 +107,24 @@ export const TimestampSchema = checkedString(
 
 const NonEmptyString = z.string().min(1);
 
+/**
+ * F9 c (plan 25): the name a PDF had before the app filed it, given back by an undo: a bare file
+ * name (no folder, no `:` or other character Windows refuses, not a reserved name), NFC.
+ */
+export const OriginalFileNameSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^(?!(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(?:\.|$))[^\\/:*?"<>|]+$/i)
+  .refine(
+    (name) =>
+      name === name.normalize('NFC') &&
+      !/[. ]$/.test(name) &&
+      [...name].every((c) => c.charCodeAt(0) >= 32),
+    { message: 'Not a bare safe file name' },
+  )
+  .meta({ description: 'A bare file name: no folder, no character Windows refuses, NFC.' });
+
 /** A year as four digits, `AAAA` (text, as in the ids). */
 export const YearSchema = z.string().regex(/^[0-9]{4}$/);
 
@@ -248,6 +266,11 @@ export const SupplySchema = RecordBaseSchema.extend({
   earlierApartments: z
     .array(z.object({ to: YearMonthSchema, apartments: SupplyApartmentsSchema }))
     .optional(),
+  /**
+   * F12 (plan 25): POD (electricity), PDR (gas) and customer codes of the supply, each also among
+   * the `supplyCodes` of every apartment of the supply (kept consistent by `utenza`).
+   */
+  supplyCodes: z.array(NonEmptyString).optional(),
 })
   .refine((supply) => onceEach(supply.apartments), {
     message: 'An apartment appears once in a supply',
@@ -518,6 +541,8 @@ export const BillSchema = RecordBaseSchema.extend({
   sharedWithTenants: z.boolean(),
   fileHash: NonEmptyString,
   filePath: NonEmptyString,
+  /** F9 c: the PDF's name before the app filed it, for the undo. */
+  originalName: OriginalFileNameSchema.optional(),
   fileDocument: FileDocumentSchema.optional(),
 })
   .refine((bill) => notAfter(bill.periodStart, bill.periodEnd), {
@@ -612,6 +637,10 @@ export const InstalmentSchema = RecordBaseSchema.extend({
   coversFrom: YearMonthSchema,
   coversTo: YearMonthSchema,
   fileHash: NonEmptyString.optional(),
+  /** F9 c (plan 25): where the PDF of a TARI notice is filed, as `Bill.filePath`. */
+  filePath: NonEmptyString.optional(),
+  /** F9 c: the PDF's name before the app filed it, for the undo. */
+  originalName: OriginalFileNameSchema.optional(),
   fileDocument: FileDocumentSchema.optional(),
 })
   .refine((instalment) => instalment.rateIndex <= instalment.rateCount, {
@@ -647,7 +676,12 @@ export const MovementKindSchema = z.enum(['escluso', 'utenze', 'tasse', 'condomi
 export type MovementKind = z.infer<typeof MovementKindSchema>;
 export const OutgoingKindSchema = MovementKindSchema.exclude(['escluso']);
 export type OutgoingKind = z.infer<typeof OutgoingKindSchema>;
-export const ExcludeReasonSchema = z.enum(['doppione', 'non-contabilizzato', 'non-reale']);
+export const ExcludeReasonSchema = z.enum([
+  'doppione',
+  'non-contabilizzato',
+  'non-reale',
+  'privato',
+]);
 export type ExcludeReason = z.infer<typeof ExcludeReasonSchema>;
 
 /** The one class of a movement (`mc-<transactionId>`): no description, no name. */
@@ -1760,6 +1794,29 @@ export const TaxConfirmationSchema = RecordBaseSchema.extend({
 export type TaxConfirmation = z.infer<typeof TaxConfirmationSchema>;
 
 /**
+ * Item 6 of plan 25 (decided by user1, 19 Nov 2026): a bill or instalment of a past year that was
+ * «da verificare» (no statement, no debit, B1), confirmed paid by hand, without a movement
+ * (`hc-<itemType>-<itemId>`). It counts as paid for the expected amount; it never enters the
+ * balances between accounts. Written in blocks by `conferma-anno`, undone with the journal.
+ */
+export const HandConfirmationSchema = RecordBaseSchema.extend({
+  itemType: z.enum(['bill', 'instalment']),
+  itemId: NonEmptyString,
+  apartmentId: NonEmptyString,
+  /** The expected debit when confirmed (`expectedDebit`, a shared notice's share). */
+  amount: CentsSchema,
+  /** The day the item counts as paid: its due date, or for a bill without one its period end. */
+  date: ISODateSchema,
+  year: YearSchema,
+})
+  .refine((c) => c.id === `hc-${c.itemType}-${c.itemId}`, {
+    message: 'The id must be hc-<itemType>-<itemId>',
+    path: ['id'],
+  })
+  .meta({ description: 'id is hc-<itemType>-<itemId>.' });
+export type HandConfirmation = z.infer<typeof HandConfirmationSchema>;
+
+/**
  * The record schemas by kind. The keys are the folder names under `_app/dati/` and the names
  * of the files in `docs/schemas/`.
  */
@@ -1800,6 +1857,7 @@ export const recordSchemas = {
   tenantCard: TenantCardSchema,
   workspaceSettings: WorkspaceSettingsSchema,
   periodClose: PeriodCloseSchema,
+  handConfirmation: HandConfirmationSchema,
 } as const;
 export type RecordKind = keyof typeof recordSchemas;
 
