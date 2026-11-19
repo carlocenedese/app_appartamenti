@@ -12,7 +12,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { ExtractionResultSchema } from '../../src/index';
+import { parseExtractionResult } from '../../src/index';
 import type { ExtractionResult } from '../../src/index';
 
 export const EXTRACT_TIMEOUT_MS = 30_000;
@@ -134,17 +134,5 @@ export async function runExtract(
     ],
     options,
   );
-  let document: unknown;
-  try {
-    document = JSON.parse(text);
-  } catch {
-    throw new Error('La risposta di Python non è JSON.');
-  }
-  const parsed = ExtractionResultSchema.safeParse(document);
-  if (!parsed.success) {
-    // Only the paths of the problems: their messages could quote values of the document.
-    const where = parsed.error.issues.map((issue) => issue.path.join('.')).join(', ');
-    throw new Error(`La risposta di Python non è un ExtractionResult valido (${where}).`);
-  }
-  return parsed.data;
+  return parseExtractionResult(text);
 }
