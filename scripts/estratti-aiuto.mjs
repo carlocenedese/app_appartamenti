@@ -77,6 +77,8 @@ export const COMMAND_HELP = {
   'invia-conguaglio': 'Segna il conguaglio di un periodo chiuso come inviato (--data).',
   'conguaglio-saldato':
     'Segna saldato il conguaglio di un inquilino (--inquilino, --data, --movimento facoltativo; --supplementare per il supplementare).',
+  'forfait-verificato':
+    'Registra l’esito del forfait «da verificare» di un inquilino (--inquilino, --data, --esito rimborso|credito|stessi-soldi, --movimento facoltativo).',
   'riapri-periodo':
     'Riapre un periodo chiuso con --data e --motivo; l’istantanea resta nello storico.',
   'scegli-versione':

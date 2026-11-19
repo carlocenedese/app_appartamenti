@@ -31,6 +31,8 @@ export interface ClosingRow extends Omit<SupplementaryRow, 'action'> {
   remaining: Cents;
   /** What is left of the main settlement (0 once marked on this closing). */
   mainRemaining: Cents;
+  /** Plan 22: of `toCheck`, what user1 checked as a credit of the tenant (still to check). */
+  flatCredit: Cents;
   /** Of the flat charge missing at the closing (H), what is paid since: it reduces the main due. */
   forfaitPaid: Cents;
   /**
@@ -145,8 +147,15 @@ export interface TenantLedger {
   lostFlat: Cents;
   /** Of the flat charge missing at the closing, what is paid since (it reduces the main). */
   forfaitPaid: Cents;
-  /** Flat charge collected after the last main mark: already settled, «da verificare» (answer F). */
+  /**
+   * Flat charge collected after the last main mark: already settled, «da verificare» (answer F),
+   * less what user1 checked as refunded or the same money (plan 22, `flatCleared`).
+   */
   toCheck: Cents;
+  /** Plan 22: of the flat charge to check, what user1 checked as `rimborso` or `stessi-soldi`. */
+  flatCleared: Cents;
+  /** Plan 22: of `toCheck`, what user1 checked as `credito`: recorded, still to check. */
+  flatCredit: Cents;
 }
 
 /**
@@ -187,6 +196,21 @@ export function tenantBalance(
       ? Math.max(0, now.forfaitIncassato - flatThen - fni)
       : Math.max(0, now.forfaitIncassato - lastFlat);
   const remaining = now.due + toCheck - current.prior - (current.main?.amount ?? 0) - current.sup;
+  // Plan 22: the checks of user1 on every closing, capped by today's extra, so a payment corrected
+  // by hand afterwards leaves nothing behind. They change what is to check, never what is owed.
+  const checks = [...(close.history ?? []), close].flatMap((c) =>
+    (c.flatChecked ?? []).filter((f) => f.tenantId === tenantId),
+  );
+  const sum = (outcome: (o: string) => boolean) =>
+    checks.filter((f) => outcome(f.outcome)).reduce((s, f) => s + f.amount, 0);
+  const flatCleared = Math.min(
+    toCheck,
+    sum((o) => o !== 'credito'),
+  );
+  const flatCredit = Math.min(
+    toCheck - flatCleared,
+    sum((o) => o === 'credito'),
+  );
   const mainRemaining =
     current.main !== undefined ? 0 : snapshot + extraInSnapshot - forfaitPaid - current.prior;
   // The flat charge still missing, as far as the main still holds it.
@@ -204,7 +228,9 @@ export function tenantBalance(
     supplementarySettled: cents(current.sup),
     lostFlat: cents(Math.max(0, flatThen - now.forfaitIncassato)),
     forfaitPaid: cents(forfaitPaid),
-    toCheck: cents(toCheck),
+    toCheck: cents(toCheck - flatCleared),
+    flatCleared: cents(flatCleared),
+    flatCredit: cents(flatCredit),
   };
 }
 
@@ -216,6 +242,7 @@ export function closeMarks(close: PeriodClose): {
   sentOn?: string;
   settled: string[];
   supplementarySettled: string[];
+  flatChecked: string[];
   reopenedOn?: string;
   earlierClosings: number;
 } {
@@ -223,6 +250,7 @@ export function closeMarks(close: PeriodClose): {
     ...(close.sentOn === undefined ? {} : { sentOn: close.sentOn }),
     settled: (close.settled ?? []).map((s) => s.tenantId),
     supplementarySettled: (close.supplementarySettled ?? []).map((s) => s.tenantId),
+    flatChecked: (close.flatChecked ?? []).map((f) => f.tenantId),
     ...(close.reopened === undefined ? {} : { reopenedOn: close.reopened.on }),
     earlierClosings: close.history?.length ?? 0,
   };
@@ -334,6 +362,7 @@ export function closingOf(
       mainRemaining: ledger.mainRemaining,
       forfaitPaid: ledger.forfaitPaid,
       toCheck: ledger.toCheck,
+      flatCredit: ledger.flatCredit,
       action,
       rentMissing: rent.get(row.tenantId) ?? cents(0),
     };

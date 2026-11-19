@@ -122,6 +122,7 @@ import {
   closePeriod,
   loadPeriodClosing,
   markPeriodSent,
+  markFlatChecked,
   markTenantSettled,
   reopenPeriod,
   equalShares,
@@ -283,6 +284,8 @@ export const MESSAGES = {
   'unknown-movement-in-close': 'Rifiutato: il movimento non esiste.',
   'missing-reason': 'Rifiutato: per riaprire il periodo serve il motivo (--motivo).',
   'no-supplementary': 'Rifiutato: l’inquilino non ha un conguaglio supplementare da saldare.',
+  'nothing-to-check':
+    'Rifiutato: l’inquilino non ha forfait «da verificare» per questo esito su questa chiusura.',
   'forfait-to-check':
     'Da verificare: è stato incassato più forfait del dovuto in un periodo chiuso; non è un credito automatico.',
   'invalid-close-input': 'Rifiutato: data non valida.',
@@ -525,6 +528,7 @@ const OPTIONS = {
   escludi: { type: 'boolean' },
   dettagli: { type: 'boolean' },
   supplementare: { type: 'boolean' },
+  esito: { type: 'string' },
   file: { type: 'string' },
   id: { type: 'string' },
   nome: { type: 'string' },
@@ -682,8 +686,13 @@ const RECONCILE_KINDS = [
   'period.send',
   'period.settle',
   'period.reopen',
+  // Plan 22: the flat charge checked, and the dated weights of a supply («valido dal»).
+  'period.flat-check',
+  'supply.update',
 ];
 
+/** Plan 22: the outcomes of «forfait-verificato», Italian flag to the core's value. */
+const FLAT_OUTCOMES = { rimborso: 'rimborso', credito: 'credito', 'stessi-soldi': 'stessi-soldi' };
 const CONTACT_ROLES = ['amministratore', 'fornitore'];
 const PAYABLE_STATES = ['da-pagare', 'in-scadenza', 'pagata', 'in-ritardo'];
 const PAYABLE_ITEM_KINDS = ['imu', 'condominio', 'tari', ...PayableKindSchema.options];
@@ -3142,6 +3151,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
           forfaitPaid,
           toCheck,
           rentMissing,
+          flatCredit,
           ...t
         }) => ({
           ...t,
@@ -3151,7 +3161,17 @@ async function command(name, values, positionals, store, who, clock, newId) {
           // F11: the flat charge no longer collected is a line of its own; fourth round A, B: the
           // supplementary computed once (`total`) and the flat charge «da verificare» (`toCheck`).
           ...(details
-            ? { delta, forfaitDelta, total, remaining, mainRemaining, forfaitPaid, toCheck }
+            ? {
+                delta,
+                forfaitDelta,
+                total,
+                remaining,
+                mainRemaining,
+                forfaitPaid,
+                toCheck,
+                // Plan 22: the flat charge checked as a credit, still to check.
+                flatCredit,
+              }
             : {}),
         }),
       ),
@@ -3210,6 +3230,43 @@ async function command(name, values, positionals, store, who, clock, newId) {
         'unknown-tenant': 'unknown-tenant-in-close',
         'unknown-movement': 'unknown-movement-in-close',
         'no-supplementary': 'no-supplementary',
+        'invalid-input': 'invalid-close-input',
+      }[result.reason];
+      throw new Stop(
+        'rejected',
+        result.reason,
+        message === undefined ? {} : { message: MESSAGES[message] },
+      );
+    }
+    return result;
+  }
+
+  // Plan 22 (decision 3 of user1, 19 Nov 2026): the flat charge «da verificare» checked by user1,
+  // with its outcome; the payment can still be corrected by hand. Ids only in the output.
+  if (name === 'forfait-verificato') {
+    need(values, 'appartamento', 'periodo', 'inquilino', 'data', 'esito');
+    if (positionals.length > 0 || !Object.hasOwn(FLAT_OUTCOMES, values.esito)) {
+      throw invalid('bad-arguments');
+    }
+    const result = await markFlatChecked(
+      store,
+      {
+        apartmentId: values.appartamento,
+        periodLabel: values.periodo,
+        tenantId: values.inquilino,
+        on: day(values.data),
+        outcome: FLAT_OUTCOMES[values.esito],
+        ...optional('transactionId', values.movimento),
+      },
+      who,
+      clock,
+      newId,
+    );
+    if (result.status === 'refused') {
+      const message = {
+        'unknown-tenant': 'unknown-tenant-in-close',
+        'unknown-movement': 'unknown-movement-in-close',
+        'nothing-to-check': 'nothing-to-check',
         'invalid-input': 'invalid-close-input',
       }[result.reason];
       throw new Stop(
@@ -3452,6 +3509,7 @@ export const COMMAND_NAMES = [
   'conguaglio-supplementare',
   'invia-conguaglio',
   'conguaglio-saldato',
+  'forfait-verificato',
   'riapri-periodo',
   'scegli-versione',
   'aiuto',
@@ -3572,9 +3630,11 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'tasse-assegna',
         'recupero',
         'conguaglio-saldato',
+        'forfait-verificato',
       ],
       motivo: ['escludi', 'riapri-periodo'],
       supplementare: ['conguaglio-saldato'],
+      esito: ['forfait-verificato'],
       proposta: ['conferma', 'uscita', 'uscita-inquilino', 'giroconto'],
       inquilino: [
         'conferma',
@@ -3584,6 +3644,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'caparra-restituzione',
         'scheda-inquilino',
         'conguaglio-saldato',
+        'forfait-verificato',
       ],
       giallo: ['soglie-consumi'],
       bolletta: ['consumi'],
@@ -3617,6 +3678,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'conguaglio-supplementare',
         'invia-conguaglio',
         'conguaglio-saldato',
+        'forfait-verificato',
         'riapri-periodo',
       ],
       voce: ['recupero', 'tasse-stima', 'scadenza-nuova', 'tasse-conferma'],
@@ -3628,6 +3690,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'conguaglio-supplementare',
         'invia-conguaglio',
         'conguaglio-saldato',
+        'forfait-verificato',
         'riapri-periodo',
       ],
       stato: ['scadenze', 'recupero'],
@@ -3680,6 +3743,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
         'recupero',
         'invia-conguaglio',
         'conguaglio-saldato',
+        'forfait-verificato',
         'riapri-periodo',
       ],
       entro: ['scadenze', 'cruscotto'],

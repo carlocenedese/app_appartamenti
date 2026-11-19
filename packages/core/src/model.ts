@@ -1537,6 +1537,21 @@ const SupplementarySettledSchema = z.array(
   }),
 );
 
+/**
+ * Plan 22 (decision 3 of user1, 19 Nov 2026): a flat charge «da verificare» checked by user1, with
+ * its outcome: `rimborso` (refunded to the tenant), `credito` (a credit of the tenant) or
+ * `stessi-soldi` (the same money, not an extra payment). `amount` is what was to check then.
+ */
+const FlatCheckedSchema = z.array(
+  z.object({
+    tenantId: NonEmptyString,
+    on: ISODateSchema,
+    outcome: z.enum(['rimborso', 'credito', 'stessi-soldi']),
+    amount: CentsSchema,
+    transactionId: NonEmptyString.optional(),
+  }),
+);
+
 /** A reopening (F3): the date and the reason, both given by user1. */
 const PeriodReopenedSchema = z.object({ on: ISODateSchema, reason: NonEmptyString });
 
@@ -1563,6 +1578,8 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
   settled: PeriodSettledSchema.optional(),
   /** The supplementary settlements marked settled (D), once per tenant. */
   supplementarySettled: SupplementarySettledSchema.optional(),
+  /** Flat charges «da verificare» checked by user1 (plan 22), in the order they were checked. */
+  flatChecked: FlatCheckedSchema.optional(),
   /**
    * The records the snapshot counted, as `<kind>/<id>`, sorted (F5): what existed at the closing,
    * read from the folder and not from the clocks, so an operation of another computer synced
@@ -1581,6 +1598,7 @@ export const PeriodCloseSchema = RecordBaseSchema.extend({
         sentOn: ISODateSchema.optional(),
         settled: PeriodSettledSchema.optional(),
         supplementarySettled: SupplementarySettledSchema.optional(),
+        flatChecked: FlatCheckedSchema.optional(),
         reopened: PeriodReopenedSchema,
       }),
     )

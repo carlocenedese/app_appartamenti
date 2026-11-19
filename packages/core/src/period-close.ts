@@ -190,6 +190,7 @@ export async function closePeriod(
             ...(before.supplementarySettled === undefined
               ? {}
               : { supplementarySettled: before.supplementarySettled }),
+            ...(before.flatChecked === undefined ? {} : { flatChecked: before.flatChecked }),
             reopened,
           },
         ]
@@ -275,6 +276,8 @@ export type MarkCloseResult =
         | 'unknown-movement'
         | 'missing-reason'
         | 'no-supplementary'
+        /** Plan 22: no flat charge «da verificare» left for that outcome. */
+        | 'nothing-to-check'
         | 'invalid-input';
     }
   /**
@@ -431,13 +434,83 @@ export function markTenantSettled(
           : {
               amount: tenantBalance({ ...close, settled: others }, input.tenantId, now)
                 .mainRemaining,
-              flatCollected: cents(now.forfaitIncassato - ledger.toCheck),
+              // The flat charge to check before user1's checks (plan 22), so they stay valid.
+              flatCollected: cents(now.forfaitIncassato - ledger.toCheck - ledger.flatCleared),
             };
       return {
         fields: {
           settled: [...others, { ...entry, ...declared }].sort((a, b) =>
             a.tenantId < b.tenantId ? -1 : 1,
           ),
+        },
+      };
+    },
+    profileId,
+    clock,
+    newId,
+  );
+}
+
+/**
+ * Plan 22 (decision 3 of user1, 19 Nov 2026): user1 checked the flat charge «da verificare» of
+ * `tenantId` on `on`, with its outcome, in one `period.flat-check` (undone with the reconciliation
+ * undo). `rimborso` and `stessi-soldi` take the amount out of what is to check; what is owed and
+ * withheld does not change. `credito` is recorded and the amount stays to check: where a credit
+ * goes is not decided (question for user1). The amount is what is to check now (for `credito`, not
+ * already recorded as a credit). The payment can still be corrected by hand. Refused:
+ * `not-closed`, `unknown-tenant`, `unknown-movement`, `nothing-to-check`.
+ */
+export function markFlatChecked(
+  store: Store,
+  input: Query & {
+    tenantId: string;
+    on: string;
+    outcome: 'rimborso' | 'credito' | 'stessi-soldi';
+    transactionId?: string;
+  },
+  profileId: string,
+  clock: () => string,
+  newId: () => string,
+): Promise<MarkCloseResult> {
+  return changeClose(
+    store,
+    input,
+    'period.flat-check',
+    'Forfait da verificare di un inquilino verificato.',
+    async (close) => {
+      if (!close.snapshot.tenants.some((t) => t.tenantId === input.tenantId)) {
+        return { status: 'refused', reason: 'unknown-tenant' } as const;
+      }
+      if (
+        input.transactionId !== undefined &&
+        !(await loadAll(store, 'transaction', BankTransactionSchema)).records.some(
+          (t) => t.id === input.transactionId,
+        )
+      ) {
+        return { status: 'refused', reason: 'unknown-movement' } as const;
+      }
+      const calc = await computed(store, input);
+      if (calc.status === 'refused') return { status: 'refused', reason: 'invalid-input' } as const;
+      const today = calc.result.tenants.find((t) => t.tenantId === input.tenantId);
+      const ledger = tenantBalance(close, input.tenantId, {
+        due: today?.due ?? 0,
+        forfaitIncassato: today?.forfaitIncassato ?? 0,
+      });
+      const amount =
+        input.outcome === 'credito' ? ledger.toCheck - ledger.flatCredit : ledger.toCheck;
+      if (amount <= 0) return { status: 'refused', reason: 'nothing-to-check' } as const;
+      return {
+        fields: {
+          flatChecked: [
+            ...(close.flatChecked ?? []),
+            {
+              tenantId: input.tenantId,
+              on: input.on,
+              outcome: input.outcome,
+              amount: cents(amount),
+              ...(input.transactionId === undefined ? {} : { transactionId: input.transactionId }),
+            },
+          ],
         },
       };
     },

@@ -17,7 +17,8 @@
 // (`toCheck`), never a credit (answer F); a credit from costs (a credit note) is a credit. A mark
 // while there is extra flat charge is allowed and leaves it to check (final review).
 // 7. a mark never changes toCheck; 8. toCheck never decreases unless a flat-charge payment was
-//    cancelled, or the mark that made it extra undone, since the last state checked.
+//    cancelled, the mark that made it extra undone, or the extra checked by user1 (plan 22: refunded
+//    or the same money; a credit stays to check), since the last state checked.
 //
 // Invariants after every action (numbers as in the task of the fifth round):
 // 1. reopen then close with no data change between: t-b's withheld amount and toCheck unchanged;
@@ -40,6 +41,7 @@ import {
   loadDepositReturn,
   loadExcelInput,
   loadPeriodClosing,
+  markFlatChecked,
   markTenantSettled,
   readJournal,
   recordPath,
@@ -84,6 +86,8 @@ type Action =
   | { kind: 'main'; tenant: Tenant }
   | { kind: 'sup'; tenant: Tenant }
   | { kind: 'undo-mark' }
+  /** Plan 22: «forfait verificato» of t-b. */
+  | { kind: 'flat-check'; outcome: 'rimborso' | 'credito' | 'stessi-soldi' }
   | { kind: 'reopen' }
   | { kind: 'close' };
 
@@ -119,6 +123,15 @@ function actions(seed: number): Action[] {
       out.push(
         { kind: 'main', tenant: 't-b' },
         { kind: 'pay', tenant: 't-b', month: m, amount: r.pick([1500, 3000]) },
+        // Plan 22: the extra checked by user1, half of the times.
+        ...(r.int(2) === 0
+          ? [
+              {
+                kind: 'flat-check',
+                outcome: r.pick(['rimborso', 'credito', 'stessi-soldi'] as const),
+              } as const,
+            ]
+          : []),
         { kind: r.pick(['main', 'sup'] as const), tenant: 't-b' },
       );
     } else if (roll === 0) {
@@ -139,7 +152,18 @@ function actions(seed: number): Action[] {
     else if (roll === 5 || roll === 6)
       out.push({ kind: r.pick(['main', 'sup'] as const), tenant: tenant() });
     else if (roll === 7) out.push({ kind: 'undo-mark' });
-    else break;
+    else if (roll === 8 && r.int(2) === 0) {
+      // Plan 22: a flat charge cut and closed again, settled, paid again (extra), then checked.
+      const m = month();
+      out.push(
+        { kind: 'reopen' },
+        { kind: 'cancel', tenant: 't-b', month: m },
+        { kind: 'close' },
+        { kind: 'main', tenant: 't-b' },
+        { kind: 'pay', tenant: 't-b', month: m, amount: 3000 },
+        { kind: 'flat-check', outcome: r.pick(['rimborso', 'credito', 'stessi-soldi'] as const) },
+      );
+    } else break;
   }
   return out.slice(0, 12);
 }
@@ -153,7 +177,9 @@ const show = (a: Action): string =>
         ? `cancel-flat ${a.tenant} ${a.month}`
         : a.kind === 'main' || a.kind === 'sup'
           ? `${a.kind}-settled ${a.tenant}`
-          : a.kind;
+          : a.kind === 'flat-check'
+            ? `flat-check ${a.outcome}`
+            : a.kind;
 
 /** The owner's ledger of one tenant. */
 type Ledger = {
@@ -169,6 +195,8 @@ type Ledger = {
   paidAtMain?: number;
   /** The flat charge collected at the last main mark: what comes after it is extra. */
   flatAtMain?: number;
+  /** Plan 22: the extra checked as refunded or the same money (no longer to check). */
+  checked?: number;
 };
 const FLAT_DUE: Record<Tenant, number> = { 't-a': 12 * 3000, 't-b': 11 * 3000 };
 
@@ -298,7 +326,11 @@ class Run {
     const l = this.ledgers.get(t) as Ledger;
     const now = await this.ledgerNow(t);
     const extra = this.extra(l, now.flat);
-    return { remaining: now.due + extra - l.mainDeclared - l.supDeclared, toCheck: extra };
+    // Plan 22: a check changes what is to check (capped by today's extra), never what is owed.
+    return {
+      remaining: now.due + extra - l.mainDeclared - l.supDeclared,
+      toCheck: Math.max(0, extra - (l.checked ?? 0)),
+    };
   }
 
   /** Flat charge collected after the last main mark: already settled, so extra (answer F). */
@@ -467,6 +499,25 @@ class Run {
         this.marks.push({ opId: result.operationId, before });
         return true;
       }
+      case 'flat-check': {
+        const before = this.cloneLedgers();
+        const toCheck = (await this.expected('t-b')).toCheck;
+        const result = await markFlatChecked(
+          this.store,
+          { ...QUERY, tenantId: 't-b', on: '2026-12-02', outcome: a.outcome },
+          'p1',
+          this.clock,
+          this.newId,
+        );
+        if (result.status === 'refused') {
+          return refused(result.reason, ['not-closed', 'nothing-to-check']);
+        }
+        if (result.status === 'unchanged') return false;
+        const l = this.ledgers.get('t-b') as Ledger;
+        if (a.outcome !== 'credito') l.checked = (l.checked ?? 0) + toCheck;
+        this.marks.push({ opId: result.operationId, before });
+        return true;
+      }
       case 'undo-mark': {
         const last = this.marks.at(-1);
         if (last === undefined) return false;
@@ -541,7 +592,10 @@ async function check(sequence: readonly Action[]): Promise<Failure | undefined> 
     stats.applied[a.kind] = (stats.applied[a.kind] ?? 0) + 1;
     if (DATA.has(a.kind)) dataSinceReopen = true;
     // Undoing a mark takes back the mark that made the payment extra: it may lower toCheck too.
-    if (a.kind === 'cancel' || a.kind === 'undo-mark') cancelledSince = true;
+    // Plan 22: a check of the flat charge lowers it too.
+    if (a.kind === 'cancel' || a.kind === 'undo-mark' || a.kind === 'flat-check') {
+      cancelledSince = true;
+    }
     const app = await run.app();
     if (a.kind === 'reopen') {
       dataSinceReopen = false;
