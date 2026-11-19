@@ -242,9 +242,10 @@ jobs:
             touch "apps/desktop/src-tauri/resources/$folder/.placeholder"
           done
 
-      - name: Check that the Rust app compiles
+      # cargo test also compiles the app, and it builds and runs the #[cfg(test)] code that cargo check skips.
+      - name: Compile the Rust app and run its tests
         if: steps.changes.outputs.rust == 'true'
-        run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+        run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 
       - name: Install cargo-deny
         if: steps.changes.outputs.rust == 'true'
