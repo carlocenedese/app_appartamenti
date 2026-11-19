@@ -12,7 +12,6 @@ import type { TaxYearWarning, TaxpayerTable } from './taxes';
 import {
   ApartmentSchema,
   BankTransactionSchema,
-  BillMatchSchema,
   ContractSchema,
   ImuYearSchema,
   InstalmentSchema,
@@ -30,6 +29,7 @@ import type { Apartment, Contract, TaxPayment, TaxVoice } from './model';
 import type { Cents } from './money';
 import { parseOrThrow } from './parse';
 import type { ISODate } from './period';
+import { loadPaidMatches } from './match-store';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -401,7 +401,8 @@ export async function loadTaxTable(
     classes,
     transactions,
     instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
-    matches: (await loadAll(store, 'match', BillMatchSchema)).records,
+    // Item 6 (G2-I2): the items confirmed by hand are paid.
+    matches: await loadPaidMatches(store),
     taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
     contracts: (await loadAll(store, 'contract', ContractSchema)).records,
     rentYears: (await loadAll(store, 'rentYear', RentYearSchema)).records,

@@ -555,3 +555,14 @@ export function handMatches(confirmations: readonly HandConfirmation[]): BillMat
       }),
     );
 }
+
+/**
+ * Item 6, G2-I2: the matches every reader of «is it paid» uses: the saved ones (deleted included,
+ * as `loadAll` with `includeDeleted` when asked) and the confirmations by hand (`handMatches`).
+ */
+export async function loadPaidMatches(store: Store): Promise<BillMatch[]> {
+  return [
+    ...(await loadAll(store, 'match', BillMatchSchema)).records,
+    ...handMatches((await loadAll(store, 'handConfirmation', HandConfirmationSchema)).records),
+  ];
+}

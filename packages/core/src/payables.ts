@@ -12,7 +12,6 @@ import {
   AccountSchema,
   ApartmentSchema,
   BankTransactionSchema,
-  BillMatchSchema,
   ContractSchema,
   ImuYearSchema,
   InstalmentSchema,
@@ -37,6 +36,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import { daysBetween } from './period';
 import type { ISODate, YearMonth } from './period';
+import { loadPaidMatches } from './match-store';
 import { loadAll } from './store/load';
 import type { Store } from './store/store';
 import type { TaxExpectedItem } from './taxes';
@@ -319,7 +319,8 @@ export async function loadScadenzario(
       taxPayments: (await loadAll(store, 'taxPayment', TaxPaymentSchema)).records,
       imuToleranceBp: (await loadSettings(store)).imuToleranceBp.value,
       instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
-      matches: (await loadAll(store, 'match', BillMatchSchema)).records,
+      // Item 6 (G2-I2): the items confirmed by hand are paid.
+      matches: await loadPaidMatches(store),
       payables: (await loadAll(store, 'payable', PayableSchema)).records,
       contracts: (await loadAll(store, 'contract', ContractSchema)).records,
       statementPeriods: statementPeriodsOf(

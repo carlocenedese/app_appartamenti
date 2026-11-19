@@ -19,7 +19,6 @@ import { commitChange, writesBlocked } from './journal';
 import {
   ApartmentSchema,
   BankTransactionSchema,
-  BillMatchSchema,
   MovementClassSchema,
   ContractSchema,
   PeriodCloseSchema,
@@ -33,6 +32,7 @@ import { cents } from './money';
 import type { Cents } from './money';
 import { addMonths, isoDate, lastDayOfMonth, monthsInPeriod, settlementPeriods } from './period';
 import type { ISODate, YearMonth } from './period';
+import { loadPaidMatches } from './match-store';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -395,7 +395,8 @@ export async function loadDepositReturn(
     settled.push(...closed.exit.lines);
   }
 
-  const matches = (await loadAll(store, 'match', BillMatchSchema)).records;
+  // Item 6 (G2-I2): the items confirmed by hand are paid.
+  const matches = await loadPaidMatches(store);
   const transactions = (await loadAll(store, 'transaction', BankTransactionSchema)).records;
   const classes = (await loadAll(store, 'movementClass', MovementClassSchema)).records;
   const recoveries = withheldRecoveries({

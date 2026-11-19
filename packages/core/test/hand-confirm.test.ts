@@ -10,15 +10,21 @@ import {
   commitChange,
   confirmPastYear,
   loadAll,
+  loadCondo,
   loadExcelInput,
+  loadPaidMatches,
+  loadScadenzario,
+  loadTaxTable,
   planMatch,
   recordPath,
   recordSchemas,
   undoOperationCommand,
+  yearMonth,
 } from '../src/index';
 import type { RecordKind } from '../src/index';
 import { isoDate } from '../src/period';
-import { apartment, bill, payment, tenancy } from './helpers/conguaglio-builders';
+import { apartment, bill, instalment, payment, tenancy } from './helpers/conguaglio-builders';
+import { cents } from '../src/money';
 import { clock, ids, snapshot } from './helpers/income-year';
 import { MemoryStore } from './helpers/memory-store';
 
@@ -46,7 +52,7 @@ async function write(store: MemoryStore, kind: RecordKind, after: { id: string }
 /** A lease year 2023-24 paid in full; `bills` without any statement, so «da verificare». */
 async function pastYear(bills: ReturnType<typeof bill>[]) {
   const store = new MemoryStore();
-  await write(store, 'apartment', apartment({ posti: 1 }));
+  await write(store, 'apartment', apartment({ posti: 1, condominioStart: { month: 10, day: 1 } }));
   await write(store, 'tenant', { id: 't-a', v: 1, rev: 1, name: 'Nome Inventato' } as never);
   const stay = tenancy('t-a', '2023-10', '2024-09');
   await write(store, 'tenancy', stay);
@@ -123,5 +129,73 @@ describe('confirmPastYear (item 6)', () => {
       confirmPastYear(store, { year: '2024', today: TODAY }, 'p1', clock, ids('h')),
     ).rejects.toThrow(ClosedPeriodError);
     expect(await snapshot(store)).toEqual(before);
+  });
+});
+
+describe('G2-I2: every reader of «is it paid» counts the confirmations by hand', () => {
+  const tari = instalment('tari-1', {
+    kind: 'tari',
+    esercizio: '2024',
+    rateIndex: 1,
+    rateCount: 3,
+    dueDate: isoDate('2024-03-10'),
+    rata: cents(5000),
+    coversFrom: yearMonth('2024-01'),
+    coversTo: yearMonth('2024-04'),
+  });
+  const condo = instalment('condo-1', {
+    esercizio: '2023-24',
+    rateIndex: 1,
+    rateCount: 3,
+    dueDate: isoDate('2024-02-10'),
+    rata: cents(15000),
+    coversFrom: yearMonth('2023-10'),
+    coversTo: yearMonth('2024-01'),
+  });
+  async function store() {
+    const s = await pastYear([]);
+    for (const i of [tari, condo]) await write(s, 'instalment', i);
+    expect(
+      (await confirmPastYear(s, { year: '2024', today: TODAY }, 'p1', clock, ids('h'))).status,
+    ).toBe('confirmed');
+    return s;
+  }
+
+  it('loadPaidMatches gives the saved matches and the confirmations by hand', async () => {
+    const s = await store();
+    expect((await loadPaidMatches(s)).map((m) => [m.itemId, m.amount, m.by])).toEqual([
+      ['condo-1', 15000, 'manual'],
+      ['tari-1', 5000, 'manual'],
+    ]);
+  });
+
+  it('scadenze: the instalments are paid, not overdue', async () => {
+    const s = await store();
+    const r = await loadScadenzario(s, { today: isoDate(TODAY) });
+    if (r.status !== 'computed') throw new Error(r.status);
+    const states = r.items
+      .filter((i) => i.id === 'tari-1' || i.id === 'condo-1')
+      .map((i) => [i.id, i.state]);
+    expect(states).toEqual(
+      expect.arrayContaining([
+        ['tari-1', 'pagata'],
+        ['condo-1', 'pagata'],
+      ]),
+    );
+  });
+
+  it('tasse: the TARI of 2024 is paid', async () => {
+    const s = await store();
+    const r = await loadTaxTable(s, { year: '2024', today: isoDate(TODAY) });
+    if (r.status !== 'computed') throw new Error(r.status);
+    const row = r.tables.flatMap((t) => t.rows).find((x) => x.voce === 'tari');
+    expect(row?.paid).toBe(5000);
+  });
+
+  it('condominio: the instalment is paid', async () => {
+    const s = await store();
+    const r = await loadCondo(s, { asOf: isoDate(TODAY) });
+    if (r.status !== 'computed') throw new Error(r.status);
+    expect(r.rates.find((x) => x.instalmentId === 'condo-1')?.status).toBe('pagata');
   });
 });

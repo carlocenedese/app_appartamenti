@@ -16,12 +16,11 @@ import type { CondoCheckRow, CondoDifference, CondoEstimate, FreeDebit } from '.
 import type { ZodType } from 'zod';
 import { commitChange, writesBlocked } from './journal';
 import { expectedDebit } from './match';
-import { planMatch } from './match-store';
+import { planMatch, loadPaidMatches } from './match-store';
 import {
   AccountSchema,
   ApartmentSchema,
   BankTransactionSchema,
-  BillMatchSchema,
   MovementClassSchema,
   PaymentSchema,
   TransferSchema,
@@ -346,7 +345,8 @@ export async function loadCondo(
           (query.apartmentId === undefined || r.apartmentId === query.apartmentId),
     )
     .sort((a, b) => compareText(a.id, b.id));
-  const matches = (await loadAll(store, 'match', BillMatchSchema)).records;
+  // Item 6 (G2-I2): the items confirmed by hand are paid.
+  const matches = await loadPaidMatches(store);
   const documents = (await loadAll(store, 'condoDocument', CondoDocumentSchema)).records.filter(
     wanted,
   );
