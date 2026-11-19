@@ -156,6 +156,20 @@ export const ApartmentSchema = RecordBaseSchema.extend({
    * share does not divide evenly, the leftover cents go to the first beds in this order (R30).
    */
   rooms: z.array(NonEmptyString).optional(),
+  /**
+   * Plan 22 (decision 2 of user1, 19 Nov 2026): the beds before a change «valido dal». Each entry
+   * holds up to its month `to` included, in increasing order; `posti` and `rooms` hold after the
+   * last one. Without entries they hold from always (`bedsAt`).
+   */
+  earlierBeds: z
+    .array(
+      z.object({
+        to: YearMonthSchema,
+        posti: z.int().min(1),
+        rooms: z.array(NonEmptyString).optional(),
+      }),
+    )
+    .optional(),
   /** Monthly rent plus flat charges as written in the contract. Only used for a check. */
   contrattoMensile: CentsSchema.optional(),
   /** Start of the lease year (annualità). */
@@ -193,7 +207,20 @@ export const ApartmentSchema = RecordBaseSchema.extend({
       apartment.rooms === undefined || new Set(apartment.rooms).size === apartment.rooms.length,
     { message: 'Room names must be unique', path: ['rooms'] },
   )
-  .meta({ description: 'When rooms is present: one unique name per bed (posti).' });
+  .refine(
+    (apartment) =>
+      (apartment.earlierBeds ?? []).every(
+        (e, i, all) =>
+          (i === 0 || (all[i - 1]?.to ?? '') < e.to) &&
+          (e.rooms === undefined ||
+            (e.rooms.length === e.posti && new Set(e.rooms).size === e.rooms.length)),
+      ),
+    { message: 'Earlier beds: months in order, one unique name per bed', path: ['earlierBeds'] },
+  )
+  .meta({
+    description:
+      'When rooms is present: one unique name per bed (posti). earlierBeds: increasing months, the same rule for each entry.',
+  });
 export type Apartment = z.infer<typeof ApartmentSchema>;
 
 /**
@@ -201,25 +228,48 @@ export type Apartment = z.infer<typeof ApartmentSchema>;
  * `weight` is the part of the supply each apartment pays, in basis points (1..10000, whole): the
  * weights of a supply add up to exactly 10000; no share is written in the code.
  */
+const SupplyApartmentsSchema = z
+  .array(z.object({ apartmentId: NonEmptyString, weight: z.int().min(1).max(10000) }))
+  .min(1);
+type SupplyApartments = z.infer<typeof SupplyApartmentsSchema>;
+const onceEach = (rows: SupplyApartments) =>
+  new Set(rows.map((a) => a.apartmentId)).size === rows.length;
+const whole = (rows: SupplyApartments) => rows.reduce((sum, a) => sum + a.weight, 0) === 10000;
+
 export const SupplySchema = RecordBaseSchema.extend({
   /** The supply code as written on the notice (the label of an extracted part). */
   label: NonEmptyString,
-  apartments: z
-    .array(z.object({ apartmentId: NonEmptyString, weight: z.int().min(1).max(10000) }))
-    .min(1),
+  apartments: SupplyApartmentsSchema,
+  /**
+   * Plan 22 (decision 2 of user1, 19 Nov 2026): the apartments and weights before a change «valido
+   * dal», each up to its month `to` included, in increasing order; `apartments` holds after the
+   * last one. Without entries it holds from always (`weightsAt`).
+   */
+  earlierApartments: z
+    .array(z.object({ to: YearMonthSchema, apartments: SupplyApartmentsSchema }))
+    .optional(),
 })
-  .refine(
-    (supply) =>
-      new Set(supply.apartments.map((a) => a.apartmentId)).size === supply.apartments.length,
-    { message: 'An apartment appears once in a supply', path: ['apartments'] },
-  )
-  .refine((supply) => supply.apartments.reduce((sum, a) => sum + a.weight, 0) === 10000, {
+  .refine((supply) => onceEach(supply.apartments), {
+    message: 'An apartment appears once in a supply',
+    path: ['apartments'],
+  })
+  .refine((supply) => whole(supply.apartments), {
     message: 'The weights of a supply add up to exactly 10000',
     path: ['apartments'],
   })
+  .refine(
+    (supply) =>
+      (supply.earlierApartments ?? []).every(
+        (e, i, all) =>
+          (i === 0 || (all[i - 1]?.to ?? '') < e.to) &&
+          onceEach(e.apartments) &&
+          whole(e.apartments),
+      ),
+    { message: 'Earlier weights: months in order, the same rules', path: ['earlierApartments'] },
+  )
   .meta({
     description:
-      'apartments: at least one, each apartment once, weight in basis points (1..10000), sum exactly 10000.',
+      'apartments: at least one, each apartment once, weight in basis points (1..10000), sum exactly 10000. earlierApartments: increasing months, the same rules for each entry.',
   });
 export type Supply = z.infer<typeof SupplySchema>;
 

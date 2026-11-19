@@ -757,6 +757,45 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     // ~20 CLI spawns in a row: Windows runners need more than the 5 s default.
   }, 60_000);
 
+  it('piano 22: posti nuovi «valido dal» dopo il periodo chiuso passano, dentro sono rifiutati', async () => {
+    await closable();
+    await cli('chiudi-periodo', ...args);
+    const inside = await cli(
+      'appartamento',
+      '--id',
+      'apt-x',
+      '--posti',
+      '2',
+      '--dal',
+      '2026-05',
+      '--modifica',
+    );
+    expect(inside.json.reason).toBe('closed-period');
+    const after = await cli(
+      'appartamento',
+      '--id',
+      'apt-x',
+      '--posti',
+      '2',
+      '--dal',
+      '2026-10',
+      '--modifica',
+    );
+    expect(after.code, after.out).toBe(0);
+    expect(after.json.status).toBe('updated');
+    const back = await cli(
+      'appartamento',
+      '--id',
+      'apt-x',
+      '--posti',
+      '3',
+      '--dal',
+      '2026-09',
+      '--modifica',
+    );
+    expect(back.json.reason).toBe('valid-from-order');
+  }, 60_000);
+
   it('piano 22: riaperto per un bonifico respinto, si chiude di nuovo con «Canone non incassato»', async () => {
     await closable();
     await cli('chiudi-periodo', ...args);

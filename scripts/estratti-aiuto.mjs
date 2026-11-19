@@ -40,7 +40,8 @@ export const COMMAND_HELP = {
   'scadenza-nuova': 'Crea una scadenza scritta a mano.',
   'scadenza-ripeti': 'Ripete una scadenza nell’anno dopo.',
   'scadenza-pagata': 'Segna pagata una scadenza (con il movimento o la data).',
-  appartamento: 'Crea un appartamento o aggiorna i campi dati (anche --posti-nomi e --codici).',
+  appartamento:
+    'Crea un appartamento o aggiorna i campi dati (anche --posti-nomi e --codici; --dal AAAA-MM: posti nuovi da quel mese).',
   'condominio-documento': 'Salva il preventivo o il consuntivo di un esercizio del condominio.',
   condominio: 'Controlla le spese del condominio della proprietà e le differenze.',
   'condominio-stima': 'Mostra la stima del condominio di un esercizio.',
@@ -66,7 +67,8 @@ export const COMMAND_HELP = {
   'annulla-bolletta': 'Annulla ciò che un PDF ha creato e lo riporta in Da_smistare.',
   cruscotto: 'Mostra i conteggi della Home per appartamento e lo stato dei conguagli.',
   riferimenti: 'Elenca i record che puntano a un record mancante o cancellato.',
-  utenza: 'Collega un’utenza (il codice dell’avviso) a uno o più appartamenti.',
+  utenza:
+    'Collega un’utenza (il codice dell’avviso) a uno o più appartamenti (--dal AAAA-MM: percentuali nuove da quel mese).',
   'rata-condominio': 'Registra una rata del condominio di un esercizio.',
   impostazioni: 'Mostra o cambia le impostazioni dell’area di lavoro (--tolleranza-imu).',
   'chiudi-periodo': 'Chiude un periodo di conguaglio con l’istantanea.',

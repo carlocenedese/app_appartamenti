@@ -46,6 +46,7 @@ import type { Cents } from './money';
 import { annualitaRange, daysBetween, isoDate, lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { compareText } from './text';
+import { bedsAt } from './valid-from';
 import { CALC_VERSION, PER_BED_CALC_VERSION } from './version';
 
 /** The cost categories of a settlement row: the bill categories, the TARI and the condominium. */
@@ -456,7 +457,8 @@ function bedsIn(
   present: Tenancy[],
   month: YearMonth,
 ): (string | undefined)[] {
-  const { rooms, posti } = apartment;
+  // Plan 22: the beds in force in the month («valido dal»).
+  const { rooms, posti } = bedsAt(apartment, month);
   if (rooms !== undefined) {
     for (const tenancy of present) {
       if (tenancy.room === undefined || !rooms.includes(tenancy.room)) {

@@ -9,6 +9,7 @@ import {
   sharedGroupProblem,
   splitSharedDebit,
   suggestedFilePath,
+  yearMonth,
 } from '../src/index';
 import type {
   Bill,
@@ -579,6 +580,70 @@ describe('proposalFromExtraction: TARI', () => {
     expect(b?.shared?.groupId).toBe(l?.shared?.groupId);
     expect(b?.shared?.groupTotal).toBe(18546);
     expect(check(proposal, 'duplicate-apartment')).toBeUndefined();
+  });
+
+  it('plan 22: the weights in force in the first month of the notice; a change inside it fails', () => {
+    const supplies = (to: string) => [
+      {
+        id: 'sup-app-a',
+        label: 'Appartamento A',
+        apartments: [{ apartmentId: 'apt-b', weight: 10000 }],
+        earlierApartments: [
+          {
+            to: yearMonth(to),
+            apartments: [
+              { apartmentId: 'apt-b', weight: 3333 },
+              { apartmentId: 'apt-c', weight: 6667 },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'sup-app-b',
+        label: 'Appartamento B',
+        apartments: [{ apartmentId: 'apt-l', weight: 10000 }],
+      },
+    ];
+    const tenancies = [
+      storedTenancy('b', 'apt-b', '2025-01'),
+      storedTenancy('c', 'apt-c', '2025-01'),
+      storedTenancy('l', 'apt-l', '2025-01'),
+    ];
+    // The notice covers January–April 2026: the new weights hold from January.
+    const after = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({ supplies: supplies('2025-12'), tenancies }),
+        ids(),
+      ),
+    );
+    expect(after.instalments.map((i) => [i.apartmentId, i.rata])).toEqual([
+      ['apt-b', 10075],
+      ['apt-l', 8471],
+    ]);
+    // Still the old ones in April: the old split.
+    const before = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({ supplies: supplies('2026-04'), tenancies }),
+        ids(),
+      ),
+    );
+    expect(before.instalments.map((i) => [i.apartmentId, i.rata])).toEqual([
+      ['apt-b', 3358],
+      ['apt-c', 6717],
+      ['apt-l', 8471],
+    ]);
+    // Changed from March, inside the notice: not proposed, to divide by hand (question for user1).
+    const inside = asTari(
+      proposalFromExtraction(
+        tariResult(),
+        tariContext({ supplies: supplies('2026-02'), tenancies }),
+        ids(),
+      ),
+    );
+    expect(check(inside, 'part-weights-changed')?.severity).toBe('fail');
+    expect(inside.instalments.map((i) => i.apartmentId)).toEqual(['apt-l']);
   });
 
   it('fails part-share and proposes nothing for a supply whose share rounds to zero', () => {

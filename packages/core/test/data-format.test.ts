@@ -41,6 +41,9 @@ const FINGERPRINTS: Record<number, string> = {
   // and forfaitNonIncassato of its snapshot, amount and flatCollected of a settled mark
   // (decided by user1, 18 Nov; recomputed in rounds 2 and 5).
   4: '83a0e7cf47dc02bad1581ab0795479dd8e12f8e7309e1c5c5d5edc053d7c2e55',
+  // Plan 22 (authorised by user1, 19 Nov 2026): earlierBeds of an apartment and earlierApartments
+  // of a supply («valido dal»).
+  5: 'd2a2885cba9c2cc054a6a43b13ce8b9011ccae7aa02f4e2dd6c0106a786786d8',
 };
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../docs/schemas', import.meta.url));

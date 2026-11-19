@@ -16,6 +16,7 @@ import { lastDayOfMonth, monthsInPeriod } from './period';
 import type { ISODate, YearMonth } from './period';
 import { MONTH_NAMES } from './tari-note';
 import { foldText } from './text';
+import { weightsAt } from './valid-from';
 
 export type ProposalCheck = { code: string; severity: 'ok' | 'warn' | 'fail'; message: string };
 type Confidence = 'high' | 'medium' | 'missing';
@@ -50,7 +51,7 @@ export type ProposalContext = {
    * TARI: the supplies of shared notices (deleted ones are ignored), each with the apartments it is split
    * between by weight (basis points).
    */
-  supplies?: Pick<Supply, 'id' | 'label' | 'apartments' | 'deleted'>[];
+  supplies?: Pick<Supply, 'id' | 'label' | 'apartments' | 'earlierApartments' | 'deleted'>[];
 };
 
 type Fields = ExtractionResult['fields'];
@@ -385,7 +386,7 @@ function tariProposal(
             `Due utenze hanno la stessa etichetta «${supply.label}». Apri Impostazioni, Utenze e correggi: finché ce ne sono due, nessuna delle due viene usata.`,
           ),
         );
-        byLabel.set(key, { ...supply, apartments: [] });
+        byLabel.set(key, { id: supply.id, label: supply.label, apartments: [] });
       } else {
         byLabel.set(key, supply);
       }
@@ -402,11 +403,24 @@ function tariProposal(
         );
       } else if (part.amount <= 0) {
         checks.push(fail('part-amount', `L'utenza «${part.label}» non ha un importo positivo.`));
+      } else if (
+        // Plan 22: weights that change inside the months of the notice (question for user1).
+        JSON.stringify(weightsAt(target, rate.coversFrom)) !==
+        JSON.stringify(weightsAt(target, rate.coversTo))
+      ) {
+        checks.push(
+          fail(
+            'part-weights-changed',
+            `Le percentuali dell'utenza «${part.label}» cambiano nei mesi dell'avviso: dividi l'avviso a mano.`,
+          ),
+        );
       } else {
-        // An apartment's share of the supply by weight; cents that do not divide go as in R3.
+        // An apartment's share of the supply by weight, those in force in the first month of the
+        // notice (plan 22); cents that do not divide go as in R3.
+        const weights = weightsAt(target, rate.coversFrom);
         const shares = splitCents(
           part.amount,
-          target.apartments.map((a) => a.weight),
+          weights.map((a) => a.weight),
         );
         if (shares.some((share) => share <= 0)) {
           // A zero share would make the group inconsistent for the matching (weight > 0).
@@ -417,7 +431,7 @@ function tariProposal(
             ),
           );
         } else {
-          target.apartments.forEach(({ apartmentId }, index) => {
+          weights.forEach(({ apartmentId }, index) => {
             known.push({ apartmentId, amount: shares[index] as Cents, supplyId: target.id });
           });
         }

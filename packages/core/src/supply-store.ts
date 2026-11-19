@@ -13,6 +13,8 @@ import type { Store } from './store/store';
 import { draftProblem } from './supply-link';
 import { foldText } from './text';
 import type { SupplyDraft } from './supply-link';
+import { datedChange } from './valid-from';
+import type { YearMonth } from './period';
 
 function checkedDraft(draft: SupplyDraft): Pick<Supply, 'label' | 'apartments'> {
   const problem = draftProblem(draft);
@@ -82,7 +84,15 @@ export async function linkSupply(
 export type SaveSupplyResult =
   | { status: 'saved'; operationId: string; supplyId: string }
   | { status: 'unchanged'; supplyId: string }
-  | { status: 'refused'; reason: 'inconsistent-store' | 'unknown-apartment' | 'invalid-supply' }
+  | {
+      status: 'refused';
+      reason:
+        | 'inconsistent-store'
+        | 'unknown-apartment'
+        | 'invalid-supply'
+        /** Plan 22: `validFrom` before the month of the last change (undo that first). */
+        | 'valid-from-order';
+    }
   /** A live supply has the label with other apartments or weights (its id). */
   | { status: 'refused'; reason: 'label-in-use'; supplyId: string };
 
@@ -90,7 +100,9 @@ export type SaveSupplyResult =
  * `linkSupply` for the command line (review of 18 Nov 2026, E5): nothing written while
  * `checkConsistency` reports a problem; every apartment must be live; a draft `draftProblem`
  * refuses (or an empty label) is `invalid-supply`. A live supply with the same label (folded) and
- * the same apartments and weights is `unchanged`, with others `label-in-use`.
+ * the same apartments and weights is `unchanged`, with others `label-in-use`, unless
+ * `options.validFrom` is given (plan 22): then the new apartments and weights hold from that
+ * month and the old ones before it (`earlierApartments`), one `supply.update`.
  */
 export async function saveSupply(
   store: Store,
@@ -98,6 +110,7 @@ export async function saveSupply(
   profileId: string,
   clock: () => string,
   newId: () => string,
+  options: { validFrom?: YearMonth } = {},
 ): Promise<SaveSupplyResult> {
   if (await writesBlocked(store)) {
     return { status: 'refused', reason: 'inconsistent-store' };
@@ -115,9 +128,33 @@ export async function saveSupply(
   const same = (await liveSupplies(store)).find((s) => foldText(s.label) === key);
   if (same !== undefined) {
     const { apartments: rows } = checkedDraft(draft);
-    return JSON.stringify(same.apartments) === JSON.stringify(rows)
-      ? { status: 'unchanged', supplyId: same.id }
-      : { status: 'refused', reason: 'label-in-use', supplyId: same.id };
+    if (JSON.stringify(same.apartments) === JSON.stringify(rows)) {
+      return { status: 'unchanged', supplyId: same.id };
+    }
+    if (options.validFrom === undefined) {
+      return { status: 'refused', reason: 'label-in-use', supplyId: same.id };
+    }
+    const earlierApartments = datedChange(same.earlierApartments, options.validFrom, {
+      apartments: same.apartments,
+    });
+    if (earlierApartments === undefined) return { status: 'refused', reason: 'valid-from-order' };
+    const after = parseOrThrow(
+      SupplySchema,
+      { ...same, apartments: rows, earlierApartments },
+      'supply',
+    );
+    const operation = await commitChange(
+      store,
+      {
+        profileId,
+        kind: 'supply.update',
+        summary: `Modificata l'utenza ${after.label}`,
+        changes: [{ path: recordPath('supply', same.id), before: same, after }],
+      },
+      clock,
+      newId,
+    );
+    return { status: 'saved', operationId: operation.id, supplyId: same.id };
   }
   const supply = await linkSupply(store, draft, profileId, clock, newId);
   // The operation that wrote this supply (the last one by order may be another with the same time).

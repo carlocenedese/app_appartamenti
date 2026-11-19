@@ -1599,6 +1599,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
           'rooms',
           v['posti-nomi']?.split(',').map((r) => r.trim()),
         ),
+        // Plan 22: new beds from a month («valido dal»), the old ones before it.
+        ...optional('bedsValidFrom', v.dal === undefined ? undefined : month(v.dal)),
       },
       who,
       clock,
@@ -3244,6 +3246,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
       who,
       clock,
       newId,
+      // Plan 22: new weights of an existing supply from a month («valido dal»).
+      values.dal === undefined ? {} : { validFrom: month(values.dal) },
     );
     if (result.status === 'refused') {
       throw new Stop('rejected', result.reason, optional('supplyId', result.supplyId));
@@ -3694,7 +3698,7 @@ export async function main(argv, io = { now: () => new Date().toISOString(), new
       scadenza: ['scadenza-nuova', 'scadenza-ripeti', 'rata-condominio'],
       'ogni-anno': ['scadenza-nuova'],
       'anno-riferimento': ['scadenza-nuova', 'scadenza-ripeti'],
-      dal: ['importa', 'contratto-canone', 'presenza'],
+      dal: ['importa', 'contratto-canone', 'presenza', 'appartamento', 'utenza'],
       al: ['importa', 'presenza'],
       posto: ['presenza'],
       affitto: ['presenza', 'subentro'],
