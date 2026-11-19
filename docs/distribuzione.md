@@ -42,18 +42,27 @@ EOF
 
 (`actor_id` 5 è il ruolo «Admin» del repository.) Si controlla su GitHub in Settings, Environments, `release` (revisore user1, «Allow administrators to bypass» spento, «Deployment branches and tags»: `v*`) e Settings, Rules, Rulesets. Gli stessi passi si possono fare a mano da quelle pagine.
 
-### 2. Mettere la chiave nell'environment (un comando)
+### 2. Creare la chiave con password e metterla nell'environment
 
-Lo script c'è dopo l'unione del piano 16 in `main` (`git pull`):
+La chiave ha una password (decisione di user1 del 18 novembre 2026). Si crea una sola volta, prima del primo installer dato a user2, in una cartella nuova e vuota **fuori** da iCloud, Dropbox e dalle cartelle in cui lavorano gli agenti:
+
+```sh
+pnpm --filter desktop tauri signer generate -w "<cartella della chiave>/app-bollette.key"
+```
+
+Il comando chiede la password due volte: la si salva nel gestore di password prima di andare avanti. Poi:
 
 ```sh
 node scripts/setup-updater.mjs "<cartella della chiave>"
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --env release --repo "$repo"
 ```
+
+Il secondo comando chiede la password senza mostrarla e la salva come secret dello stesso environment: il job che firma la legge da lì.
 
 Il comando:
 
 - prima di leggere la chiave, controlla con `gh api` (solo lettura) che l'environment `release` esista, abbia almeno un revisore obbligatorio, non lasci saltare le regole agli amministratori e ammetta solo le etichette `v*`; altrimenti si ferma e dice che cosa manca (prima il punto 1);
-- trova nella cartella la coppia di chiavi già creata l'11 novembre 2026 (un file `….key` e il suo `….key.pub`; non ne crea di nuove);
+- trova nella cartella la coppia di chiavi appena creata (un file `….key` e il suo `….key.pub`; non ne crea di nuove);
 - mostra il repository (letto da `git remote get-url origin`) e manda la chiave privata a GitHub come secret `TAURI_SIGNING_PRIVATE_KEY` dell'environment `release` (non la mostra e non la scrive altrove);
 - scrive la chiave pubblica in `apps/desktop/src-tauri/tauri.conf.json`.
 
