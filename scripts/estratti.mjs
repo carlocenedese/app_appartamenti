@@ -58,9 +58,6 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { FsStore, moveFileNoOverwrite } from '../packages/store-fs/src/fs-store.ts';
 import {
-  ApartmentSchema,
-  BillSchema,
-  InstalmentSchema,
   ExcludeReasonSchema,
   ISODateSchema,
   StatementTableSchema,
@@ -70,7 +67,6 @@ import {
   TimestampSchema,
   YearMonthSchema,
   YearSchema,
-  loadAll,
   parseEuro,
   saveSupply,
   saveCondoInstalment,
@@ -84,15 +80,8 @@ import {
   markTenantSettled,
   reopenPeriod,
   equalShares,
-  saveConsumptionSettings,
   billFileMove,
-  loadConsumption,
   PayableKindSchema,
-  ExtractionResultSchema,
-  hashBytes,
-  importBill,
-  loadDashboard,
-  undoBillImport,
   DATA_FORMAT,
   formatEuro,
   WORKSPACE_PATH,
@@ -159,6 +148,13 @@ import {
   condoEstimateCommand,
   saveContactCommand,
   contactsCommand,
+  saveConsumptionSettingsCommand,
+  consumptionCommand,
+  billReadingOf,
+  refuseRegisteredBill,
+  importBillCommand,
+  undoBillCommand,
+  dashboardCommand,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
@@ -591,7 +587,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || (values.giallo === undefined && values.rosso === undefined)) {
       throw invalid('bad-arguments');
     }
-    const result = await saveConsumptionSettings(
+    return saveConsumptionSettingsCommand(
       store,
       {
         ...optional('apartmentId', values.appartamento),
@@ -604,35 +600,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
           values.rosso === undefined ? undefined : metricThresholds(values.rosso),
         ),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return result;
   }
 
   if (name === 'consumi') {
-    // Differences in basis points and levels; the sides (amounts, quantities) with --dettagli.
     need(values, 'bolletta');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadConsumption(store, values.bolletta);
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    const side = (c) =>
-      c === undefined
-        ? undefined
-        : {
-            differences: c.differences,
-            ...(values.dettagli === true ? { reference: c.reference } : {}),
-          };
-    return {
-      status: 'ok',
-      thresholds: result.thresholds,
-      ...(result.thresholds ? {} : { message: MESSAGES['no-consumption-thresholds'] }),
-      yearBefore: side(result.comparison.yearBefore),
-      recent: side(result.comparison.recent),
-      ...(values.dettagli === true ? { current: result.comparison.current } : {}),
-    };
+    return consumptionCommand(store, values.bolletta, { details: values.dettagli === true });
   }
 
   if (name === 'scheda-inquilino') {
@@ -1292,45 +1267,29 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (percent !== undefined && !/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(percent)) {
       throw invalid('bad-arguments');
     }
-    let read;
+    const details = values.dettagli === true;
+    let json;
     try {
-      read = ExtractionResultSchema.safeParse(
-        JSON.parse(readBytes(values.lettura).toString('utf8')),
-      );
+      json = readBytes(values.lettura).toString('utf8');
     } catch {
       throw invalid('bad-reading');
     }
-    // E15: with --dettagli, the paths of the fields that do not fit (names, never values).
-    if (!read.success) {
-      throw invalid(
-        'bad-reading',
-        values.dettagli === true
-          ? { fields: [...new Set(read.error.issues.map((i) => i.path.join('.')))].sort() }
-          : {},
-      );
-    }
+    const reading = billReadingOf(json, { details });
     let bytes;
     try {
       bytes = readBytes(positionals[0]);
     } catch (error) {
       // E14: the PDF moved by an earlier registration of this same reading: say so.
-      const { fileHash } = read.data;
-      const registered = [
-        ...(await loadAll(store, 'bill', BillSchema)).records,
-        ...(await loadAll(store, 'instalment', InstalmentSchema)).records,
-      ].find((r) => r.fileHash === fileHash);
-      if (registered !== undefined) {
-        throw new Stop('rejected', 'duplicate-bill', { existingId: registered.id });
-      }
+      await refuseRegisteredBill(store, reading.fileHash);
       throw error;
     }
     // Without --codici, those of the apartment (`appartamento --codici`, R314).
     const knownCodes =
       values.codici === undefined ? undefined : values.codici.split(',').filter((c) => c !== '');
-    const result = await importBill(
+    const { body, file } = await importBillCommand(
       store,
       {
-        result: read.data,
+        result: reading,
         bytes,
         apartmentId: values.appartamento,
         knownCodes,
@@ -1340,81 +1299,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
         ),
         mode: values.conferma === true ? 'manual' : 'auto',
       },
-      who,
-      clock,
-      newId,
+      ctx,
+      { details },
     );
-    const details = values.dettagli === true;
-    // Codes and ids only; the messages hold amounts, months and quantities (R107).
-    const checks = (list) =>
-      list.map((c) => ({
-        code: c.code,
-        severity: c.severity,
-        ...(details ? { message: c.message } : {}),
-      }));
-    // The comparison as `consumi`: differences and levels; the sides (amounts) with --dettagli.
-    const consumptionOf = (c) => {
-      if (c === undefined) return {};
-      const side = (x) =>
-        x === undefined
-          ? undefined
-          : { differences: x.differences, ...(details ? { reference: x.reference } : {}) };
-      return {
-        consumption: {
-          thresholds: c.thresholds,
-          ...(c.thresholds ? {} : { message: MESSAGES['no-consumption-thresholds'] }),
-          yearBefore: side(c.yearBefore),
-          recent: side(c.recent),
-          ...(details ? { current: c.current } : {}),
-        },
-      };
-    };
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    if (result.status === 'rejected') {
-      throw new Stop('rejected', 'bill-rejected', {
-        checks: checks(result.checks),
-        ...(details ? { detail: result.reason } : {}),
-      });
-    }
-    if (result.status === 'duplicate' || result.status === 'possible-duplicate') {
-      throw new Stop('rejected', `${result.status}-bill`, { existingId: result.existingId });
-    }
-    if (result.status === 'da-rivedere') {
-      return {
-        status: result.status,
-        pendingId: result.pendingId,
-        ...optional('operationId', result.operationId),
-        codes: result.codes,
-        checks: checks(result.checks),
-        ...consumptionOf(result.consumption),
-        ...(details ? { reasons: result.reasons } : {}),
-      };
-    }
+    if (file === undefined) return body;
     // Plan 17, R315: the PDF of a whole file registered as a bill goes to the Bollette folder of
     // the apartment, never over another file and only from inside the shared folder.
-    const bills = (await loadAll(store, 'bill', BillSchema)).records;
-    const bill = bills.find((b) => result.ids.includes(b.id));
-    const apartments = (await loadAll(store, 'apartment', ApartmentSchema)).records;
-    const apartment = apartments.find((a) => a.id === values.appartamento);
-    const [first, last] = read.data.pageRange ?? [1, read.data.pages];
-    let file = 'not-moved';
-    if (bill !== undefined && apartment !== undefined && first === 1 && last === read.data.pages) {
+    let moved = 'not-moved';
+    if (file !== 'not-moved') {
       const inside = relative(resolve(values.cartella), resolve(positionals[0]));
-      if (inside.startsWith('..') || isAbsolute(inside)) file = 'outside-folder';
+      if (inside.startsWith('..') || isAbsolute(inside)) moved = 'outside-folder';
       else {
-        const plan = billFileMove(apartment, bill.filePath);
+        const plan = billFileMove(file.apartment, file.filePath);
         // The bill is registered whatever happens to the file: never «failed» for a move.
-        file = await moveSafely(values.cartella, inside.split(/[\\/]/).join('/'), plan.filed);
+        moved = await moveSafely(values.cartella, inside.split(/[\\/]/).join('/'), plan.filed);
       }
     }
-    return {
-      status: result.status,
-      ids: result.ids,
-      operationId: result.operationId,
-      checks: checks(result.checks),
-      ...consumptionOf(result.consumption),
-      file,
-    };
+    return { ...body, file: moved };
   }
 
   if (name === 'annulla-bolletta') {
@@ -1428,60 +1329,23 @@ async function command(name, values, positionals, store, who, clock, newId) {
         pages = [Number(found[1]), Number(found[2])];
       } else throw invalid('bad-arguments');
     }
-    const fileHash = await hashBytes(readBytes(positionals[0]));
-    // Read before the undo: the bill tells where the file is and which Da_smistare it goes to.
-    const filed = (await loadAll(store, 'bill', BillSchema)).records.find(
-      (b) => b.fileHash === fileHash,
+    const { body, move } = await undoBillCommand(
+      store,
+      { bytes: readBytes(positionals[0]), ...optional('pages', pages) },
+      ctx,
+      { details: values.dettagli === true },
     );
-    let result;
-    try {
-      result = await undoBillImport(store, fileHash, who, clock, newId, optional('pages', pages));
-    } catch (error) {
-      const text = error instanceof Error ? error.message : '';
-      if (text.includes('depend on it')) throw new Stop('rejected', 'has-dependents-bill');
-      if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
-      throw error;
-    }
-    if (result.status === 'refused') {
-      if (result.reason === 'several-documents') {
-        throw new Stop('rejected', 'several-documents', { documents: result.documents });
-      }
-      if (result.reason === 'has-dependents') {
-        // Counts only: the ids are shown with --dettagli (R107).
-        throw new Stop('rejected', 'has-dependents-bill', {
-          dependents: result.recordIds.length,
-          ...(values.dettagli === true ? { recordIds: result.recordIds } : {}),
-        });
-      }
-      throw new Stop('rejected', result.reason);
-    }
-    // Plan 17, R315: the file goes back to Da_smistare, once nothing of it is registered, never
-    // over another file.
+    // Plan 17, R315: the file goes back to Da_smistare, never over another file.
     let file = 'not-moved';
-    const left = (await loadAll(store, 'bill', BillSchema)).records.some(
-      (b) => b.fileHash === fileHash,
-    );
-    const apartment =
-      filed === undefined
-        ? undefined
-        : (await loadAll(store, 'apartment', ApartmentSchema)).records.find(
-            (a) => a.id === filed.apartmentId,
-          );
-    if (filed !== undefined && apartment !== undefined && !left) {
-      const plan = billFileMove(apartment, filed.filePath);
+    if (move !== undefined) {
       const inside = relative(resolve(values.cartella), resolve(positionals[0]))
         .split(/[\\/]/)
         .join('/');
-      if (inside.normalize('NFC') === plan.filed.normalize('NFC')) {
-        file = await moveSafely(values.cartella, plan.filed, plan.inbox);
+      if (inside.normalize('NFC') === move.from.normalize('NFC')) {
+        file = await moveSafely(values.cartella, move.from, move.to);
       }
     }
-    return {
-      status: 'undone',
-      records: result.records,
-      operationIds: result.operations.map((o) => o.id),
-      file,
-    };
+    return { ...body, file };
   }
 
   if (name === 'cruscotto') {
@@ -1494,29 +1358,18 @@ async function command(name, values, positionals, store, who, clock, newId) {
       if (at < 1 || at === text.length - 1) throw invalid('bad-arguments');
       return { apartmentId: text.slice(0, at), periodLabel: text.slice(at + 1) };
     });
-    const result = await loadDashboard(store, {
-      // Today: --oggi, or the UTC date of the clock, as `scadenze`.
-      today: day(values.oggi ?? clock().slice(0, 10)),
-      ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
-      ...optional('taxYear', anno),
-      // Without --periodo-conguaglio, the period in course of each apartment (R316).
-      ...(settlements.length === 0 ? {} : { settlements }),
-    });
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Counts and codes; the share of the empty beds is an amount: only with --dettagli (R107).
-    return {
-      status: 'ok',
-      apartments: result.apartments,
-      settlements: result.settlements.map((r) => ({
-        apartmentId: r.apartmentId,
-        periodLabel: r.periodLabel,
-        ...optional('problem', r.problem),
-        ...optional('pending', r.pending),
-        // R5: «chiuso» when the period has a live closing, else provisional.
-        ...(r.problem === undefined ? { state: r.step ?? 'provvisorio' } : {}),
-        ...(values.dettagli === true ? optional('unassigned', r.unassigned) : {}),
-      })),
-    };
+    return dashboardCommand(
+      store,
+      {
+        // Today: --oggi, or the UTC date of the clock, as `scadenze`.
+        today: day(values.oggi ?? clock().slice(0, 10)),
+        ...optional('soonDays', entro === undefined ? undefined : Number(entro)),
+        ...optional('taxYear', anno),
+        // Without --periodo-conguaglio, the period in course of each apartment (R316).
+        ...(settlements.length === 0 ? {} : { settlements }),
+      },
+      { details: values.dettagli === true },
+    );
   }
 
   if (name === 'scadenze') {
