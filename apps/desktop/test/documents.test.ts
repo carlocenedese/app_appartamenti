@@ -358,6 +358,9 @@ describe('writeModulo (plan 26)', () => {
       status: 'invalid',
       reason: 'bad-values',
     });
+    await store.writeJsonAtomic('_app/workspace.json', { schemaVersion: 999 });
+    expect(await writeModulo(store, args)).toEqual({ status: 'rejected', reason: 'newer-data' });
+    await store.writeJsonAtomic('_app/workspace.json', { schemaVersion: 1 });
     expect(await writeModulo(store, { ...args, tenancyId: 'nessuna' })).toEqual({
       status: 'rejected',
       reason: 'unknown-tenancy',

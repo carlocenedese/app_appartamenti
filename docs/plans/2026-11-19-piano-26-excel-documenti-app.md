@@ -48,8 +48,8 @@ cambiare le attese. Impronte SHA-256 dell'uscita prese prima delle modifiche (19
 | commercialista 2026 (fixture)             | `5e188fb9dbbb927fcccdbb78cf8ad180316d0ba0ac4ae5c897c593fbe4f94ce6` |
 | modulo `promessa` (record di `moduli.test.mjs`) | `87139f3bb07240ef18d1b88a3eb72aa4f3d50a76f86e1443f5d2ee84e0ce126b` |
 
-Le prime due sono già fissate nei test del core; le altre due si fissano nei test degli script e
-dell'app.
+Le prime due sono già fissate nei test del core; le altre due si fissano nel test nuovo del core
+(`documents-command.test.ts`) e in quello dell'app.
 
 ## App (R403, R405, R406)
 
