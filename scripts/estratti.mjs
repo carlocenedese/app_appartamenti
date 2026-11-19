@@ -58,47 +58,26 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { FsStore, moveFileNoOverwrite } from '../packages/store-fs/src/fs-store.ts';
 import {
-  AccountSchema,
   ApartmentSchema,
   BillSchema,
   InstalmentSchema,
-  BankProfileSchema,
   ExcludeReasonSchema,
   ISODateSchema,
   StatementTableSchema,
-  BankTransactionSchema,
   OutgoingKindSchema,
   TaxVoiceSchema,
-  TenantSchema,
   TransferPurposeSchema,
   TimestampSchema,
   YearMonthSchema,
   YearSchema,
-  cancelAutomaticClass,
-  cancelAutomaticPayment,
-  checkConsistency,
-  forkVersions,
-  ClosingUndoError,
-  resolveFork,
-  confirmIncome,
-  confirmMatch,
-  confirmOutgoing,
-  confirmTenantOutgoing,
-  confirmTransfer,
-  excludeMovement,
   loadContractChecks,
   loadRentYears,
-  loadAccountBalances,
   loadImuRates,
   loadCondo,
   loadCondoEstimate,
   loadContacts,
   loadAll,
   parseEuro,
-  readJournal,
-  recordManualTransfer,
-  repairDiverged,
-  runReconciliation,
   saveApartment,
   saveCondoDocument,
   saveContact,
@@ -140,19 +119,12 @@ import {
   repeatPayable,
   savePayable,
   setPayablePaid,
-  undoBlockedBy,
-  undoDependents,
-  countByType,
-  referenceProblems,
-  undoOperation,
   ExtractionResultSchema,
   hashBytes,
   importBill,
   loadDashboard,
   undoBillImport,
   DATA_FORMAT,
-  PeriodCloseSchema,
-  closeMarks,
   formatEuro,
   WORKSPACE_PATH,
   findWorkspace,
@@ -160,7 +132,6 @@ import {
   CommandStop,
   COMMAND_MESSAGES,
   SWAP_MESSAGES,
-  RECONCILE_KINDS,
   stopBody,
   commandRefusal,
   FAILED_BODY,
@@ -175,6 +146,21 @@ import {
   undoImportCommand,
   saveTenantCommand,
   saveTenantCardCommand,
+  reconcileCommand,
+  confirmOutgoingCommand,
+  cancelOutgoingCommand,
+  confirmTenantOutgoingCommand,
+  confirmTransferCommand,
+  manualTransferCommand,
+  balancesCommand,
+  confirmMatchCommand,
+  confirmIncomeCommand,
+  undoOperationCommand,
+  referencesCommand,
+  cancelPaymentCommand,
+  excludeMovementCommand,
+  repairCommand,
+  chooseVersionCommand,
 } from '../packages/core/src/index.ts';
 import { COMMAND_HELP, USAGE } from './estratti-aiuto.mjs';
 
@@ -687,119 +673,9 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'riconcilia') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const run = await runReconciliation(store, who, clock, newId, {
-      dryRun: values.prova === true,
+    return reconcileCommand(store, { dryRun: values.prova === true }, ctx, {
+      details: values.dettagli === true,
     });
-    if (run.status === 'refused') throw new Stop('rejected', run.reason);
-    const { income: result, match, transfers, outgoing } = run;
-    let extra = () => ({});
-    let arrearExtra = () => ({});
-    let txExtra = () => ({});
-    if (values.dettagli === true) {
-      const all = { includeDeleted: true };
-      const txs = (await loadAll(store, 'transaction', BankTransactionSchema, all)).records;
-      const tenants = (await loadAll(store, 'tenant', TenantSchema, all)).records;
-      txExtra = (p) => {
-        const tx = txs.find((t) => t.id === p.transactionId);
-        return {
-          transactionId: p.transactionId,
-          date: tx?.date,
-          amount: tx?.amount,
-          description: tx?.description,
-        };
-      };
-      arrearExtra = (a) => ({
-        tenantId: a.tenantId,
-        tenantName: tenants.find((t) => t.id === a.tenantId)?.name ?? a.tenantId,
-      });
-      extra = (p) => {
-        const tx = txs.find((t) => t.id === p.transactionId);
-        return {
-          tenantIds: p.tenantIds,
-          date: tx?.date,
-          amount: tx?.amount,
-          description: tx?.description,
-          tenantNames: p.tenantIds.map((id) => tenants.find((t) => t.id === id)?.name ?? id),
-        };
-      };
-    }
-    // No F24 is recognised while the profile of the account has no f24Pattern (R129): say so.
-    const profiles = (await loadAll(store, 'bankProfile', BankProfileSchema)).records;
-    const notes = (await loadAll(store, 'account', AccountSchema)).records
-      .filter((a) => profiles.find((p) => p.id === a.bankProfileId)?.f24Pattern === undefined)
-      .map((a) => ({
-        accountId: a.id,
-        f24PatternMissing: true,
-        message: MESSAGES['f24-pattern-missing'],
-      }));
-    return {
-      status: 'reconciled',
-      written: result.written,
-      proposals: result.proposals.map((p) => ({
-        id: p.id,
-        step: p.step,
-        reason: p.reason,
-        // Ids are chosen by the user (they could be real names): only a count without --dettagli.
-        tenantCount: p.tenantIds.length,
-        ...(p.month === undefined ? {} : { month: p.month }),
-        ...extra(p),
-      })),
-      skipped: result.skipped,
-      // Only id and reason: the movement id, the date and the amount stay out (R124).
-      exclusions: run.exclusions.map((e) => ({
-        id: e.id,
-        reason: e.reason,
-      })),
-      // Month and apartment (its id is always shown, user1, 15 Nov 2026, R117); the tenant,
-      // whose id is chosen by the user like tenantIds, only with --dettagli.
-      arrears: result.arrears.map((a) => ({
-        month: a.month,
-        apartmentId: a.apartmentId,
-        ...arrearExtra(a),
-      })),
-      ...(result.operationId === undefined ? {} : { operationId: result.operationId }),
-      // Ids, reasons and counts only (R107, R126).
-      match: {
-        written: match.written,
-        yielded: match.yielded,
-        proposals: match.proposals.map((p) => ({ id: p.id, reason: p.reason })),
-        pending: match.pending.length,
-        unverified: match.unverified.length,
-        invalidGroups: match.invalidGroups.length,
-        // E1: a shared notice registered before the fix has no paying account on its rates.
-        ...(match.invalidGroups.length > 0 ? { message: MESSAGES['invalid-shared-notice'] } : {}),
-        ...(match.operationId === undefined ? {} : { operationId: match.operationId }),
-      },
-      // Ids, reasons and counts only (R132); the movements and the legs with --dettagli.
-      transfers: {
-        written: transfers.written,
-        completed: transfers.completed,
-        proposals: transfers.proposals.map((p) => ({
-          id: p.id,
-          reason: p.reason,
-          legCount: p.legIds.length,
-          // Movement ids, as inside `p-giro-<id>`: `giroconto --gambe` gives them back (R132).
-          legIds: p.legIds,
-          ...txExtra(p),
-        })),
-        ...(transfers.operationId === undefined ? {} : { operationId: transfers.operationId }),
-      },
-      outgoing: {
-        written: outgoing.written,
-        proposals: outgoing.proposals.map((p) => ({
-          id: p.id,
-          step: p.step,
-          reason: p.reason,
-          ...(p.suggestedKind === undefined ? {} : { suggestedKind: p.suggestedKind }),
-          // Group, year and index only (plan 3d, task 5): always to confirm with imu-f24.
-          ...(p.imuSuggestion === undefined ? {} : { imuSuggestion: p.imuSuggestion }),
-          ...txExtra(p),
-        })),
-        missingDocument: outgoing.missingDocument.length,
-        ...(outgoing.operationId === undefined ? {} : { operationId: outgoing.operationId }),
-      },
-      notes,
-    };
   }
 
   if (name === 'uscita') {
@@ -807,7 +683,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !OutgoingKindSchema.safeParse(values.categoria).success) {
       throw invalid('bad-arguments');
     }
-    const result = await confirmOutgoing(
+    return confirmOutgoingCommand(
       store,
       {
         proposalId: values.proposta,
@@ -816,36 +692,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
         rememberRule: values['solo-questa-volta'] !== true,
         f24: values.f24 === true,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: 'confirmed',
-      operationId: result.operationId,
-      classId: result.classId,
-      ...(result.ruleId === undefined ? {} : { ruleId: result.ruleId }),
-    };
   }
 
   if (name === 'annulla-uscita') {
     need(values, 'movimento');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await cancelAutomaticClass(store, values.movimento, who, clock, newId);
-    if (result.status === 'refused' && result.reason === 'not-automatic') {
-      // The reason is the core's; the message is the one of a class, not of a payment.
-      throw new Stop('rejected', result.reason, { message: MESSAGES['class-not-automatic'] });
-    }
-    if (result.status === 'refused' && result.reason === 'has-dependents') {
-      // Plan 10: a tax payment on the movement.
-      throw new Stop('rejected', result.reason, {
-        message: MESSAGES['movement-has-dependents'],
-        recordIds: result.recordIds,
-      });
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'cancelled', operationId: result.operationId };
+    return cancelOutgoingCommand(store, values.movimento, ctx);
   }
 
   if (name === 'uscita-inquilino') {
@@ -857,7 +711,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await confirmTenantOutgoing(
+    return confirmTenantOutgoingCommand(
       store,
       {
         proposalId: values.proposta,
@@ -865,12 +719,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         kind: values.tipo,
         forMonth: values.mese,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'confirmed', operationId: result.operationId, paymentId: result.paymentId };
   }
 
   if (name === 'giroconto') {
@@ -887,7 +737,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     ) {
       throw invalid('bad-arguments');
     }
-    const result = await confirmTransfer(
+    return confirmTransferCommand(
       store,
       {
         proposalId: values.proposta,
@@ -896,12 +746,8 @@ async function command(name, values, positionals, store, who, clock, newId) {
         legIds,
         ...(values['altra-gamba'] === undefined ? {} : { otherLegId: values['altra-gamba'] }),
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'confirmed', operationId: result.operationId, transferId: result.transferId };
   }
 
   if (name === 'giroconto-manuale') {
@@ -924,7 +770,7 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (values.id !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(values.id)) {
       throw invalid('bad-arguments');
     }
-    const result = await recordManualTransfer(
+    return manualTransferCommand(
       store,
       {
         ...optional('id', values.id),
@@ -934,51 +780,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
         date: date.data,
         purpose: values.scopo,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Ruling (E2): the same transfer again is that transfer; a second identical one needs --id.
-    if (result.status === 'unchanged') {
-      return values.id === undefined
-        ? { ...result, message: MESSAGES['already-recorded'] }
-        : result;
-    }
-    return { status: 'recorded', operationId: result.operationId, transferId: result.transferId };
   }
 
   if (name === 'saldi') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await loadAccountBalances(store);
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    // Without --dettagli only the apartments of each pair and counts: no amount, no date (R132).
-    const toSplitImu = result.toSplit.filter((t) => t.imu !== undefined).length;
-    if (values.dettagli === true) {
-      return {
-        status: 'ok',
-        pairs: result.pairs,
-        toSplit: result.toSplit,
-        toSplitImu,
-        unverified: result.unverified,
-        mixedF24: result.mixedF24,
-      };
-    }
-    return {
-      status: 'ok',
-      pairs: result.pairs.map((p) => ({
-        creditorApartmentId: p.creditorApartmentId,
-        debtorApartmentId: p.debtorApartmentId,
-        items: p.items.length,
-      })),
-      toSplit: result.toSplit.length,
-      toSplitImu,
-      unverified: result.unverified.length,
-      // Plan 17, R307: the part of a mixed F24 that is no IMU, out of the balance (to check).
-      ...(result.mixedF24.length > 0
-        ? { mixedF24: result.mixedF24.length, message: MESSAGES['mixed-f24-out'] }
-        : {}),
-    };
+    return balancesCommand(store, { details: values.dettagli === true });
   }
 
   if (name === 'imu-atteso') {
@@ -2369,35 +2177,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
 
   if (name === 'abbina') {
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
-    const result = await confirmMatch(
-      store,
-      { parts: values.parte.map(parseMatchPart) },
-      who,
-      clock,
-      newId,
-    );
-    if (result.status === 'refused') {
-      // The errors of invalid-matches are codes and ids only, no amount.
-      throw new Stop(
-        'rejected',
-        result.reason,
-        'errors' in result ? { errors: result.errors } : {},
-      );
-    }
-    // amountDiffers: bill ids confirmed for the debit, not the document amount (R2: «importo
-    // diverso», an id only, no amount).
-    return {
-      status: 'confirmed',
-      operationId: result.operationId,
-      matchIds: result.matchIds,
-      ...optional('amountDiffers', result.amountDiffers),
-    };
+    return confirmMatchCommand(store, { parts: values.parte.map(parseMatchPart) }, ctx);
   }
 
   if (name === 'conferma') {
     need(values, 'proposta', 'inquilino');
     if (positionals.length > 0 || values.parte === undefined) throw invalid('bad-arguments');
-    const result = await confirmIncome(
+    return confirmIncomeCommand(
       store,
       {
         proposalId: values.proposta,
@@ -2405,70 +2191,14 @@ async function command(name, values, positionals, store, who, clock, newId) {
         parts: values.parte.map(parsePart),
         rememberPayer: values['solo-questa-volta'] !== true,
       },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return {
-      status: 'confirmed',
-      operationId: result.operationId,
-      paymentIds: result.paymentIds,
-      ...(result.payerId === undefined ? {} : { payerId: result.payerId }),
-      // B17: codes and months only (no amount): a rent month outside the presence or paid twice.
-      ...optional(
-        'warnings',
-        result.warnings?.map((w) => ({ ...w, message: MESSAGES[w.code] })),
-      ),
-    };
   }
 
   if (name === 'annulla-riconciliazione' || name === 'annulla-incassi') {
     need(values, 'operazione');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const { operations } = await readJournal(store);
-    const target = operations.find((o) => o.id === values.operazione);
-    if (target === undefined) throw new Stop('rejected', 'unknown-operation');
-    if (!RECONCILE_KINDS.includes(target.kind)) {
-      throw new Stop('rejected', 'not-reconcile-operation');
-    }
-    // A cancellation whose movement has had another use since: undoing it would give a second one;
-    // an imu.expected under an assigned F24 would change its rate (plan 3d).
-    const recordIds = await undoBlockedBy(store, target.id);
-    // U8: records pointing at what the operation created, with the counts by kind (no names).
-    const created = recordIds.length > 0 ? await undoDependents(store, target.id) : [];
-    if (created.length > 0 && target.kind !== 'imu.expected') {
-      throw new Stop('rejected', 'has-dependents', {
-        message: MESSAGES['record-has-dependents'],
-        counts: countByType(created),
-        recordIds,
-      });
-    }
-    if (recordIds.length > 0) {
-      throw new Stop('rejected', 'has-dependents', {
-        message:
-          MESSAGES[
-            target.kind === 'imu.expected'
-              ? 'imu-has-assignments'
-              : target.kind.startsWith('tenancy.')
-                ? 'tenancy-has-dependents'
-                : 'movement-has-dependents'
-          ],
-        recordIds,
-      });
-    }
-    try {
-      const undone = await undoOperation(store, target.id, who, clock, newId);
-      return { status: 'undone', operationId: undone.id };
-    } catch (error) {
-      // Finding 9: the core refuses an undo that would close a period without a new snapshot.
-      if (error instanceof ClosingUndoError) throw new Stop('rejected', error.reason);
-      const text = error instanceof Error ? error.message : '';
-      if (text.includes('was already undone')) throw new Stop('rejected', 'already-undone');
-      if (text.includes('depend on it')) throw new Stop('rejected', 'has-dependents');
-      if (text.startsWith('Cannot undo:')) throw new Stop('rejected', 'journal-not-aligned');
-      throw error;
-    }
+    return undoOperationCommand(store, values.operazione, ctx);
   }
 
   // I3, E4 (review of 18 Nov 2026): a condominium instalment of the plan of a fiscal year, as the
@@ -2811,25 +2541,13 @@ async function command(name, values, positionals, store, who, clock, newId) {
   // one; kinds, ids and the field only, never a value.
   if (name === 'riferimenti') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const problems = (await referenceProblems(store)).map(({ from, field, to }) => ({
-      from,
-      field,
-      to,
-      message: `${from.type} ${from.id}: ${field} punta a ${to.type} ${to.id}, che non c’è o è cancellato.`,
-    }));
-    return {
-      status: 'ok',
-      problems,
-      ...(problems.length === 0 ? { message: MESSAGES['no-references'] } : {}),
-    };
+    return referencesCommand(store);
   }
 
   if (name === 'annulla-pagamento') {
     need(values, 'pagamento');
     if (positionals.length > 0) throw invalid('bad-arguments');
-    const result = await cancelAutomaticPayment(store, values.pagamento, who, clock, newId);
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'cancelled', operationId: result.operationId };
+    return cancelPaymentCommand(store, values.pagamento, ctx);
   }
 
   if (name === 'escludi') {
@@ -2837,74 +2555,27 @@ async function command(name, values, positionals, store, who, clock, newId) {
     if (positionals.length > 0 || !ExcludeReasonSchema.safeParse(values.motivo).success) {
       throw invalid('bad-arguments');
     }
-    const result = await excludeMovement(
+    return excludeMovementCommand(
       store,
       { transactionId: values.movimento, reason: values.motivo },
-      who,
-      clock,
-      newId,
+      ctx,
     );
-    if (result.status === 'refused' && result.reason === 'has-dependents') {
-      // The reason is the core's; the message is the one of a movement, not of an operation.
-      throw new Stop('rejected', result.reason, {
-        message: MESSAGES['movement-has-dependents'],
-        recordIds: result.recordIds,
-      });
-    }
-    if (result.status === 'refused') throw new Stop('rejected', result.reason);
-    return { status: 'excluded', operationId: result.operationId };
   }
 
   if (name === 'ripara') {
     if (positionals.length > 0) throw invalid('bad-arguments');
-    // Repairs every diverged record it can and reports the rest (a fork, a record newer on disk,
-    // a conflict copy): those need a person (revisione 2026-11-18).
-    const problems = await checkConsistency(store);
-    let repaired = 0;
-    const left = [];
-    for (const problem of problems) {
-      if (problem.reason === 'diverged') {
-        try {
-          await repairDiverged(store, problem.path);
-          repaired += 1;
-          continue;
-        } catch {
-          left.push({ path: problem.path, reason: 'repair-refused' });
-          continue;
-        }
-      }
-      left.push({ path: problem.path, reason: problem.reason });
-    }
-    return { status: 'repaired', repaired, ...(left.length > 0 ? { left } : {}) };
+    return repairCommand(store);
   }
 
   if (name === 'scegli-versione') {
     if (positionals.length > 0) throw invalid('bad-arguments');
     need(values, 'file');
-    const versions = await forkVersions(store, values.file);
-    if (values.operazione === undefined) {
-      if (versions.length === 0) throw new Stop('rejected', 'not-forked');
-      // Operation ids, times and profile ids only; the content with --dettagli.
-      return {
-        status: 'versions',
-        versions: versions.map((op) => {
-          const after = op.changes.find((change) => change.path === values.file)?.after;
-          // Finding 6: the marks of each version of a closing, so that choosing loses none unseen.
-          const close = PeriodCloseSchema.safeParse(after);
-          return {
-            operationId: op.id,
-            at: op.at,
-            profileId: op.profileId,
-            ...(close.success ? { marks: closeMarks(close.data) } : {}),
-            ...(values.dettagli === true ? { record: after } : {}),
-          };
-        }),
-      };
-    }
-    if (!versions.some((op) => op.id === values.operazione))
-      throw new Stop('rejected', 'not-forked');
-    const operation = await resolveFork(store, values.file, values.operazione, who, clock, newId);
-    return { status: 'resolved', operationId: operation.id };
+    return chooseVersionCommand(
+      store,
+      { file: values.file, ...optional('operationId', values.operazione) },
+      ctx,
+      { details: values.dettagli === true },
+    );
   }
 
   // annulla
