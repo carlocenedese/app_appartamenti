@@ -574,6 +574,22 @@ export function safeWord(text: string, fallback: string, maxLength: number): str
  * the date strings alone, so it is the same in every time zone. No segment is a name Windows
  * reserves (CON, NUL, COM1...): the file name starts with a date, the folders are fixed words.
  */
+/**
+ * F9 c (plan 25): where the PDF of a TARI notice is filed, as a bill of category `tari`
+ * (`Bollette/Rifiuti/<anno>/…`), from its issue date (else the due date) and the months it covers.
+ */
+export function tariFilePath(
+  instalment: Pick<Instalment, 'issueDate' | 'dueDate' | 'coversFrom' | 'coversTo'>,
+): string {
+  return suggestedFilePath({
+    category: 'tari',
+    supplier: 'TARI',
+    issueDate: instalment.issueDate ?? instalment.dueDate,
+    periodStart: `${instalment.coversFrom}-01` as ISODate,
+    periodEnd: lastDayOfMonth(instalment.coversTo),
+  });
+}
+
 export function suggestedFilePath(input: {
   category: string;
   supplier: string;

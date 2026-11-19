@@ -29,6 +29,7 @@ import {
   ConsumptionSettingsSchema,
   ContractSchema,
   InstalmentSchema,
+  OriginalFileNameSchema,
   PendingDocumentSchema,
   SupplySchema,
   TenancySchema,
@@ -37,8 +38,8 @@ import {
 import type { Apartment, PendingDocument } from './model';
 import { apartmentFolder } from './accounts';
 import { parseOrThrow } from './parse';
-import { proposalFromExtraction } from './proposal';
-import type { ProposalCheck } from './proposal';
+import { proposalFromExtraction, tariFilePath } from './proposal';
+import type { Proposal, ProposalCheck } from './proposal';
 import { loadAll } from './store/load';
 import { recordPath } from './store/records';
 import type { Store } from './store/store';
@@ -83,9 +84,11 @@ export type ImportBillResult =
 export function billFileMove(
   apartment: Pick<Apartment, 'name'>,
   filePath: string,
+  /** F9 c (plan 25): the name the PDF had before; the undo gives it back. */
+  originalName?: string,
 ): { filed: string; inbox: string } {
   const folder = apartmentFolder(apartment.name);
-  const name = filePath.split('/').pop() ?? filePath;
+  const name = originalName ?? filePath.split('/').pop() ?? filePath;
   return { filed: `${folder}/${filePath}`, inbox: `${folder}/Da_smistare/${name}` };
 }
 
@@ -234,10 +237,25 @@ export async function importBill(
   }
   const withAlarm = consumption === undefined ? {} : { consumption };
   const { checks } = proposal;
+  // F9 c (plan 25): the name the PDF had (a bare safe name only) and, for a TARI notice, where
+  // its PDF is filed, on the instalments of this apartment (the folder the file goes to).
+  const original = OriginalFileNameSchema.safeParse(result.fileName.normalize('NFC'));
+  const named = original.success ? { originalName: original.data } : {};
+  const filed: Proposal =
+    proposal.kind === 'bill'
+      ? { ...proposal, bill: { ...proposal.bill, ...named } }
+      : proposal.kind === 'tari'
+        ? {
+            ...proposal,
+            instalments: proposal.instalments.map((i) =>
+              i.apartmentId === apartmentId ? { ...i, filePath: tariFilePath(i), ...named } : i,
+            ),
+          }
+        : proposal;
   const register = async (how: 'auto' | 'manual'): Promise<ImportBillResult> => {
     const written = await registerProposal(
       store,
-      { proposal, result, bytes, profileId, mode: how },
+      { proposal: filed, result, bytes, profileId, mode: how },
       clock,
     );
     if (written.status === 'rejected') return { ...written, checks };

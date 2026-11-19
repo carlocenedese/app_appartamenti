@@ -35,6 +35,7 @@ import {
   WorkspaceSchema,
   DEFAULT_RENT_LATE_DAYS,
   recordSchemas,
+  OriginalFileNameSchema,
 } from '../src/model';
 import type {
   Apartment,
@@ -1927,5 +1928,26 @@ describe('PendingDocumentSchema', () => {
   it('wants an id starting with doc- and pages in order', () => {
     expect(PendingDocumentSchema.safeParse({ ...doc, id: 'x' }).success).toBe(false);
     expect(PendingDocumentSchema.safeParse({ ...doc, pages: [3, 2] }).success).toBe(false);
+  });
+});
+
+describe('OriginalFileNameSchema (F9 c)', () => {
+  it('takes a bare safe file name, refuses a folder, a Windows character or name', () => {
+    for (const ok of ['bolletta luce.pdf', 'tari-2026-1.pdf', 'Fattura n° 12.pdf']) {
+      expect(OriginalFileNameSchema.safeParse(ok).success).toBe(true);
+    }
+    for (const bad of [
+      'a/b.pdf',
+      'a\\b.pdf',
+      'c:x.pdf',
+      'CON.pdf',
+      'nul',
+      'x.pdf.',
+      '..',
+      'a\u0001.pdf',
+      '',
+    ]) {
+      expect(OriginalFileNameSchema.safeParse(bad).success).toBe(false);
+    }
   });
 });
