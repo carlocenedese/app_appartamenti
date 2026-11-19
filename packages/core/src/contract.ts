@@ -45,13 +45,12 @@ export function cedolareRateForYear(
 
 /**
  * F9 a (decided by user1 on 19 Nov 2026): a stay without `to` lasts until the end of the tenant's
- * latest contract in that apartment, renewals written as new contracts included. The tenant's
- * contracts are the live ones of the apartment that link a stay of the tenant there and do not end
- * before this stay starts; with none, a contract of the apartment that links no stay at all and is
- * in force in the stay's first month. From the latest end, a contract that links no stay and
- * follows on (starts by the month after) is a renewal and carries it further; a contract of other
- * tenants never does (G2-I1). With no such contract the stay stays open; an end before the stay's
- * start is not taken. Only for reading what to calculate: a write never stores the derived `to`.
+ * latest contract in that apartment, renewals written as new contracts included. A contract is the
+ * tenant's when it links a stay of the tenant there (`tenancyIds`): a renewal counts once it links
+ * the tenant (answer of user1 to round 3: a contract that links no stay is nobody's renewal); a
+ * contract ending before this stay starts is not taken (a returning tenant). With no contract of
+ * the tenant the stay stays open, and the Home says so (`presenza:oltre-il-contratto`). Only for
+ * reading what to calculate: a write never stores the derived `to`.
  */
 export function withContractEnds(tenancies: Tenancy[], contracts: readonly Contract[]): Tenancy[] {
   const live = contracts.filter((c) => c.deleted !== true);
@@ -68,7 +67,6 @@ export function contractEndOf(
   tenancies: readonly Tenancy[],
   contracts: readonly Contract[],
 ): YearMonth | undefined {
-  const own = contracts.filter((c) => c.deleted !== true && c.apartmentId === stay.apartmentId);
   const mine = new Set(
     tenancies
       .filter(
@@ -77,22 +75,13 @@ export function contractEndOf(
       )
       .map((t) => t.id),
   );
-  const unlinked = (c: Contract) => (c.tenancyIds ?? []).length === 0;
-  let seeds = own.filter(
-    (c) => (c.tenancyIds ?? []).some((id) => mine.has(id)) && c.end >= stay.from,
-  );
-  if (seeds.length === 0) {
-    seeds = own.filter((c) => unlinked(c) && c.start <= stay.from && stay.from <= c.end);
-  }
   let end: YearMonth | undefined;
-  for (const c of seeds) if (end === undefined || c.end > end) end = c.end;
-  if (end === undefined) return undefined;
-  for (;;) {
-    const from: YearMonth = end;
-    const next = own.find((c) => unlinked(c) && c.start <= addMonths(from, 1) && c.end > from);
-    if (next === undefined) return end;
-    end = next.end;
+  for (const c of contracts) {
+    if (c.deleted === true || c.apartmentId !== stay.apartmentId || c.end < stay.from) continue;
+    if (!(c.tenancyIds ?? []).some((id) => mine.has(id))) continue;
+    if (end === undefined || c.end > end) end = c.end;
   }
+  return end;
 }
 
 /** The entry of `rent` with the largest `from` not after `month`; none before the first entry. */

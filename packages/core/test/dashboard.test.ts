@@ -292,7 +292,8 @@ describe('loadDashboard on the Excel fixture', () => {
     expect(result.apartments).toEqual([
       {
         apartmentId: 'apt-nord',
-        counts: { 'conguaglio:voci-in-attesa': 2 },
+        // F9 a: the fixture's stays have no end and no contract links them (user1, round 3).
+        counts: { 'conguaglio:voci-in-attesa': 2, 'presenza:oltre-il-contratto': 3 },
         consumptionThresholds: false,
       },
       { apartmentId: 'apt-sud', counts: {}, consumptionThresholds: false },
@@ -374,5 +375,16 @@ describe('F9 a: a stay without end past its contract (user1, 19 Nov 2026)', () =
     };
     expect(await count('2026-09-15')).toBeUndefined();
     expect(await count('2026-11-19')).toBe(1);
+    // A stay without end and with no contract of the tenant at all is counted too.
+    await put('tenancy', {
+      id: 'tcy-y',
+      apartmentId: 'apt-z',
+      tenantId: 't-y',
+      room: undefined,
+      from: '2026-03',
+      monthlyRent: 45000,
+      monthlyForfait: 3000,
+    });
+    expect(await count('2026-09-15')).toBe(1);
   });
 });
