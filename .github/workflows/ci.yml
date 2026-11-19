@@ -182,11 +182,16 @@ jobs:
   # Pull requests only: the Rust app compiles with the committed Cargo.lock and its crate licences
   # pass deny.toml. The steps run only when the Rust app, a Cargo file or deny.toml changes;
   # otherwise the job is green at once, so it can be a required check. Windows, like the release
-  # build: on Linux Tauri needs the WebKitGTK system libraries.
+  # build: on Linux Tauri needs the WebKitGTK system libraries. macOS too, for the Unix-only Rust
+  # tests (the stand-in interpreter is a /bin/sh script); the Windows job keeps the name «rust».
   rust:
-    name: rust
+    name: ${{ matrix.os == 'windows-latest' && 'rust' || 'rust (macos)' }}
     if: github.event_name == 'pull_request'
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - name: Check out the repository
