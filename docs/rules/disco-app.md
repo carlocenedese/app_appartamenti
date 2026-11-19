@@ -44,7 +44,8 @@ cartella scelta; senza `AppManifest` in `build.rs` non ha voci nei permessi.
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [{ "path": "$APPCONFIG/machine-settings.json" }]
-    }
+    },
+    "fs:allow-write-file"
   ]
 }
 ```
@@ -52,6 +53,9 @@ cartella scelta; senza `AppManifest` in `build.rs` non ha voci nei permessi.
 - Nessun ambito statico (`scope`) e nessun `fs:default`: senza una cartella scelta il plugin dei
   file rifiuta ogni percorso. Nessun permesso di cancellare (`fs:allow-remove`): l'app non cancella
   mai (i record hanno `deleted`).
+- `fs:allow-write-file` (piano 26, R403): solo per creare un Excel o un modulo nella cartella
+  scelta, con `createNew` (apertura `create_new`): mai sopra un file che c'è già. Nell'elenco
+  sopra restano omessi i permessi dell'aggiornamento (`updater:*`, `process:allow-restart`).
 - Impostazioni della macchina (piano 6, task 6): `mkdir`, lettura e scrittura di testo hanno in più un
   ambito proprio, solo `$APPCONFIG` (mkdir) e `$APPCONFIG/machine-settings.json`; si somma a quello
   della cartella scelta a runtime. Non provato nell'app vera (vedi R84).

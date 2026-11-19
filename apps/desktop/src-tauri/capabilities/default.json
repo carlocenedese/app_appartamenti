@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: the folder dialog and the file operations TauriStore uses, with no static scope except the machine settings file ($APPCONFIG/machine-settings.json, and mkdir of $APPCONFIG). Only the folder the user picks is reachable (added at runtime by the dialog, kept by persisted-scope). The updater may check, then download and install a signed new version (its request is the app's only network call, made in Rust, off when the user turns it off) and the app may restart after it. No shell, other network access or delete.",
+  "description": "Main window: the folder dialog and the file operations TauriStore uses (write-file only to create a new Excel or form, never over an existing file), with no static scope except the machine settings file ($APPCONFIG/machine-settings.json, and mkdir of $APPCONFIG). Only the folder the user picks is reachable (added at runtime by the dialog, kept by persisted-scope). The updater may check, then download and install a signed new version (its request is the app's only network call, made in Rust, off when the user turns it off) and the app may restart after it. No shell, other network access or delete.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -34,6 +34,7 @@
         }
       ]
     },
+    "fs:allow-write-file",
     "updater:allow-check",
     "updater:allow-download-and-install",
     "process:allow-restart"
