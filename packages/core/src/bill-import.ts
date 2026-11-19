@@ -15,6 +15,7 @@ import {
   registerProposal,
 } from './confirmation';
 import { compareConsumption, worstLevel } from './consumption';
+import { withContractEnds } from './contract';
 import type { ConsumptionComparison, ConsumptionMetric } from './consumption';
 import { consumptionThresholdsFor } from './consumption-store';
 import { hashBytes, samePages } from './dedupe';
@@ -26,6 +27,7 @@ import {
   BillMatchSchema,
   BillSchema,
   ConsumptionSettingsSchema,
+  ContractSchema,
   InstalmentSchema,
   PendingDocumentSchema,
   SupplySchema,
@@ -203,7 +205,11 @@ export async function importBill(
       apartment: { id: apartmentId, knownCodes },
       bills,
       instalments: (await loadAll(store, 'instalment', InstalmentSchema)).records,
-      tenancies: (await loadAll(store, 'tenancy', TenancySchema)).records,
+      // F9 a: a stay without end lasts until the end of its contract (`period-tenancies`).
+      tenancies: withContractEnds(
+        (await loadAll(store, 'tenancy', TenancySchema)).records,
+        (await loadAll(store, 'contract', ContractSchema)).records,
+      ),
       supplies: (await loadAll(store, 'supply', SupplySchema)).records,
       ...(legacy === undefined ? {} : { thresholds: legacy }),
     },

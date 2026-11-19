@@ -44,11 +44,11 @@ async function write(store: MemoryStore, kind: RecordKind, after: { id: string }
   );
 }
 
-async function excessStore(payments: Payment[] = [january, february]) {
+async function excessStore(payments: Payment[] = [january, february], presence = stay) {
   const store = new MemoryStore();
   await write(store, 'apartment', apartment({ posti: 1 }));
   await write(store, 'tenant', { id: 't-a', v: 1, rev: 1, name: 'Nome Inventato' } as never);
-  await write(store, 'tenancy', stay);
+  await write(store, 'tenancy', presence);
   for (const p of payments) await write(store, 'payment', p);
   return store;
 }
@@ -279,5 +279,62 @@ describe('confirmRentExcess (B5)', () => {
       confirmRentExcess(store, 'p-eccedenza-p-2026-09', 'p1', clock, ids('x')),
     ).rejects.toThrow(ClosedPeriodError);
     expect(await snapshot(store)).toEqual(before);
+  });
+
+  it('R391: an excess in an open period may cover a month of a closed period', async () => {
+    // The whole lease year 2025-26 paid and closed; then a payment of September 2026 with more.
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const n = 2025 * 12 + 9 + i;
+      return `${String(Math.floor(n / 12))}-${String((n % 12) + 1).padStart(2, '0')}`;
+    });
+    const longStay = tenancy('t-a', '2025-10', '2027-09');
+    const store = await excessStore(
+      months.map((m) => payment('t-a', m, 48000, { id: `p-${m}` })),
+      longStay,
+    );
+    await write(store, 'contract', {
+      id: 'ctr',
+      v: 1,
+      rev: 1,
+      apartmentId: 'apt',
+      type: '1+1',
+      start: '2025-10',
+      end: '2027-09',
+      settlement: 'annuale',
+      tenancyIds: [longStay.id],
+    } as never);
+    const query = { apartmentId: 'apt', periodLabel: '2025-26' };
+    expect((await closePeriod(store, query, 'p1', clock, ids('c'))).status).toBe('closed');
+    await reopenPeriod(
+      store,
+      { ...query, on: '2026-11-15', reason: 'prova' },
+      'p1',
+      clock,
+      ids('r'),
+    );
+    // January short by 10,00 while reopened, then closed again (R364); September paid 10,00 more.
+    const [jan] = (await payments(store)).filter((p) => p.id === 'p-2026-01');
+    if (jan === undefined) throw new Error('january');
+    await commitChange(
+      store,
+      {
+        profileId: 'p1',
+        kind: 'test.seed',
+        summary: 'x',
+        changes: [
+          { path: recordPath('payment', jan.id), before: jan, after: { ...jan, amount: 47000 } },
+        ],
+      },
+      clock,
+      ids('j'),
+    );
+    expect((await closePeriod(store, query, 'p1', clock, ids('d'))).status).toBe('closed');
+    // October 2026 (open period 2026-27) paid 10,00 more: it proposes January 2026 (closed).
+    await write(store, 'payment', payment('t-a', '2026-10', 49000, { id: 'p-2026-10' }));
+    expect((await planIncome(store)).result.excesses).toEqual([
+      expect.objectContaining({ proposedMonth: '2026-01', amount: 1000 }),
+    ]);
+    const result = await confirmRentExcess(store, 'p-eccedenza-p-2026-10', 'p1', clock, ids('x'));
+    expect(result).toMatchObject({ status: 'confirmed' });
   });
 });
