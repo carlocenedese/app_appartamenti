@@ -754,7 +754,8 @@ describe('chiudi-periodo e conguaglio-supplementare (I2, R5)', () => {
     const again = await cli('chiudi-periodo', ...args);
     expect(again.code, again.out).toBe(0);
     expect(await state()).toBe('chiuso');
-  });
+    // ~20 CLI spawns in a row: Windows runners need more than the 5 s default.
+  }, 60_000);
 
   it('F10: caparra già restituita, i conguagli chiusi non saldati sono «da richiedere»', async () => {
     await closable();
