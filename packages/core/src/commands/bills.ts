@@ -190,9 +190,16 @@ export async function undoBillCommand(
   const fileHash = await hashBytes(input.bytes);
   // Read before the undo: the bill (or, F9 c, the TARI instalment filed) tells where the file is,
   // which Da_smistare it goes to and the name it had.
+  // A record already undone (deleted) still tells it: an undo whose move failed or found the
+  // name taken can be run again on the filed PDF, and moves it only (F9 c, giro 3).
+  const all = { includeDeleted: true };
+  const byLife = <T extends { deleted?: boolean }>(list: T[]) =>
+    [...list].sort((a, b) => Number(a.deleted === true) - Number(b.deleted === true));
   const filed =
-    (await loadAll(store, 'bill', BillSchema)).records.find((b) => b.fileHash === fileHash) ??
-    (await loadAll(store, 'instalment', InstalmentSchema)).records.find(
+    byLife((await loadAll(store, 'bill', BillSchema, all)).records).find(
+      (b) => b.fileHash === fileHash,
+    ) ??
+    byLife((await loadAll(store, 'instalment', InstalmentSchema, all)).records).find(
       (i) => i.fileHash === fileHash && i.filePath !== undefined,
     );
   let result;

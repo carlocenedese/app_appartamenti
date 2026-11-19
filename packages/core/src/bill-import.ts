@@ -241,6 +241,25 @@ export async function importBill(
   // its PDF is filed, on the instalments of this apartment (the folder the file goes to).
   const original = OriginalFileNameSchema.safeParse(result.fileName.normalize('NFC'));
   const named = original.success ? { originalName: original.data } : {};
+  // One path per notice, from all the months of this apartment's instalments (a notice split
+  // into stretches, R369, has several: giro 3).
+  const ownRates =
+    proposal.kind === 'tari'
+      ? proposal.instalments.filter((i) => i.apartmentId === apartmentId)
+      : [];
+  const [firstRate] = ownRates;
+  const noticePath =
+    firstRate === undefined
+      ? undefined
+      : tariFilePath({
+          ...firstRate,
+          coversFrom: ownRates.map((i) => i.coversFrom).sort()[0] ?? firstRate.coversFrom,
+          coversTo:
+            ownRates
+              .map((i) => i.coversTo)
+              .sort()
+              .at(-1) ?? firstRate.coversTo,
+        });
   const filed: Proposal =
     proposal.kind === 'bill'
       ? { ...proposal, bill: { ...proposal.bill, ...named } }
@@ -248,7 +267,9 @@ export async function importBill(
         ? {
             ...proposal,
             instalments: proposal.instalments.map((i) =>
-              i.apartmentId === apartmentId ? { ...i, filePath: tariFilePath(i), ...named } : i,
+              i.apartmentId === apartmentId && noticePath !== undefined
+                ? { ...i, filePath: noticePath, ...named }
+                : i,
             ),
           }
         : proposal;
