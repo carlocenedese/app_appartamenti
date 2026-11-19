@@ -10,7 +10,10 @@ import { compareConsumption, worstLevel } from './consumption';
 import { consumptionThresholdsFor } from './consumption-store';
 import { closingOf } from './closing';
 import { calcConguaglio, SettlementInputError } from './conguaglio';
+import { contractEndOf } from './contract';
 import { loadContractChecks, loadContractStatus } from './contract-store';
+import { rentCredits } from './income';
+import { loadRentExcesses } from './income-store';
 import { loadExcelInput } from './excel-store';
 import { writesBlocked } from './journal';
 import {
@@ -23,6 +26,7 @@ import {
   ContractSchema,
   MovementClassSchema,
   PaymentSchema,
+  TenancySchema,
   TransferSchema,
 } from './model';
 import type { Cents } from './money';
@@ -124,6 +128,8 @@ async function currentSettlements(
  * empty-bed shares) or `conguaglio:non-calcolabile`,
  * `conguaglio:supplementare` (a closed period whose costs changed since its snapshot, R5),
  * `conguaglio:dati-cambiati` (other data of its snapshot changed, such as the flat charge),
+ * `presenza:oltre-il-contratto` (F9 a: a stay without end past the end of the tenant's latest
+ * contract there, to add a renewal or the exit),
  * and `consumi:giallo` / `consumi:rosso` (the last live bill of each apartment and kind by its
  * worst level, `compareConsumption` with the thresholds of its apartment; none without
  * thresholds: plan 19, R331).
@@ -179,6 +185,18 @@ export async function loadDashboard(
     if (contract !== undefined) add(contract.apartmentId, `contratto:${check.code}`);
   }
 
+  // F9 a (user1, 19 Nov 2026): a stay without end that goes past the end of the tenant's latest
+  // contract in the apartment: add a renewal or the exit.
+  const allContracts = (await loadAll(store, 'contract', ContractSchema)).records;
+  const stays = (await loadAll(store, 'tenancy', TenancySchema)).records;
+  for (const stay of stays) {
+    if (stay.to !== undefined) continue;
+    const end = contractEndOf(stay, stays, allContracts);
+    if (end !== undefined && end >= stay.from && end < asOf) {
+      add(stay.apartmentId, 'presenza:oltre-il-contratto');
+    }
+  }
+
   const status = await loadContractStatus(store, { asOf });
   if (status.status === 'refused') return refused;
   // A tenant in two contracts of one apartment is counted once; the state that is not
@@ -232,7 +250,16 @@ export async function loadDashboard(
       const { closing } = loaded.input;
       // One computation of the settlement for every count (fifth round, `closingOf`).
       const since =
-        closing === undefined ? undefined : closingOf(closing, result, loaded.input, today);
+        closing === undefined
+          ? undefined
+          : closingOf(
+              closing,
+              result,
+              loaded.input,
+              today,
+              // B5 (c): the rent paid in excess to give back, as `conguaglio-supplementare`.
+              rentCredits(await loadRentExcesses(store), apartmentId, closing.from, closing.to),
+            );
       settlements.push({
         apartmentId,
         periodLabel,

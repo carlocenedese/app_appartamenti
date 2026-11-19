@@ -46,12 +46,12 @@ export function cedolareRateForYear(
 /**
  * F9 a (decided by user1 on 19 Nov 2026): a stay without `to` lasts until the end of the tenant's
  * latest contract in that apartment, renewals written as new contracts included. The tenant's
- * contracts are the live ones of the apartment that link a stay of the tenant there; with none,
- * the one in force in the stay's first month. From the latest end, a live contract of the
- * apartment that follows on (starts by the month after) carries it further: a renewal. With no
- * contract at all the stay stays open; an end before the stay's start is not taken (the
- * `tenancy-outside-contract` check says so). Only for reading what to calculate: a write never
- * stores the derived `to`.
+ * contracts are the live ones of the apartment that link a stay of the tenant there and do not end
+ * before this stay starts; with none, a contract of the apartment that links no stay at all and is
+ * in force in the stay's first month. From the latest end, a contract that links no stay and
+ * follows on (starts by the month after) is a renewal and carries it further; a contract of other
+ * tenants never does (G2-I1). With no such contract the stay stays open; an end before the stay's
+ * start is not taken. Only for reading what to calculate: a write never stores the derived `to`.
  */
 export function withContractEnds(tenancies: Tenancy[], contracts: readonly Contract[]): Tenancy[] {
   const live = contracts.filter((c) => c.deleted !== true);
@@ -62,12 +62,13 @@ export function withContractEnds(tenancies: Tenancy[], contracts: readonly Contr
   });
 }
 
-function contractEndOf(
+/** The end `withContractEnds` gives a stay without `to`, `undefined` when none. */
+export function contractEndOf(
   stay: Tenancy,
   tenancies: readonly Tenancy[],
   contracts: readonly Contract[],
 ): YearMonth | undefined {
-  const own = contracts.filter((c) => c.apartmentId === stay.apartmentId);
+  const own = contracts.filter((c) => c.deleted !== true && c.apartmentId === stay.apartmentId);
   const mine = new Set(
     tenancies
       .filter(
@@ -76,14 +77,19 @@ function contractEndOf(
       )
       .map((t) => t.id),
   );
-  let seeds = own.filter((c) => (c.tenancyIds ?? []).some((id) => mine.has(id)));
-  if (seeds.length === 0) seeds = own.filter((c) => c.start <= stay.from && stay.from <= c.end);
+  const unlinked = (c: Contract) => (c.tenancyIds ?? []).length === 0;
+  let seeds = own.filter(
+    (c) => (c.tenancyIds ?? []).some((id) => mine.has(id)) && c.end >= stay.from,
+  );
+  if (seeds.length === 0) {
+    seeds = own.filter((c) => unlinked(c) && c.start <= stay.from && stay.from <= c.end);
+  }
   let end: YearMonth | undefined;
   for (const c of seeds) if (end === undefined || c.end > end) end = c.end;
   if (end === undefined) return undefined;
   for (;;) {
     const from: YearMonth = end;
-    const next = own.find((c) => c.start <= addMonths(from, 1) && c.end > from);
+    const next = own.find((c) => unlinked(c) && c.start <= addMonths(from, 1) && c.end > from);
     if (next === undefined) return end;
     end = next.end;
   }

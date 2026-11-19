@@ -388,6 +388,30 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
     );
     expect(typed.status).toBe('computed');
   });
+
+  it('F9 a: a stay without end linked to a contract leaves at its end, no «no-exit»', async () => {
+    const store = new MemoryStore();
+    await seed(store, [
+      ['apartment', apartmentRecord],
+      ['contract', contractRecord('ctr-1', '2025-10', '2026-09', ['t-carla'])],
+      [
+        'tenancy',
+        tenancy('t-carla', { tenantId: 'ten-carla', room: 'B', from: '2026-03', to: undefined }),
+      ],
+      ['payment', payment('p-carla', { tenantId: 'ten-carla' })],
+      ['legalRate', rate('2026')],
+    ]);
+    const result = await loadDepositReturn(
+      store,
+      returnInput({ tenantId: 'ten-carla', extraCharges: [] }),
+    );
+    expect(result.status).toBe('computed');
+    // 500,00 at 2% from March to September 2026 (7 months).
+    expect(result.status === 'computed' && result.statement.lines[1]).toEqual({
+      label: 'Interessi legali',
+      amount: 583,
+    });
+  });
 });
 
 describe('saveLegalRate (plan 17, R301)', () => {

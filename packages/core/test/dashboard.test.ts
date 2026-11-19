@@ -328,3 +328,51 @@ describe('loadDashboard on the Excel fixture', () => {
     expect(result.apartments[0]?.counts['conguaglio:mesi-senza-inquilini']).toBe(1);
   });
 });
+
+describe('F9 a: a stay without end past its contract (user1, 19 Nov 2026)', () => {
+  it('counts presenza:oltre-il-contratto until a renewal or the exit is written', async () => {
+    const store = new MemoryStore();
+    const put = async (kind: RecordKind, record: { id: string } & Record<string, unknown>) =>
+      writeRecord(
+        store,
+        recordPath(kind, record.id),
+        { v: 1, rev: 1, ...record },
+        {
+          expectedRev: null,
+        },
+      );
+    await put('apartment', {
+      id: 'apt-z',
+      name: 'Appartamento Z',
+      locatore: 'L',
+      posti: 1,
+      annualitaStart: { month: 10, day: 1 },
+    });
+    await put('tenancy', {
+      id: 'tcy-z',
+      apartmentId: 'apt-z',
+      tenantId: 't-z',
+      from: '2025-10',
+      monthlyRent: 45000,
+      monthlyForfait: 3000,
+    });
+    await put('contract', {
+      id: 'ctr-z',
+      apartmentId: 'apt-z',
+      type: '1+1',
+      start: '2025-10',
+      end: '2026-09',
+      settlement: 'annuale',
+      tenancyIds: ['tcy-z'],
+    });
+    const count = async (today: string) => {
+      const r = await loadDashboard(store, { today: isoDate(today), settlements: [] });
+      if (r.status !== 'computed') throw new Error(r.status);
+      return r.apartments.find((a) => a.apartmentId === 'apt-z')?.counts[
+        'presenza:oltre-il-contratto'
+      ];
+    };
+    expect(await count('2026-09-15')).toBeUndefined();
+    expect(await count('2026-11-19')).toBe(1);
+  });
+});
