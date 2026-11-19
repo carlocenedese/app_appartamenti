@@ -1451,7 +1451,7 @@ const PeriodSnapshotSchema = z.object({
       forfaitNonIncassato: CentsSchema.optional(),
     }),
   ),
-  /** The shares of the empty beds, last year's condominium settlement excluded. */
+  /** The months with no tenant present (plan 21; before, the empty beds), last year's condominium settlement excluded. */
   emptyBeds: CentsSchema,
 });
 

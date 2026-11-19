@@ -7,10 +7,10 @@
  *   conguaglioPrec`, otherwise it stays pending with the reason `importo diverso`.
  * - Every item is split over its months (a bill over its period, an instalment over the months it
  *   covers, last year's condominium settlement over the 12 months of the current fiscal year),
- *   leftover cents to the first months. Each month's share is then split over the beds of the
- *   apartment, leftover cents to the first beds in the order of `apartment.rooms`; a bed goes to
- *   the tenant in that room that month, an empty bed to the owner (`unassigned`). Without `rooms`
- *   the beds are the tenants present that month sorted by id, then the empty beds.
+ *   leftover cents to the first months. Each month's share is then split over the tenants present
+ *   that month, not over the beds (plan 21, decided by user1 on 19 Nov 2026), leftover cents to
+ *   the first of them in the order of `apartment.rooms` (without `rooms`, sorted by id). A month
+ *   with nobody present goes to the owner (`unassigned`).
  * - Only the months inside the period count: the others belong to another period's settlement.
  * - The owner's yearly condominium share (`quotaProprieta`) comes off the instalments in equal
  *   parts, only from records with a non-zero `rata` (a record that only carries last year's
@@ -162,7 +162,7 @@ export interface ConguaglioResult {
   engineVersion: string;
   /** Every tenant present in the period, sorted by id. */
   tenants: TenantSettlement[];
-  /** The shares of empty beds, left to the owner. */
+  /** The months with no tenant present, left to the owner (plan 21: empty beds have no share). */
   unassigned: Cents;
   /** `unassigned` by kind of cost, like the tenant rows (bills and TARI are `spese`). */
   unassignedByBucket: { spese: Cents; rata: Cents; conguaglioPrec: Cents; commissione: Cents };
@@ -603,13 +603,18 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
     conguaglioPrec: 0,
     commissione: 0,
   };
-  // A month's amount over the beds; months outside the period belong to another settlement.
+  // A month's amount over the tenants present, in the order of the beds (plan 21); a month with
+  // nobody present stays with the owner. Months outside the period belong to another settlement.
   const share = (month: YearMonth, amount: number, bucket: Bucket, category?: CostCategory) => {
     const occupants = beds.get(month);
     if (occupants === undefined || amount === 0) return;
-    equalSplit(cents(amount), occupants.length).forEach((part, bed) => {
-      const tenantId = occupants[bed];
-      const tally = tenantId === undefined ? undefined : tallies.get(tenantId);
+    const present = occupants.filter((tenantId) => tenantId !== undefined);
+    if (present.length === 0) {
+      unassigned[bucket] += amount;
+      return;
+    }
+    equalSplit(cents(amount), present.length).forEach((part, bed) => {
+      const tally = tallies.get(present[bed] as string);
       if (tally === undefined) {
         unassigned[bucket] += part;
         return;

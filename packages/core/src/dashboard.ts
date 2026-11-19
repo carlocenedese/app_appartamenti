@@ -55,7 +55,7 @@ export interface SettlementStatusRow {
   problem?: string;
   /** Items of the period that do not count yet (conguaglio provvisorio). */
   pending?: number;
-  /** The shares of the empty beds, left to the owner. */
+  /** The months with no tenant present, left to the owner (plan 21). */
   unassigned?: Cents;
   /** R5: the period is closed («chiuso»); absent, it is provisional. */
   closed?: true;

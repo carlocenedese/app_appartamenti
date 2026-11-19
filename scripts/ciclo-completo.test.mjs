@@ -1372,13 +1372,14 @@ describe.sequential('ciclo completo: verifiche incrociate', () => {
     expect(cents(total[9])).toBe(matched - 600);
     const totals = shared.sheets['Appartamento-A'].Conguagli.find((r) => r[0] === 'Totale');
     expect([cents(totals[4]) + cents(totals[5])]).toEqual([carried + 1000 + 1000 - 1500]);
-    // B: one tenant on two beds, the empty bed to the owners; TARI 84,96 = 10,62 a bed and month.
+    // B: one tenant on two beds bears it all (plan 21, decided by user1 on 19 Nov 2026), nothing to
+    // the owners; TARI 84,96 = 21,24 a month.
     expect(shared.calc['apt-b'].tenants[0]).toMatchObject({
-      spese: 4000 + 4248,
+      spese: 8000 + 8496,
       forfaitIncassato: 54000,
-      due: -50000 + 4248,
+      due: -50000 + 4000 + 8496,
     });
-    expect(shared.calc['apt-b'].unassigned).toBe(4000 + 4248);
+    expect(shared.calc['apt-b'].unassigned).toBe(0);
   });
 
   it('saldi: F24, giroconto, un solo giroconto a mano e lo storno della TARI comune (E1, E2)', () => {

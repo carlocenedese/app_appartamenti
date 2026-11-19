@@ -227,15 +227,16 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
     ]);
     const before = await snapshot(store);
     // 500,00 € at 2% for October 2025..February 2026 (5 whole months): 4,1666… → 4,17 €. The bill
-    // goes half to Anna (two beds): 20,00 €; the 5,00 € already paid on a line of its own.
+    // goes all to Anna, alone in two beds (plan 21): 40,00 €; the 5,00 € already paid on a line of
+    // its own.
     expect(await loadDepositReturn(store, returnInput())).toEqual({
       status: 'computed',
       statement: {
-        total: 50000 + 417 - 2000 + 500 - 2500,
+        total: 50000 + 417 - 4000 + 500 - 2500,
         lines: [
           { label: 'Caparra', amount: 50000 },
           { label: 'Interessi legali', amount: 417 },
-          { label: 'Conguaglio bollette', amount: -2000 },
+          { label: 'Conguaglio bollette', amount: -4000 },
           { label: 'Conguaglio già versato', amount: 500 },
           { label: 'Zanzariera', amount: -2500 },
         ],
@@ -243,8 +244,8 @@ describe('loadDepositReturn (plan 11, task 3; plan 17, R302)', () => {
       recoveriesWaiting: 0,
       toCheck: [],
     });
-    const typed = await loadDepositReturn(store, returnInput({ conguaglio: cents(4000) }));
-    expect(typed.status === 'computed' && typed.statement.lines[2]?.amount).toBe(-4000);
+    const typed = await loadDepositReturn(store, returnInput({ conguaglio: cents(3000) }));
+    expect(typed.status === 'computed' && typed.statement.lines[2]?.amount).toBe(-3000);
     expect(await snapshot(store)).toEqual(before);
   });
 
