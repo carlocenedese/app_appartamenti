@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { ExtractionResultSchema } from '../src/extraction';
+import { ExtractionResultSchema, parseExtractionResult } from '../src/extraction';
 import { DocumentKindSchema } from '../src/model';
 import type { ExtractedField, ExtractionResult } from '../src/extraction';
 import type { Cents } from '../src/money';
@@ -229,5 +229,23 @@ describe('ExtractionResultSchema', () => {
 
   it('drops unknown keys', () => {
     expect(ExtractionResultSchema.parse(changed(empty, { later: 1 }))).not.toHaveProperty('later');
+  });
+});
+
+describe('parseExtractionResult', () => {
+  it('gives the validated result of the JSON text', () => {
+    expect(parseExtractionResult(JSON.stringify(full))).toEqual(ExtractionResultSchema.parse(full));
+  });
+
+  it('refuses text that is not JSON', () => {
+    expect(() => parseExtractionResult('{')).toThrow('La risposta di Python non è JSON.');
+  });
+
+  it('names only the paths of an invalid result, never its values', () => {
+    const bad = JSON.stringify({ ...full, fileName: 12345, pages: 'segreto' });
+    expect(() => parseExtractionResult(bad)).toThrow(
+      /^La risposta di Python non è un ExtractionResult valido \(.*fileName.*\)\.$/,
+    );
+    expect(() => parseExtractionResult(bad)).not.toThrow(/segreto/);
   });
 });

@@ -189,3 +189,23 @@ export const ExtractionResultSchema = z
       'text has status "senza-testo" and no fields.',
   });
 export type ExtractionResult = z.infer<typeof ExtractionResultSchema>;
+
+/**
+ * The stdout of `python -I -m bollette_pdf extract` as a validated `ExtractionResult`. Throws an
+ * Italian `Error` when it is not JSON or not a valid result; the message names only the paths of
+ * the problems, never their values, which could quote the document.
+ */
+export function parseExtractionResult(text: string): ExtractionResult {
+  let document: unknown;
+  try {
+    document = JSON.parse(text);
+  } catch {
+    throw new Error('La risposta di Python non è JSON.');
+  }
+  const parsed = ExtractionResultSchema.safeParse(document);
+  if (!parsed.success) {
+    const where = parsed.error.issues.map((issue) => issue.path.join('.')).join(', ');
+    throw new Error(`La risposta di Python non è un ExtractionResult valido (${where}).`);
+  }
+  return parsed.data;
+}
