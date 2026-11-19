@@ -231,24 +231,31 @@ export class TauriStore implements Store {
 
   /**
    * Plan 26 (R403): writes `bytes` to the new file `path`, creating its folders; never over
-   * anything already there. shortcut: no temporary file (the plugin has no hard links and its
-   * rename replaces), so a write cut short leaves a partial file the app cannot delete; the next
-   * write refuses it as `file-exists`.
+   * anything already there. `file-exists` only for the plugin's EEXIST (`os error 17`, or 80 and
+   * 183 on Windows); a write that failed after creating the file is `write-interrupted`: the
+   * partial file stays (the app cannot delete) and the user must remove it.
+   * shortcut: no temporary file (the plugin has no hard links and its rename replaces).
    */
   async writeNewFile(
     path: string,
     bytes: Uint8Array,
-  ): Promise<'written' | 'file-exists' | 'bad-default-folder'> {
+  ): Promise<'written' | 'file-exists' | 'bad-default-folder' | 'write-interrupted'> {
     const problem = await this.newFileProblem(path);
     if (problem !== undefined) return problem;
     const { rel, file } = await this.locate(path);
     try {
       await this.fs.mkdir(file.slice(0, file.lastIndexOf(this.sep)));
+    } catch (error) {
+      if ((await this.newFileProblem(path)) === 'bad-default-folder') return 'bad-default-folder';
+      // No `cause`: the plugin's message has the absolute path.
+      throw new FileAccessError(rel, accessCode(error));
+    }
+    try {
       await this.fs.writeNew(file, bytes);
     } catch (error) {
-      const now = await this.newFileProblem(path);
-      if (now !== undefined) return now;
-      // No `cause`: the plugin's message has the absolute path.
+      const code = (error as { code?: unknown } | null)?.code;
+      if (code === 'EEXIST' || /os error (?:17|80|183)\b/.test(String(error))) return 'file-exists';
+      if ((await this.newFileProblem(path)) === 'file-exists') return 'write-interrupted';
       throw new FileAccessError(rel, accessCode(error));
     }
     return 'written';

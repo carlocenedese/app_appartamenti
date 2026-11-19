@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { crc32, hashBytes, readZip, recordPath, writeRecord } from '@bollette/core';
+import { DOCX_LIMITS, crc32, hashBytes, readZip, recordPath, writeRecord } from '@bollette/core';
 import fixtureText from '../../../fixtures/excel/anno-esempio.json?raw';
 import {
   inflateRawStream,
@@ -19,7 +19,10 @@ const MODULE = '87139f3bb07240ef18d1b88a3eb72aa4f3d50a76f86e1443f5d2ee84e0ce126b
 
 type Rec = { id: string; rev: number; [key: string]: unknown };
 
-/** The records of `packages/core/test/helpers/excel-fixture.ts` (`fixtureRecords`). */
+/**
+ * A copy of `fixtureRecords` of `packages/core/test/helpers/excel-fixture.ts` (that file needs
+ * `node:fs`): the pins above depend on it, so a change there shows here as a hash mismatch.
+ */
 function fixtureRecords(): Record<string, Rec[]> {
   const f = JSON.parse(fixtureText) as Record<string, Rec[]>;
   const statement = (id: string, from: string, to: string) => ({
@@ -237,6 +240,40 @@ describe('the Excel files from the app (plan 26)', () => {
     expect(await nfd.newFileProblem('Casa\u0300/b.xlsx'.normalize('NFC'))).toBeUndefined();
   });
 
+  it('tells an interrupted write from an existing file, and keeps other failures', async () => {
+    // The disk filled up after the file was created: the partial file stays, to be deleted.
+    let target = '';
+    const full: MemoryFs = Object.create(fs);
+    full.writeNew = async (at, data) => {
+      target = at;
+      await fs.writeNew(at, data.slice(0, 10));
+      throw new Error('No space left on device (os error 28)');
+    };
+    expect(await writeConguaglioExcel(new TauriStore(ROOT, full), query)).toEqual({
+      status: 'rejected',
+      reason: 'write-interrupted',
+      paths: ['Nord/2026-27/Excel/Conguaglio_Nord_2026-27.xlsx'],
+    });
+    expect(fs.files.get(target)?.length).toBe(10);
+
+    // Refused before anything was created: a file access failure, with the relative path only.
+    const locked: MemoryFs = Object.create(fs);
+    locked.writeNew = () => Promise.reject(new Error('Permission denied (os error 13)'));
+    expect(await writeTaxExcel(new TauriStore(ROOT, locked), { year: '2026' })).toEqual({
+      status: 'rejected',
+      reason: 'file-access',
+      paths: ['Riservato_proprietari/Tasse/2026/Tasse_2026.xlsx'],
+    });
+
+    // EEXIST from the plugin (another spelling the check did not see): the file exists.
+    const clash: MemoryFs = Object.create(fs);
+    clash.writeNew = () => Promise.reject(new Error('File exists (os error 183)'));
+    expect(await writeTaxExcel(new TauriStore(ROOT, clash), { year: '2027' })).toEqual({
+      status: 'rejected',
+      reason: 'file-exists',
+    });
+  });
+
   it('refuses data in a newer format, writing nothing', async () => {
     await store.writeJsonAtomic('_app/workspace.json', { schemaVersion: 999 });
     const before = [...fs.files.keys()];
@@ -364,6 +401,14 @@ describe('writeModulo (plan 26)', () => {
     expect(await writeModulo(store, { ...args, tenancyId: 'nessuna' })).toEqual({
       status: 'rejected',
       reason: 'unknown-tenancy',
+    });
+  });
+
+  it('refuses a template over the size limit', async () => {
+    fs.put(`${ROOT}/Modelli/grande.docx`, new Uint8Array(DOCX_LIMITS.templateBytes + 1));
+    expect(await writeModulo(store, { ...args, templatePath: 'Modelli/grande.docx' })).toEqual({
+      status: 'invalid',
+      reason: 'template-too-large',
     });
   });
 

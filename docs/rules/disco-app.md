@@ -53,9 +53,12 @@ cartella scelta; senza `AppManifest` in `build.rs` non ha voci nei permessi.
 - Nessun ambito statico (`scope`) e nessun `fs:default`: senza una cartella scelta il plugin dei
   file rifiuta ogni percorso. Nessun permesso di cancellare (`fs:allow-remove`): l'app non cancella
   mai (i record hanno `deleted`).
-- `fs:allow-write-file` (piano 26, R403): solo per creare un Excel o un modulo nella cartella
-  scelta, con `createNew` (apertura `create_new`): mai sopra un file che c'è già. Nell'elenco
-  sopra restano omessi i permessi dell'aggiornamento (`updater:*`, `process:allow-restart`).
+- `fs:allow-write-file` (piano 26, R403, approvato da user1 il 19 novembre 2026): abilita anche i
+  comandi `open` e `write` del plugin (`write_file.toml`) e raggiunge la stessa cartella scelta di
+  `write-text-file`, senza portata nuova. `TauriStore` lo usa solo con `createNew` (apertura
+  `create_new`) per creare un Excel o un modulo, mai sopra un file che c'è già; il permesso in sé
+  non impone `createNew`. Nell'elenco sopra restano omessi i permessi dell'aggiornamento
+  (`updater:*`, `process:allow-restart`).
 - Impostazioni della macchina (piano 6, task 6): `mkdir`, lettura e scrittura di testo hanno in più un
   ambito proprio, solo `$APPCONFIG` (mkdir) e `$APPCONFIG/machine-settings.json`; si somma a quello
   della cartella scelta a runtime. Non provato nell'app vera (vedi R84).

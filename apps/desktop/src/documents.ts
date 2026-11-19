@@ -22,75 +22,88 @@ import type { BuiltDocument, ModuleKind, PreparedDocument } from '@bollette/core
 import type { TauriStore } from './tauri-store';
 
 /** Why a document was not written. */
-export type DocumentRefusalReason =
+export const DOCUMENT_REFUSAL_REASONS = [
   // Writing (R403, R406) and the data folder.
-  | 'newer-data'
-  | 'file-exists'
-  | 'bad-default-folder'
-  | 'bad-arguments'
-  | 'inconsistent-store'
-  | 'file-access'
-  | 'inconsistent-record'
-  | 'unreadable-records'
+  'newer-data',
+  'file-exists',
+  'bad-default-folder',
+  'write-interrupted',
+  'bad-arguments',
+  'inconsistent-store',
+  'file-access',
+  'inconsistent-record',
+  'unreadable-records',
   // Excel.
-  | 'unknown-apartment'
-  | 'unknown-period'
-  | 'ambiguous-period'
-  | 'bad-periods'
-  | 'missing-tenant'
-  | 'settlement-input'
+  'unknown-apartment',
+  'unknown-period',
+  'ambiguous-period',
+  'bad-periods',
+  'missing-tenant',
+  'settlement-input',
   // Forms.
-  | 'bad-template-file'
-  | 'template-too-large'
-  | 'bad-values'
-  | 'unknown-tenancy'
-  | 'unknown-tenant'
-  | 'ambiguous-contract'
-  | 'bad-template'
-  | 'bad-placeholder'
-  | 'unclosed-placeholder'
-  | 'unknown-fields'
-  | 'unknown-values'
-  | 'unfilled-elsewhere'
-  | 'field-from-app'
-  | 'advance-without-note'
-  | 'missing-fields'
-  | 'bad-value'
-  | 'no-tenant-folder';
+  'bad-template-file',
+  'template-too-large',
+  'bad-values',
+  'unknown-tenancy',
+  'unknown-tenant',
+  'ambiguous-contract',
+  'bad-template',
+  'bad-placeholder',
+  'unclosed-placeholder',
+  'unknown-fields',
+  'unknown-values',
+  'unfilled-elsewhere',
+  'field-from-app',
+  'advance-without-note',
+  'missing-fields',
+  'bad-value',
+  'no-tenant-folder',
+] as const;
+export type DocumentRefusalReason = (typeof DOCUMENT_REFUSAL_REASONS)[number];
 
 export type DocumentResult =
   /** `path` is relative to the picked folder (NFC); the other fields are counts and ids. */
   | { status: 'written'; path: string; [field: string]: unknown }
-  /** Fields: ids, field names or counts (`tenantIds`, `fields`, `count`, `paths`, ...). */
+  /**
+   * Fields: ids, field names or counts (`tenantIds`, `fields`, `count`, `paths`, ...);
+   * `write-interrupted` gives in `paths` the partial file to delete.
+   */
   | { status: 'rejected' | 'invalid'; reason: DocumentRefusalReason; [field: string]: unknown }
   | { status: 'failed'; reason: 'failed' };
 
-const rejected = (reason: DocumentRefusalReason) => new CommandStop('rejected', reason);
+const rejected = (reason: DocumentRefusalReason, extra?: Record<string, unknown>) =>
+  new CommandStop('rejected', reason, extra);
 const invalid = (reason: DocumentRefusalReason) => new CommandStop('invalid', reason);
+
+/** A reason or status this file does not list is a failure: a screen never meets an unknown one. */
+const known = (result: { status: unknown; reason: unknown }) =>
+  (result.status === 'rejected' || result.status === 'invalid') &&
+  (DOCUMENT_REFUSAL_REASONS as readonly unknown[]).includes(result.reason);
+
+const FAILED: DocumentResult = { status: 'failed', reason: 'failed' };
 
 async function run(task: () => Promise<DocumentResult>): Promise<DocumentResult> {
   try {
     return await task();
   } catch (error) {
     if (error instanceof CommandStop) {
-      return {
-        ...error.extra,
-        status: error.status as 'rejected' | 'invalid',
-        reason: error.reason as DocumentRefusalReason,
-      };
+      const result = { ...error.extra, status: error.status, reason: error.reason };
+      return known(result) ? (result as DocumentResult) : FAILED;
     }
     const refusal = commandRefusal(error);
     if (refusal !== undefined) {
       delete refusal.message;
-      return refusal as DocumentResult;
+      const result = refusal as { status: unknown; reason: unknown };
+      return known(result) ? (result as DocumentResult) : FAILED;
     }
     // Never the error's message: it could hold a path or a value.
-    return { status: 'failed', reason: 'failed' };
+    return FAILED;
   }
 }
 
 async function write(store: TauriStore, path: string, { bytes, body }: BuiltDocument) {
   const outcome = await store.writeNewFile(path, bytes);
+  if (outcome === 'write-interrupted') throw rejected(outcome, { paths: [path.normalize('NFC')] });
   if (outcome !== 'written') throw rejected(outcome);
   return { ...body, status: 'written' as const, path: path.normalize('NFC') };
 }
