@@ -2,6 +2,8 @@
 // task 8): profilo, conto, importa, decidi, annulla. The core does the work; this file reads
 // the clock, makes the ids, opens the data folder with FsStore and reads the statement file
 // (read only, never copied) as a CSV (core reader) or an XLSX (`python -I -m bollette_pdf table`).
+// Plan 24 (R386): every command is a function of `packages/core/src/commands`, which the screens
+// of the app call too; here stay the options, the files, Python, the PDF moves and the printing.
 //
 // The output is one JSON line with a status, counts and ids: never a name, an IBAN, an amount, a
 // description or a path, unless `--dettagli` asks for the held rows. Every message is constant.
