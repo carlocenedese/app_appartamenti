@@ -119,7 +119,8 @@ async function currentSettlements(
  * `tasse:stima-mancante` (`loadTaxTable`, only with `taxYear`, for each apartment of the taxpayer),
  * and for each settlement period given (else the one in course of each apartment, R316)
  * `conguaglio:voci-in-attesa` (the pending items),
- * `conguaglio:posti-vuoti` (1 when the empty beds have a share) or `conguaglio:non-calcolabile`,
+ * `conguaglio:mesi-senza-inquilini` (1 when months with no tenant present carry a cost, left to the
+ * owner, plan 21) or `conguaglio:non-calcolabile`,
  * `conguaglio:supplementare` (a closed period whose costs changed since its snapshot, R5),
  * `conguaglio:dati-cambiati` (other data of its snapshot changed, such as the flat charge),
  * and `consumi:giallo` / `consumi:rosso` (the last live bill of each apartment and kind by its
@@ -259,7 +260,7 @@ export async function loadDashboard(
         );
       }
       add(apartmentId, 'conguaglio:voci-in-attesa', result.pending.length);
-      if (result.unassigned !== 0) add(apartmentId, 'conguaglio:posti-vuoti');
+      if (result.unassigned !== 0) add(apartmentId, 'conguaglio:mesi-senza-inquilini');
       // R5: a closed period whose costs changed since the snapshot (a late bill): a supplementary
       // settlement to make, «Da rivedere».
       if (since?.changed === true) add(apartmentId, 'conguaglio:supplementare');

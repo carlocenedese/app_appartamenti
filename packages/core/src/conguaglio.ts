@@ -17,7 +17,7 @@
  *   settlement has no owner share). An instalment whose owner share exceeds its `rata` stays
  *   pending (`parte della proprietà maggiore della rata`) rather than giving the tenants a credit.
  *   An extraordinary instalment is the owner's alone and never reaches the tenants.
- * - A commission row matched to an item follows the item: same months, same beds (R7).
+ * - A commission row matched to an item follows the item: same months, same tenants (R7).
  * - The amount due is the tenant's share of the costs minus the flat charge actually collected
  *   (R4), with each month's rent payments going to the rent first.
  *
@@ -613,12 +613,9 @@ export function calcConguaglio(input: ConguaglioInput): ConguaglioResult {
       unassigned[bucket] += amount;
       return;
     }
-    equalSplit(cents(amount), present.length).forEach((part, bed) => {
-      const tally = tallies.get(present[bed] as string);
-      if (tally === undefined) {
-        unassigned[bucket] += part;
-        return;
-      }
+    equalSplit(cents(amount), present.length).forEach((part, i) => {
+      // Every tenant present has a tally: `tallies` holds all the tenancies of the period.
+      const tally = tallies.get(present[i] as string) as Tally;
       tally[bucket] += part;
       if (category !== undefined) {
         tally.byCategory.set(category, (tally.byCategory.get(category) ?? 0) + part);
@@ -907,7 +904,8 @@ export interface SettlementCosts {
  * difference in costs (`spese + condominio.rata + commissione + recupero`) between `current` and the
  * `snapshot` taken at closing. The flat charge is left out (a period closes only when all of it
  * is collected) and so is last year's condominium settlement (it belongs to the next fiscal year).
- * `unassignedDelta` is the same difference for the empty beds, so the deltas and `unassignedDelta`
+ * `unassignedDelta` is the same difference for the owner (the months with no tenant present, plan
+ * 21), so the deltas and `unassignedDelta`
  * add up to the net cost of the late items. A tenant with no tenancy in `tenancies` counts as
  * departed (R-C10).
  */

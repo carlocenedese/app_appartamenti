@@ -124,7 +124,7 @@ describe('buildConguaglioWorkbook on the fixture', () => {
       ['C', 'Elena Prova', 'ott – feb', 5],
       ['C', 'Carla Prova', 'mar – set', 7],
       ['D', 'Dario Prova', 'gen – set', 9],
-      ['Posti vuoti (proprietà)', null, null, null],
+      ['Mesi senza inquilini', null, null, null],
       ['Totale', null, null, null],
     ]);
     const order = ['ten-a', 'ten-b', 'ten-e', 'ten-c', 'ten-d'];
@@ -644,7 +644,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '4001362c381569f20e1c8bb085cebb3fefc304f2fabb2c916deb28582d377bb7',
+      '41a4743cbd81e2a82f9f2ddd36e9327f9c1b2c68233e3e4f35b8eb4059f5ae70',
     );
   });
 });

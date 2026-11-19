@@ -627,11 +627,12 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
       text(settlementStatus(t.due, paidBy(t.tenantId))),
     ];
   });
-  // The empty beds (question 4): with them Spese + Condominio of the total is the bills' total.
+  // The months with no tenant present, left to the owner (question 4, plan 21): with them Spese +
+  // Condominio of the total is the bills' total.
   const empty = result.unassignedByBucket;
   const emptyBeds = [empty.spese + empty.commissione, empty.rata + empty.conguaglioPrec];
   conguagli.push([
-    text('Posti vuoti (proprietà)'),
+    text('Mesi senza inquilini'),
     null,
     null,
     null,
