@@ -384,7 +384,7 @@ mod tests {
         let yes = |_: &Path| true;
         let no = |_: &Path| false;
         let pdf_text = pdf.to_str().unwrap();
-        let real = std::fs::canonicalize(&pdf).unwrap();
+        let real = without_verbatim_drive(std::fs::canonicalize(&pdf).unwrap());
         assert_eq!(checked_path(pdf_text, false, &yes), Ok(real));
         assert_eq!(
             checked_path(pdf_text, false, &no),
