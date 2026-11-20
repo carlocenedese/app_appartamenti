@@ -132,6 +132,17 @@ export function isValidCodiceFiscale(value) {
 
 // --- Detectors ------------------------------------------------------------------------------
 
+/**
+ * True when the text just before `index` is part of a URL: `https://github.com/users/<name>` is
+ * a web address, not a folder. Done here and not as a regex lookbehind, which scanned back over
+ * the whole run of non-spaces at every position and took minutes on a long single-line file.
+ */
+function insideUrl(text, index) {
+  // shortcut: looks back at most 2048 characters, enough for any real URL before a path
+  const before = text.slice(Math.max(0, index - 2048), index);
+  return /:\/\/\S*$/.test(before);
+}
+
 function near(text, index, length, keyword) {
   return keyword.test(text.slice(Math.max(0, index - 80), index + length + 40));
 }
@@ -177,10 +188,9 @@ const DETECTORS = [
   },
   {
     kind: 'private path',
-    // Not inside a URL: `https://github.com/users/<name>` is a web address, not a folder.
-    pattern:
-      /(?<!:\/\/\S*)(?:\/Users\/|\/home\/|\b[A-Za-z]:[\\/]+Users[\\/]+)([\p{L}\p{N}][\p{L}\p{N}._-]*)/giu,
-    accept: ([, account]) => !PLACEHOLDER_ACCOUNTS.test(account.split('.')[0]),
+    pattern: /(?:\/Users\/|\/home\/|\b[A-Za-z]:[\\/]+Users[\\/]+)([\p{L}\p{N}][\p{L}\p{N}._-]*)/giu,
+    accept: ([, account], text, index) =>
+      !insideUrl(text, index) && !PLACEHOLDER_ACCOUNTS.test(account.split('.')[0]),
   },
   {
     kind: 'address',
