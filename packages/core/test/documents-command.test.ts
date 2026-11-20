@@ -48,7 +48,7 @@ describe('the Excel commands (plan 26)', () => {
     expect(tenants.path).toBe('Nord/2026-27/Excel/Conguaglio_Nord_2026-27.xlsx');
     const built = tenants.build();
     expect(sha(built.bytes)).toBe(
-      '43e5565ccba8c2dc0243ec659bb90e80bb797e523ead06b5fc4d15a54d43e257',
+      '973fddfcad931ea3535da5ed29e5ee25733973aeb05b8788df69f9977ba4f76d',
     );
     expect(built.body).toEqual({
       status: 'written',

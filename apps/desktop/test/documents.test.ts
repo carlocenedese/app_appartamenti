@@ -13,7 +13,7 @@ import { MemoryFs } from './helpers/memory-fs';
 const ROOT = '/Dropbox/Appartamenti';
 // The SHA-256 of what `pnpm excel` and `pnpm moduli` write for the same records (plan 26).
 const TODAY = '2026-11-20';
-const CONGUAGLIO = '43e5565ccba8c2dc0243ec659bb90e80bb797e523ead06b5fc4d15a54d43e257';
+const CONGUAGLIO = '973fddfcad931ea3535da5ed29e5ee25733973aeb05b8788df69f9977ba4f76d';
 const OWNERS = '0c65041a20553f1bf87b4b534b8a0c8dd6ab7c20cd7ed59a8fa0ea7b67dac79a';
 const TAX = '5f1acb5ebb248a95d460026fd42ffdcb0faf2fe01e738df98613fdfd0b9c013e';
 const MODULE = '87139f3bb07240ef18d1b88a3eb72aa4f3d50a76f86e1443f5d2ee84e0ce126b';

@@ -148,19 +148,32 @@ function isTitle(row: readonly (XlsxCell | null)[]): boolean {
   return cells.length === 1 && cells[0]?.kind === 'text';
 }
 
-/** `<cols>` with one `<col>` per column that has a cell, or nothing for an empty sheet. */
-function colsXml(rows: XlsxSheet['rows']): string {
-  const longest: number[] = [];
+/**
+ * `<cols>` with one `<col>` per column that has a cell, or nothing for an empty sheet. A title
+ * cannot run past the edge of the `frozen` columns: the last frozen one widens to show it.
+ */
+function colsXml(rows: XlsxSheet['rows'], frozen: number): string {
+  const widths: number[] = [];
   for (const row of rows) {
     if (isTitle(row)) continue;
     row.forEach((cell, c) => {
-      if (cell !== null) longest[c] = Math.max(longest[c] ?? 0, displayLength(cell));
+      if (cell !== null) widths[c] = Math.max(widths[c] ?? 0, columnWidth(displayLength(cell)));
     });
   }
-  const cols = longest
-    .map((length, c) => {
+  for (const row of frozen > 0 ? rows.filter(isTitle) : []) {
+    const at = row.findIndex((cell) => cell !== null);
+    const cell = row[at];
+    if (at >= frozen || cell == null) continue;
+    let shown = 0; // a column with no <col> is at least MIN_WIDTH wide
+    for (let c = at; c < frozen; c += 1) shown += widths[c] ?? MIN_WIDTH;
+    const missing = displayLength(cell) + WIDTH_PADDING - shown;
+    const last = frozen - 1;
+    if (missing > 0) widths[last] = Math.min(MAX_WIDTH, (widths[last] ?? MIN_WIDTH) + missing);
+  }
+  const cols = widths
+    .map((width, c) => {
       const n = String(c + 1);
-      return `<col min="${n}" max="${n}" width="${String(columnWidth(length))}" customWidth="1"/>`;
+      return `<col min="${n}" max="${n}" width="${String(width)}" customWidth="1"/>`;
     })
     .join(''); // holes of a sparse array are skipped by map/join
   return cols === '' ? '' : `<cols>${cols}</cols>`;
@@ -178,8 +191,10 @@ function cellXml(cell: XlsxCell, ref: string, bold: boolean, title: boolean): st
       if (cell.value.length > MAX_TEXT || NOT_XML.test(cell.value)) {
         throw new RangeError('Invalid cell text');
       }
-      // A text wider than the widest column wraps instead of running under the next cell.
-      const wrap = !title && displayLength(cell) + WIDTH_PADDING > MAX_WIDTH;
+      // A text wider than the widest column, or with a line break, wraps instead of running under
+      // the next cell.
+      const wrap =
+        !title && (/[\r\n]/.test(cell.value) || displayLength(cell) + WIDTH_PADDING > MAX_WIDTH);
       return `<c r="${ref}"${styleAttr(wrap ? WRAP_STYLE : 0, bold)} t="inlineStr"><is><t xml:space="preserve">${escapeCellText(cell.value)}</t></is></c>`;
     }
     case 'euro':
@@ -229,7 +244,7 @@ function sheetXml(sheet: XlsxSheet, generatedOn: ISODate | undefined): string {
     return cells === '' ? '' : `<row r="${String(r + 1)}">${cells}</row>`;
   });
   // CT_Worksheet order: <sheetViews>, <cols>, <sheetData>, or Excel reports the file as damaged.
-  return `${XML_HEAD}<worksheet xmlns="${MAIN}">${sheetViewsXml(sheet)}${colsXml(all)}<sheetData>${rows.join('')}</sheetData></worksheet>`;
+  return `${XML_HEAD}<worksheet xmlns="${MAIN}">${sheetViewsXml(sheet)}${colsXml(all, sheet.freezeColumns ?? 0)}<sheetData>${rows.join('')}</sheetData></worksheet>`;
 }
 
 /** The four cell formats (general, euro aligned right, date, wrapped text) with font `font`. */

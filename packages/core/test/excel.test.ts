@@ -663,7 +663,7 @@ describe('the bytes of the Excel', () => {
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '43e5565ccba8c2dc0243ec659bb90e80bb797e523ead06b5fc4d15a54d43e257',
+      '973fddfcad931ea3535da5ed29e5ee25733973aeb05b8788df69f9977ba4f76d',
     );
   });
 });

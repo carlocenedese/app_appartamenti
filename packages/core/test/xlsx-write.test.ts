@@ -245,6 +245,32 @@ describe('readability (R408)', () => {
     expect(xml).toContain('<c r="A1" t="inlineStr">');
   });
 
+  it('widens the last frozen column to show a title, which cannot run past it', () => {
+    const state = 'Conguaglio provvisorio: voci in attesa 2'; // 40 characters
+    const rows = [[t(state)], [t('Posto'), t('Inquilino'), euro(100)]];
+    // Unfrozen, the title runs over the empty cells: it does not size the columns.
+    expect(widths(sheetOf({ sheets: [{ name: 'S', rows }] }))).toEqual([8, 11, 8]);
+    // Frozen A–B: 8 + 11 = 19 < 42, so B takes the 23 missing.
+    expect(widths(sheetOf({ sheets: [{ name: 'S', rows, freezeColumns: 2 }] }))).toEqual([
+      8, 34, 8,
+    ]);
+    // A column with no cell counts as 8 and gets a <col>; never over the maximum.
+    const long = [[t('x'.repeat(200))], [null, null, euro(100)]];
+    expect(widths(sheetOf({ sheets: [{ name: 'S', rows: long, freezeColumns: 2 }] }))).toEqual([
+      60, 8,
+    ]);
+    // Wide enough already, or the title after the frozen columns: nothing changes.
+    const fits = [[t('Breve')], [t('Inquilino con nome'), euro(100)]];
+    expect(widths(sheetOf({ sheets: [{ name: 'S', rows: fits, freezeColumns: 1 }] }))).toEqual([
+      20, 8,
+    ]);
+  });
+
+  it('wraps a text with a line break', () => {
+    const xml = sheetOf({ sheets: [{ name: 'S', rows: [[t('due\nrighe'), euro(100)]] }] });
+    expect(xml).toContain('<c r="A1" s="3" t="inlineStr">');
+  });
+
   it('writes the views, the columns and the data in the schema order', () => {
     const xml = sheetOf({
       sheets: [
