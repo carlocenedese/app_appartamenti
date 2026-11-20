@@ -12,9 +12,10 @@ import { MemoryFs } from './helpers/memory-fs';
 
 const ROOT = '/Dropbox/Appartamenti';
 // The SHA-256 of what `pnpm excel` and `pnpm moduli` write for the same records (plan 26).
-const CONGUAGLIO = '41a4743cbd81e2a82f9f2ddd36e9327f9c1b2c68233e3e4f35b8eb4059f5ae70';
-const OWNERS = '4d6a3defadead27fbd27d2f6692644ed1f997e6c5607e44d21bb84da107ba555';
-const TAX = '5e188fb9dbbb927fcccdbb78cf8ad180316d0ba0ac4ae5c897c593fbe4f94ce6';
+const TODAY = '2026-11-20';
+const CONGUAGLIO = '973fddfcad931ea3535da5ed29e5ee25733973aeb05b8788df69f9977ba4f76d';
+const OWNERS = '0c65041a20553f1bf87b4b534b8a0c8dd6ab7c20cd7ed59a8fa0ea7b67dac79a';
+const TAX = '5f1acb5ebb248a95d460026fd42ffdcb0faf2fe01e738df98613fdfd0b9c013e';
 const MODULE = '87139f3bb07240ef18d1b88a3eb72aa4f3d50a76f86e1443f5d2ee84e0ce126b';
 
 type Rec = { id: string; rev: number; [key: string]: unknown };
@@ -170,7 +171,7 @@ async function seed(records: Record<string, Rec[]>) {
 }
 
 const file = (rel: string) => fs.files.get(`${ROOT}/${rel}`);
-const query = { apartmentId: 'apt-nord', periodLabel: '2026-27' };
+const query = { apartmentId: 'apt-nord', periodLabel: '2026-27', today: TODAY };
 
 beforeEach(() => {
   fs = new MemoryFs();
@@ -202,7 +203,7 @@ describe('the Excel files from the app (plan 26)', () => {
       await hashBytes(file(owners.status === 'written' ? owners.path : '') as Uint8Array),
     ).toBe(OWNERS);
 
-    const tax = await writeTaxExcel(store, { year: '2026' });
+    const tax = await writeTaxExcel(store, { year: '2026', today: TODAY });
     expect(tax).toMatchObject({ status: 'written', year: '2026', apartments: 2, contracts: 1 });
     expect(await hashBytes(file(tax.status === 'written' ? tax.path : '') as Uint8Array)).toBe(TAX);
     expect([...fs.files.keys()].filter((p) => p.includes('.tmp-'))).toEqual([]);
@@ -226,7 +227,9 @@ describe('the Excel files from the app (plan 26)', () => {
       fs.put(at, 'altro');
       await fs.writeNew(at, data);
     };
-    expect(await writeTaxExcel(new TauriStore(ROOT, raced), { year: '2026' })).toEqual({
+    expect(
+      await writeTaxExcel(new TauriStore(ROOT, raced), { year: '2026', today: TODAY }),
+    ).toEqual({
       status: 'rejected',
       reason: 'file-exists',
     });
@@ -259,7 +262,9 @@ describe('the Excel files from the app (plan 26)', () => {
     // Refused before anything was created: a file access failure, with the relative path only.
     const locked: MemoryFs = Object.create(fs);
     locked.writeNew = () => Promise.reject(new Error('Permission denied (os error 13)'));
-    expect(await writeTaxExcel(new TauriStore(ROOT, locked), { year: '2026' })).toEqual({
+    expect(
+      await writeTaxExcel(new TauriStore(ROOT, locked), { year: '2026', today: TODAY }),
+    ).toEqual({
       status: 'rejected',
       reason: 'file-access',
       paths: ['Riservato_proprietari/Tasse/2026/Tasse_2026.xlsx'],
@@ -268,7 +273,9 @@ describe('the Excel files from the app (plan 26)', () => {
     // EEXIST from the plugin (another spelling the check did not see): the file exists.
     const clash: MemoryFs = Object.create(fs);
     clash.writeNew = () => Promise.reject(new Error('File exists (os error 183)'));
-    expect(await writeTaxExcel(new TauriStore(ROOT, clash), { year: '2027' })).toEqual({
+    expect(
+      await writeTaxExcel(new TauriStore(ROOT, clash), { year: '2027', today: TODAY }),
+    ).toEqual({
       status: 'rejected',
       reason: 'file-exists',
     });
@@ -281,7 +288,9 @@ describe('the Excel files from the app (plan 26)', () => {
       status: 'rejected',
       reason: 'newer-data',
     });
-    expect(await writeTaxExcel(store, { year: '2026' })).toMatchObject({ reason: 'newer-data' });
+    expect(await writeTaxExcel(store, { year: '2026', today: TODAY })).toMatchObject({
+      reason: 'newer-data',
+    });
     expect([...fs.files.keys()]).toEqual(before);
   });
 
@@ -298,7 +307,7 @@ describe('the Excel files from the app (plan 26)', () => {
       status: 'rejected',
       reason: 'unknown-period',
     });
-    expect(await writeTaxExcel(store, { year: 'anno' })).toEqual({
+    expect(await writeTaxExcel(store, { year: 'anno', today: TODAY })).toEqual({
       status: 'invalid',
       reason: 'bad-arguments',
     });

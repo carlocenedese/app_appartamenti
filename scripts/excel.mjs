@@ -1,10 +1,10 @@
 // The Excel of the settlement of one apartment and one period from the command line (plan 5,
 // tasks 7 and 11): `pnpm excel --cartella <dir> --appartamento <id> --periodo <etichetta>
-// [--uscita <file.xlsx>] [--proprietari]`; without `--uscita` the file goes to `excelFilePath`
+// [--uscita <file.xlsx>] [--proprietari] [--oggi <AAAA-MM-GG>]`; without `--uscita` the file goes to `excelFilePath`
 // under `--cartella` (question 7, R173). `--proprietari` writes the owners' file instead (plan 5b,
 // R175), by default to `ownersFilePath` (R184). `--tasse <anno>` writes the file for the
 // commercialista instead (plan 10, R215), by default to `taxFilePath`, with no apartment or
-// period. The core builds the file; this script opens the data folder with FsStore and
+// period. `--oggi` is the day of «Generato il» (R408), today by default. The core builds the file; this script opens the data folder with FsStore and
 // writes the bytes through a temporary file in the same folder, linked to the output so that an
 // existing file is never overwritten (section 6, R156).
 //
@@ -31,7 +31,7 @@ import {
 
 const MESSAGES = {
   'bad-arguments':
-    'Argomenti non validi: servono --cartella, --appartamento e --periodo, oppure --cartella e --tasse <anno> (--uscita facoltativo); vedere «pnpm excel --help».',
+    'Argomenti non validi: servono --cartella, --appartamento e --periodo, oppure --cartella e --tasse <anno> (--uscita e --oggi facoltativi); vedere «pnpm excel --help».',
   'bad-folder': 'La cartella dei dati non esiste o non è una cartella.',
   'bad-output':
     'Il file di uscita non è valido: serve un nome .xlsx ammesso, in una cartella che esiste.',
@@ -61,6 +61,7 @@ export const OPTIONS = {
   uscita: { type: 'string' },
   proprietari: { type: 'boolean' },
   tasse: { type: 'string' },
+  oggi: { type: 'string' },
 };
 
 /** One line of help in Italian for each option (review of 18 Nov 2026, Q9). */
@@ -71,16 +72,20 @@ export const OPTION_HELP = {
   uscita: 'Il file .xlsx da scrivere (facoltativo: senza, il percorso predefinito).',
   proprietari: 'Scrive il file riservato ai proprietari invece di quello degli inquilini.',
   tasse: 'Scrive il file per il commercialista dell’anno indicato (senza appartamento e periodo).',
+  oggi: 'La data di «Generato il», AAAA-MM-GG (facoltativa: senza, oggi).',
 };
 
 export const USAGE =
-  'Uso: pnpm excel --cartella <dir> --appartamento <id> --periodo <etichetta> [--uscita <file.xlsx>] [--proprietari], oppure pnpm excel --cartella <dir> --tasse <anno>. Uscita: 0 scritto, 1 rifiutato, 2 argomenti non validi, 3 errore inatteso.';
+  'Uso: pnpm excel --cartella <dir> --appartamento <id> --periodo <etichetta> [--uscita <file.xlsx>] [--proprietari] [--oggi <data>], oppure pnpm excel --cartella <dir> --tasse <anno> [--oggi <data>]. Uscita: 0 scritto, 1 rifiutato, 2 argomenti non validi, 3 errore inatteso.';
 
 /**
  * Runs one command line; returns the exit code and the JSON line. `io.newId` names the temporary
- * file, `io.link` is `linkSync` (replaced only by the tests).
+ * file, `io.link` is `linkSync` (replaced only by the tests), `io.today` gives today's date when
+ * `--oggi` is absent.
  */
-export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
+const utcToday = () => new Date().toISOString().slice(0, 10);
+
+export async function main(argv, io = { newId: randomUUID, link: linkSync, today: utcToday }) {
   const done = (code, body) => ({ code, output: `${JSON.stringify(body)}\n` });
   try {
     // Q9: the options with one line each; nothing is read or written.
@@ -122,12 +127,14 @@ export async function main(argv, io = { newId: randomUUID, link: linkSync }) {
     if (target !== undefined && existsSync(target.file)) throw rejected('file-exists');
 
     const store = new FsStore(values.cartella);
+    const today = values.oggi ?? (io.today ?? utcToday)();
     const prepared = taxes
-      ? await taxExcelCommand(store, { year: values.tasse })
+      ? await taxExcelCommand(store, { year: values.tasse, today })
       : await conguaglioExcelCommand(store, {
           apartmentId: values.appartamento,
           periodLabel: values.periodo,
           owners: values.proprietari === true,
+          today,
         });
     if (target === undefined) {
       const file = join(values.cartella, ...prepared.path.split('/'));

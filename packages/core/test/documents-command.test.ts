@@ -39,7 +39,7 @@ const stopOf = async (run: () => unknown) => {
   throw new Error('no stop');
 };
 
-const query = { apartmentId: 'apt-nord', periodLabel: '2026-27' };
+const query = { apartmentId: 'apt-nord', periodLabel: '2026-27', today: '2026-11-20' };
 
 describe('the Excel commands (plan 26)', () => {
   it('build the bytes the command line writes', async () => {
@@ -48,7 +48,7 @@ describe('the Excel commands (plan 26)', () => {
     expect(tenants.path).toBe('Nord/2026-27/Excel/Conguaglio_Nord_2026-27.xlsx');
     const built = tenants.build();
     expect(sha(built.bytes)).toBe(
-      '41a4743cbd81e2a82f9f2ddd36e9327f9c1b2c68233e3e4f35b8eb4059f5ae70',
+      '973fddfcad931ea3535da5ed29e5ee25733973aeb05b8788df69f9977ba4f76d',
     );
     expect(built.body).toEqual({
       status: 'written',
@@ -61,12 +61,12 @@ describe('the Excel commands (plan 26)', () => {
     });
     const owners = (await conguaglioExcelCommand(store, { ...query, owners: true })).build();
     expect(sha(owners.bytes)).toBe(
-      '4d6a3defadead27fbd27d2f6692644ed1f997e6c5607e44d21bb84da107ba555',
+      '0c65041a20553f1bf87b4b534b8a0c8dd6ab7c20cd7ed59a8fa0ea7b67dac79a',
     );
     expect(owners.body).toMatchObject({ sheets: 1, items: 1, pending: 0 });
-    const tax = await taxExcelCommand(store, { year: '2026' });
+    const tax = await taxExcelCommand(store, { year: '2026', today: '2026-11-20' });
     expect(sha(tax.build().bytes)).toBe(
-      '5e188fb9dbbb927fcccdbb78cf8ad180316d0ba0ac4ae5c897c593fbe4f94ce6',
+      '5f1acb5ebb248a95d460026fd42ffdcb0faf2fe01e738df98613fdfd0b9c013e',
     );
     expect(tax.build().body).toEqual({
       status: 'written',
@@ -82,10 +82,19 @@ describe('the Excel commands (plan 26)', () => {
     expect(
       await stopOf(() => conguaglioExcelCommand(store, { ...query, apartmentId: 'x' })),
     ).toEqual({ status: 'rejected', reason: 'unknown-apartment' });
-    expect(await stopOf(() => taxExcelCommand(store, { year: '26' }))).toEqual({
-      status: 'invalid',
-      reason: 'bad-arguments',
-    });
+    expect(await stopOf(() => taxExcelCommand(store, { year: '26', today: '2026-11-20' }))).toEqual(
+      {
+        status: 'invalid',
+        reason: 'bad-arguments',
+      },
+    );
+    // R408: the day of «Generato il» comes from the caller and must be AAAA-MM-GG.
+    expect(
+      await stopOf(() => taxExcelCommand(store, { year: '2026', today: '20/11/2026' })),
+    ).toEqual({ status: 'invalid', reason: 'bad-arguments' });
+    expect(
+      await stopOf(() => conguaglioExcelCommand(store, { ...query, today: '2026-02-30' })),
+    ).toEqual({ status: 'invalid', reason: 'bad-arguments' });
     const records = fixtureRecords();
     const noTenants = await fixtureStore({ ...records, tenant: [] });
     const prepared = await conguaglioExcelCommand(noTenants, query);

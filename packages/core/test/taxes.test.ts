@@ -900,6 +900,8 @@ describe('buildTaxWorkbook and taxFilePath (plan 10, task 5)', () => {
   it('lists every live property, contract and rent entry, as data', () => {
     const workbook = buildTaxWorkbook({ apartments, contracts });
     expect(workbook.sheets.map((s) => s.name)).toEqual(['Immobili', 'Contratti', 'Canoni']);
+    // R408: the header of each sheet bold and frozen.
+    expect(workbook.sheets.map((s) => s.header)).toEqual([0, 0, 0]);
     const [immobili, contratti, canoni] = workbook.sheets;
     expect(immobili?.rows).toEqual([
       ['Appartamento', 'Nome', 'Locatore', 'Indirizzo', 'Dati catastali'].map(text),

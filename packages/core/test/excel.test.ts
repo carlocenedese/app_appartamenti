@@ -73,6 +73,23 @@ describe('buildConguaglioWorkbook on the fixture', () => {
     expect(rowsOf(get('Versamenti conguaglio'))[0]).toEqual(EXCEL_HEADERS['Versamenti conguaglio']);
   });
 
+  it('marks the headers, the totals and the columns of the names (R408)', () => {
+    expect(book.sheets.map((s) => [s.header, s.freezeColumns])).toEqual([
+      [1, 0],
+      [1, 2],
+      [0, 2],
+      [0, 1],
+    ]);
+    for (const name of ['Bollette', 'Conguagli'] as const) {
+      const sheet = get(name);
+      expect(sheet?.totals?.map((r) => rowsOf(sheet)[r]?.[0])).toEqual(['Totale']);
+    }
+    expect(book.generatedOn).toBeUndefined();
+    expect(buildConguaglioWorkbook(fixtureInput(), isoDate('2026-11-20')).generatedOn).toBe(
+      '2026-11-20',
+    );
+  });
+
   it('writes the bills with typed cells', () => {
     const sheet = get('Bollette');
     const internet = sheet?.rows.find((r) => plain(r[0]) === 'Internet');
@@ -624,7 +641,9 @@ describe('excelFilePath (question 7)', () => {
 });
 
 describe('the bytes of the Excel', () => {
-  const bytes = writeXlsx(buildConguaglioWorkbook(fixtureInput()));
+  // R408: a fixed day for «Generato il».
+  const GENERATED_ON = isoDate('2026-11-20');
+  const bytes = writeXlsx(buildConguaglioWorkbook(fixtureInput(), GENERATED_ON));
 
   it('do not depend on the order of the input', () => {
     const next = mulberry32(11);
@@ -638,13 +657,13 @@ describe('the bytes of the Excel', () => {
       payments: shuffled(input.payments, next),
       tenants: shuffled(input.tenants, next),
     };
-    expect(writeXlsx(buildConguaglioWorkbook(mixed))).toEqual(bytes);
+    expect(writeXlsx(buildConguaglioWorkbook(mixed, GENERATED_ON))).toEqual(bytes);
   });
 
   it('are the same in every time zone', () => {
     // Run under TZ=Pacific/Auckland and TZ=America/Los_Angeles too: the hash must not move.
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '41a4743cbd81e2a82f9f2ddd36e9327f9c1b2c68233e3e4f35b8eb4059f5ae70',
+      '973fddfcad931ea3535da5ed29e5ee25733973aeb05b8788df69f9977ba4f76d',
     );
   });
 });

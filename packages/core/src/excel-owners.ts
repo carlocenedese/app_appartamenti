@@ -190,6 +190,7 @@ const dayMonthYear = (day: ISODate): string =>
 /** The owners' file (plan 5b): the sheet `OWNERS_SHEET`, then the row «Totale» (section 19). */
 export function buildOwnersWorkbook(
   input: ConguaglioInput & { freeDebits?: FreeDebit[]; closing?: PeriodClose },
+  generatedOn?: ISODate,
 ): XlsxWorkbook {
   const items = ownersItems(input);
   const rows: (XlsxCell | null)[][] = items.map((item) => [
@@ -210,6 +211,7 @@ export function buildOwnersWorkbook(
   ]);
   const sum = (pick: (item: OwnersItem) => Cents | undefined) =>
     euro(total(items.map((item) => pick(item) ?? 0)));
+  const totalRow = rows.length;
   rows.push([
     text('Totale'),
     null,
@@ -264,7 +266,18 @@ export function buildOwnersWorkbook(
       value: settlementStateText(input.closing, waiting.length, closingFlags(input)),
     },
   ];
-  return { sheets: [{ name: OWNERS_SHEET, rows: [provisional, header, ...rows] }] };
+  return {
+    ...(generatedOn === undefined ? {} : { generatedOn }),
+    // R408: header (row 1) bold and frozen, the total bold.
+    sheets: [
+      {
+        name: OWNERS_SHEET,
+        rows: [provisional, header, ...rows],
+        header: 1,
+        totals: [totalRow + 2],
+      },
+    ],
+  };
 }
 
 /**

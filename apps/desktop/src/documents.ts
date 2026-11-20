@@ -117,11 +117,12 @@ async function writePrepared(store: TauriStore, { path, build }: PreparedDocumen
 
 /**
  * The Excel of the settlement of one apartment and one period
- * (`<Appartamento>/<periodo>/Excel/Conguaglio_…xlsx`), or with `owners` the owners' file.
+ * (`<Appartamento>/<periodo>/Excel/Conguaglio_…xlsx`), or with `owners` the owners' file; `today`
+ * (`AAAA-MM-GG`) is the caller's clock, for «Generato il» (R408).
  */
 export function writeConguaglioExcel(
   store: TauriStore,
-  args: { apartmentId: string; periodLabel: string; owners?: boolean },
+  args: { apartmentId: string; periodLabel: string; owners?: boolean; today: string },
 ): Promise<DocumentResult> {
   return run(async () => {
     await refuseNewerData(store);
@@ -129,8 +130,11 @@ export function writeConguaglioExcel(
   });
 }
 
-/** The file for the commercialista of `year` (`AAAA`). */
-export function writeTaxExcel(store: TauriStore, args: { year: string }): Promise<DocumentResult> {
+/** The file for the commercialista of `year` (`AAAA`); `today` (`AAAA-MM-GG`) as above. */
+export function writeTaxExcel(
+  store: TauriStore,
+  args: { year: string; today: string },
+): Promise<DocumentResult> {
   return run(async () => {
     await refuseNewerData(store);
     return writePrepared(store, await taxExcelCommand(store, args));
