@@ -179,6 +179,16 @@ describe('scanText', () => {
     ).toEqual([]);
   });
 
+  it('scans a long single-line file quickly, still telling URLs from folders', () => {
+    // A 200 000-character run with no spaces (an embedded image) took minutes with a lookbehind.
+    const run = 'Ab1+/'.repeat(40_000);
+    const started = performance.now();
+    expect(
+      kinds(`${run} https://x.org/${run.slice(0, 1000)}/home/pinco ${run}/Users/pinco`),
+    ).toEqual(['private path']);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
   it('flags a house number after an apartment name, not years or amounts', () => {
     expect(kinds('Berchet 3, Pulci 2a, Lovarini_5, GAL. G. BERCHET 3')).toEqual([
       'address',
