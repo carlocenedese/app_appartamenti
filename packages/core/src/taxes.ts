@@ -457,19 +457,22 @@ const percent = (bp: number | undefined): XlsxCell | null =>
  * computed. The registration code and the cadastre are personal data: the file goes only to
  * `Riservato_proprietari`.
  */
-export function buildTaxWorkbook(input: {
-  apartments: Apartment[];
-  contracts: Contract[];
-}): XlsxWorkbook {
+export function buildTaxWorkbook(
+  input: { apartments: Apartment[]; contracts: Contract[] },
+  generatedOn?: ISODate,
+): XlsxWorkbook {
   const header = (names: readonly string[]) => names.map((n) => text(n));
   const apartments = live(input.apartments).sort((a, b) => compareText(a.id, b.id));
   const contracts = live(input.contracts).sort(
     (a, b) => compareText(a.apartmentId, b.apartmentId) || compareText(a.id, b.id),
   );
   return {
+    ...(generatedOn === undefined ? {} : { generatedOn }),
+    // R408: the header of each sheet (row 0) bold and frozen.
     sheets: [
       {
         name: 'Immobili',
+        header: 0,
         rows: [
           header(TAX_EXPORT_HEADERS.Immobili),
           ...apartments.map((a) => [
@@ -487,6 +490,7 @@ export function buildTaxWorkbook(input: {
       },
       {
         name: 'Contratti',
+        header: 0,
         rows: [
           header(TAX_EXPORT_HEADERS.Contratti),
           ...contracts.map((c) => [
@@ -510,6 +514,7 @@ export function buildTaxWorkbook(input: {
       },
       {
         name: 'Canoni',
+        header: 0,
         rows: [
           header(TAX_EXPORT_HEADERS.Canoni),
           ...contracts.flatMap((c) =>

@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { cents } from '../src/money';
 import { isoDate } from '../src/period';
-import { centsToDecimal, columnName, excelSerial, writeXlsx } from '../src/xlsx-write';
+import {
+  MAX_WIDTH,
+  MIN_WIDTH,
+  centsToDecimal,
+  columnName,
+  columnWidth,
+  displayLength,
+  excelSerial,
+  writeXlsx,
+} from '../src/xlsx-write';
 import type { XlsxCell, XlsxWorkbook } from '../src/xlsx-write';
 
 /** The members of a stored zip, read through its central directory. */
@@ -96,7 +105,9 @@ describe('writeXlsx', () => {
     ]);
     expect(members.get('xl/worksheets/sheet1.xml')).toBe(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' +
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<cols><col min="1" max="1" width="9" customWidth="1"/>' +
+        '<col min="2" max="2" width="12" customWidth="1"/></cols><sheetData>' +
         '<row r="1"><c r="A1" t="inlineStr"><is><t xml:space="preserve">Tipo</t></is></c>' +
         '<c r="B1" t="inlineStr"><is><t xml:space="preserve">Importo</t></is></c></row>' +
         '<row r="2"><c r="A2" t="inlineStr"><is><t xml:space="preserve">A&amp;B &lt;x&gt;</t></is></c>' +
@@ -138,7 +149,7 @@ describe('writeXlsx', () => {
       '<numFmt numFmtId="164" formatCode="&quot;€ &quot;#,##0.00;&quot;- € &quot;#,##0.00"/>',
     );
     expect(styles).toContain('<numFmt numFmtId="165" formatCode="dd/mm/yyyy"/>');
-    expect(styles).toContain('<cellXfs count="3">');
+    expect(styles).toContain('<cellXfs count="8">');
     // No formula, no document properties, no shared strings.
     const all = [...members.values()].join('');
     expect(all).not.toContain('<f>');
@@ -185,5 +196,128 @@ describe('writeXlsx', () => {
   ])('refuses %s with a constant message', (_, book) => {
     expect(() => writeXlsx(book as XlsxWorkbook)).toThrow(RangeError);
     expect(() => writeXlsx(book as XlsxWorkbook)).not.toThrow(/xxxx|a.b/);
+  });
+});
+
+describe('readability (R408)', () => {
+  const euro = (n: number): XlsxCell => ({ kind: 'euro', value: cents(n) });
+  const sheetOf = (workbook: XlsxWorkbook) =>
+    unzip(writeXlsx(workbook)).get('xl/worksheets/sheet1.xml') ?? '';
+  const widths = (xml: string) =>
+    [...xml.matchAll(/<col min="(\d+)" max="\1" width="(\d+)" customWidth="1"\/>/g)].map((m) =>
+      Number(m[2]),
+    );
+
+  it('measures what a cell shows', () => {
+    expect(displayLength(euro(-123456))).toBe('- € 1.234,56'.length);
+    expect(displayLength(euro(5))).toBe('€ 0,05'.length);
+    expect(displayLength({ kind: 'date', value: isoDate('2026-03-16') })).toBe(10);
+    expect(displayLength({ kind: 'int', value: -42 })).toBe(3);
+    expect(displayLength(t('due\nrighe lunghe'))).toBe('righe lunghe'.length);
+    expect(displayLength(t('città'))).toBe(5);
+  });
+
+  it('sizes each column from its longest text, within the bounds', () => {
+    expect([0, 6, 7, 30, 58, 59, 500].map(columnWidth)).toEqual([8, 8, 9, 32, 60, 60, 60]);
+    expect([MIN_WIDTH, MAX_WIDTH]).toEqual([8, 60]);
+    const long = 'Bolletta della luce del bimestre di ottobre e novembre, conguaglio';
+    const xml = sheetOf({
+      sheets: [
+        {
+          name: 'S',
+          rows: [
+            [t('Nota'), t('Importo'), t('x')],
+            [t('Fornitore con un nome lungo'), euro(-123456), t(long)],
+          ],
+        },
+      ],
+    });
+    expect(widths(xml)).toEqual([29, 14, 60]);
+    // Only the text over the maximum wraps (style 3).
+    expect(xml).toContain('<c r="C2" s="3" t="inlineStr">');
+    expect(xml).toContain('<c r="A2" t="inlineStr">');
+  });
+
+  it('lets a title alone in its row run over the empty cells', () => {
+    const title = 'Conguaglio provvisorio: 2 voci in attesa di pagamento, da rifare alla chiusura';
+    const xml = sheetOf({ sheets: [{ name: 'S', rows: [[t(title)], [t('Tipo'), euro(100)]] }] });
+    expect(widths(xml)).toEqual([8, 8]);
+    expect(xml).toContain('<c r="A1" t="inlineStr">');
+  });
+
+  it('writes the views, the columns and the data in the schema order', () => {
+    const xml = sheetOf({
+      sheets: [
+        {
+          name: 'S',
+          rows: [
+            [t('Stato')],
+            [t('Nome'), t('Importo')],
+            [t('Anna'), euro(100)],
+            [t('Totale'), euro(100)],
+          ],
+          header: 1,
+          totals: [3],
+          freezeColumns: 1,
+        },
+      ],
+    });
+    const at = (part: string) => xml.indexOf(part);
+    expect(at('<sheetViews>')).toBeGreaterThan(0);
+    expect(at('<sheetViews>')).toBeLessThan(at('<cols>'));
+    expect(at('<cols>')).toBeLessThan(at('<sheetData>'));
+    expect(xml).toContain(
+      '<sheetViews><sheetView workbookViewId="0"><pane xSplit="1" ySplit="2" topLeftCell="B3" ' +
+        'activePane="bottomRight" state="frozen"/></sheetView></sheetViews>',
+    );
+    // The header and the total in bold (4 + base), the other rows not.
+    expect(xml).toContain('<c r="B2" s="4" t="inlineStr">');
+    expect(xml).toContain('<c r="B4" s="5"><v>1.00</v></c>');
+    expect(xml).toContain('<c r="B3" s="1"><v>1.00</v></c>');
+    const rowsOnly = sheetOf({ sheets: [{ name: 'S', rows: [[t('a')]], header: 0 }] });
+    expect(rowsOnly).toContain(
+      '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>',
+    );
+    const columnsOnly = sheetOf({ sheets: [{ name: 'S', rows: [[t('a')]], freezeColumns: 2 }] });
+    expect(columnsOnly).toContain(
+      '<pane xSplit="2" topLeftCell="C1" activePane="topRight" state="frozen"/>',
+    );
+    expect(sheetOf({ sheets: [{ name: 'S', rows: [] }] })).toContain(
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData></sheetData>',
+    );
+  });
+
+  it('declares the bold font, the right-aligned amounts and the view the panes refer to', () => {
+    const members = unzip(writeXlsx({ sheets: [{ name: 'S', rows: [[t('a')]] }] }));
+    const styles = members.get('xl/styles.xml') ?? '';
+    expect(styles).toContain('<font><b/><sz val="11"/><name val="Calibri"/></font>');
+    expect(styles).toContain(
+      '<xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" ' +
+        'applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>',
+    );
+    expect(members.get('xl/workbook.xml')).toContain(
+      '<bookViews><workbookView/></bookViews><sheets>',
+    );
+  });
+
+  it('writes «Generato il» under every sheet, from the given day only', () => {
+    const rows = [[t('Nome'), euro(100)]];
+    const members = unzip(
+      writeXlsx({
+        generatedOn: isoDate('2026-11-20'),
+        sheets: [
+          { name: 'A', rows },
+          { name: 'B', rows },
+        ],
+      }),
+    );
+    for (const sheet of ['sheet1', 'sheet2']) {
+      expect(members.get(`xl/worksheets/${sheet}.xml`)).toContain(
+        '<row r="3"><c r="A3" t="inlineStr"><is><t xml:space="preserve">Generato il 20/11/2026</t></is></c></row></sheetData>',
+      );
+    }
+    // The line does not widen column A.
+    expect(widths(members.get('xl/worksheets/sheet1.xml') ?? '')).toEqual([8, 8]);
+    expect(sheetOf({ sheets: [{ name: 'A', rows }] })).not.toContain('Generato');
   });
 });

@@ -3,8 +3,10 @@
  * bytes for the same workbook. Only the parts Excel needs (content types, relationships,
  * workbook, styles, one part per sheet), text as inline strings, values only (no formula:
  * question 1), no `docProps` (author and dates would live there), stored in `zipStored`.
+ * Readability (R408): column widths from the displayed text, a bold and frozen header row, bold
+ * totals, amounts aligned right, and the line «Generato il …» under every sheet; no colour.
  */
-import { cents } from './money';
+import { cents, formatEuro } from './money';
 import type { Cents } from './money';
 import { daysBetween, isoDate } from './period';
 import type { ISODate } from './period';
@@ -19,10 +21,18 @@ export type XlsxCell =
 export interface XlsxSheet {
   name: string;
   rows: readonly (readonly (XlsxCell | null)[])[];
+  /** The header row (0-based): bold, frozen with the rows above it. */
+  header?: number;
+  /** Rows of totals (0-based), in bold. */
+  totals?: readonly number[];
+  /** Columns frozen on the left, for the names. */
+  freezeColumns?: number;
 }
 
 export interface XlsxWorkbook {
   sheets: readonly XlsxSheet[];
+  /** The day the file is made, from the caller's clock: «Generato il dd/mm/yyyy» under each sheet. */
+  generatedOn?: ISODate;
 }
 
 const MAX_ROWS = 1_048_576;
@@ -39,6 +49,16 @@ export const NOT_XML =
   // eslint-disable-next-line no-control-regex -- the control characters are what it looks for
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const BAD_SHEET_NAME = /[[\]:*?/\\]/;
+// Column widths in characters (R408): the longest displayed text plus padding, within these bounds.
+export const MIN_WIDTH = 8;
+export const MAX_WIDTH = 60;
+const WIDTH_PADDING = 2;
+const DATE_WIDTH = 10; // dd/mm/yyyy
+// cellXfs of STYLES: general, euro, date, wrapped text; the same four in bold from BOLD on.
+const EURO_STYLE = 1;
+const DATE_STYLE = 2;
+const WRAP_STYLE = 3;
+const BOLD = 4;
 
 /** `A` for 0, `Z` for 25, `AA` for 26, up to `XFD` for 16 383. */
 export function columnName(index: number): string {
@@ -103,48 +123,138 @@ function assertSheetNames(sheets: readonly XlsxSheet[]): void {
   }
 }
 
-function cellXml(cell: XlsxCell, ref: string): string {
+/** Characters a cell shows: the longest line of a text, the formatted amount, `dd/mm/yyyy`. */
+export function displayLength(cell: XlsxCell): number {
   switch (cell.kind) {
     case 'text':
-      if (cell.value.length > MAX_TEXT || NOT_XML.test(cell.value)) {
-        throw new RangeError('Invalid cell text');
-      }
-      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escapeCellText(cell.value)}</t></is></c>`;
+      return Math.max(...cell.value.split(/\r\n|\r|\n/).map((line) => [...line].length));
     case 'euro':
-      return `<c r="${ref}" s="1"><v>${centsToDecimal(cell.value)}</v></c>`;
+      return formatEuro(cell.value).length;
     case 'int':
-      if (!Number.isSafeInteger(cell.value)) throw new RangeError('Invalid integer cell');
-      return `<c r="${ref}"><v>${String(cell.value)}</v></c>`;
+      return String(cell.value).length;
     case 'date':
-      return `<c r="${ref}" s="2"><v>${String(excelSerial(cell.value))}</v></c>`;
+      return DATE_WIDTH;
   }
 }
 
-function sheetXml(sheet: XlsxSheet): string {
-  if (sheet.rows.length > MAX_ROWS) throw new RangeError('Too many rows');
-  const rows = sheet.rows.map((row, r) => {
+/** The width of a column whose longest displayed text has `length` characters. */
+export function columnWidth(length: number): number {
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, length + WIDTH_PADDING));
+}
+
+/** A row with only one text: a title or a note, which runs over the empty cells on its right. */
+function isTitle(row: readonly (XlsxCell | null)[]): boolean {
+  const cells = row.filter((cell) => cell !== null);
+  return cells.length === 1 && cells[0]?.kind === 'text';
+}
+
+/** `<cols>` with one `<col>` per column that has a cell, or nothing for an empty sheet. */
+function colsXml(rows: XlsxSheet['rows']): string {
+  const longest: number[] = [];
+  for (const row of rows) {
+    if (isTitle(row)) continue;
+    row.forEach((cell, c) => {
+      if (cell !== null) longest[c] = Math.max(longest[c] ?? 0, displayLength(cell));
+    });
+  }
+  const cols = longest
+    .map((length, c) => {
+      const n = String(c + 1);
+      return `<col min="${n}" max="${n}" width="${String(columnWidth(length))}" customWidth="1"/>`;
+    })
+    .join(''); // holes of a sparse array are skipped by map/join
+  return cols === '' ? '' : `<cols>${cols}</cols>`;
+}
+
+/** `s="…"`, or nothing for the default style. */
+const styleAttr = (base: number, bold: boolean): string => {
+  const style = base + (bold ? BOLD : 0);
+  return style === 0 ? '' : ` s="${String(style)}"`;
+};
+
+function cellXml(cell: XlsxCell, ref: string, bold: boolean, title: boolean): string {
+  switch (cell.kind) {
+    case 'text': {
+      if (cell.value.length > MAX_TEXT || NOT_XML.test(cell.value)) {
+        throw new RangeError('Invalid cell text');
+      }
+      // A text wider than the widest column wraps instead of running under the next cell.
+      const wrap = !title && displayLength(cell) + WIDTH_PADDING > MAX_WIDTH;
+      return `<c r="${ref}"${styleAttr(wrap ? WRAP_STYLE : 0, bold)} t="inlineStr"><is><t xml:space="preserve">${escapeCellText(cell.value)}</t></is></c>`;
+    }
+    case 'euro':
+      return `<c r="${ref}"${styleAttr(EURO_STYLE, bold)}><v>${centsToDecimal(cell.value)}</v></c>`;
+    case 'int':
+      if (!Number.isSafeInteger(cell.value)) throw new RangeError('Invalid integer cell');
+      return `<c r="${ref}"${styleAttr(0, bold)}><v>${String(cell.value)}</v></c>`;
+    case 'date':
+      return `<c r="${ref}"${styleAttr(DATE_STYLE, bold)}><v>${String(excelSerial(cell.value))}</v></c>`;
+  }
+}
+
+/** The header rows and the name columns frozen, or nothing. */
+function sheetViewsXml(sheet: XlsxSheet): string {
+  const ySplit = sheet.header === undefined ? 0 : sheet.header + 1;
+  const xSplit = sheet.freezeColumns ?? 0;
+  if (ySplit === 0 && xSplit === 0) return '';
+  const pane = ySplit === 0 ? 'topRight' : xSplit === 0 ? 'bottomLeft' : 'bottomRight';
+  return (
+    '<sheetViews><sheetView workbookViewId="0"><pane' +
+    (xSplit === 0 ? '' : ` xSplit="${String(xSplit)}"`) +
+    (ySplit === 0 ? '' : ` ySplit="${String(ySplit)}"`) +
+    ` topLeftCell="${columnName(xSplit)}${String(ySplit + 1)}" activePane="${pane}" state="frozen"/>` +
+    '</sheetView></sheetViews>'
+  );
+}
+
+/** `20/11/2026`. */
+const dayMonthYear = (day: ISODate): string =>
+  `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
+
+function sheetXml(sheet: XlsxSheet, generatedOn: ISODate | undefined): string {
+  const all: XlsxSheet['rows'] =
+    generatedOn === undefined
+      ? sheet.rows
+      : [...sheet.rows, [], [{ kind: 'text', value: `Generato il ${dayMonthYear(generatedOn)}` }]];
+  if (all.length > MAX_ROWS) throw new RangeError('Too many rows');
+  const bold = new Set([...(sheet.totals ?? []), sheet.header]);
+  const rows = all.map((row, r) => {
     if (row.length > MAX_COLUMNS) throw new RangeError('Too many columns');
+    const title = isTitle(row);
     const cells = row
-      .map((cell, c) => (cell === null ? '' : cellXml(cell, `${columnName(c)}${String(r + 1)}`)))
+      .map((cell, c) =>
+        cell === null ? '' : cellXml(cell, `${columnName(c)}${String(r + 1)}`, bold.has(r), title),
+      )
       .join('');
     return cells === '' ? '' : `<row r="${String(r + 1)}">${cells}</row>`;
   });
-  return `${XML_HEAD}<worksheet xmlns="${MAIN}"><sheetData>${rows.join('')}</sheetData></worksheet>`;
+  // CT_Worksheet order: <sheetViews>, <cols>, <sheetData>, or Excel reports the file as damaged.
+  return `${XML_HEAD}<worksheet xmlns="${MAIN}">${sheetViewsXml(sheet)}${colsXml(all)}<sheetData>${rows.join('')}</sheetData></worksheet>`;
 }
+
+/** The four cell formats (general, euro aligned right, date, wrapped text) with font `font`. */
+const xfs = (font: number): string => {
+  const base = `fontId="${String(font)}" fillId="0" borderId="0" xfId="0"${font === 0 ? '' : ' applyFont="1"'}`;
+  return (
+    `<xf numFmtId="0" ${base}/>` +
+    `<xf numFmtId="164" ${base} applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>` +
+    `<xf numFmtId="165" ${base} applyNumberFormat="1"/>` +
+    `<xf numFmtId="0" ${base} applyAlignment="1"><alignment wrapText="1"/></xf>`
+  );
+};
 
 const STYLES =
   `${XML_HEAD}<styleSheet xmlns="${MAIN}">` +
   '<numFmts count="2">' +
   '<numFmt numFmtId="164" formatCode="&quot;€ &quot;#,##0.00;&quot;- € &quot;#,##0.00"/>' +
   '<numFmt numFmtId="165" formatCode="dd/mm/yyyy"/></numFmts>' +
-  '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
+  '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
   '<fills count="2"><fill><patternFill patternType="none"/></fill>' +
   '<fill><patternFill patternType="gray125"/></fill></fills>' +
   '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
   '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-  '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
-  '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
-  '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>' +
+  `<cellXfs count="${String(2 * BOLD)}">${[0, 1].map(xfs).join('')}</cellXfs>` +
   '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
   '</styleSheet>';
 
@@ -176,7 +286,8 @@ export function writeXlsx(workbook: XlsxWorkbook): Uint8Array {
     `<Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/>` +
     '</Relationships>';
   const book =
-    `${XML_HEAD}<workbook xmlns="${MAIN}" xmlns:r="${REL}"><sheets>` +
+    // <bookViews> holds the workbookView 0 the frozen panes refer to.
+    `${XML_HEAD}<workbook xmlns="${MAIN}" xmlns:r="${REL}"><bookViews><workbookView/></bookViews><sheets>` +
     sheets
       .map(
         (s, i) =>
@@ -204,7 +315,7 @@ export function writeXlsx(workbook: XlsxWorkbook): Uint8Array {
     { path: 'xl/styles.xml', data: encoder.encode(STYLES) },
     ...sheets.map((sheet, i) => ({
       path: `xl/worksheets/sheet${numbers[i] ?? ''}.xml`,
-      data: encoder.encode(sheetXml(sheet)),
+      data: encoder.encode(sheetXml(sheet, workbook.generatedOn)),
     })),
   ]);
 }

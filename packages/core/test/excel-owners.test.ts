@@ -301,7 +301,9 @@ describe('buildOwnersWorkbook', () => {
 });
 
 describe('the bytes of the owners file', () => {
-  const bytes = writeXlsx(buildOwnersWorkbook(fixtureInput()));
+  // R408: a fixed day for «Generato il».
+  const GENERATED_ON = isoDate('2026-11-20');
+  const bytes = writeXlsx(buildOwnersWorkbook(fixtureInput(), GENERATED_ON));
 
   it('do not depend on the order of the input', () => {
     const next = mulberry32(5);
@@ -311,12 +313,18 @@ describe('the bytes of the owners file', () => {
       instalments: shuffled(input.instalments, next),
       matches: shuffled(input.matches, next),
     };
-    expect(writeXlsx(buildOwnersWorkbook(mixed))).toEqual(bytes);
+    expect(writeXlsx(buildOwnersWorkbook(mixed, GENERATED_ON))).toEqual(bytes);
+  });
+
+  it('mark the header and the total (R408)', () => {
+    const sheet = buildOwnersWorkbook(fixtureInput()).sheets[0];
+    expect(sheet?.header).toBe(1);
+    expect(sheet?.totals?.map((r) => plain(sheet.rows[r]?.[0] ?? null))).toEqual(['Totale']);
   });
 
   it('are the same in every time zone', () => {
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      '4d6a3defadead27fbd27d2f6692644ed1f997e6c5607e44d21bb84da107ba555',
+      '0c65041a20553f1bf87b4b534b8a0c8dd6ab7c20cd7ed59a8fa0ea7b67dac79a',
     );
   });
 });

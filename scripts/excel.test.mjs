@@ -33,6 +33,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TSX = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 const SCRIPT = join(ROOT, 'scripts', 'excel.mjs');
 const TIMEOUT = 120_000;
+// R408: a fixed day for «Generato il», so the bytes can be compared.
+const TODAY = '2026-11-20';
 
 /** Runs `pnpm excel` for real (tsx through node, as in estratti.test.mjs). */
 function cli(args) {
@@ -79,7 +81,7 @@ describe('pnpm excel', () => {
     'writes the file once and never over an existing one',
     async () => {
       const file = join(out, 'Conguaglio.xlsx');
-      const first = excel(['--periodo', '2026-27', '--uscita', file]);
+      const first = excel(['--periodo', '2026-27', '--oggi', TODAY, '--uscita', file]);
       expect(first.code).toBe(0);
       expect(first.json).toEqual({
         status: 'written',
@@ -96,7 +98,9 @@ describe('pnpm excel', () => {
         periodLabel: '2026-27',
       });
       const bytes = readFileSync(file);
-      expect(new Uint8Array(bytes)).toEqual(writeXlsx(buildConguaglioWorkbook(loaded.input)));
+      expect(new Uint8Array(bytes)).toEqual(
+        writeXlsx(buildConguaglioWorkbook(loaded.input, TODAY)),
+      );
 
       const second = excel(['--periodo', '2026-27', '--uscita', file]);
       expect(second.code).toBe(1);
@@ -211,7 +215,7 @@ describe('pnpm excel', () => {
   it('writes the owners file with --proprietari, to --uscita or the default path', async () => {
     const args = ['--cartella', data, '--appartamento', 'apt-nord', '--periodo', '2026-27'];
     const file = join(out, 'Proprietari.xlsx');
-    const first = await main([...args, '--proprietari', '--uscita', file]);
+    const first = await main([...args, '--proprietari', '--oggi', TODAY, '--uscita', file]);
     outputs.push(first.output);
     expect(first.code).toBe(0);
     expect(JSON.parse(first.output)).toEqual({
@@ -227,7 +231,7 @@ describe('pnpm excel', () => {
       periodLabel: '2026-27',
     });
     expect(new Uint8Array(readFileSync(file))).toEqual(
-      writeXlsx(buildOwnersWorkbook(loaded.input)),
+      writeXlsx(buildOwnersWorkbook(loaded.input, TODAY)),
     );
     const again = await main([...args, '--proprietari', '--uscita', file]);
     outputs.push(again.output);
@@ -286,7 +290,7 @@ describe('pnpm excel', () => {
         outputs.push(run.out);
         return run;
       };
-      const first = tasse('--tasse', '2026');
+      const first = tasse('--tasse', '2026', '--oggi', TODAY);
       const store = new FsStore(data);
       const loaded = await loadTaxExport(store);
       expect([first.code, first.json]).toEqual([
@@ -300,7 +304,9 @@ describe('pnpm excel', () => {
         },
       ]);
       const file = join(data, 'Riservato_proprietari', 'Tasse', '2026', 'Tasse_2026.xlsx');
-      expect(new Uint8Array(readFileSync(file))).toEqual(writeXlsx(buildTaxWorkbook(loaded)));
+      expect(new Uint8Array(readFileSync(file))).toEqual(
+        writeXlsx(buildTaxWorkbook(loaded, TODAY)),
+      );
       const again = tasse('--tasse', '2026');
       expect([again.code, again.json.reason]).toEqual([1, 'file-exists']);
       const other = join(out, 'Tasse-altro.xlsx');
@@ -312,6 +318,7 @@ describe('pnpm excel', () => {
         ['--tasse', '2026', '--periodo', '2026-27'],
         ['--tasse', '2026', '--proprietari'],
         ['--tasse', '2026', '--uscita', ''],
+        ['--tasse', '2026', '--oggi', '20/11/2026'],
       ]) {
         expect([bad, tasse(...bad).code]).toEqual([bad, 2]);
       }

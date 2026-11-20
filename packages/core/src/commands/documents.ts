@@ -3,6 +3,7 @@
 // before; writing them stays with the caller (`node:fs` or the Tauri file plugin).
 import { calcConguaglio, SettlementInputError } from '../conguaglio';
 import type { InflateRaw } from '../docx';
+import type { ISODate } from '../period';
 import {
   EXCEL_SHEETS,
   ExcelInputError,
@@ -53,15 +54,23 @@ export async function refuseNewerData(store: Store): Promise<void> {
   }
 }
 
+/** The day of «Generato il» (R408), from the caller's clock: `bad-arguments` if not `AAAA-MM-GG`. */
+function generationDay(today: string): ISODate {
+  const day = ISODateSchema.safeParse(today);
+  if (!day.success) throw invalidCommand('bad-arguments');
+  return day.data;
+}
+
 /**
  * The Excel of one apartment and one period (plan 5), or the owners' file with `owners` (plan 5b,
- * R175). Refused: `bad-periods` (E6), the refusals of `loadExcelInput`, and in `build()`
- * `missing-tenant` and `settlement-input` (tenants' file only).
+ * R175), dated `today`. Refused: `bad-periods` (E6), the refusals of `loadExcelInput`, and in
+ * `build()` `missing-tenant` and `settlement-input` (tenants' file only).
  */
 export async function conguaglioExcelCommand(
   store: Store,
-  input: { apartmentId: string; periodLabel: string; owners?: boolean },
+  input: { apartmentId: string; periodLabel: string; owners?: boolean; today: string },
 ): Promise<PreparedDocument> {
+  const generatedOn = generationDay(input.today);
   let loaded;
   try {
     loaded = await loadExcelInput(store, {
@@ -83,7 +92,7 @@ export async function conguaglioExcelCommand(
       path: ownersFilePath(excel.apartment, excel.period),
       build: () => {
         // No tenancy is read, so no settlement refusal.
-        const workbook = buildOwnersWorkbook(excel);
+        const workbook = buildOwnersWorkbook(excel, generatedOn);
         const items = ownersItems(excel);
         return {
           bytes: writeXlsx(workbook),
@@ -106,7 +115,7 @@ export async function conguaglioExcelCommand(
       let workbook;
       try {
         result = calcConguaglio(excel);
-        workbook = buildConguaglioWorkbook(excel);
+        workbook = buildConguaglioWorkbook(excel, generatedOn);
       } catch (error) {
         if (error instanceof ExcelInputError) {
           throw rejected('missing-tenant', { tenantIds: error.tenantIds });
@@ -134,18 +143,19 @@ export async function conguaglioExcelCommand(
   };
 }
 
-/** The file for the commercialista of `year` (plan 10, R215): every live apartment and contract. */
+/** The file for the commercialista of `year` (plan 10, R215), dated `today`: every live apartment and contract. */
 export async function taxExcelCommand(
   store: Store,
-  input: { year: string },
+  input: { year: string; today: string },
 ): Promise<PreparedDocument> {
   if (!YearSchema.safeParse(input.year).success) throw invalidCommand('bad-arguments');
+  const generatedOn = generationDay(input.today);
   const loaded = await loadTaxExport(store);
   if (loaded.status !== 'ok') throw rejected(loaded.reason);
   return {
     path: taxFilePath(input.year),
     build: () => {
-      const workbook = buildTaxWorkbook(loaded);
+      const workbook = buildTaxWorkbook(loaded, generatedOn);
       return {
         bytes: writeXlsx(workbook),
         body: {

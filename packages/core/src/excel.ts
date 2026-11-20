@@ -482,7 +482,7 @@ const dayMonthYear = (day: ISODate): string =>
  * is; a tenant of the period without a live `Tenant` throws `ExcelInputError`. No formula, no
  * deposit; the pending items only listed, with no amount (questions 1, 3, 6).
  */
-export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
+export function buildConguaglioWorkbook(input: ExcelInput, generatedOn?: ISODate): XlsxWorkbook {
   const result = calcConguaglio(input);
   const { apartment, period } = input;
   const names = new Map(live(input.tenants).map((t) => [t.id, t.name]));
@@ -530,6 +530,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     text(item.fileName),
     text(item.note),
   ]);
+  const billTotal = bollette.length;
   bollette.push([
     text('Totale'),
     ...Array<null>(6).fill(null),
@@ -665,6 +666,7 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
     null,
     ...emptyBeds.map((v) => euro(cents(v))),
   ]);
+  const settlementTotal = conguagli.length;
   conguagli.push([
     text('Totale'),
     null,
@@ -715,18 +717,41 @@ export function buildConguaglioWorkbook(input: ExcelInput): XlsxWorkbook {
       value: settlementStateText(closing, result.pending.length, closingFlags(input, result)),
     },
   ];
+  // R408: the header bold and frozen with the rows above it, the columns of the names frozen, the
+  // totals (indexes in `rows`) bold.
   const sheet = (
     name: ExcelSheetName,
     rows: (XlsxCell | null)[][],
-    extra?: string[],
-    top: XlsxCell[][] = [],
-  ) => ({ name, rows: [...top, header(name, extra), ...rows] }) satisfies XlsxSheet;
+    {
+      extra,
+      top = [],
+      totals = [],
+      freezeColumns = 0,
+    }: {
+      extra?: string[];
+      top?: XlsxCell[][];
+      totals?: number[];
+      freezeColumns?: number;
+    } = {},
+  ) =>
+    ({
+      name,
+      rows: [...top, header(name, extra), ...rows],
+      header: top.length,
+      totals: totals.map((t) => top.length + 1 + t),
+      freezeColumns,
+    }) satisfies XlsxSheet;
   return {
+    ...(generatedOn === undefined ? {} : { generatedOn }),
     sheets: [
-      sheet('Bollette', bollette, [], [provisional]),
-      sheet('Conguagli', conguagli, [], [provisional]),
-      sheet('Affitti versati', affitti, months.map(monthWithYear)),
-      sheet('Versamenti conguaglio', versamenti),
+      sheet('Bollette', bollette, { top: [provisional], totals: [billTotal] }),
+      sheet('Conguagli', conguagli, {
+        top: [provisional],
+        totals: [settlementTotal],
+        freezeColumns: 2,
+      }),
+      sheet('Affitti versati', affitti, { extra: months.map(monthWithYear), freezeColumns: 2 }),
+      sheet('Versamenti conguaglio', versamenti, { freezeColumns: 1 }),
     ],
   };
 }
