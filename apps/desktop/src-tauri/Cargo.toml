@@ -14,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # Exact versions (`=`): a build never moves to a newer Tauri without a commit that says so.
 # tauri-build 2.7.4 and tauri 2.12.5 are released together and agree on tauri-utils 2.10.x.
 [build-dependencies]
-tauri-build = { version = "=2.7.4", features = [] }
+tauri-build = { version = "=2.7.6", features = [] }
 
 [dependencies]
 tauri = { version = "=2.12.5", features = [] }
