@@ -8,7 +8,7 @@
 pdfminer.six==20260107
 jsonschema==4.26.0
 # cffi 2.1 and later use MIT-0, which is not on the allowed list; cryptography needs cffi>=2.0.
-cffi==2.0.0
+cffi==2.1.1
 # OCR, macOS only (decision of 13 November 2026): the Windows wheel of tesserocr carries LGPL
 # libraries (docs/rules/ocr-licenze.md), so pip never installs these two on Windows.
 tesserocr==2.12.0 ; sys_platform == 'darwin'
