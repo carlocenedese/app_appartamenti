@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+<title>Scheda appartamento, Conguaglio - Proposta 18, Officina</title>
+<defs>
+<filter id="lift" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-color="#000" flood-opacity="0.10"/></filter>
+<linearGradient id="recess" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0.07"/><stop offset="0.25" stop-color="#000" stop-opacity="0"/></linearGradient>
+</defs>
+<rect width="1440" height="900" fill="#E2DED6"/>
+<rect x="0" y="0" width="240" height="900" fill="#D8D3CA"/>
+<line x1="240.5" y1="0" x2="240.5" y2="900" stroke="#C7C1B6"/>
+<rect x="24" y="22" width="40" height="40" rx="10" fill="#1B1A17"/>
+<g transform="translate(32 26) scale(1.0)">
+<line x1="12" y1="4" x2="12" y2="0.8" stroke="#1B1A17" stroke-width="1.4"/>
+<circle cx="12" cy="1.6" r="1.6" fill="#1B1A17"/>
+<rect x="1" y="4" width="22" height="24" rx="3.5" fill="#F4F2ED" stroke="#1B1A17" stroke-width="1.4"/>
+<rect x="4.5" y="8" width="15" height="9" rx="1.5" fill="#1B1A17"/>
+<rect x="7" y="12" width="10" height="1.4" fill="#CFE9C9"/>
+<rect x="5" y="20.5" width="6" height="3.5" rx="1" fill="none" stroke="#1B1A17" stroke-width="0.9"/>
+<line x1="14" y1="20.5" x2="14" y2="24" stroke="#1B1A17" stroke-width="0.9"/>
+<line x1="16" y1="20.5" x2="16" y2="24" stroke="#1B1A17" stroke-width="0.9"/>
+<line x1="18" y1="20.5" x2="18" y2="24" stroke="#1B1A17" stroke-width="0.9"/>
+<rect x="5" y="28" width="4" height="3" fill="#1B1A17"/><rect x="15" y="28" width="4" height="3" fill="#1B1A17"/>
+</g>
+<text x="76" y="40" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" fill="#1B1A17">Bollette</text>
+<text x="76" y="58" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">OFFICINA DI CASA</text>
+<path d="M33 106 L40 100 L47 106 M35 105 V113 H45 V105" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="58" y="112" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#1B1A17">Home</text>
+<path d="M33 151 L35.5 144 H44.5 L47 151 V156 H33 Z M33 151 H37 L38.5 153 H41.5 L43 151 H47" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="58" y="156" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#1B1A17">Da rivedere</text>
+<rect x="16" y="178" width="208" height="40" rx="6" fill="#E2DED6" stroke="#C7C1B6"/><rect x="16.5" y="178.5" width="207" height="39" rx="6" fill="url(#recess)"/>
+<rect x="16" y="186" width="3" height="24" rx="1.5" fill="#1B1A17"/>
+<rect x="33" y="187" width="6" height="6" rx="1" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="41" y="187" width="6" height="6" rx="1" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="33" y="195" width="6" height="6" rx="1" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="41" y="195" width="6" height="6" rx="1" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="58" y="200" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">Appartamenti</text>
+<rect x="186" y="140" width="28" height="22" rx="4" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="186.5" y="140.5" width="27" height="21" rx="4" fill="url(#recess)"/>
+<text x="200" y="156" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="middle">3</text>
+<text x="32" y="262" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#4A463F" letter-spacing="1.2">BANCA E FISCO</text>
+<rect x="33" y="287" width="14" height="12" rx="1.5" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 291 H47 M37 285 V288 M43 285 V288" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="58" y="298" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#1B1A17">Scadenze e pagamenti</text>
+<path d="M34 333 H46 M43 330 L46 333 L43 336 M46 339 H34 M37 336 L34 339 L37 342" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="58" y="342" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#1B1A17">Saldo tra conti</text>
+<path d="M35 386 L45 374" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="36" cy="376" r="2" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="44" cy="384" r="2" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="58" y="386" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#1B1A17">Tasse e stime</text>
+<line x1="24" y1="828" x2="216" y2="828" stroke="#C7C1B6"/>
+<circle cx="40" cy="858" r="2.6" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="40" cy="858" r="6.2" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 1.9"/>
+<text x="58" y="863" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#1B1A17">Impostazioni</text>
+<line x1="240" y1="72.5" x2="1440" y2="72.5" stroke="#C7C1B6"/>
+<rect x="272" y="16" width="320" height="40" rx="6" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="272.5" y="16.5" width="319" height="39" rx="6" fill="url(#recess)"/>
+<text x="288" y="41" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">APP.</text>
+<text x="326" y="41" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">Berchet</text>
+<path d="M414 34 L418 38 L422 34" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="436" y1="24" x2="436" y2="48" stroke="#C7C1B6"/>
+<text x="450" y="41" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">ANN.</text>
+<text x="488" y="41" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17">2025-26</text>
+<path d="M566 34 L570 38 L574 34" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="616" y="16" width="400" height="40" rx="6" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="616.5" y="16.5" width="399" height="39" rx="6" fill="url(#recess)"/>
+<circle cx="639" cy="35" r="5" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M643 39 L647 43" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="660" y="41" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="400" fill="#4A463F">Cerca bollette, inquilini, scadenze</text>
+<rect x="946" y="25" width="58" height="26" rx="7" fill="#B3AC9F"/>
+<rect x="946" y="22" width="58" height="26" rx="7" fill="#FBFAF7" stroke="#C7C1B6"/>
+<text x="975.0" y="39.32" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1B1A17" text-anchor="middle">Ctrl K</text>
+<circle cx="1136" cy="36" r="9" fill="#165C36" opacity="0.13"/>
+<circle cx="1136" cy="36" r="5" fill="#165C36"/>
+<path d="M1133.75 36.2 l1.5 1.6 l3.0 -3.4000000000000004" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1150" y="40" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">SINCRONIZZATO · 09:42</text>
+<circle cx="1326" cy="36" r="16" fill="#F4F2ED" stroke="#C7C1B6"/>
+<text x="1326" y="41" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="700" fill="#1B1A17" text-anchor="middle">C</text>
+<text x="1350" y="41" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">Carlo</text>
+<text x="272" y="112" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#4A463F" letter-spacing="1.2">APPARTAMENTI  /  BERCHET  /  CONGUAGLIO</text>
+<text x="270" y="152" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="32" font-weight="700" fill="#1B1A17" letter-spacing="-0.3">Berchet · Annualità 2025-26</text>
+<rect x="1128" y="103" width="280" height="56" rx="7" fill="#C2470E"/>
+<rect x="1128" y="100" width="280" height="56" rx="7" fill="#FF6A1F" stroke="#C2470E"/>
+<text x="1152" y="134.12" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="600" fill="#1B1A17">Prepara il messaggio</text>
+<path d="M1368 128.0 h18 m-6 -6 l6 6 l-6 6" fill="none" stroke="#1B1A17" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1408" y="184" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" text-anchor="end" letter-spacing="1.2">PER I 3 INQUILINI CON UN SALDO APERTO</text>
+<rect x="272" y="199" width="176" height="34" rx="7" fill="#B3AC9F"/>
+<rect x="272" y="196" width="176" height="34" rx="7" fill="#FBFAF7" stroke="#C7C1B6"/>
+<text x="360.0" y="218.04" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="middle">Affitti e pagamenti</text>
+<rect x="456" y="199" width="93" height="34" rx="7" fill="#B3AC9F"/>
+<rect x="456" y="196" width="93" height="34" rx="7" fill="#FBFAF7" stroke="#C7C1B6"/>
+<text x="502.5" y="218.04" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="middle">Bollette</text>
+<rect x="557" y="197" width="108" height="34" rx="7" fill="#B3AC9F"/>
+<rect x="557" y="196" width="108" height="34" rx="7" fill="#1B1A17" stroke="#1B1A17"/>
+<text x="611.0" y="218.04" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#F4F2ED" text-anchor="middle">Conguaglio</text>
+<rect x="673" y="199" width="100" height="34" rx="7" fill="#B3AC9F"/>
+<rect x="673" y="196" width="100" height="34" rx="7" fill="#FBFAF7" stroke="#C7C1B6"/>
+<text x="723.0" y="218.04" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="middle">Inquilini</text>
+<rect x="781" y="199" width="108" height="34" rx="7" fill="#B3AC9F"/>
+<rect x="781" y="196" width="108" height="34" rx="7" fill="#FBFAF7" stroke="#C7C1B6"/>
+<text x="835.0" y="218.04" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="middle">Condominio</text>
+<rect x="897" y="199" width="78" height="34" rx="7" fill="#B3AC9F"/>
+<rect x="897" y="196" width="78" height="34" rx="7" fill="#FBFAF7" stroke="#C7C1B6"/>
+<text x="936.0" y="218.04" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="middle">Moduli</text>
+<rect x="983" y="199" width="70" height="34" rx="7" fill="#B3AC9F"/>
+<rect x="983" y="196" width="70" height="34" rx="7" fill="#FBFAF7" stroke="#C7C1B6"/>
+<text x="1018.0" y="218.04" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="middle">Excel</text>
+<rect x="1061" y="199" width="85" height="34" rx="7" fill="#B3AC9F"/>
+<rect x="1061" y="196" width="85" height="34" rx="7" fill="#FBFAF7" stroke="#C7C1B6"/>
+<text x="1103.5" y="218.04" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="middle">Storico</text>
+<rect x="272" y="258" width="772" height="440" rx="10" fill="#B3AC9F" opacity="0.55"/>
+<rect x="272" y="256" width="772" height="440" rx="10" fill="#F4F2ED" stroke="#C7C1B6"/>
+<circle cx="284" cy="268" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="282" y1="269.2" x2="286" y2="266.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="1032" cy="268" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="1030" y1="269.2" x2="1034" y2="266.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="284" cy="684" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="282" y1="685.2" x2="286" y2="682.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="1032" cy="684" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="1030" y1="685.2" x2="1034" y2="682.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<text x="300" y="296" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#4A463F" letter-spacing="1.2">QUOTE PER INQUILINO</text>
+<text x="1016" y="296" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" text-anchor="end" letter-spacing="1.2">5 INQUILINI · 58 MESI</text>
+<rect x="288" y="312" width="740" height="30" rx="4" fill="#E2DED6" opacity="0.6"/>
+<text x="300" y="332" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">INQUILINO</text>
+<text x="468" y="332" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" text-anchor="end" letter-spacing="1.2">MESI</text>
+<text x="588" y="332" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" text-anchor="end" letter-spacing="1.2">QUOTA COSTI</text>
+<text x="734" y="332" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" text-anchor="end" letter-spacing="1.2">FORFAIT INCASSATO</text>
+<text x="760" y="332" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">DIFFERENZA</text>
+<text x="868" y="332" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">STATO</text>
+<text x="300" y="382" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="600" fill="#1B1A17">Marco T.</text>
+<text x="468" y="382" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">12</text>
+<text x="588" y="382" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 418,60</text>
+<text x="734" y="382" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 360,00</text>
+<text x="760" y="373" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="600" fill="#4A463F" letter-spacing="1.2">DA PAGARE</text>
+<text x="760" y="392" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17">€ 58,60</text>
+<circle cx="878" cy="377" r="11" fill="#174A8F" opacity="0.13"/>
+<path d="M878 368.95 L886.05 377 L878 385.05 L869.95 377 Z" fill="#174A8F"/>
+<rect x="877.1" y="373.5" width="1.8" height="4.2" fill="#FFFFFF"/><circle cx="878" cy="379.66" r="1.1" fill="#FFFFFF"/>
+<text x="896" y="381" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#174A8F" letter-spacing="1.2">DA PAGARE</text>
+<line x1="296" y1="406.5" x2="1020" y2="406.5" stroke="#D3CEC4"/>
+<text x="300" y="442" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="600" fill="#1B1A17">Sofia B.</text>
+<text x="468" y="442" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">12</text>
+<text x="588" y="442" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 402,15</text>
+<text x="734" y="442" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 360,00</text>
+<text x="760" y="433" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="600" fill="#4A463F" letter-spacing="1.2">DA PAGARE</text>
+<text x="760" y="452" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17">€ 42,15</text>
+<circle cx="878" cy="436" r="11" fill="#174A8F" opacity="0.13"/>
+<circle cx="878" cy="436" r="6" fill="none" stroke="#174A8F" stroke-width="2"/>
+<path d="M878 430 A6 6 0 0 0 878 442 Z" fill="#174A8F"/>
+<text x="896" y="434" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#174A8F" letter-spacing="1.2">PARZIALE</text>
+<text x="896" y="453" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F">versati € 20,00</text>
+<line x1="296" y1="466.5" x2="1020" y2="466.5" stroke="#D3CEC4"/>
+<text x="300" y="502" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="600" fill="#1B1A17">Luca P.</text>
+<text x="468" y="502" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">10</text>
+<text x="588" y="502" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 300,00</text>
+<text x="734" y="502" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 300,00</text>
+<text x="760" y="493" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="600" fill="#4A463F" letter-spacing="1.2">PARI</text>
+<text x="760" y="512" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17">€ 0,00</text>
+<circle cx="878" cy="497" r="11" fill="#165C36" opacity="0.13"/>
+<circle cx="878" cy="497" r="7" fill="#165C36"/>
+<path d="M874.85 497.2 l2.1 2.24 l4.2 -4.760000000000001" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="896" y="501" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#165C36" letter-spacing="1.2">SALDATO</text>
+<line x1="296" y1="526.5" x2="1020" y2="526.5" stroke="#D3CEC4"/>
+<text x="300" y="562" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="600" fill="#1B1A17">Anna V.</text>
+<text x="468" y="562" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">12</text>
+<text x="588" y="562" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 305,40</text>
+<text x="734" y="562" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 360,00</text>
+<text x="760" y="553" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="600" fill="#4A463F" letter-spacing="1.2">DA RIMBORSARE</text>
+<text x="760" y="572" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17">€ 54,60</text>
+<circle cx="878" cy="557" r="11" fill="#5B3A8C" opacity="0.13"/>
+<path d="M871 557 L883.6 550 L883.6 564 Z" fill="#5B3A8C"/>
+<text x="896" y="561" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#5B3A8C" letter-spacing="1.2">DA RIMBORSARE</text>
+<line x1="296" y1="586.5" x2="1020" y2="586.5" stroke="#D3CEC4"/>
+<text x="300" y="622" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="600" fill="#1B1A17">Elena C.</text>
+<text x="468" y="622" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">12</text>
+<text x="588" y="622" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 446,85</text>
+<text x="734" y="622" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 360,00</text>
+<text x="760" y="613" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="600" fill="#4A463F" letter-spacing="1.2">DA PAGARE</text>
+<text x="760" y="632" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17">€ 86,85</text>
+<circle cx="878" cy="616" r="11" fill="#165C36" opacity="0.13"/>
+<circle cx="878" cy="616" r="7" fill="#165C36"/>
+<path d="M874.85 616.2 l2.1 2.24 l4.2 -4.760000000000001" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="896" y="614" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#165C36" letter-spacing="1.2">SALDATO</text>
+<text x="896" y="633" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F">versati € 86,85</text>
+<line x1="296" y1="646.5" x2="1020" y2="646.5" stroke="#1B1A17" stroke-width="1.5"/>
+<text x="300" y="680" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1B1A17" letter-spacing="1.2">TOTALE</text>
+<text x="588" y="680" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17" text-anchor="end">€ 1.873,00</text>
+<text x="734" y="680" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17" text-anchor="end">€ 1.740,00</text>
+<text x="760" y="680" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17">€ 133,00</text>
+<text x="868" y="680" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#4A463F">netti</text>
+<rect x="272" y="722" width="772" height="120" rx="10" fill="#B3AC9F" opacity="0.55"/>
+<rect x="272" y="720" width="772" height="120" rx="10" fill="#F4F2ED" stroke="#C7C1B6"/>
+<circle cx="284" cy="732" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="282" y1="733.2" x2="286" y2="730.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="1032" cy="732" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="1030" y1="733.2" x2="1034" y2="730.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="284" cy="828" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="282" y1="829.2" x2="286" y2="826.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="1032" cy="828" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="1030" y1="829.2" x2="1034" y2="826.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<rect x="292.0" y="740" width="233.33333333333334" height="80" rx="6" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="292.5" y="740.5" width="232.33333333333334" height="79" rx="6" fill="url(#recess)"/>
+<text x="306.0" y="762" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">ANCORA DA INCASSARE</text>
+<text x="511.33333333333337" y="804" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="26" font-weight="400" fill="#1B1A17" text-anchor="end" letter-spacing="-0.4">€ 80,75</text>
+<text x="306.0" y="782" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F">da 2 inquilini</text>
+<rect x="541.3333333333334" y="740" width="233.33333333333334" height="80" rx="6" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="541.8333333333334" y="740.5" width="232.33333333333334" height="79" rx="6" fill="url(#recess)"/>
+<text x="555.3333333333334" y="762" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">DA RIMBORSARE</text>
+<text x="760.6666666666667" y="804" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="26" font-weight="400" fill="#1B1A17" text-anchor="end" letter-spacing="-0.4">€ 54,60</text>
+<text x="555.3333333333334" y="782" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F">a 1 inquilino</text>
+<rect x="790.6666666666667" y="740" width="233.33333333333334" height="80" rx="6" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="791.1666666666667" y="740.5" width="232.33333333333334" height="79" rx="6" fill="url(#recess)"/>
+<text x="804.6666666666667" y="762" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">GIÀ SALDATI</text>
+<text x="1010.0" y="804" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="26" font-weight="400" fill="#1B1A17" text-anchor="end" letter-spacing="-0.4">2 su 5</text>
+<text x="804.6666666666667" y="782" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F">Luca P., Elena C.</text>
+<circle cx="280" cy="864" r="6.5" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M280 863.5 V867.5" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="280" cy="860.8" r="0.9" fill="#4A463F"/>
+<text x="296" y="869" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#4A463F">Gli importi contano solo le voci trovate nell'estratto conto.</text>
+<rect x="1068" y="258" width="340" height="584" rx="10" fill="#B3AC9F" opacity="0.55"/>
+<rect x="1068" y="256" width="340" height="584" rx="10" fill="#F4F2ED" stroke="#C7C1B6"/>
+<circle cx="1080" cy="268" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="1078" y1="269.2" x2="1082" y2="266.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="1396" cy="268" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="1394" y1="269.2" x2="1398" y2="266.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="1080" cy="828" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="1078" y1="829.2" x2="1082" y2="826.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<circle cx="1396" cy="828" r="3.5" fill="#DCD8CF" stroke="#B3AC9F" stroke-width="0.8"/><line x1="1394" y1="829.2" x2="1398" y2="826.8" stroke="#B3AC9F" stroke-width="0.9"/>
+<text x="1096" y="296" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#4A463F" letter-spacing="1.2">COSTI PER TIPOLOGIA</text>
+<rect x="1088" y="312" width="300" height="52" rx="6" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="1088.5" y="312.5" width="299" height="51" rx="6" fill="url(#recess)"/>
+<text x="1102" y="343" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">TOTALE</text>
+<text x="1374" y="348" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="24" font-weight="400" fill="#1B1A17" text-anchor="end" letter-spacing="-0.4">€ 1.873,00</text>
+<line x1="1092" y1="384.5" x2="1384" y2="384.5" stroke="#D3CEC4"/>
+<path d="M1098 406 l5 5 l5 -5" fill="none" stroke="#1B1A17" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1120" y="414" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="16" font-weight="700" fill="#1B1A17">Elettricità</text>
+<text x="1380" y="414" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" fill="#1B1A17" text-anchor="end">€ 812,46</text>
+<text x="1120" y="434" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F">6 bollette</text>
+<rect x="1218" y="427" width="162" height="5" rx="2.5" fill="#D3CEC4"/>
+<rect x="1218" y="427" width="70.27150026695142" height="5" rx="2.5" fill="#1B1A17"/>
+<rect x="1108" y="448" width="272" height="136" rx="6" fill="#E2DED6" stroke="#C7C1B6"/><rect x="1108.5" y="448.5" width="271" height="135" rx="6" fill="url(#recess)"/>
+<path d="M1123 465 H1130 L1133 468 V479 H1123 Z" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1142" y="476" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1B1A17">Hera luce set-ott</text>
+<text x="1364" y="476" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#1B1A17" text-anchor="end">€ 98,24</text>
+<path d="M1123 495 H1130 L1133 498 V509 H1123 Z" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1142" y="506" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1B1A17">Hera luce lug-ago</text>
+<text x="1364" y="506" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#1B1A17" text-anchor="end">€ 104,10</text>
+<path d="M1123 525 H1130 L1133 528 V539 H1123 Z" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1142" y="536" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1B1A17">Hera luce mag-giu</text>
+<text x="1364" y="536" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#1B1A17" text-anchor="end">€ 91,37</text>
+<text x="1142" y="570" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17">e altre 3</text>
+<path d="M1212 562 L1216 566 L1212 570" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="1092" y1="600.5" x2="1384" y2="600.5" stroke="#D3CEC4"/>
+<path d="M1101 618 L1105 622 L1101 626" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1120" y="626" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">Gas</text>
+<text x="1380" y="626" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 412,40</text>
+<rect x="1218" y="634" width="162" height="5" rx="2.5" fill="#D3CEC4"/>
+<rect x="1218" y="634" width="35.66940736785905" height="5" rx="2.5" fill="#1B1A17"/>
+<line x1="1092" y1="644.5" x2="1384" y2="644.5" stroke="#D3CEC4"/>
+<path d="M1101 662 L1105 666 L1101 670" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1120" y="670" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">Acqua</text>
+<text x="1380" y="670" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 188,30</text>
+<rect x="1218" y="678" width="162" height="5" rx="2.5" fill="#D3CEC4"/>
+<rect x="1218" y="678" width="16.28649225840897" height="5" rx="2.5" fill="#1B1A17"/>
+<line x1="1092" y1="688.5" x2="1384" y2="688.5" stroke="#D3CEC4"/>
+<path d="M1101 706 L1105 710 L1101 714" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1120" y="714" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">Internet</text>
+<text x="1380" y="714" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 359,40</text>
+<rect x="1218" y="722" width="162" height="5" rx="2.5" fill="#D3CEC4"/>
+<rect x="1218" y="722" width="31.08531767218366" height="5" rx="2.5" fill="#1B1A17"/>
+<line x1="1092" y1="732.5" x2="1384" y2="732.5" stroke="#D3CEC4"/>
+<path d="M1101 750 L1105 754 L1101 758" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1120" y="758" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">TARI</text>
+<text x="1380" y="758" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 100,44</text>
+<rect x="1218" y="766" width="162" height="5" rx="2.5" fill="#D3CEC4"/>
+<rect x="1218" y="766" width="8.687282434596902" height="5" rx="2.5" fill="#1B1A17"/>
+<line x1="1092" y1="776.5" x2="1384" y2="776.5" stroke="#D3CEC4"/>
+<path d="M1101 794 L1105 798 L1101 802" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1120" y="802" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">Condominio</text>
+<text x="1380" y="802" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="15" font-weight="400" fill="#1B1A17" text-anchor="end">€ 0,00</text>
+<text x="1218" y="816" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F">nessuna rata trovata</text>
+</svg>

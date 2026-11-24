@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="390" height="844" viewBox="0 0 390 844">
+  <title>App del telefono, sola lettura — Modernismo italiano anni '60-'70</title>
+  <style>
+    text { font-family: Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #1A1916; }
+    .muted { fill: #5C574D; }
+    .lbl { fill: #5C574D; font-size: 11px; font-weight: 700; letter-spacing: 1.4px; }
+    .b { font-weight: 700; }
+    .sb { font-weight: 600; }
+  </style>
+  <defs>
+    <g id="ok"><circle r="8" fill="#23834F"/><path d="M-4 0.5 L-1 3.5 L4 -2.6" fill="none" stroke="#FBF8F2" stroke-width="2" stroke-linecap="square"/></g>
+    <g id="warn"><path d="M0 -8.5 L9 7 L-9 7 Z" fill="#E2A01B"/><rect x="-1.1" y="-3.2" width="2.2" height="5.6" fill="#1A1916"/><rect x="-1.1" y="3.6" width="2.2" height="2" fill="#1A1916"/></g>
+    <g id="err"><rect x="-7.5" y="-7.5" width="15" height="15" fill="#D2291E"/><path d="M-3.5 -3.5 L3.5 3.5 M3.5 -3.5 L-3.5 3.5" stroke="#FBF8F2" stroke-width="2"/></g>
+    <g id="todo"><rect x="-7" y="-7" width="14" height="14" fill="none" stroke="#1A1916" stroke-width="2"/></g>
+    <g id="sem">
+      <rect x="0" y="0" width="22" height="58" rx="11" fill="#1A1916"/>
+      <circle cx="11" cy="12" r="6" fill="#4A2A26"/>
+      <circle cx="11" cy="29" r="6" fill="#4A4026"/>
+      <circle cx="11" cy="46" r="6" fill="#26402F"/>
+    </g>
+    <g id="paid"><circle r="7" fill="#23834F"/></g>
+    <g id="unpaid"><rect x="-6" y="-6" width="12" height="12" fill="none" stroke="#D2291E" stroke-width="2.4"/></g>
+  </defs>
+
+  <rect width="390" height="844" fill="#F2ECDF"/>
+
+  <!-- barra di stato -->
+  <text x="32" y="30" class="sb" style="font-size:15px">9:41</text>
+  <rect x="330" y="20" width="24" height="12" rx="3" fill="none" stroke="#1A1916" stroke-width="1.4"/>
+  <rect x="332" y="22" width="17" height="8" rx="1.5" fill="#1A1916"/>
+  <rect x="300" y="24" width="3" height="8" fill="#1A1916"/><rect x="305" y="21" width="3" height="11" fill="#1A1916"/><rect x="310" y="18" width="3" height="14" fill="#1A1916"/>
+
+  <!-- intestazione -->
+  <circle cx="24" cy="72" r="7" fill="#D2291E"/>
+  <rect x="35" y="65" width="14" height="14" fill="#1F4E9C"/>
+  <path d="M52 79 L60 65 L68 79 Z" fill="#E2A01B"/>
+  <text x="78" y="78" class="b" style="font-size:17px">Bollette</text>
+  <rect x="270" y="60" width="104" height="26" fill="none" stroke="#1A1916" stroke-width="1.5"/>
+  <text x="322" y="78" text-anchor="middle" class="sb" style="font-size:12px">Sola lettura</text>
+
+  <text x="16" y="126" class="b" style="font-size:28px;letter-spacing:-0.6px">Ciao, Carlo.</text>
+  <text x="16" y="148" class="muted" style="font-size:13px">Aggiornato alle 10:42 · si modifica dal computer</text>
+
+  <!-- Card Berchet -->
+  <rect x="17" y="165" width="356" height="90" fill="#FBF8F2" stroke="#1A1916" stroke-width="2"/>
+  <rect x="18" y="166" width="72" height="88" fill="#A8C2E4"/>
+  <circle cx="36" cy="186" r="14" fill="#1F4E9C"/>
+  <rect x="40" y="186" width="34" height="68" fill="#1A1916"/>
+  <rect x="45" y="194" width="9" height="9" fill="#F2ECDF"/><rect x="60" y="194" width="9" height="9" fill="#F2ECDF"/>
+  <rect x="45" y="210" width="9" height="9" fill="#F2ECDF"/><rect x="60" y="210" width="9" height="9" fill="#F2ECDF"/>
+  <rect x="45" y="226" width="9" height="9" fill="#F2ECDF"/><rect x="60" y="226" width="9" height="28" fill="#1F4E9C"/>
+  <line x1="90" y1="166" x2="90" y2="254" stroke="#1A1916" stroke-width="2"/>
+  <text x="104" y="192" class="b" style="font-size:18px">Berchet</text>
+  <use xlink:href="#ok" x="112" y="214"/>
+  <text x="126" y="219" class="sb" style="fill:#1B6A40;font-size:14px">Tutto a posto</text>
+  <text x="104" y="242" class="muted" style="font-size:13px">5 su 5 in regola · € 2.418,60</text>
+  <use xlink:href="#sem" x="340" y="181"/>
+  <circle cx="351" cy="227" r="6" fill="#2FA866"/>
+
+  <!-- Card Lovarini -->
+  <rect x="17" y="267" width="356" height="90" fill="#FBF8F2" stroke="#1A1916" stroke-width="2"/>
+  <rect x="18" y="268" width="72" height="88" fill="#E5DCCB"/>
+  <circle cx="74" cy="286" r="10" fill="#E5732A"/>
+  <rect x="26" y="312" width="52" height="44" fill="#1F4E9C"/>
+  <path d="M22 313 L52 290 L82 313 Z" fill="#1A1916"/>
+  <circle cx="40" cy="326" r="5" fill="#F2ECDF"/><circle cx="64" cy="326" r="5" fill="#F2ECDF"/>
+  <circle cx="40" cy="342" r="5" fill="#F2ECDF"/><circle cx="64" cy="342" r="5" fill="#F2ECDF"/>
+  <line x1="90" y1="268" x2="90" y2="356" stroke="#1A1916" stroke-width="2"/>
+  <text x="104" y="294" class="b" style="font-size:18px">Lovarini</text>
+  <use xlink:href="#warn" x="112" y="316"/>
+  <text x="126" y="321" class="sb" style="fill:#7A5200;font-size:14px">2 cose da fare</text>
+  <text x="104" y="344" class="muted" style="font-size:13px">4 su 4 in regola · € 1.106,35</text>
+  <use xlink:href="#sem" x="340" y="283"/>
+  <circle cx="351" cy="312" r="6" fill="#F2B32A"/>
+
+  <!-- Card Pulci -->
+  <rect x="17" y="369" width="356" height="90" fill="#FBF8F2" stroke="#1A1916" stroke-width="2"/>
+  <rect x="18" y="370" width="72" height="88" fill="#1F4E9C"/>
+  <rect x="30" y="404" width="48" height="54" fill="#F2ECDF"/>
+  <path d="M30 404 A24 24 0 0 1 78 404 Z" fill="#A8C2E4"/>
+  <rect x="37" y="414" width="11" height="11" fill="#1A1916"/><rect x="60" y="414" width="11" height="11" fill="#1A1916"/>
+  <rect x="37" y="432" width="11" height="11" fill="#1A1916"/><rect x="60" y="432" width="11" height="11" fill="#1A1916"/>
+  <line x1="90" y1="370" x2="90" y2="458" stroke="#1A1916" stroke-width="2"/>
+  <text x="104" y="396" class="b" style="font-size:18px">Pulci</text>
+  <use xlink:href="#err" x="112" y="418"/>
+  <text x="126" y="423" class="sb" style="fill:#B3221A;font-size:14px">1 scadenza passata</text>
+  <text x="104" y="446" class="muted" style="font-size:13px">3 su 4 in regola · <tspan style="fill:#B3221A;font-weight:600">- € 63,00</tspan></text>
+  <use xlink:href="#sem" x="340" y="385"/>
+  <circle cx="351" cy="397" r="6" fill="#F0412F"/>
+
+  <!-- Prossime scadenze -->
+  <text x="16" y="496" class="b" style="font-size:18px">Prossime scadenze</text>
+  <rect x="16" y="506" width="358" height="2" fill="#1A1916"/>
+  <use xlink:href="#err" x="28" y="528"/>
+  <text x="46" y="526" class="sb" style="font-size:14px">Affitto di Giulia R. · Pulci</text>
+  <text x="46" y="542" style="fill:#B3221A;font-size:12px">Scaduto il 05/11</text>
+  <text x="374" y="533" text-anchor="end" class="sb" style="font-size:14px">€ 450,00</text>
+  <line x1="16" y1="550" x2="374" y2="550" stroke="#E5DCCB" stroke-width="1.5"/>
+  <use xlink:href="#warn" x="28" y="571"/>
+  <text x="46" y="569" class="sb" style="font-size:14px">Rata condominio · Lovarini</text>
+  <text x="46" y="585" class="muted" style="font-size:12px">Entro il 10/12</text>
+  <text x="374" y="576" text-anchor="end" class="sb" style="font-size:14px">€ 412,00</text>
+  <line x1="16" y1="593" x2="374" y2="593" stroke="#E5DCCB" stroke-width="1.5"/>
+  <use xlink:href="#todo" x="28" y="614"/>
+  <text x="46" y="612" class="sb" style="font-size:14px">TARI, seconda rata · Pulci</text>
+  <text x="46" y="628" class="muted" style="font-size:12px">Entro il 16/12</text>
+  <text x="374" y="619" text-anchor="end" class="sb" style="font-size:14px">€ 101,04</text>
+
+  <!-- Chi ha pagato -->
+  <text x="16" y="668" class="b" style="font-size:18px">Chi ha pagato a novembre</text>
+  <rect x="16" y="678" width="358" height="2" fill="#1A1916"/>
+  <text x="16" y="704" class="sb" style="font-size:14px">Berchet</text>
+  <use xlink:href="#paid" x="114" y="699"/><use xlink:href="#paid" x="134" y="699"/><use xlink:href="#paid" x="154" y="699"/><use xlink:href="#paid" x="174" y="699"/><use xlink:href="#paid" x="194" y="699"/>
+  <text x="374" y="704" text-anchor="end" class="muted" style="font-size:13px">5 su 5</text>
+  <text x="16" y="736" class="sb" style="font-size:14px">Lovarini</text>
+  <use xlink:href="#paid" x="114" y="731"/><use xlink:href="#paid" x="134" y="731"/><use xlink:href="#paid" x="154" y="731"/><use xlink:href="#paid" x="174" y="731"/>
+  <text x="374" y="736" text-anchor="end" class="muted" style="font-size:13px">4 su 4</text>
+  <text x="16" y="768" class="sb" style="font-size:14px">Pulci</text>
+  <use xlink:href="#paid" x="114" y="763"/><use xlink:href="#paid" x="134" y="763"/><use xlink:href="#paid" x="154" y="763"/><use xlink:href="#unpaid" x="174" y="763"/>
+  <text x="374" y="768" text-anchor="end" style="fill:#B3221A;font-size:13px;font-weight:600">manca Giulia R.</text>
+
+  <!-- barra delle schede -->
+  <rect x="0" y="784" width="390" height="60" fill="#1A1916"/>
+  <rect x="58" y="796" width="12" height="12" fill="#F2ECDF"/>
+  <text x="64" y="824" text-anchor="middle" class="b" style="fill:#F2ECDF;font-size:11px">Home</text>
+  <rect x="190" y="797" width="10" height="10" fill="none" stroke="#A39E92" stroke-width="1.6"/>
+  <text x="195" y="824" text-anchor="middle" style="fill:#A39E92;font-size:11px">Scadenze</text>
+  <circle cx="326" cy="802" r="5.5" fill="none" stroke="#A39E92" stroke-width="1.6"/>
+  <text x="326" y="824" text-anchor="middle" style="fill:#A39E92;font-size:11px">Pagamenti</text>
+  <rect x="128" y="834" width="134" height="4" rx="2" fill="#F2ECDF"/>
+</svg>

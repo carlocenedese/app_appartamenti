@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+  <title>Precisione scura - App del telefono, sola lettura</title>
+  <defs>
+    <radialGradient id="glowTop" cx="0.7" cy="0" r="0.8">
+      <stop offset="0" stop-color="#5A5EE6" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#5A5EE6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#15161B"/>
+      <stop offset="1" stop-color="#111216"/>
+    </linearGradient>
+    <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B8FFF"/>
+      <stop offset="1" stop-color="#4A4ED0"/>
+    </linearGradient>
+    <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3DD68C" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#3DD68C" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="areaY" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F2B13D" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#F2B13D" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="areaR" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F26D6D" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#F26D6D" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="390" height="844" fill="#0A0B0D"/>
+  <rect width="390" height="360" fill="url(#glowTop)"/>
+
+  <!-- Barra di stato -->
+  <text x="32" y="34" font-family="Inter, sans-serif" font-size="15" font-weight="600" fill="#EDEEF0">9:41</text>
+  <rect x="290" y="24" width="3" height="5" rx="1" fill="#EDEEF0"/><rect x="295" y="22" width="3" height="7" rx="1" fill="#EDEEF0"/><rect x="300" y="20" width="3" height="9" rx="1" fill="#EDEEF0"/><rect x="305" y="18" width="3" height="11" rx="1" fill="#EDEEF0"/>
+  <path d="M316 23 a9 9 0 0 1 14 0 M319 26 a5 5 0 0 1 8 0" fill="none" stroke="#EDEEF0" stroke-width="1.6" stroke-linecap="round"/>
+  <rect x="336" y="18" width="24" height="12" rx="3.5" fill="none" stroke="#EDEEF0" stroke-opacity="0.5"/>
+  <rect x="338" y="20" width="17" height="8" rx="2" fill="#EDEEF0"/>
+
+  <!-- Intestazione -->
+  <rect x="20" y="62" width="26" height="26" rx="7" fill="url(#logo)"/>
+  <circle cx="27.5" cy="75" r="2" fill="#FFFFFF"/><circle cx="33" cy="75" r="2" fill="#FFFFFF" fill-opacity="0.75"/><circle cx="38.5" cy="75" r="2" fill="#FFFFFF" fill-opacity="0.5"/>
+  <text x="56" y="80" font-family="Inter, sans-serif" font-size="15" font-weight="600" fill="#EDEEF0">Bollette</text>
+  <rect x="262" y="63" width="108" height="24" rx="12" fill="#111216" stroke="#2C2E34"/>
+  <rect x="275" y="74" width="10" height="8" rx="1.5" fill="#A0A3AB"/>
+  <path d="M277 74 v-2.5 a3 3 0 0 1 6 0 v2.5" fill="none" stroke="#A0A3AB" stroke-width="1.4"/>
+  <text x="292" y="79.5" font-family="Inter, sans-serif" font-size="12" font-weight="500" fill="#A0A3AB">Sola lettura</text>
+
+  <text x="20" y="116" font-family="'JetBrains Mono', Menlo, monospace" font-size="11" letter-spacing="1.2" fill="#858993">MERCOLEDÌ 11 NOVEMBRE</text>
+  <text x="20" y="144" font-family="Inter, sans-serif" font-size="24" font-weight="600" letter-spacing="-0.3" fill="#EDEEF0">Ciao, Carlo</text>
+  <circle cx="24" cy="160" r="3.5" fill="#3DD68C"/>
+  <text x="34" y="164" font-family="Inter, sans-serif" font-size="12" fill="#A0A3AB">Aggiornato 2 min fa dal computer di casa</text>
+
+  <!-- Card Berchet -->
+  <rect x="16" y="180" width="358" height="76" rx="10" fill="url(#card)" stroke="#222429"/>
+  <text x="32" y="206" font-family="Inter, sans-serif" font-size="15" font-weight="600" fill="#EDEEF0">Berchet</text>
+  <rect x="242" y="192" width="116" height="22" rx="11" fill="#3DD68C" fill-opacity="0.10" stroke="#3DD68C" stroke-opacity="0.35"/>
+  <circle cx="256" cy="203" r="6" fill="#3DD68C"/>
+  <path d="M253 203 l2 2 l4 -4" fill="none" stroke="#0A0B0D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="268" y="207" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#3DD68C">Tutto a posto</text>
+  <text x="32" y="240" font-family="'JetBrains Mono', Menlo, monospace" font-size="16" font-weight="600" fill="#EDEEF0">€ 1.284,60</text>
+  <path d="M160 238 L170 236 L180 237 L190 232 L200 233 L210 228 L220 225 L230 223 V244 H160 Z" fill="url(#areaG)"/>
+  <path d="M160 238 L170 236 L180 237 L190 232 L200 233 L210 228 L220 225 L230 223" fill="none" stroke="#3DD68C" stroke-width="1.4" stroke-linejoin="round"/>
+  <text x="358" y="240" text-anchor="end" font-family="Inter, sans-serif" font-size="12" fill="#A0A3AB"><tspan fill="#EDEEF0" font-weight="600">5 su 5</tspan> in regola</text>
+
+  <!-- Card Lovarini -->
+  <rect x="16" y="264" width="358" height="76" rx="10" fill="url(#card)" stroke="#222429"/>
+  <text x="32" y="290" font-family="Inter, sans-serif" font-size="15" font-weight="600" fill="#EDEEF0">Lovarini</text>
+  <rect x="234" y="276" width="124" height="22" rx="11" fill="#F2B13D" fill-opacity="0.10" stroke="#F2B13D" stroke-opacity="0.35"/>
+  <path d="M248 281 L254 292 H242 Z" fill="#F2B13D" stroke="#F2B13D" stroke-width="1.3" stroke-linejoin="round"/>
+  <path d="M248 284.5 V288" stroke="#0A0B0D" stroke-width="1.4" stroke-linecap="round"/>
+  <text x="260" y="291" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#F2B13D">2 cose da fare</text>
+  <text x="32" y="324" font-family="'JetBrains Mono', Menlo, monospace" font-size="16" font-weight="600" fill="#EDEEF0">€ 642,15</text>
+  <path d="M160 314 L170 317 L180 315 L190 319 L200 316 L210 320 L220 318 L230 321 V328 H160 Z" fill="url(#areaY)"/>
+  <path d="M160 314 L170 317 L180 315 L190 319 L200 316 L210 320 L220 318 L230 321" fill="none" stroke="#F2B13D" stroke-width="1.4" stroke-linejoin="round"/>
+  <text x="358" y="324" text-anchor="end" font-family="Inter, sans-serif" font-size="12" fill="#A0A3AB"><tspan fill="#EDEEF0" font-weight="600">3 su 4</tspan> in regola</text>
+
+  <!-- Card Pulci -->
+  <rect x="16" y="348" width="358" height="76" rx="10" fill="url(#card)" stroke="#3A2326"/>
+  <text x="32" y="374" font-family="Inter, sans-serif" font-size="15" font-weight="600" fill="#EDEEF0">Pulci</text>
+  <rect x="210" y="360" width="148" height="22" rx="11" fill="#F26D6D" fill-opacity="0.10" stroke="#F26D6D" stroke-opacity="0.4"/>
+  <circle cx="224" cy="371" r="6" fill="#F26D6D"/>
+  <path d="M224 368 V372" stroke="#0A0B0D" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="224" cy="374.5" r="0.9" fill="#0A0B0D"/>
+  <text x="236" y="375" font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="#F26D6D">1 scadenza passata</text>
+  <text x="32" y="408" font-family="'JetBrains Mono', Menlo, monospace" font-size="16" font-weight="600" fill="#F26D6D">- € 63,00</text>
+  <path d="M160 393 L170 395 L180 394 L190 399 L200 398 L210 403 L220 405 L230 408 V412 H160 Z" fill="url(#areaR)"/>
+  <path d="M160 393 L170 395 L180 394 L190 399 L200 398 L210 403 L220 405 L230 408" fill="none" stroke="#F26D6D" stroke-width="1.4" stroke-linejoin="round"/>
+  <text x="358" y="408" text-anchor="end" font-family="Inter, sans-serif" font-size="12" fill="#A0A3AB"><tspan fill="#EDEEF0" font-weight="600">4 su 4</tspan> in regola</text>
+
+  <!-- Prossime scadenze -->
+  <text x="20" y="452" font-family="Inter, sans-serif" font-size="15" font-weight="600" fill="#EDEEF0">Prossime scadenze</text>
+  <text x="370" y="451" text-anchor="end" font-family="Inter, sans-serif" font-size="12" fill="#8B8FFF">Tutte →</text>
+  <rect x="16" y="464" width="358" height="156" rx="10" fill="#111216" stroke="#222429"/>
+
+  <rect x="28" y="474" width="40" height="32" rx="6" fill="#F26D6D" fill-opacity="0.12"/>
+  <text x="48" y="489" text-anchor="middle" font-family="'JetBrains Mono', Menlo, monospace" font-size="13" font-weight="700" fill="#F26D6D">31</text>
+  <text x="48" y="501" text-anchor="middle" font-family="'JetBrains Mono', Menlo, monospace" font-size="9" fill="#F26D6D">OTT</text>
+  <text x="80" y="487" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#EDEEF0">Conguaglio Pulci da inviare</text>
+  <text x="80" y="503" font-family="'JetBrains Mono', Menlo, monospace" font-size="11" fill="#F26D6D">scaduto · 11 giorni fa</text>
+  <rect x="28" y="516" width="334" height="1" fill="#1D1F24"/>
+
+  <rect x="28" y="526" width="40" height="32" rx="6" fill="#1A1B20"/>
+  <text x="48" y="541" text-anchor="middle" font-family="'JetBrains Mono', Menlo, monospace" font-size="13" font-weight="700" fill="#EDEEF0">10</text>
+  <text x="48" y="553" text-anchor="middle" font-family="'JetBrains Mono', Menlo, monospace" font-size="9" fill="#858993">DIC</text>
+  <text x="80" y="539" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#EDEEF0">Rata condominio Lovarini</text>
+  <text x="80" y="555" font-family="'JetBrains Mono', Menlo, monospace" font-size="11" fill="#858993">rata 3 di 4 · tra 29 gg</text>
+  <text x="358" y="547" text-anchor="end" font-family="'JetBrains Mono', Menlo, monospace" font-size="13" fill="#EDEEF0">€ 412,00</text>
+  <rect x="28" y="568" width="334" height="1" fill="#1D1F24"/>
+
+  <rect x="28" y="578" width="40" height="32" rx="6" fill="#1A1B20"/>
+  <text x="48" y="593" text-anchor="middle" font-family="'JetBrains Mono', Menlo, monospace" font-size="13" font-weight="700" fill="#EDEEF0">16</text>
+  <text x="48" y="605" text-anchor="middle" font-family="'JetBrains Mono', Menlo, monospace" font-size="9" fill="#858993">DIC</text>
+  <text x="80" y="591" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#EDEEF0">IMU, saldo 2026</text>
+  <text x="80" y="607" font-family="'JetBrains Mono', Menlo, monospace" font-size="11" fill="#858993">tutti e tre · tra 35 gg</text>
+  <text x="358" y="599" text-anchor="end" font-family="Inter, sans-serif" font-size="12" fill="#F2B13D">importo da inserire</text>
+
+  <!-- Chi ha pagato -->
+  <text x="20" y="648" font-family="Inter, sans-serif" font-size="15" font-weight="600" fill="#EDEEF0">Chi ha pagato a novembre</text>
+  <rect x="16" y="660" width="358" height="108" rx="10" fill="#111216" stroke="#222429"/>
+  <g font-family="'JetBrains Mono', Menlo, monospace" font-size="11">
+    <text x="32" y="684" fill="#A0A3AB">BER</text>
+    <text x="32" y="712" fill="#A0A3AB">LOV</text>
+    <text x="32" y="740" fill="#A0A3AB">PUL</text>
+    <text x="358" y="684" text-anchor="end" fill="#3DD68C">5/5</text>
+    <text x="358" y="712" text-anchor="end" fill="#F2B13D">3/4</text>
+    <text x="358" y="740" text-anchor="end" fill="#3DD68C">4/4</text>
+  </g>
+  <g font-family="Inter, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+    <circle cx="86" cy="680" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="86" y="684" fill="#3DD68C">M</text>
+    <circle cx="112" cy="680" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="112" y="684" fill="#3DD68C">S</text>
+    <circle cx="138" cy="680" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="138" y="684" fill="#3DD68C">L</text>
+    <circle cx="164" cy="680" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="164" y="684" fill="#3DD68C">A</text>
+    <circle cx="190" cy="680" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="190" y="684" fill="#3DD68C">D</text>
+
+    <circle cx="86" cy="708" r="10" fill="none" stroke="#F2B13D" stroke-width="1.4" stroke-dasharray="3 2"/><text x="86" y="712" fill="#F2B13D">G</text>
+    <circle cx="112" cy="708" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="112" y="712" fill="#3DD68C">E</text>
+    <circle cx="138" cy="708" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="138" y="712" fill="#3DD68C">P</text>
+    <circle cx="164" cy="708" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="164" y="712" fill="#3DD68C">C</text>
+
+    <circle cx="86" cy="736" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="86" y="740" fill="#3DD68C">F</text>
+    <circle cx="112" cy="736" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="112" y="740" fill="#3DD68C">R</text>
+    <circle cx="138" cy="736" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="138" y="740" fill="#3DD68C">T</text>
+    <circle cx="164" cy="736" r="10" fill="#3DD68C" fill-opacity="0.16" stroke="#3DD68C" stroke-opacity="0.6"/><text x="164" y="740" fill="#3DD68C">I</text>
+  </g>
+  <text x="182" y="712" font-family="Inter, sans-serif" font-size="12" fill="#F2B13D">Giulia R. manca</text>
+  <text x="32" y="760" font-family="Inter, sans-serif" font-size="11" fill="#858993">Cerchio pieno = pagato · tratteggiato = non ancora arrivato</text>
+
+  <!-- Barra delle schede -->
+  <rect x="0" y="776" width="390" height="68" fill="#0D0E11"/>
+  <rect x="0" y="776" width="390" height="1" fill="#1F2126"/>
+  <path d="M58 798 L65 792 L72 798 V805 H58 Z" fill="none" stroke="#8B8FFF" stroke-width="1.6" stroke-linejoin="round"/>
+  <text x="65" y="820" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" font-weight="600" fill="#8B8FFF">Home</text>
+  <rect x="188" y="791" width="15" height="14" rx="2" fill="none" stroke="#858993" stroke-width="1.5"/>
+  <path d="M188 796 H203 M192 789 V793 M199 789 V793" stroke="#858993" stroke-width="1.5"/>
+  <text x="195" y="820" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#858993">Scadenze</text>
+  <circle cx="325" cy="795" r="4" fill="none" stroke="#858993" stroke-width="1.5"/>
+  <path d="M317 806 a8 6 0 0 1 16 0" fill="none" stroke="#858993" stroke-width="1.5"/>
+  <text x="325" y="820" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#858993">Inquilini</text>
+  <rect x="128" y="831" width="134" height="5" rx="2.5" fill="#EDEEF0"/>
+</svg>

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+<title>App del telefono, sola lettura - Proposta 18, Officina</title>
+<defs>
+<filter id="lift" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-color="#000" flood-opacity="0.10"/></filter>
+<linearGradient id="recess" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0.07"/><stop offset="0.25" stop-color="#000" stop-opacity="0"/></linearGradient>
+</defs>
+<rect width="390" height="844" fill="#E2DED6"/>
+<text x="32" y="34" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1B1A17">9:41</text>
+<rect x="330" y="24" width="24" height="12" rx="3" fill="none" stroke="#1B1A17" stroke-width="1.2"/><rect x="332" y="26" width="17" height="8" rx="1.5" fill="#1B1A17"/><rect x="355" y="28" width="2" height="4" fill="#1B1A17"/>
+<rect x="16" y="60" width="36" height="36" rx="9" fill="#1B1A17"/>
+<g transform="translate(24.5 64) scale(0.82)">
+<line x1="12" y1="4" x2="12" y2="0.8" stroke="#1B1A17" stroke-width="1.4"/>
+<circle cx="12" cy="1.6" r="1.6" fill="#1B1A17"/>
+<rect x="1" y="4" width="22" height="24" rx="3.5" fill="#F4F2ED" stroke="#1B1A17" stroke-width="1.4"/>
+<rect x="4.5" y="8" width="15" height="9" rx="1.5" fill="#1B1A17"/>
+<rect x="7" y="12" width="10" height="1.4" fill="#CFE9C9"/>
+<rect x="5" y="20.5" width="6" height="3.5" rx="1" fill="none" stroke="#1B1A17" stroke-width="0.9"/>
+<line x1="14" y1="20.5" x2="14" y2="24" stroke="#1B1A17" stroke-width="0.9"/>
+<line x1="16" y1="20.5" x2="16" y2="24" stroke="#1B1A17" stroke-width="0.9"/>
+<line x1="18" y1="20.5" x2="18" y2="24" stroke="#1B1A17" stroke-width="0.9"/>
+<rect x="5" y="28" width="4" height="3" fill="#1B1A17"/><rect x="15" y="28" width="4" height="3" fill="#1B1A17"/>
+</g>
+<text x="62" y="84" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" fill="#1B1A17">Bollette</text>
+<rect x="268" y="66" width="106" height="24" rx="12" fill="none" stroke="#4A463F"/>
+<text x="321" y="82" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="600" fill="#4A463F" text-anchor="middle" letter-spacing="1.2">SOLA LETTURA</text>
+<text x="16" y="128" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">MERCOLEDÌ 11 NOVEMBRE 2026</text>
+<text x="15" y="160" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="700" fill="#1B1A17" letter-spacing="-0.3">Ciao, Carlo.</text>
+<rect x="16" y="182" width="358" height="84" rx="10" fill="#B3AC9F" opacity="0.55"/>
+<rect x="16" y="180" width="358" height="84" rx="10" fill="#F4F2ED" stroke="#C7C1B6"/>
+<text x="32" y="212" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" fill="#1B1A17">Berchet</text>
+<circle cx="40" cy="238" r="11" fill="#165C36" opacity="0.13"/>
+<circle cx="40" cy="238" r="7" fill="#165C36"/>
+<path d="M36.85 238.2 l2.1 2.24 l4.2 -4.760000000000001" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56" y="242" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#165C36" letter-spacing="1.2">TUTTO A POSTO</text>
+<rect x="222" y="194" width="136" height="34" rx="5" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="222.5" y="194.5" width="135" height="33" rx="5" fill="url(#recess)"/>
+<text x="348" y="218" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="17" font-weight="400" fill="#1B1A17" text-anchor="end">€ 412,30</text>
+<text x="358" y="250" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F" text-anchor="end">5 su 5 in regola</text>
+<rect x="16" y="278" width="358" height="84" rx="10" fill="#B3AC9F" opacity="0.55"/>
+<rect x="16" y="276" width="358" height="84" rx="10" fill="#F4F2ED" stroke="#C7C1B6"/>
+<text x="32" y="308" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" fill="#1B1A17">Lovarini</text>
+<circle cx="40" cy="334" r="11" fill="#174A8F" opacity="0.13"/>
+<path d="M40 325.95 L48.05 334 L40 342.05 L31.950000000000003 334 Z" fill="#174A8F"/>
+<rect x="39.1" y="330.5" width="1.8" height="4.2" fill="#FFFFFF"/><circle cx="40" cy="336.66" r="1.1" fill="#FFFFFF"/>
+<text x="56" y="338" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#174A8F" letter-spacing="1.2">2 COSE DA FARE</text>
+<rect x="222" y="290" width="136" height="34" rx="5" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="222.5" y="290.5" width="135" height="33" rx="5" fill="url(#recess)"/>
+<text x="348" y="314" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="17" font-weight="400" fill="#1B1A17" text-anchor="end">€ 188,75</text>
+<text x="358" y="346" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F" text-anchor="end">4 su 4 in regola</text>
+<rect x="16" y="374" width="358" height="84" rx="10" fill="#B3AC9F" opacity="0.55"/>
+<rect x="16" y="372" width="358" height="84" rx="10" fill="#F4F2ED" stroke="#C7C1B6"/>
+<text x="32" y="404" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" fill="#1B1A17">Pulci</text>
+<circle cx="40" cy="430" r="11" fill="#9A1D16" opacity="0.13"/>
+<rect x="33" y="423" width="14" height="14" rx="1.5" fill="#9A1D16"/>
+<path d="M37.2 427.2 l5.6000000000000005 5.6000000000000005 m0 -5.6000000000000005 l-5.6000000000000005 5.6000000000000005" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"/>
+<text x="56" y="434" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="#9A1D16" letter-spacing="1.2">1 SCADENZA PASSATA</text>
+<rect x="222" y="386" width="136" height="34" rx="5" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="222.5" y="386.5" width="135" height="33" rx="5" fill="url(#recess)"/>
+<text x="348" y="410" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="17" font-weight="400" fill="#1B1A17" text-anchor="end">- € 63,00</text>
+<text x="358" y="442" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#4A463F" text-anchor="end">3 su 4 in regola</text>
+<rect x="16" y="478" width="358" height="124" rx="10" fill="#B3AC9F" opacity="0.55"/>
+<rect x="16" y="476" width="358" height="124" rx="10" fill="#F4F2ED" stroke="#C7C1B6"/>
+<text x="32" y="504" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">PROSSIME SCADENZE</text>
+<rect x="32" y="520" width="56" height="28" rx="4" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="32.5" y="520.5" width="55" height="27" rx="4" fill="url(#recess)"/>
+<text x="60" y="539" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#1B1A17" text-anchor="middle">10/12</text>
+<text x="100" y="539" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#1B1A17">Rata condominio Lovarini</text>
+<text x="358" y="539" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#1B1A17" text-anchor="end">€ 320,00</text>
+<rect x="32" y="558" width="56" height="28" rx="4" fill="#E6E8DF" stroke="#C7C1B6"/><rect x="32.5" y="558.5" width="55" height="27" rx="4" fill="url(#recess)"/>
+<text x="60" y="577" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#1B1A17" text-anchor="middle">16/12</text>
+<text x="100" y="577" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="500" fill="#1B1A17">TARI Pulci</text>
+<text x="358" y="577" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="14" font-weight="400" fill="#1B1A17" text-anchor="end">€ 101,04</text>
+<rect x="16" y="618" width="358" height="138" rx="10" fill="#B3AC9F" opacity="0.55"/>
+<rect x="16" y="616" width="358" height="138" rx="10" fill="#F4F2ED" stroke="#C7C1B6"/>
+<text x="32" y="644" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="600" fill="#4A463F" letter-spacing="1.2">AFFITTO DI NOVEMBRE</text>
+<text x="358" y="644" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#1B1A17" text-anchor="end">12 su 13</text>
+<rect x="32.0" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="56.5" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="81.0" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="105.5" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="130.0" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="154.5" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="179.0" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="203.5" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="228.0" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="252.5" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="277.0" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="301.5" y="658" width="20" height="8" rx="1.5" fill="#1B1A17"/>
+<rect x="326.75" y="658.75" width="18.5" height="6.5" rx="1.5" fill="none" stroke="#1B1A17" stroke-width="1.5"/>
+<circle cx="39" cy="692" r="10" fill="#165C36" opacity="0.13"/>
+<circle cx="39" cy="692" r="6" fill="#165C36"/>
+<path d="M36.3 692.2 l1.7999999999999998 1.92 l3.5999999999999996 -4.08" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="54" y="697" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1B1A17">Berchet 5 su 5 · Lovarini 4 su 4</text>
+<circle cx="39" cy="720" r="10" fill="#9A1D16" opacity="0.13"/>
+<rect x="33" y="714" width="12" height="12" rx="1.5" fill="#9A1D16"/>
+<path d="M36.6 717.6 l4.800000000000001 4.800000000000001 m0 -4.800000000000001 l-4.800000000000001 4.800000000000001" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"/>
+<text x="54" y="725" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1B1A17">Pulci 3 su 4 · manca Giulia R.</text>
+<text x="54" y="744" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="700" fill="#9A1D16" letter-spacing="1.2">SCADUTO IL 5/11</text>
+<rect x="0" y="770" width="390" height="74" fill="#D8D3CA"/><line x1="0" y1="770.5" x2="390" y2="770.5" stroke="#C7C1B6"/>
+<rect x="37" y="776" width="56" height="28" rx="14" fill="#F4F2ED" stroke="#C7C1B6"/>
+<path d="M58 790 L65 784 L72 790 M60 789 V797 H70 V789" fill="none" stroke="#1B1A17" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="65" y="818" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#1B1A17" text-anchor="middle">Home</text>
+<rect x="188" y="785" width="14" height="12" rx="1.5" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M188 789 H202 M192 783 V786 M198 783 V786" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="195" y="818" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#4A463F" text-anchor="middle">Scadenze</text>
+<rect x="318" y="783" width="6" height="6" rx="1" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="326" y="783" width="6" height="6" rx="1" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="318" y="791" width="6" height="6" rx="1" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="326" y="791" width="6" height="6" rx="1" fill="none" stroke="#4A463F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="325" y="818" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="600" fill="#4A463F" text-anchor="middle">Appartamenti</text>
+<rect x="128" y="834" width="134" height="5" rx="2.5" fill="#1B1A17"/>
+</svg>

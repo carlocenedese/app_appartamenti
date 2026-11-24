@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="390" height="844" viewBox="0 0 390 844">
+
+<title>App Bollette · telefono · sola lettura · proposta 08</title>
+<defs>
+
+  <linearGradient id="sky" x1="0" y1="0" x2="0.35" y2="1">
+    <stop offset="0" stop-color="#9ED8F5"/>
+    <stop offset="0.45" stop-color="#D4EFFB"/>
+    <stop offset="0.78" stop-color="#E9F8FB"/>
+    <stop offset="1" stop-color="#B5E6EE"/>
+  </linearGradient>
+  <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+    <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="wave1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5CC8DF" stop-opacity="0.75"/>
+    <stop offset="1" stop-color="#1E93C2" stop-opacity="0.9"/>
+  </linearGradient>
+  <linearGradient id="wave2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#9BE3C4" stop-opacity="0.85"/>
+    <stop offset="1" stop-color="#47B88E" stop-opacity="0.9"/>
+  </linearGradient>
+  <radialGradient id="bubble" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.05"/>
+    <stop offset="0.72" stop-color="#FFFFFF" stop-opacity="0.18"/>
+    <stop offset="0.93" stop-color="#FFFFFF" stop-opacity="0.85"/>
+    <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="glassTint" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.80"/>
+    <stop offset="1" stop-color="#F2FAFE" stop-opacity="0.74"/>
+  </linearGradient>
+  <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.85"/>
+    <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="1"/>
+    <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.35"/>
+    <stop offset="1" stop-color="#7CC3E6" stop-opacity="0.6"/>
+  </linearGradient>
+  <linearGradient id="aqua" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#1478BA"/>
+    <stop offset="1" stop-color="#075A94"/>
+  </linearGradient>
+  <linearGradient id="aquaSoft" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#E4F4FD"/>
+    <stop offset="1" stop-color="#C7E6F8"/>
+  </linearGradient>
+  <linearGradient id="row" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+    <stop offset="1" stop-color="#F4FAFE" stop-opacity="0.95"/>
+  </linearGradient>
+  <radialGradient id="orbG" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#8BE59D"/><stop offset="0.6" stop-color="#3DB45A"/><stop offset="1" stop-color="#1F7A37"/></radialGradient>
+  <radialGradient id="orbY" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#FFE48A"/><stop offset="0.6" stop-color="#FFC233"/><stop offset="1" stop-color="#C98A00"/></radialGradient>
+  <radialGradient id="orbR" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#FF9C92"/><stop offset="0.6" stop-color="#F0524F"/><stop offset="1" stop-color="#B3261E"/></radialGradient>
+  <radialGradient id="orbB" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#9AD9FA"/><stop offset="0.6" stop-color="#2E9AD6"/><stop offset="1" stop-color="#0A66A3"/></radialGradient>
+  <radialGradient id="orbV" cx="0.4" cy="0.3" r="0.75"><stop offset="0" stop-color="#C7B8FF"/><stop offset="0.6" stop-color="#7C66E0"/><stop offset="1" stop-color="#4B37A8"/></radialGradient>
+  <filter id="blur" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="18"/></filter>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+    <feOffset dy="8" result="b"/>
+    <feFlood flood-color="#0B4A73" flood-opacity="0.16"/>
+    <feComposite in2="b" operator="in"/>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="btnShadow" x="-20%" y="-30%" width="140%" height="180%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="5"/>
+    <feOffset dy="4" result="b"/>
+    <feFlood flood-color="#075A94" flood-opacity="0.35"/>
+    <feComposite in2="b" operator="in"/>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="txtShadow" x="-5%" y="-20%" width="110%" height="150%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="0.6"/>
+    <feOffset dy="1" result="b"/>
+    <feFlood flood-color="#03375C" flood-opacity="0.55"/>
+    <feComposite in2="b" operator="in"/>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+<g id="bgArt"><rect width="390" height="844" fill="url(#sky)"/>
+<circle cx="300" cy="90" r="190" fill="url(#sun)"/>
+<path d="M0 700 C 90 660 200 720 390 668 L390 844 L0 844 Z" fill="url(#wave2)" opacity="0.55"/>
+<path d="M0 760 C 120 720 250 790 390 740 L390 844 L0 844 Z" fill="url(#wave1)"/>
+<circle cx="40" cy="150" r="26" fill="url(#bubble)"/>
+<ellipse cx="31.7" cy="139.1" rx="8.3" ry="4.2" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 31.7 139.1)"/>
+<circle cx="350" cy="330" r="34" fill="url(#bubble)"/>
+<ellipse cx="339.1" cy="315.7" rx="10.9" ry="5.4" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 339.1 315.7)"/>
+<circle cx="30" cy="520" r="18" fill="url(#bubble)"/>
+<ellipse cx="24.2" cy="512.4" rx="5.8" ry="2.9" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 24.2 512.4)"/>
+<circle cx="340" cy="610" r="22" fill="url(#bubble)"/>
+<ellipse cx="333.0" cy="600.8" rx="7.0" ry="3.5" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 333.0 600.8)"/>
+<circle cx="200" cy="250" r="12" fill="url(#bubble)"/>
+<ellipse cx="196.2" cy="245.0" rx="3.8" ry="1.9" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 196.2 245.0)"/>
+<circle cx="90" cy="680" r="30" fill="url(#bubble)"/>
+<ellipse cx="80.4" cy="667.4" rx="9.6" ry="4.8" fill="#FFFFFF" opacity="0.75" transform="rotate(-25 80.4 667.4)"/></g>
+</defs>
+<use xlink:href="#bgArt"/>
+<text x="32" y="34" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >9:41</text>
+<rect x="318" y="23" width="26" height="13" rx="4" fill="none" stroke="#0B2E4A" stroke-width="1.5"/><rect x="321" y="26" width="18" height="7" rx="2" fill="#0B2E4A"/>
+<rect x="295" y="27" width="4" height="8" rx="1" fill="#0B2E4A"/><rect x="301" y="24" width="4" height="11" rx="1" fill="#0B2E4A"/><rect x="307" y="21" width="4" height="14" rx="1" fill="#0B2E4A"/>
+<text x="20" y="84" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="28" font-weight="800" fill="#0B2E4A" text-anchor="start" >Ciao, Carlo</text>
+<rect x="20" y="98" width="242" height="26" rx="13.0" fill="#EEF4F8" stroke="#C5D6E2"/>
+<rect x="23" y="100" width="236" height="9.9" rx="4.9" fill="#FFFFFF" opacity="0.65"/>
+<circle cx="34" cy="111.0" r="3" fill="#3C5F78"/>
+<text x="46" y="115.32" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="12" font-weight="700" fill="#3C5F78" text-anchor="start" >Sola lettura · aggiornato 09:42</text>
+<circle cx="350" cy="77.5" r="20" fill="#0B4A73" opacity="0.12"/>
+<circle cx="350" cy="76" r="20" fill="url(#orbB)"/>
+<ellipse cx="350" cy="66.4" rx="12.4" ry="6.8" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="350" cy="76" r="19.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<text x="350" y="83.2" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="19.0" font-weight="800" fill="#FFFFFF" text-anchor="middle" filter="url(#txtShadow)">C</text>
+<clipPath id="cl1"><rect x="16" y="138" width="358" height="74" rx="22"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="16" y="138" width="358" height="74" rx="22" fill="#EAF6FC"/>
+<g clip-path="url(#cl1)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="16" y="138" width="358" height="74" rx="22" fill="url(#glassTint)"/>
+<g clip-path="url(#cl1)"><rect x="16" y="138" width="358" height="33" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="16.75" y="138.75" width="356.5" height="72.5" rx="21.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<circle cx="50" cy="176.5" r="18" fill="#0B4A73" opacity="0.12"/>
+<circle cx="50" cy="175" r="18" fill="url(#orbG)"/>
+<ellipse cx="50" cy="166.4" rx="11.2" ry="6.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="50" cy="175" r="17.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M43.2 175.5 L48.6 180.1 L56.8 170.9" fill="none" stroke="#FFFFFF" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="80" y="169" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="18" font-weight="800" fill="#0B2E4A" text-anchor="start" >Berchet</text>
+<text x="80" y="192" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="800" fill="#1E6B33" text-anchor="start" >Tutto a posto</text>
+<text x="352" y="169" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 1.842,30</text>
+<text x="352" y="192" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="end" >5 su 5 in regola</text>
+<clipPath id="cl2"><rect x="16" y="220" width="358" height="74" rx="22"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="16" y="220" width="358" height="74" rx="22" fill="#EAF6FC"/>
+<g clip-path="url(#cl2)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="16" y="220" width="358" height="74" rx="22" fill="url(#glassTint)"/>
+<g clip-path="url(#cl2)"><rect x="16" y="220" width="358" height="33" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="16.75" y="220.75" width="356.5" height="72.5" rx="21.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<circle cx="50" cy="258.5" r="18" fill="#0B4A73" opacity="0.12"/>
+<circle cx="50" cy="257" r="18" fill="url(#orbY)"/>
+<ellipse cx="50" cy="248.4" rx="11.2" ry="6.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="50" cy="257" r="17.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M50 250.2 L50 258.7" stroke="#5A3A00" stroke-width="2.9" stroke-linecap="round"/>
+<circle cx="50" cy="262.8" r="1.7" fill="#5A3A00"/>
+<text x="80" y="251" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="18" font-weight="800" fill="#0B2E4A" text-anchor="start" >Lovarini</text>
+<text x="80" y="274" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="800" fill="#7A4F00" text-anchor="start" >2 cose da fare</text>
+<text x="352" y="251" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 964,15</text>
+<text x="352" y="274" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="end" >3 su 4 in regola</text>
+<clipPath id="cl3"><rect x="16" y="302" width="358" height="74" rx="22"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="16" y="302" width="358" height="74" rx="22" fill="#EAF6FC"/>
+<g clip-path="url(#cl3)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="16" y="302" width="358" height="74" rx="22" fill="url(#glassTint)"/>
+<g clip-path="url(#cl3)"><rect x="16" y="302" width="358" height="33" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="16.75" y="302.75" width="356.5" height="72.5" rx="21.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<circle cx="50" cy="340.5" r="18" fill="#0B4A73" opacity="0.12"/>
+<circle cx="50" cy="339" r="18" fill="url(#orbR)"/>
+<ellipse cx="50" cy="330.4" rx="11.2" ry="6.1" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="50" cy="339" r="17.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M44.5 333.5 L55.5 344.5 M55.5 333.5 L44.5 344.5" stroke="#FFFFFF" stroke-width="2.9" stroke-linecap="round"/>
+<text x="80" y="333" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="18" font-weight="800" fill="#0B2E4A" text-anchor="start" >Pulci</text>
+<text x="80" y="356" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="800" fill="#A3201F" text-anchor="start" >1 scadenza passata</text>
+<text x="352" y="333" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="16" font-weight="800" fill="#A3201F" text-anchor="end" >- € 63,00</text>
+<text x="352" y="356" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="end" >4 su 4 in regola</text>
+<clipPath id="cl4"><rect x="16" y="386" width="358" height="176" rx="22"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="16" y="386" width="358" height="176" rx="22" fill="#EAF6FC"/>
+<g clip-path="url(#cl4)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="16" y="386" width="358" height="176" rx="22" fill="url(#glassTint)"/>
+<g clip-path="url(#cl4)"><rect x="16" y="386" width="358" height="79" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="16.75" y="386.75" width="356.5" height="174.5" rx="21.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<text x="36" y="418" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="18" font-weight="800" fill="#0B2E4A" text-anchor="start" >Prossime scadenze</text>
+<circle cx="46" cy="453.5" r="11" fill="#0B4A73" opacity="0.12"/>
+<circle cx="46" cy="452" r="11" fill="url(#orbR)"/>
+<ellipse cx="46" cy="446.7" rx="6.8" ry="3.7" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="46" cy="452" r="10.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M42.7 448.7 L49.3 455.3 M49.3 448.7 L42.7 455.3" stroke="#FFFFFF" stroke-width="2.0" stroke-linecap="round"/>
+<text x="68" y="448" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >TARI Pulci</text>
+<text x="68" y="467" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#A3201F" text-anchor="start" >scaduta il 30/10</text>
+<text x="352" y="454" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 101,04</text>
+<circle cx="46" cy="493.5" r="11" fill="#0B4A73" opacity="0.12"/>
+<circle cx="46" cy="492" r="11" fill="url(#orbY)"/>
+<ellipse cx="46" cy="486.7" rx="6.8" ry="3.7" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="46" cy="492" r="10.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<path d="M46 487.8 L46 493.0" stroke="#5A3A00" stroke-width="2.0" stroke-linecap="round"/>
+<circle cx="46" cy="495.6" r="1.2" fill="#5A3A00"/>
+<text x="68" y="488" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Rata condominio Lovarini</text>
+<text x="68" y="507" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="start" >10/12 · tra 29 giorni</text>
+<text x="352" y="494" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 412,00</text>
+<circle cx="46" cy="533.5" r="11" fill="#0B4A73" opacity="0.12"/>
+<circle cx="46" cy="532" r="11" fill="url(#orbB)"/>
+<ellipse cx="46" cy="526.7" rx="6.8" ry="3.7" fill="#FFFFFF" opacity="0.6"/>
+<circle cx="46" cy="532" r="10.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7"/>
+<text x="68" y="528" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="start" >Internet Berchet</text>
+<text x="68" y="547" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="600" fill="#3C5F78" text-anchor="start" >16/12 · addebito automatico</text>
+<text x="352" y="534" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="15" font-weight="800" fill="#0B2E4A" text-anchor="end" >€ 29,95</text>
+<clipPath id="cl5"><rect x="16" y="574" width="358" height="156" rx="22"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="16" y="574" width="358" height="156" rx="22" fill="#EAF6FC"/>
+<g clip-path="url(#cl5)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="16" y="574" width="358" height="156" rx="22" fill="url(#glassTint)"/>
+<g clip-path="url(#cl5)"><rect x="16" y="574" width="358" height="70" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="16.75" y="574.75" width="356.5" height="154.5" rx="21.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<text x="36" y="606" font-family="'Nunito', 'Avenir Next', sans-serif" font-size="18" font-weight="800" fill="#0B2E4A" text-anchor="start" >Affitto di novembre</text>
+<text x="352" y="606" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="800" fill="#3C5F78" text-anchor="end" >12 su 13</text>
+<text x="36" y="641" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="800" fill="#0B2E4A" text-anchor="start" >Berchet</text>
+<circle cx="128" cy="636" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="128" y="640" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >G</text>
+<circle cx="136" cy="644" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="154" cy="636" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="154" y="640" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >M</text>
+<circle cx="162" cy="644" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="180" cy="636" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="180" y="640" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >S</text>
+<circle cx="188" cy="644" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="206" cy="636" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="206" y="640" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >L</text>
+<circle cx="214" cy="644" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="232" cy="636" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="232" y="640" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >R</text>
+<circle cx="240" cy="644" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<text x="352" y="641" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#1E6B33" text-anchor="end" >tutti in regola</text>
+<text x="36" y="673" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="800" fill="#0B2E4A" text-anchor="start" >Lovarini</text>
+<circle cx="128" cy="668" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="128" y="672" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >E</text>
+<circle cx="136" cy="676" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="154" cy="668" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="154" y="672" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >F</text>
+<circle cx="162" cy="676" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="180" cy="668" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="180" y="672" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >D</text>
+<circle cx="188" cy="676" r="5" fill="url(#orbR)" stroke="#FFFFFF"/>
+<circle cx="206" cy="668" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="206" y="672" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >P</text>
+<circle cx="214" cy="676" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<text x="352" y="673" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#A3201F" text-anchor="end" >manca Davide C.</text>
+<text x="36" y="705" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="14" font-weight="800" fill="#0B2E4A" text-anchor="start" >Pulci</text>
+<circle cx="128" cy="700" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="128" y="704" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >R</text>
+<circle cx="136" cy="708" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="154" cy="700" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="154" y="704" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >T</text>
+<circle cx="162" cy="708" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="180" cy="700" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="180" y="704" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >V</text>
+<circle cx="188" cy="708" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<circle cx="206" cy="700" r="11" fill="url(#orbB)" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="206" y="704" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >I</text>
+<circle cx="214" cy="708" r="5" fill="url(#orbG)" stroke="#FFFFFF"/>
+<text x="352" y="705" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="13" font-weight="800" fill="#1E6B33" text-anchor="end" >tutti in regola</text>
+<clipPath id="cl6"><rect x="56" y="764" width="278" height="60" rx="30"/></clipPath>
+<g filter="url(#shadow)">
+<rect x="56" y="764" width="278" height="60" rx="30" fill="#EAF6FC"/>
+<g clip-path="url(#cl6)"><use xlink:href="#bgArt" filter="url(#blur)"/></g>
+<rect x="56" y="764" width="278" height="60" rx="30" fill="url(#glassTint)"/>
+<g clip-path="url(#cl6)"><rect x="56" y="764" width="278" height="27" fill="url(#gloss)" opacity="0.55"/></g>
+<rect x="56.75" y="764.75" width="276.5" height="58.5" rx="29.25" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+</g>
+<rect x="62" y="770" width="84" height="48" rx="24" fill="url(#aqua)"/><rect x="65" y="772" width="78" height="18" rx="9" fill="url(#gloss)" opacity="0.4"/>
+<path d="M95 784 L104 776 L113 784 M98 782 L98 793 L110 793 L110 782" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="104" y="810" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="800" fill="#FFFFFF" text-anchor="middle" >Home</text>
+<path d="M186 779 L204 779 L204 794 L186 794 Z M186 784 L204 784 M191 776 L191 781 M199 776 L199 781" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="195" y="810" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Scadenze</text>
+<path d="M278 794 L278 778 L288 776 L288 794 M288 783 L294 783 L294 794 M276 794 L296 794 M282 782 L284 782 M282 786 L284 786 M282 790 L284 790" fill="none" stroke="#3C5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="286" y="810" font-family="'Nunito Sans', 'Avenir Next', sans-serif" font-size="11" font-weight="700" fill="#0B2E4A" text-anchor="middle" >Case</text>
+</svg>

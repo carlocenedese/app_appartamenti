@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="900" viewBox="0 0 1440 900">
+  <title>Carta calma — Home desktop</title>
+  <defs>
+    <style>
+      .serif { font-family: 'Shippori Mincho', 'Hiragino Mincho ProN', serif; }
+      .sans  { font-family: 'Zen Kaku Gothic New', 'Hiragino Sans', sans-serif; }
+      .ink  { fill: #2B2620; }
+      .ink2 { fill: #6B6257; }
+      .moss { fill: #56663A; }
+      .ocra { fill: #8C6418; }
+      .kaki { fill: #A8532A; }
+      .indigo { fill: #2F4A6B; }
+      .rule { stroke: #D9CFBF; stroke-width: 1.2; fill: none; }
+    </style>
+    <!-- fibre della carta -->
+    <filter id="paper" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4"/>
+      <feColorMatrix values="0 0 0 0 0.42  0 0 0 0 0.35  0 0 0 0 0.25  0 0 0 0.09 0"/>
+    </filter>
+    <filter id="paperLow" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" seed="11"/>
+      <feColorMatrix values="0 0 0 0 0.55  0 0 0 0 0.45  0 0 0 0 0.30  0 0 0 0.07 0"/>
+    </filter>
+    <!-- linea d'inchiostro leggermente irregolare -->
+    <filter id="ink" filterUnits="userSpaceOnUse" x="0" y="0" width="1440" height="900">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="sheet" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#5A4630" flood-opacity="0.09"/>
+    </filter>
+    <filter id="stamp" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="3" result="w"/>
+      <feDisplacementMap in="SourceGraphic" in2="w" scale="2" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="9" result="g"/>
+      <feColorMatrix in="g" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.4 1.75" result="m"/>
+      <feComposite in="d" in2="m" operator="in"/>
+    </filter>
+    <!-- icone di stato: forma diversa per ogni stato, sempre con testo accanto -->
+    <g id="i-ok">
+      <circle r="9" fill="none" stroke="#56663A" stroke-width="1.6"/>
+      <path d="M-4 0.5 L-1 3.5 L4.5 -3" fill="none" stroke="#56663A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g id="i-warn">
+      <circle r="9" fill="none" stroke="#8C6418" stroke-width="1.6"/>
+      <path d="M0 -9 A9 9 0 0 0 0 9 Z" fill="#8C6418"/>
+    </g>
+    <g id="i-err">
+      <path d="M0 -9.5 L9.5 7.5 L-9.5 7.5 Z" fill="none" stroke="#A8532A" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M0 -3 L0 2" stroke="#A8532A" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cy="4.8" r="1.1" fill="#A8532A"/>
+    </g>
+  </defs>
+
+  <!-- fondo carta -->
+  <rect width="1440" height="900" fill="#F4EFE6"/>
+
+  <!-- ===== barra laterale: il dorso del quaderno ===== -->
+  <rect width="248" height="900" fill="#ECE5D8"/>
+  <path d="M248 0 L248 900" stroke="#D2C6B2" stroke-width="1.4" filter="url(#ink)"/>
+
+  <!-- marchio: piccolo timbro quadrato -->
+  <g transform="translate(32 34)">
+    <rect width="30" height="30" rx="3" fill="none" stroke="#B0362A" stroke-width="1.8" filter="url(#stamp)"/>
+    <text x="15" y="21.5" text-anchor="middle" class="serif" font-size="17" font-weight="600" fill="#B0362A">B</text>
+    <text x="44" y="15" class="serif ink" font-size="19" font-weight="600">Bollette</text>
+    <text x="44" y="31" class="sans ink2" font-size="12">il quaderno di casa</text>
+  </g>
+
+  <!-- navigazione -->
+  <g class="sans" font-size="15">
+    <rect x="16" y="104" width="216" height="40" rx="6" fill="#F7F3EC"/>
+    <path d="M24 114 Q25 124 24 134" stroke="#2F4A6B" stroke-width="3" stroke-linecap="round" fill="none" filter="url(#ink)"/>
+    <!-- casa -->
+    <path d="M40 126 L48 119 L56 126 M42 124.5 L42 132 L54 132 L54 124.5" fill="none" stroke="#2B2620" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="129" class="ink" font-weight="600">Home</text>
+
+    <!-- vassoio -->
+    <path d="M40 162 L56 162 L56 172 L40 172 Z M40 167 L45 167 L46.5 169.5 L49.5 169.5 L51 167 L56 167" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="171" class="ink">Da rivedere</text>
+    <circle cx="208" cy="166" r="12" fill="none" stroke="#2F4A6B" stroke-width="1.3"/>
+    <text x="208" y="171" text-anchor="middle" class="indigo" font-size="13" font-weight="600">3</text>
+
+    <!-- palazzo -->
+    <path d="M41 214 L41 199 L51 199 L51 214 M51 205 L56 205 L56 214 M39 214 L58 214 M44.5 203 L47.5 203 M44.5 207 L47.5 207" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="212" class="ink">Appartamenti</text>
+
+    <text x="40" y="266" class="ink2" font-size="11.5" letter-spacing="1.6">BANCA E FISCO</text>
+    <!-- calendario -->
+    <path d="M40 286 L56 286 L56 300 L40 300 Z M40 291 L56 291 M44 283 L44 288 M52 283 L52 288" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="298" class="ink">Scadenze e pagamenti</text>
+    <!-- frecce -->
+    <path d="M40 328 L55 328 M51 324 L55 328 L51 332 M56 336 L41 336 M45 332 L41 336 L45 340" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="68" y="338" class="ink">Saldo tra conti</text>
+    <!-- ricevuta -->
+    <path d="M42 364 L54 364 L54 380 L51 378 L48 380 L45 378 L42 380 Z M45 369 L51 369 M45 373 L50 373" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="377" class="ink">Tasse e stime</text>
+  </g>
+
+  <!-- nota calma in fondo -->
+  <path d="M32 786 L216 786" class="rule" filter="url(#ink)"/>
+  <text x="32" y="810" class="sans ink2" font-size="12.5">Quaderno aggiornato</text>
+  <text x="32" y="828" class="sans ink2" font-size="12.5">stamattina alle 08:42.</text>
+  <g class="sans" font-size="15">
+    <circle cx="48" cy="866" r="7" fill="none" stroke="#6B6257" stroke-width="1.4"/>
+    <circle cx="48" cy="866" r="2.4" fill="none" stroke="#6B6257" stroke-width="1.4"/>
+    <text x="68" y="871" class="ink">Impostazioni</text>
+  </g>
+
+  <!-- ===== barra superiore ===== -->
+  <g class="sans">
+    <rect x="304" y="24" width="292" height="40" rx="20" fill="#FBF8F2" stroke="#D9CFBF"/>
+    <text x="326" y="49" class="ink" font-size="14.5" xml:space="preserve"><tspan font-weight="600">Tutti</tspan><tspan class="ink2">  ·  </tspan>In corso (ciascuno)</text>
+    <path d="M572 41 L577 46 L582 41" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linecap="round"/>
+
+    <rect x="612" y="24" width="372" height="40" rx="20" fill="#FBF8F2" stroke="#D9CFBF"/>
+    <circle cx="636" cy="43" r="6" fill="none" stroke="#6B6257" stroke-width="1.4"/>
+    <path d="M640.5 47.5 L645 52" stroke="#6B6257" stroke-width="1.4" stroke-linecap="round"/>
+    <text x="656" y="49" class="ink2" font-size="14.5">Cerca bollette, inquilini…</text>
+    <rect x="910" y="32" width="58" height="24" rx="4" fill="#F4EFE6" stroke="#D9CFBF"/>
+    <text x="939" y="48.5" text-anchor="middle" class="ink2" font-size="12">Ctrl K</text>
+
+    <circle cx="1052" cy="44" r="4" fill="#56663A"/>
+    <text x="1064" y="49" class="ink2" font-size="13">Sincronizzato · 2 min fa</text>
+    <text x="1340" y="49" text-anchor="end" class="ink" font-size="14.5">Carlo</text>
+    <circle cx="1366" cy="44" r="17" fill="#FBF8F2" stroke="#2F4A6B" stroke-width="1.3"/>
+    <text x="1366" y="49.5" text-anchor="middle" class="serif indigo" font-size="16" font-weight="600">C</text>
+  </g>
+  <path d="M304 92 L1384 92" stroke="#D9CFBF" stroke-width="1" stroke-dasharray="1 5" stroke-linecap="round"/>
+
+  <!-- ===== intestazione ===== -->
+  <text x="304" y="136" class="sans ink2" font-size="12.5" letter-spacing="1.6">MERCOLEDÌ 11 NOVEMBRE 2026</text>
+  <text x="304" y="184" class="serif ink" font-size="40" font-weight="600">Buongiorno, Carlo.</text>
+  <text x="304" y="218" class="sans ink2" font-size="16">Tre cose aspettano una tua occhiata. Il resto è in ordine.</text>
+
+  <g class="sans">
+    <rect x="1196" y="148" width="188" height="52" rx="26" fill="#2F4A6B"/>
+    <text x="1290" y="180" text-anchor="middle" font-size="17" font-weight="600" fill="#FBF8F2">Rivedi (3)</text>
+    <text x="1384" y="224" text-anchor="end" class="ink2" font-size="12.5">1 bolletta e 2 bonifici da confermare</text>
+  </g>
+
+  <!-- ===== tre fogli degli appartamenti ===== -->
+  <!-- Berchet -->
+  <g transform="translate(304 256)" class="sans">
+    <rect width="344" height="216" rx="4" fill="#FBF8F2" stroke="#E4DBCC" filter="url(#sheet)"/>
+    <rect x="22" y="-9" width="76" height="20" fill="#56663A" opacity="0.30" transform="rotate(-3 60 1)"/>
+    <text x="24" y="52" class="serif ink" font-size="26" font-weight="600">Berchet</text>
+    <text x="320" y="50" text-anchor="end" class="ink2" font-size="13">5 posti</text>
+    <use xlink:href="#i-ok" x="34" y="83"/>
+    <text x="52" y="88.5" class="moss" font-size="16" font-weight="600">Tutto a posto</text>
+    <path d="M24 110 L320 110" class="rule" filter="url(#ink)"/>
+    <text x="24" y="138" class="ink2" font-size="13.5">Inquilini</text>
+    <text x="320" y="138" text-anchor="end" class="ink" font-size="15">5 su 5 in regola</text>
+    <text x="24" y="166" class="ink2" font-size="13.5">Saldo di cassa</text>
+    <text x="320" y="166" text-anchor="end" class="ink" font-size="15" font-weight="600">€ 1.284,50</text>
+    <text x="24" y="198" class="indigo" font-size="14">Apri Berchet →</text>
+  </g>
+  <!-- Lovarini -->
+  <g transform="translate(672 256)" class="sans">
+    <rect width="344" height="216" rx="4" fill="#FBF8F2" stroke="#E4DBCC" filter="url(#sheet)"/>
+    <rect x="22" y="-9" width="76" height="20" fill="#C99A3C" opacity="0.38" transform="rotate(2 60 1)"/>
+    <text x="24" y="52" class="serif ink" font-size="26" font-weight="600">Lovarini</text>
+    <text x="320" y="50" text-anchor="end" class="ink2" font-size="13">4 posti</text>
+    <use xlink:href="#i-warn" x="34" y="83"/>
+    <text x="52" y="88.5" class="ocra" font-size="16" font-weight="600">2 cose da fare</text>
+    <path d="M24 110 L320 110" class="rule" filter="url(#ink)"/>
+    <text x="24" y="138" class="ink2" font-size="13.5">Inquilini</text>
+    <text x="320" y="138" text-anchor="end" class="ink" font-size="15">3 su 4 in regola</text>
+    <text x="24" y="166" class="ink2" font-size="13.5">Saldo di cassa</text>
+    <text x="320" y="166" text-anchor="end" class="ink" font-size="15" font-weight="600">€ 642,10</text>
+    <text x="24" y="198" class="indigo" font-size="14">Apri Lovarini →</text>
+  </g>
+  <!-- Pulci -->
+  <g transform="translate(1040 256)" class="sans">
+    <rect width="344" height="216" rx="4" fill="#FBF8F2" stroke="#E4DBCC" filter="url(#sheet)"/>
+    <rect x="22" y="-9" width="76" height="20" fill="#B8612A" opacity="0.32" transform="rotate(-2 60 1)"/>
+    <text x="24" y="52" class="serif ink" font-size="26" font-weight="600">Pulci</text>
+    <text x="320" y="50" text-anchor="end" class="ink2" font-size="13">4 posti</text>
+    <use xlink:href="#i-err" x="34" y="83"/>
+    <text x="52" y="88.5" class="kaki" font-size="16" font-weight="600">1 scadenza passata</text>
+    <path d="M24 110 L320 110" class="rule" filter="url(#ink)"/>
+    <text x="24" y="138" class="ink2" font-size="13.5">Inquilini</text>
+    <text x="320" y="138" text-anchor="end" class="ink" font-size="15">4 su 4 in regola</text>
+    <text x="24" y="166" class="ink2" font-size="13.5">Saldo di cassa</text>
+    <text x="320" y="166" text-anchor="end" class="ink" font-size="15" font-weight="600">- € 63,00</text>
+    <text x="24" y="198" class="indigo" font-size="14">Apri Pulci →</text>
+  </g>
+
+  <!-- ===== Cose da fare: pagina a righe ===== -->
+  <text x="304" y="540" class="serif ink" font-size="22" font-weight="600">Cose da fare</text>
+  <g class="sans">
+    <rect x="744" y="518" width="160" height="32" rx="16" fill="none" stroke="#D9CFBF"/>
+    <rect x="746" y="520" width="78" height="28" rx="14" fill="#E7DFD1"/>
+    <text x="785" y="539" text-anchor="middle" class="ink" font-size="13.5" font-weight="600">Tutti</text>
+    <text x="863" y="539" text-anchor="middle" class="ink2" font-size="13.5">Per me</text>
+  </g>
+
+  <g class="sans">
+    <!-- riga 1 -->
+    <circle cx="316" cy="584" r="9" fill="none" stroke="#8D8273" stroke-width="1.3" filter="url(#ink)"/>
+    <text x="340" y="589" class="ink" font-size="16">Bolletta Hera gas da confermare</text>
+    <text x="340" y="611" class="ink2" font-size="13">Pulci · arrivata ieri · € 187,40</text>
+    <use xlink:href="#i-warn" x="764" y="584"/>
+    <text x="780" y="589" class="ocra" font-size="13.5" font-weight="600">Da controllare</text>
+    <path d="M304 628 L904 628" class="rule" filter="url(#ink)"/>
+    <!-- riga 2 -->
+    <circle cx="316" cy="648" r="9" fill="none" stroke="#8D8273" stroke-width="1.3" filter="url(#ink)"/>
+    <text x="340" y="653" class="ink" font-size="16">Affitto di novembre non ricevuto — Giulia R.</text>
+    <text x="340" y="675" class="ink2" font-size="13">Lovarini · atteso entro il 5/11 · € 420,00</text>
+    <use xlink:href="#i-err" x="764" y="648"/>
+    <text x="780" y="653" class="kaki" font-size="13.5" font-weight="600">In ritardo</text>
+    <path d="M304 692 L904 692" class="rule" filter="url(#ink)"/>
+    <!-- riga 3 -->
+    <circle cx="316" cy="712" r="9" fill="none" stroke="#8D8273" stroke-width="1.3" filter="url(#ink)"/>
+    <text x="340" y="717" class="ink" font-size="16">Rata condominio Lovarini in scadenza il 10/12</text>
+    <text x="340" y="739" class="ink2" font-size="13">Lovarini · € 312,00 · per Nicola</text>
+    <use xlink:href="#i-warn" x="764" y="712"/>
+    <text x="780" y="717" class="ocra" font-size="13.5" font-weight="600">Tra 29 giorni</text>
+    <path d="M304 756 L904 756" class="rule" filter="url(#ink)"/>
+    <!-- riga 4 -->
+    <circle cx="316" cy="776" r="9" fill="none" stroke="#8D8273" stroke-width="1.3" filter="url(#ink)"/>
+    <text x="340" y="781" class="ink" font-size="16">Conguaglio Pulci da inviare</text>
+    <text x="340" y="803" class="ink2" font-size="13">Pulci · calcolato il 28/10 · 4 inquilini</text>
+    <use xlink:href="#i-err" x="764" y="776"/>
+    <text x="780" y="781" class="kaki" font-size="13.5" font-weight="600">Scaduto il 31/10</text>
+    <path d="M304 820 L904 820" class="rule" filter="url(#ink)"/>
+    <text x="304" y="852" class="ink2" font-size="13">Ogni riga porta direttamente al punto giusto. Una volta fatta, si spunta da sola.</text>
+  </g>
+
+  <!-- ===== Operazioni recenti ===== -->
+  <text x="952" y="540" class="serif ink" font-size="22" font-weight="600">Operazioni recenti</text>
+  <path d="M968 584 L968 804" stroke="#D9CFBF" stroke-width="1.2" filter="url(#ink)"/>
+  <g class="sans">
+    <circle cx="968" cy="584" r="14" fill="#F4EFE6" stroke="#6B6257" stroke-width="1.2"/>
+    <text x="968" y="589" text-anchor="middle" class="serif ink2" font-size="13" font-weight="600">N</text>
+    <text x="996" y="583" class="ink" font-size="14.5">Nicola ha confermato la bolletta Enel</text>
+    <text x="996" y="603" class="ink2" font-size="12.5">Berchet · oggi, 09:12</text>
+
+    <circle cx="968" cy="640" r="14" fill="#F4EFE6" stroke="#2F4A6B" stroke-width="1.2"/>
+    <text x="968" y="645" text-anchor="middle" class="serif indigo" font-size="13" font-weight="600">C</text>
+    <text x="996" y="639" class="ink" font-size="14.5">Carlo ha registrato l’affitto di Marco T.</text>
+    <text x="996" y="659" class="ink2" font-size="12.5">Berchet · oggi, 08:40</text>
+
+    <circle cx="968" cy="696" r="14" fill="#F4EFE6" stroke="#2F4A6B" stroke-width="1.2"/>
+    <text x="968" y="701" text-anchor="middle" class="serif indigo" font-size="13" font-weight="600">C</text>
+    <text x="996" y="695" class="ink" font-size="14.5">Carlo ha calcolato il conguaglio</text>
+    <text x="996" y="715" class="ink2" font-size="12.5">Pulci · ieri, 18:05</text>
+
+    <circle cx="968" cy="752" r="14" fill="#F4EFE6" stroke="#6B6257" stroke-width="1.2"/>
+    <text x="968" y="757" text-anchor="middle" class="serif ink2" font-size="13" font-weight="600">N</text>
+    <text x="996" y="751" class="ink" font-size="14.5">Nicola ha pagato la TARI (2ª rata)</text>
+    <text x="996" y="771" class="ink2" font-size="12.5">Berchet e Lovarini · ieri, 11:30</text>
+
+    <circle cx="968" cy="808" r="14" fill="#F4EFE6" stroke="#2F4A6B" stroke-width="1.2"/>
+    <text x="968" y="813" text-anchor="middle" class="serif indigo" font-size="13" font-weight="600">C</text>
+    <text x="996" y="807" class="ink" font-size="14.5">Carlo ha annullato un abbinamento</text>
+    <text x="996" y="827" class="ink2" font-size="12.5">Lovarini · lun 9/11, 17:22 · <tspan class="indigo">Ripristina</tspan></text>
+  </g>
+
+  <!-- grana della carta su tutto, molto leggera -->
+  <rect width="1440" height="900" filter="url(#paperLow)" pointer-events="none"/>
+  <rect width="1440" height="900" filter="url(#paper)" pointer-events="none"/>
+</svg>

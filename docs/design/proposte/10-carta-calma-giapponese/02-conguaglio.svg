@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1440" height="900" viewBox="0 0 1440 900">
+  <title>Carta calma — Berchet, Conguaglio</title>
+  <defs>
+    <style>
+      .serif { font-family: 'Shippori Mincho', 'Hiragino Mincho ProN', serif; }
+      .sans  { font-family: 'Zen Kaku Gothic New', 'Hiragino Sans', sans-serif; }
+      .ink  { fill: #2B2620; }
+      .ink2 { fill: #6B6257; }
+      .moss { fill: #56663A; }
+      .ocra { fill: #8C6418; }
+      .kaki { fill: #A8532A; }
+      .indigo { fill: #2F4A6B; }
+      .rule { stroke: #D9CFBF; stroke-width: 1.2; fill: none; }
+      .num { font-feature-settings: 'tnum'; }
+    </style>
+    <filter id="paper" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4"/>
+      <feColorMatrix values="0 0 0 0 0.42  0 0 0 0 0.35  0 0 0 0 0.25  0 0 0 0.09 0"/>
+    </filter>
+    <filter id="paperLow" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" seed="11"/>
+      <feColorMatrix values="0 0 0 0 0.55  0 0 0 0 0.45  0 0 0 0 0.30  0 0 0 0.07 0"/>
+    </filter>
+    <filter id="ink" filterUnits="userSpaceOnUse" x="0" y="0" width="1440" height="900">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="sheet" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#5A4630" flood-opacity="0.09"/>
+    </filter>
+    <filter id="stamp" x="-20%" y="-30%" width="140%" height="160%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="3" result="w"/>
+      <feDisplacementMap in="SourceGraphic" in2="w" scale="2" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="9" result="g"/>
+      <feColorMatrix in="g" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.0 1.85" result="m"/>
+      <feComposite in="d" in2="m" operator="in"/>
+    </filter>
+    <g id="i-ok">
+      <circle r="9" fill="none" stroke="#56663A" stroke-width="1.6"/>
+      <path d="M-4 0.5 L-1 3.5 L4.5 -3" fill="none" stroke="#56663A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g id="i-okS">
+      <circle r="6.5" fill="none" stroke="#56663A" stroke-width="1.3"/>
+      <path d="M-3 0.4 L-0.8 2.6 L3.2 -2.2" fill="none" stroke="#56663A" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g id="i-warn">
+      <circle r="9" fill="none" stroke="#8C6418" stroke-width="1.6"/>
+      <path d="M0 -9 A9 9 0 0 0 0 9 Z" fill="#8C6418"/>
+    </g>
+    <g id="i-err">
+      <path d="M0 -9.5 L9.5 7.5 L-9.5 7.5 Z" fill="none" stroke="#A8532A" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M0 -3 L0 2" stroke="#A8532A" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cy="4.8" r="1.1" fill="#A8532A"/>
+    </g>
+    <!-- timbro «saldato» (hanko rettangolare) -->
+    <g id="hanko">
+      <g filter="url(#stamp)" opacity="0.9">
+        <rect x="-42" y="-16" width="84" height="32" rx="5" fill="none" stroke="#B0362A" stroke-width="2"/>
+        <rect x="-38" y="-12" width="76" height="24" rx="3" fill="none" stroke="#B0362A" stroke-width="0.8"/>
+        <text x="0" y="5" text-anchor="middle" font-family="'Shippori Mincho', 'Hiragino Mincho ProN', serif" font-size="12.5" font-weight="600" letter-spacing="1.2" fill="#B0362A">SALDATO</text>
+      </g>
+    </g>
+    <path id="chev-down" d="M-5 -2.5 L0 2.5 L5 -2.5" fill="none" stroke="#6B6257" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="chev-right" d="M-2.5 -5 L2.5 0 L-2.5 5" fill="none" stroke="#6B6257" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </defs>
+
+  <rect width="1440" height="900" fill="#F4EFE6"/>
+
+  <!-- ===== barra laterale ===== -->
+  <rect width="248" height="900" fill="#ECE5D8"/>
+  <path d="M248 0 L248 900" stroke="#D2C6B2" stroke-width="1.4" filter="url(#ink)"/>
+  <g transform="translate(32 34)">
+    <rect width="30" height="30" rx="3" fill="none" stroke="#B0362A" stroke-width="1.8" filter="url(#stamp)"/>
+    <text x="15" y="21.5" text-anchor="middle" class="serif" font-size="17" font-weight="600" fill="#B0362A">B</text>
+    <text x="44" y="15" class="serif ink" font-size="19" font-weight="600">Bollette</text>
+    <text x="44" y="31" class="sans ink2" font-size="12">il quaderno di casa</text>
+  </g>
+  <g class="sans" font-size="15">
+    <path d="M40 126 L48 119 L56 126 M42 124.5 L42 132 L54 132 L54 124.5" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="129" class="ink">Home</text>
+    <path d="M40 162 L56 162 L56 172 L40 172 Z M40 167 L45 167 L46.5 169.5 L49.5 169.5 L51 167 L56 167" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="171" class="ink">Da rivedere</text>
+    <circle cx="208" cy="166" r="12" fill="none" stroke="#2F4A6B" stroke-width="1.3"/>
+    <text x="208" y="171" text-anchor="middle" class="indigo" font-size="13" font-weight="600">3</text>
+
+    <rect x="16" y="188" width="216" height="40" rx="6" fill="#F7F3EC"/>
+    <path d="M24 198 Q25 208 24 218" stroke="#2F4A6B" stroke-width="3" stroke-linecap="round" fill="none" filter="url(#ink)"/>
+    <path d="M41 214 L41 199 L51 199 L51 214 M51 205 L56 205 L56 214 M39 214 L58 214 M44.5 203 L47.5 203 M44.5 207 L47.5 207" fill="none" stroke="#2B2620" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="212" class="ink" font-weight="600">Appartamenti</text>
+
+    <text x="40" y="266" class="ink2" font-size="11.5" letter-spacing="1.6">BANCA E FISCO</text>
+    <path d="M40 286 L56 286 L56 300 L40 300 Z M40 291 L56 291 M44 283 L44 288 M52 283 L52 288" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="298" class="ink">Scadenze e pagamenti</text>
+    <path d="M40 328 L55 328 M51 324 L55 328 L51 332 M56 336 L41 336 M45 332 L41 336 L45 340" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="68" y="338" class="ink">Saldo tra conti</text>
+    <path d="M42 364 L54 364 L54 380 L51 378 L48 380 L45 378 L42 380 Z M45 369 L51 369 M45 373 L50 373" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="68" y="377" class="ink">Tasse e stime</text>
+  </g>
+  <path d="M32 786 L216 786" class="rule" filter="url(#ink)"/>
+  <text x="32" y="810" class="sans ink2" font-size="12.5">Quaderno aggiornato</text>
+  <text x="32" y="828" class="sans ink2" font-size="12.5">stamattina alle 08:42.</text>
+  <g class="sans" font-size="15">
+    <circle cx="48" cy="866" r="7" fill="none" stroke="#6B6257" stroke-width="1.4"/>
+    <circle cx="48" cy="866" r="2.4" fill="none" stroke="#6B6257" stroke-width="1.4"/>
+    <text x="68" y="871" class="ink">Impostazioni</text>
+  </g>
+
+  <!-- ===== barra superiore ===== -->
+  <g class="sans">
+    <rect x="304" y="24" width="248" height="40" rx="20" fill="#FBF8F2" stroke="#D9CFBF"/>
+    <text x="326" y="49" class="ink" font-size="14.5" xml:space="preserve"><tspan font-weight="600">Berchet</tspan><tspan class="ink2">  ·  </tspan>2025-26</text>
+    <path d="M528 41 L533 46 L538 41" fill="none" stroke="#6B6257" stroke-width="1.4" stroke-linecap="round"/>
+
+    <rect x="568" y="24" width="372" height="40" rx="20" fill="#FBF8F2" stroke="#D9CFBF"/>
+    <circle cx="592" cy="43" r="6" fill="none" stroke="#6B6257" stroke-width="1.4"/>
+    <path d="M596.5 47.5 L601 52" stroke="#6B6257" stroke-width="1.4" stroke-linecap="round"/>
+    <text x="612" y="49" class="ink2" font-size="14.5">Cerca bollette, inquilini…</text>
+    <rect x="866" y="32" width="58" height="24" rx="4" fill="#F4EFE6" stroke="#D9CFBF"/>
+    <text x="895" y="48.5" text-anchor="middle" class="ink2" font-size="12">Ctrl K</text>
+
+    <circle cx="1052" cy="44" r="4" fill="#56663A"/>
+    <text x="1064" y="49" class="ink2" font-size="13">Sincronizzato · 2 min fa</text>
+    <text x="1340" y="49" text-anchor="end" class="ink" font-size="14.5">Carlo</text>
+    <circle cx="1366" cy="44" r="17" fill="#FBF8F2" stroke="#2F4A6B" stroke-width="1.3"/>
+    <text x="1366" y="49.5" text-anchor="middle" class="serif indigo" font-size="16" font-weight="600">C</text>
+  </g>
+
+  <!-- ===== intestazione appartamento ===== -->
+  <text x="304" y="118" class="sans ink2" font-size="13">Appartamenti  /  Berchet</text>
+  <text x="304" y="162" class="serif ink" font-size="34" font-weight="600">Berchet · Annualità 2025-26</text>
+
+  <!-- schede come linguette di un quaderno -->
+  <g class="sans" font-size="14.5">
+    <path d="M304 240 L1384 240" stroke="#CFC3AE" stroke-width="1.2" filter="url(#ink)"/>
+    <path d="M552 240 L552 200 Q552 192 560 192 L660 192 Q668 192 668 200 L668 240" fill="#FBF8F2" stroke="#CFC3AE" stroke-width="1.2"/>
+    <rect x="553" y="236" width="114" height="6" fill="#FBF8F2"/>
+    <text x="304" y="222" class="ink2">Affitti e pagamenti</text>
+    <text x="476" y="222" class="ink2">Bollette</text>
+    <text x="610" y="222" text-anchor="middle" class="ink" font-weight="600">Conguaglio</text>
+    <text x="700" y="222" class="ink2">Inquilini</text>
+    <text x="796" y="222" class="ink2">Condominio</text>
+    <text x="912" y="222" class="ink2">Moduli</text>
+    <text x="992" y="222" class="ink2">Excel</text>
+    <text x="1060" y="222" class="ink2">Storico</text>
+  </g>
+
+  <!-- avanzamento del conguaglio + unico pulsante principale -->
+  <g class="sans">
+    <path d="M462 276 L476 276" stroke="#CFC3AE" stroke-width="1.2" stroke-dasharray="2 4"/>
+    <path d="M552 276 L604 276" stroke="#CFC3AE" stroke-width="1.2" stroke-dasharray="2 4"/>
+    <circle cx="312" cy="276" r="6" fill="#2F4A6B"/>
+    <text x="326" y="281" class="ink" font-size="14.5"><tspan font-weight="600">Calcolato</tspan> il 10/11</text>
+    <circle cx="484" cy="276" r="6" fill="#F4EFE6" stroke="#8D8273" stroke-width="1.3"/>
+    <text x="498" y="281" class="ink2" font-size="14.5">Inviato</text>
+    <circle cx="612" cy="276" r="6" fill="#F4EFE6" stroke="#8D8273" stroke-width="1.3"/>
+    <text x="626" y="281" class="ink2" font-size="14.5">Saldato</text>
+
+    <text x="1152" y="281" text-anchor="end" class="indigo" font-size="14.5">Ricalcola</text>
+    <rect x="1172" y="252" width="212" height="48" rx="24" fill="#2F4A6B"/>
+    <text x="1278" y="282" text-anchor="middle" font-size="16" font-weight="600" fill="#FBF8F2">Prepara il messaggio</text>
+  </g>
+
+  <!-- ===== pagina del registro: il conto di ciascuno ===== -->
+  <g class="sans">
+    <rect x="304" y="316" width="696" height="512" rx="4" fill="#FBF8F2" stroke="#E4DBCC" filter="url(#sheet)"/>
+    <!-- margine rosso del quaderno -->
+    <path d="M336 316 L336 828" stroke="#E2B4A6" stroke-width="1" filter="url(#ink)"/>
+    <path d="M340 316 L340 828" stroke="#E2B4A6" stroke-width="0.6" filter="url(#ink)"/>
+
+    <text x="356" y="356" class="serif ink" font-size="21" font-weight="600">Il conto di ciascuno</text>
+    <text x="976" y="356" text-anchor="end" class="ink2" font-size="13">5 posti · si divide per 5</text>
+
+    <g class="ink2" font-size="11" letter-spacing="1">
+      <text x="356" y="403">INQUILINO</text>
+      <text x="520" y="403" text-anchor="end">MESI</text>
+      <text x="608" y="388" text-anchor="end">QUOTA</text>
+      <text x="608" y="403" text-anchor="end">COSTI</text>
+      <text x="724" y="388" text-anchor="end">FORFAIT</text>
+      <text x="724" y="403" text-anchor="end">INCASSATO</text>
+      <text x="840" y="388" text-anchor="end">DA PAGARE /</text>
+      <text x="840" y="403" text-anchor="end">RIMBORSARE</text>
+      <text x="876" y="403">STATO</text>
+    </g>
+    <path d="M336 414 L1000 414" stroke="#CFC3AE" stroke-width="1.2" filter="url(#ink)"/>
+
+    <!-- Davide C. -->
+    <text x="356" y="442" class="ink" font-size="16" font-weight="600">Davide C.</text>
+    <text x="356" y="462" class="ink2" font-size="12.5">camera 1</text>
+    <g class="ink num" font-size="15" text-anchor="end">
+      <text x="520" y="450">12</text><text x="608" y="450">€ 543,18</text><text x="724" y="450">€ 480,00</text>
+      <text x="840" y="450" font-weight="600">€ 63,18</text>
+    </g>
+    <use xlink:href="#hanko" transform="translate(930 444) rotate(-6)"/>
+    <path d="M336 478 L1000 478" class="rule" filter="url(#ink)"/>
+
+    <!-- Marco T. -->
+    <text x="356" y="506" class="ink" font-size="16" font-weight="600">Marco T.</text>
+    <text x="356" y="526" class="ink2" font-size="12.5">camera 2</text>
+    <g class="ink num" font-size="15" text-anchor="end">
+      <text x="520" y="514">12</text><text x="608" y="514">€ 543,18</text><text x="724" y="514">€ 480,00</text>
+      <text x="840" y="514" font-weight="600">€ 63,18</text>
+    </g>
+    <use xlink:href="#i-warn" x="884" y="509"/>
+    <text x="900" y="514" class="ocra" font-size="14" font-weight="600">Parziale</text>
+    <text x="900" y="531" class="ink2" font-size="12">versati € 30,00</text>
+    <path d="M336 542 L1000 542" class="rule" filter="url(#ink)"/>
+
+    <!-- Sofia B. -->
+    <text x="356" y="570" class="ink" font-size="16" font-weight="600">Sofia B.</text>
+    <text x="356" y="590" class="ink2" font-size="12.5">camera 3</text>
+    <g class="ink num" font-size="15" text-anchor="end">
+      <text x="520" y="578">12</text><text x="608" y="578">€ 543,18</text><text x="724" y="578">€ 600,00</text>
+      <text x="840" y="578" font-weight="600">- € 56,82</text>
+    </g>
+    <text x="840" y="595" text-anchor="end" class="ink2" font-size="12">da rimborsare</text>
+    <use xlink:href="#hanko" transform="translate(930 572) rotate(4)"/>
+    <path d="M336 606 L1000 606" class="rule" filter="url(#ink)"/>
+
+    <!-- Luca P. -->
+    <text x="356" y="634" class="ink" font-size="16" font-weight="600">Luca P.</text>
+    <text x="356" y="654" class="ink2" font-size="12.5">camera 4 · da dicembre</text>
+    <g class="ink num" font-size="15" text-anchor="end">
+      <text x="520" y="642">9</text><text x="608" y="642">€ 407,39</text><text x="724" y="642">€ 360,00</text>
+      <text x="840" y="642" font-weight="600">€ 47,39</text>
+    </g>
+    <use xlink:href="#i-err" x="884" y="637"/>
+    <text x="900" y="642" class="kaki" font-size="14" font-weight="600">Da pagare</text>
+    <path d="M336 670 L1000 670" class="rule" filter="url(#ink)"/>
+
+    <!-- Anna V. -->
+    <text x="356" y="698" class="ink" font-size="16" font-weight="600">Anna V.</text>
+    <text x="356" y="718" class="ink2" font-size="12.5">camera 5</text>
+    <g class="ink num" font-size="15" text-anchor="end">
+      <text x="520" y="706">12</text><text x="608" y="706">€ 543,18</text><text x="724" y="706">€ 460,00</text>
+      <text x="840" y="706" font-weight="600">€ 83,18</text>
+    </g>
+    <use xlink:href="#i-err" x="884" y="701"/>
+    <text x="900" y="706" class="kaki" font-size="14" font-weight="600">Da pagare</text>
+
+    <!-- totale: doppia riga da registro -->
+    <path d="M336 738 L1000 738" stroke="#2B2620" stroke-width="1" filter="url(#ink)"/>
+    <path d="M336 742 L1000 742" stroke="#2B2620" stroke-width="1" filter="url(#ink)"/>
+    <text x="356" y="770" class="serif ink" font-size="17" font-weight="600">Totale</text>
+    <g class="ink num" font-size="15" text-anchor="end" font-weight="600">
+      <text x="608" y="770">€ 2.580,11</text><text x="724" y="770">€ 2.380,00</text>
+      <text x="840" y="770">€ 200,11</text>
+    </g>
+    <text x="356" y="806" class="ink2" font-size="12.5">Posto vuoto da settembre a novembre 2025: € 135,79 restano a carico del proprietario.</text>
+  </g>
+
+  <g class="sans">
+    <text x="304" y="858" class="indigo" font-size="14.5">+ Registra pagamento a mano</text>
+    <circle cx="311" cy="879" r="7" fill="none" stroke="#6B6257" stroke-width="1.2"/>
+    <text x="311" y="883" text-anchor="middle" class="serif ink2" font-size="10.5" font-weight="600">i</text>
+    <text x="326" y="884" class="ink2" font-size="12.5">Gli importi contano solo le voci trovate nell’estratto conto della banca.</text>
+  </g>
+
+  <!-- ===== per tipologia: blocchi apribili ===== -->
+  <g class="sans">
+    <text x="1032" y="356" class="serif ink" font-size="21" font-weight="600">Per tipologia</text>
+    <text x="1032" y="380" class="ink2" font-size="13">€ 2.715,90 in 35 voci</text>
+
+    <!-- Elettricità, aperto -->
+    <rect x="1032" y="396" width="352" height="210" rx="4" fill="#FBF8F2" stroke="#E4DBCC" filter="url(#sheet)"/>
+    <use xlink:href="#chev-down" x="1052" y="420"/>
+    <text x="1068" y="425" class="ink" font-size="15" font-weight="600">Elettricità</text>
+    <text x="1180" y="425" class="ink2" font-size="12.5">6 bollette</text>
+    <text x="1364" y="425" text-anchor="end" class="ink num" font-size="15" font-weight="600">€ 612,40</text>
+    <path d="M1048 440 L1368 440" class="rule" filter="url(#ink)"/>
+
+    <text x="1068" y="462" class="ink" font-size="13.5">Enel · set–ott 2025</text>
+    <text x="1364" y="462" text-anchor="end" class="ink num" font-size="13.5">€ 98,24</text>
+    <use xlink:href="#i-okS" x="1075" y="476"/>
+    <text x="1088" y="480" class="moss" font-size="12">nell’estratto conto il 14/11/2025</text>
+
+    <text x="1068" y="506" class="ink" font-size="13.5">Enel · nov–dic 2025</text>
+    <text x="1364" y="506" text-anchor="end" class="ink num" font-size="13.5">€ 121,30</text>
+    <use xlink:href="#i-okS" x="1075" y="520"/>
+    <text x="1088" y="524" class="moss" font-size="12">nell’estratto conto il 16/01/2026</text>
+
+    <text x="1068" y="550" class="ink" font-size="13.5">Enel · gen–feb 2026</text>
+    <text x="1364" y="550" text-anchor="end" class="ink num" font-size="13.5">€ 104,67</text>
+    <use xlink:href="#i-okS" x="1075" y="564"/>
+    <text x="1088" y="568" class="moss" font-size="12">nell’estratto conto il 13/03/2026</text>
+    <text x="1068" y="594" class="indigo" font-size="12.5">Mostra le altre 3 bollette</text>
+
+    <!-- chiusi -->
+    <rect x="1032" y="616" width="352" height="44" rx="4" fill="#FBF8F2" stroke="#E4DBCC"/>
+    <use xlink:href="#chev-right" x="1052" y="638"/>
+    <text x="1068" y="643" class="ink" font-size="15">Gas</text>
+    <text x="1180" y="643" class="ink2" font-size="12.5">6 bollette</text>
+    <text x="1364" y="643" text-anchor="end" class="ink num" font-size="15">€ 842,10</text>
+
+    <rect x="1032" y="668" width="352" height="44" rx="4" fill="#FBF8F2" stroke="#E4DBCC"/>
+    <use xlink:href="#chev-right" x="1052" y="690"/>
+    <text x="1068" y="695" class="ink" font-size="15">Acqua</text>
+    <text x="1180" y="695" class="ink2" font-size="12.5">4 bollette</text>
+    <text x="1364" y="695" text-anchor="end" class="ink num" font-size="15">€ 214,36</text>
+
+    <rect x="1032" y="720" width="352" height="44" rx="4" fill="#FBF8F2" stroke="#E4DBCC"/>
+    <use xlink:href="#chev-right" x="1052" y="742"/>
+    <text x="1068" y="747" class="ink" font-size="15">Internet</text>
+    <text x="1180" y="747" class="ink2" font-size="12.5">12 × € 29,95</text>
+    <text x="1364" y="747" text-anchor="end" class="ink num" font-size="15">€ 359,40</text>
+
+    <rect x="1032" y="772" width="352" height="44" rx="4" fill="#FBF8F2" stroke="#E4DBCC"/>
+    <use xlink:href="#chev-right" x="1052" y="794"/>
+    <text x="1068" y="799" class="ink" font-size="15">TARI</text>
+    <text x="1180" y="799" class="ink2" font-size="12.5">3 × € 101,04</text>
+    <text x="1364" y="799" text-anchor="end" class="ink num" font-size="15">€ 303,12</text>
+
+    <rect x="1032" y="824" width="352" height="44" rx="4" fill="#FBF8F2" stroke="#E4DBCC"/>
+    <use xlink:href="#chev-right" x="1052" y="846"/>
+    <text x="1068" y="851" class="ink" font-size="15">Condominio</text>
+    <text x="1180" y="851" class="ink2" font-size="12.5">4 rate</text>
+    <text x="1364" y="851" text-anchor="end" class="ink num" font-size="15">€ 384,52</text>
+  </g>
+
+  <rect width="1440" height="900" filter="url(#paperLow)" pointer-events="none"/>
+  <rect width="1440" height="900" filter="url(#paper)" pointer-events="none"/>
+</svg>
